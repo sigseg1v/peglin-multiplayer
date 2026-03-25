@@ -11,8 +11,19 @@ GAME_EXE="$GAME_DIR/Peglin.exe"
 # --- Configuration (edit these) ---
 
 # Option 1: Proton (recommended if you have Steam installed)
-# Find yours with: ls ~/.steam/steam/steamapps/common/ | grep Proton
-PROTON_DIR="$HOME/.steam/steam/steamapps/common/Proton 9.0"
+# Auto-detects the newest stable Proton. Override by setting PROTON_DIR before running.
+if [ -z "${PROTON_DIR:-}" ]; then
+    PROTON_DIR=$(
+        find "$HOME/.steam/steam/steamapps/common/" -maxdepth 1 -name 'Proton *' -type d \
+        | grep -v Experimental \
+        | sort -t' ' -k2 -Vr \
+        | head -n1
+    )
+    # Fall back to Experimental if no stable version found
+    if [ -z "$PROTON_DIR" ]; then
+        PROTON_DIR="$HOME/.steam/steam/steamapps/common/Proton - Experimental"
+    fi
+fi
 
 # Wine prefix - reuse Peglin's existing Steam prefix (app ID 1296610)
 # or point to a fresh directory and Proton will create one
