@@ -36,6 +36,13 @@ STEAM_DIR="$HOME/.steam/steam"
 
 # --- End configuration ---
 
+# Disable Unity crash reporter - don't send modded crash reports to the devs
+CRASH_HANDLER="$GAME_DIR/UnityCrashHandler64.exe"
+if [ -f "$CRASH_HANDLER" ]; then
+    mv "$CRASH_HANDLER" "$CRASH_HANDLER.disabled"
+    echo "Disabled Unity crash reporter (renamed to .disabled)"
+fi
+
 if [ ! -f "$GAME_EXE" ]; then
     echo "ERROR: Game executable not found at $GAME_EXE"
     exit 1
