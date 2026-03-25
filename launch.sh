@@ -51,7 +51,7 @@ fi
 if [ "${USE_WINE:-0}" = "1" ]; then
     echo "Launching Peglin via Wine..."
     cd "$GAME_DIR"
-    exec wine "$GAME_EXE" "$@"
+    WINEDLLOVERRIDES="winhttp=n,b" exec wine "$GAME_EXE" "$@"
 else
     if [ ! -f "$PROTON_DIR/proton" ]; then
         echo "ERROR: Proton not found at $PROTON_DIR/proton"
@@ -67,6 +67,7 @@ else
 
     echo "Launching Peglin via Proton..."
     cd "$GAME_DIR"
+    WINEDLLOVERRIDES="winhttp=n,b" \
     STEAM_COMPAT_DATA_PATH="$COMPAT_DATA" \
     STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM_DIR" \
     exec "$PROTON_DIR/proton" run "$GAME_EXE" "$@"
