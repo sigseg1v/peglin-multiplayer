@@ -1,21 +1,14 @@
-using System;
 using Battle;
 using BepInEx.Logging;
 using PeglinMods.Spectator.Events.Network.Health;
+using PeglinMods.Spectator.Spectator;
 
 namespace PeglinMods.Spectator.Events.Subscriptions;
 
-public class HealthSubscriptions
+public sealed class HealthSubscriptions
 {
     private readonly IGameEventRegistry _registry;
     private readonly ManualLogSource _log;
-
-    private PlayerHealthController.PlayerHealthEvent _onPlayerDamaged;
-    private PlayerHealthController.PlayerHealthEvent _onPlayerHealed;
-    private PlayerHealthController.PlayerHealthEvent _onArmourHit;
-    private PlayerHealthController.PlayerHealthEvent _onDodge;
-    private PlayerHealthController.HealthEvent _onHealthDepleted;
-    private PlayerHealthController.PlayerHealthEvent _onMaxHealthChanged;
 
     public HealthSubscriptions(IGameEventRegistry registry, ManualLogSource log)
     {
@@ -23,79 +16,84 @@ public class HealthSubscriptions
         _log = log;
     }
 
+    private static bool IsHosting =>
+        SpectatorPlugin.Services?.TryResolve<ISpectatorMode>(out var mode) == true && mode.IsHosting;
+
     public void Subscribe()
     {
-        _onPlayerDamaged = (float amount) =>
-        {
-            _registry.Dispatch(new PlayerDamagedEvent
-            {
-                Damage = amount,
-                RemainingHealth = GetCurrentHealth(),
-                MaxHealth = GetMaxHealth()
-            });
-        };
-        PlayerHealthController.OnPlayerDamaged += _onPlayerDamaged;
-
-        _onPlayerHealed = (float amount) =>
-        {
-            _registry.Dispatch(new PlayerHealedEvent
-            {
-                Amount = amount,
-                RemainingHealth = GetCurrentHealth()
-            });
-        };
-        PlayerHealthController.OnPlayerHealed += _onPlayerHealed;
-
-        _onArmourHit = (float amount) =>
-        {
-            _registry.Dispatch(new ArmourHitEvent { Damage = amount });
-        };
-        PlayerHealthController.OnArmourHit += _onArmourHit;
-
-        _onDodge = (float info) =>
-        {
-            _registry.Dispatch(new DodgeEvent { DodgeInfo = info });
-        };
-        PlayerHealthController.OnDodge += _onDodge;
-
-        _onHealthDepleted = () =>
-        {
-            _registry.Dispatch(new HealthDepletedEvent());
-        };
-        PlayerHealthController.OnHealthDepleted += _onHealthDepleted;
-
-        _onMaxHealthChanged = (float newMax) =>
-        {
-            _registry.Dispatch(new MaxHealthChangedEvent { NewMaxHealth = newMax });
-        };
-        PlayerHealthController.OnPlayerMaxHealthChanged += _onMaxHealthChanged;
-
+        PlayerHealthController.OnPlayerDamaged += OnPlayerDamaged;
+        PlayerHealthController.OnPlayerHealed += OnPlayerHealed;
+        PlayerHealthController.OnArmourHit += OnArmourHit;
+        PlayerHealthController.OnDodge += OnDodge;
+        PlayerHealthController.OnHealthDepleted += OnHealthDepleted;
+        PlayerHealthController.OnPlayerMaxHealthChanged += OnMaxHealthChanged;
         _log.LogInfo("HealthSubscriptions registered");
     }
 
     public void Unsubscribe()
     {
-        PlayerHealthController.OnPlayerDamaged -= _onPlayerDamaged;
-        PlayerHealthController.OnPlayerHealed -= _onPlayerHealed;
-        PlayerHealthController.OnArmourHit -= _onArmourHit;
-        PlayerHealthController.OnDodge -= _onDodge;
-        PlayerHealthController.OnHealthDepleted -= _onHealthDepleted;
-        PlayerHealthController.OnPlayerMaxHealthChanged -= _onMaxHealthChanged;
+        PlayerHealthController.OnPlayerDamaged -= OnPlayerDamaged;
+        PlayerHealthController.OnPlayerHealed -= OnPlayerHealed;
+        PlayerHealthController.OnArmourHit -= OnArmourHit;
+        PlayerHealthController.OnDodge -= OnDodge;
+        PlayerHealthController.OnHealthDepleted -= OnHealthDepleted;
+        PlayerHealthController.OnPlayerMaxHealthChanged -= OnMaxHealthChanged;
+    }
+
+    private void OnPlayerDamaged(float amount)
+    {
+        if (!IsHosting) return;
+        _registry.Dispatch(new PlayerDamagedEvent
+        {
+            Damage = amount,
+            RemainingHealth = GetCurrentHealth(),
+            MaxHealth = GetMaxHealth()
+        });
+    }
+
+    private void OnPlayerHealed(float amount)
+    {
+        if (!IsHosting) return;
+        _registry.Dispatch(new PlayerHealedEvent
+        {
+            Amount = amount,
+            RemainingHealth = GetCurrentHealth()
+        });
+    }
+
+    private void OnArmourHit(float amount)
+    {
+        if (!IsHosting) return;
+        _registry.Dispatch(new ArmourHitEvent { Damage = amount });
+    }
+
+    private void OnDodge(float info)
+    {
+        if (!IsHosting) return;
+        _registry.Dispatch(new DodgeEvent { DodgeInfo = info });
+    }
+
+    private void OnHealthDepleted()
+    {
+        if (!IsHosting) return;
+        _registry.Dispatch(new HealthDepletedEvent());
+    }
+
+    private void OnMaxHealthChanged(float newMax)
+    {
+        if (!IsHosting) return;
+        _registry.Dispatch(new MaxHealthChangedEvent { NewMaxHealth = newMax });
     }
 
     private static float GetCurrentHealth()
     {
         var controller = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
-        if (controller == null)
-            return 0f;
-        return controller.CurrentHealth;
+        return controller != null ? controller.CurrentHealth : 0f;
     }
 
     private static float GetMaxHealth()
     {
         var controller = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
-        if (controller == null)
-            return 0f;
-        return controller.MaxHealth;
+        return controller != null ? controller.MaxHealth : 0f;
     }
 }

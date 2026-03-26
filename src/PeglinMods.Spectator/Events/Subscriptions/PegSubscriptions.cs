@@ -1,16 +1,13 @@
 using BepInEx.Logging;
 using PeglinMods.Spectator.Events.Network.Peg;
+using PeglinMods.Spectator.Spectator;
 
 namespace PeglinMods.Spectator.Events.Subscriptions;
 
-public class PegSubscriptions
+public sealed class PegSubscriptions
 {
     private readonly IGameEventRegistry _registry;
     private readonly ManualLogSource _log;
-
-    private Peg.PegHitEvent _onPegHit;
-    private Peg.PegHitEvent _onPegActivated;
-    private Peg.PegDestroyed _onPegDestroyed;
 
     public PegSubscriptions(IGameEventRegistry registry, ManualLogSource log)
     {
@@ -18,51 +15,57 @@ public class PegSubscriptions
         _log = log;
     }
 
+    private static bool IsHosting =>
+        SpectatorPlugin.Services?.TryResolve<ISpectatorMode>(out var mode) == true && mode.IsHosting;
+
     public void Subscribe()
     {
-        _onPegHit = (Peg.PegType pegType, Peg peg) =>
-        {
-            var pos = peg != null ? peg.transform.position : UnityEngine.Vector3.zero;
-            _registry.Dispatch(new PegHitEvent
-            {
-                PegType = (int)pegType,
-                PosX = pos.x,
-                PosY = pos.y
-            });
-        };
-        Peg.OnPegHit += _onPegHit;
-
-        _onPegActivated = (Peg.PegType pegType, Peg peg) =>
-        {
-            var pos = peg != null ? peg.transform.position : UnityEngine.Vector3.zero;
-            _registry.Dispatch(new PegActivatedEvent
-            {
-                PegType = (int)pegType,
-                PosX = pos.x,
-                PosY = pos.y
-            });
-        };
-        Peg.OnPegActivated += _onPegActivated;
-
-        _onPegDestroyed = (Peg.PegType pegType, Peg peg) =>
-        {
-            var pos = peg != null ? peg.transform.position : UnityEngine.Vector3.zero;
-            _registry.Dispatch(new PegDestroyedEvent
-            {
-                PegType = (int)pegType,
-                PosX = pos.x,
-                PosY = pos.y
-            });
-        };
-        Peg.OnPegDestroyed += _onPegDestroyed;
-
+        Peg.OnPegHit += OnPegHit;
+        Peg.OnPegActivated += OnPegActivated;
+        Peg.OnPegDestroyed += OnPegDestroyed;
         _log.LogInfo("PegSubscriptions registered");
     }
 
     public void Unsubscribe()
     {
-        Peg.OnPegHit -= _onPegHit;
-        Peg.OnPegActivated -= _onPegActivated;
-        Peg.OnPegDestroyed -= _onPegDestroyed;
+        Peg.OnPegHit -= OnPegHit;
+        Peg.OnPegActivated -= OnPegActivated;
+        Peg.OnPegDestroyed -= OnPegDestroyed;
+    }
+
+    private void OnPegHit(Peg.PegType pegType, Peg peg)
+    {
+        if (!IsHosting) return;
+        var pos = peg != null ? peg.transform.position : UnityEngine.Vector3.zero;
+        _registry.Dispatch(new PegHitEvent
+        {
+            PegType = (int)pegType,
+            PosX = pos.x,
+            PosY = pos.y
+        });
+    }
+
+    private void OnPegActivated(Peg.PegType pegType, Peg peg)
+    {
+        if (!IsHosting) return;
+        var pos = peg != null ? peg.transform.position : UnityEngine.Vector3.zero;
+        _registry.Dispatch(new PegActivatedEvent
+        {
+            PegType = (int)pegType,
+            PosX = pos.x,
+            PosY = pos.y
+        });
+    }
+
+    private void OnPegDestroyed(Peg.PegType pegType, Peg peg)
+    {
+        if (!IsHosting) return;
+        var pos = peg != null ? peg.transform.position : UnityEngine.Vector3.zero;
+        _registry.Dispatch(new PegDestroyedEvent
+        {
+            PegType = (int)pegType,
+            PosX = pos.x,
+            PosY = pos.y
+        });
     }
 }

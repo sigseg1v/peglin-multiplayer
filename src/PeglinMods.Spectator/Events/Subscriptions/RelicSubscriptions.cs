@@ -1,17 +1,14 @@
 using BepInEx.Logging;
 using PeglinMods.Spectator.Events.Network.Relic;
+using PeglinMods.Spectator.Spectator;
 using Relics;
 
 namespace PeglinMods.Spectator.Events.Subscriptions;
 
-public class RelicSubscriptions
+public sealed class RelicSubscriptions
 {
     private readonly IGameEventRegistry _registry;
     private readonly ManualLogSource _log;
-
-    private RelicManager.RelicManagement _onRelicAdded;
-    private RelicManager.RelicManagement _onRelicRemoved;
-    private RelicManager.RelicManagement _onRelicUsed;
 
     public RelicSubscriptions(IGameEventRegistry registry, ManualLogSource log)
     {
@@ -19,43 +16,43 @@ public class RelicSubscriptions
         _log = log;
     }
 
+    private static bool IsHosting =>
+        SpectatorPlugin.Services?.TryResolve<ISpectatorMode>(out var mode) == true && mode.IsHosting;
+
     public void Subscribe()
     {
-        _onRelicAdded = (Relic relic) =>
-        {
-            _registry.Dispatch(new RelicAddedEvent
-            {
-                RelicEffect = (int)relic.effect,
-                RelicName = relic.locKey
-            });
-        };
-        RelicManager.OnRelicAdded += _onRelicAdded;
-
-        _onRelicRemoved = (Relic relic) =>
-        {
-            _registry.Dispatch(new RelicRemovedEvent
-            {
-                RelicEffect = (int)relic.effect
-            });
-        };
-        RelicManager.OnRelicRemoved += _onRelicRemoved;
-
-        _onRelicUsed = (Relic relic) =>
-        {
-            _registry.Dispatch(new RelicUsedEvent
-            {
-                RelicEffect = (int)relic.effect
-            });
-        };
-        RelicManager.OnRelicUsed += _onRelicUsed;
-
+        RelicManager.OnRelicAdded += OnRelicAdded;
+        RelicManager.OnRelicRemoved += OnRelicRemoved;
+        RelicManager.OnRelicUsed += OnRelicUsed;
         _log.LogInfo("RelicSubscriptions registered");
     }
 
     public void Unsubscribe()
     {
-        RelicManager.OnRelicAdded -= _onRelicAdded;
-        RelicManager.OnRelicRemoved -= _onRelicRemoved;
-        RelicManager.OnRelicUsed -= _onRelicUsed;
+        RelicManager.OnRelicAdded -= OnRelicAdded;
+        RelicManager.OnRelicRemoved -= OnRelicRemoved;
+        RelicManager.OnRelicUsed -= OnRelicUsed;
+    }
+
+    private void OnRelicAdded(Relic relic)
+    {
+        if (!IsHosting) return;
+        _registry.Dispatch(new RelicAddedEvent
+        {
+            RelicEffect = (int)relic.effect,
+            RelicName = relic.locKey
+        });
+    }
+
+    private void OnRelicRemoved(Relic relic)
+    {
+        if (!IsHosting) return;
+        _registry.Dispatch(new RelicRemovedEvent { RelicEffect = (int)relic.effect });
+    }
+
+    private void OnRelicUsed(Relic relic)
+    {
+        if (!IsHosting) return;
+        _registry.Dispatch(new RelicUsedEvent { RelicEffect = (int)relic.effect });
     }
 }

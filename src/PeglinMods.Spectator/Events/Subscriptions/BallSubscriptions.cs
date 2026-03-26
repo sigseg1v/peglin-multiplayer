@@ -1,17 +1,14 @@
 using BepInEx.Logging;
 using PeglinMods.Spectator.Events.Network.Ball;
+using PeglinMods.Spectator.Spectator;
 using UnityEngine;
 
 namespace PeglinMods.Spectator.Events.Subscriptions;
 
-public class BallSubscriptions
+public sealed class BallSubscriptions
 {
     private readonly IGameEventRegistry _registry;
     private readonly ManualLogSource _log;
-
-    private PachinkoBall.PachinkoBallFired _onShotFired;
-    private PachinkoBall.PachinkoBallWallBounce _onWallBounce;
-    private PachinkoBall.PachinkoBallDestroyed _onBallDestroyed;
 
     public BallSubscriptions(IGameEventRegistry registry, ManualLogSource log)
     {
@@ -19,42 +16,48 @@ public class BallSubscriptions
         _log = log;
     }
 
+    private static bool IsHosting =>
+        SpectatorPlugin.Services?.TryResolve<ISpectatorMode>(out var mode) == true && mode.IsHosting;
+
     public void Subscribe()
     {
-        _onShotFired = (Vector2 aimVector) =>
-        {
-            _registry.Dispatch(new ShotFiredEvent
-            {
-                AimX = aimVector.x,
-                AimY = aimVector.y
-            });
-        };
-        PachinkoBall.OnShotFired += _onShotFired;
-
-        _onWallBounce = (Vector3 pos) =>
-        {
-            _registry.Dispatch(new BallWallBounceEvent
-            {
-                PosX = pos.x,
-                PosY = pos.y,
-                PosZ = pos.z
-            });
-        };
-        PachinkoBall.OnPachinkoBallWallBounce += _onWallBounce;
-
-        _onBallDestroyed = (PachinkoBall pBall) =>
-        {
-            _registry.Dispatch(new BallDestroyedEvent());
-        };
-        PachinkoBall.OnPachinkoBallDestroyed += _onBallDestroyed;
-
+        PachinkoBall.OnShotFired += OnShotFired;
+        PachinkoBall.OnPachinkoBallWallBounce += OnWallBounce;
+        PachinkoBall.OnPachinkoBallDestroyed += OnBallDestroyed;
         _log.LogInfo("BallSubscriptions registered");
     }
 
     public void Unsubscribe()
     {
-        PachinkoBall.OnShotFired -= _onShotFired;
-        PachinkoBall.OnPachinkoBallWallBounce -= _onWallBounce;
-        PachinkoBall.OnPachinkoBallDestroyed -= _onBallDestroyed;
+        PachinkoBall.OnShotFired -= OnShotFired;
+        PachinkoBall.OnPachinkoBallWallBounce -= OnWallBounce;
+        PachinkoBall.OnPachinkoBallDestroyed -= OnBallDestroyed;
+    }
+
+    private void OnShotFired(Vector2 aimVector)
+    {
+        if (!IsHosting) return;
+        _registry.Dispatch(new ShotFiredEvent
+        {
+            AimX = aimVector.x,
+            AimY = aimVector.y
+        });
+    }
+
+    private void OnWallBounce(Vector3 pos)
+    {
+        if (!IsHosting) return;
+        _registry.Dispatch(new BallWallBounceEvent
+        {
+            PosX = pos.x,
+            PosY = pos.y,
+            PosZ = pos.z
+        });
+    }
+
+    private void OnBallDestroyed(PachinkoBall pBall)
+    {
+        if (!IsHosting) return;
+        _registry.Dispatch(new BallDestroyedEvent());
     }
 }

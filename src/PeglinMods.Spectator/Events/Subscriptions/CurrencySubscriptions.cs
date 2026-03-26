@@ -1,16 +1,14 @@
 using BepInEx.Logging;
 using Currency;
 using PeglinMods.Spectator.Events.Network.Currency;
+using PeglinMods.Spectator.Spectator;
 
 namespace PeglinMods.Spectator.Events.Subscriptions;
 
-public class CurrencySubscriptions
+public sealed class CurrencySubscriptions
 {
     private readonly IGameEventRegistry _registry;
     private readonly ManualLogSource _log;
-
-    private CurrencyManager.CurrencyEvent _onGoldAdded;
-    private CurrencyManager.CurrencyEvent _onGoldRemoved;
 
     public CurrencySubscriptions(IGameEventRegistry registry, ManualLogSource log)
     {
@@ -18,38 +16,43 @@ public class CurrencySubscriptions
         _log = log;
     }
 
+    private static bool IsHosting =>
+        SpectatorPlugin.Services?.TryResolve<ISpectatorMode>(out var mode) == true && mode.IsHosting;
+
     public void Subscribe()
     {
-        _onGoldAdded = (int originalAmount, int currencyChange, bool silent) =>
-        {
-            _registry.Dispatch(new GoldChangedEvent
-            {
-                PreviousAmount = originalAmount,
-                NewAmount = originalAmount + currencyChange,
-                Delta = currencyChange,
-                IsGain = true
-            });
-        };
-        CurrencyManager.OnGoldAdded += _onGoldAdded;
-
-        _onGoldRemoved = (int originalAmount, int currencyChange, bool silent) =>
-        {
-            _registry.Dispatch(new GoldChangedEvent
-            {
-                PreviousAmount = originalAmount,
-                NewAmount = originalAmount - currencyChange,
-                Delta = -currencyChange,
-                IsGain = false
-            });
-        };
-        CurrencyManager.OnGoldRemoved += _onGoldRemoved;
-
+        CurrencyManager.OnGoldAdded += OnGoldAdded;
+        CurrencyManager.OnGoldRemoved += OnGoldRemoved;
         _log.LogInfo("CurrencySubscriptions registered");
     }
 
     public void Unsubscribe()
     {
-        CurrencyManager.OnGoldAdded -= _onGoldAdded;
-        CurrencyManager.OnGoldRemoved -= _onGoldRemoved;
+        CurrencyManager.OnGoldAdded -= OnGoldAdded;
+        CurrencyManager.OnGoldRemoved -= OnGoldRemoved;
+    }
+
+    private void OnGoldAdded(int originalAmount, int currencyChange, bool silent)
+    {
+        if (!IsHosting) return;
+        _registry.Dispatch(new GoldChangedEvent
+        {
+            PreviousAmount = originalAmount,
+            NewAmount = originalAmount + currencyChange,
+            Delta = currencyChange,
+            IsGain = true
+        });
+    }
+
+    private void OnGoldRemoved(int originalAmount, int currencyChange, bool silent)
+    {
+        if (!IsHosting) return;
+        _registry.Dispatch(new GoldChangedEvent
+        {
+            PreviousAmount = originalAmount,
+            NewAmount = originalAmount - currencyChange,
+            Delta = -currencyChange,
+            IsGain = false
+        });
     }
 }

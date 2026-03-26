@@ -1,15 +1,14 @@
 using BepInEx.Logging;
 using Map;
 using PeglinMods.Spectator.Events.Network.Map;
+using PeglinMods.Spectator.Spectator;
 
 namespace PeglinMods.Spectator.Events.Subscriptions;
 
-public class MapSubscriptions
+public sealed class MapSubscriptions
 {
     private readonly IGameEventRegistry _registry;
     private readonly ManualLogSource _log;
-
-    private MapController.NodeSelectionEvent _onNodeSelected;
 
     public MapSubscriptions(IGameEventRegistry registry, ManualLogSource log)
     {
@@ -17,24 +16,28 @@ public class MapSubscriptions
         _log = log;
     }
 
+    private static bool IsHosting =>
+        SpectatorPlugin.Services?.TryResolve<ISpectatorMode>(out var mode) == true && mode.IsHosting;
+
     public void Subscribe()
     {
-        _onNodeSelected = (string mapName, int floor, int cruciballLevel) =>
-        {
-            _registry.Dispatch(new NodeSelectedEvent
-            {
-                MapName = mapName,
-                Floor = floor,
-                CruciballLevel = cruciballLevel
-            });
-        };
-        MapController.OnNodeSelectionEvent += _onNodeSelected;
-
+        MapController.OnNodeSelectionEvent += OnNodeSelected;
         _log.LogInfo("MapSubscriptions registered");
     }
 
     public void Unsubscribe()
     {
-        MapController.OnNodeSelectionEvent -= _onNodeSelected;
+        MapController.OnNodeSelectionEvent -= OnNodeSelected;
+    }
+
+    private void OnNodeSelected(string mapName, int floor, int cruciballLevel)
+    {
+        if (!IsHosting) return;
+        _registry.Dispatch(new NodeSelectedEvent
+        {
+            MapName = mapName,
+            Floor = floor,
+            CruciballLevel = cruciballLevel
+        });
     }
 }

@@ -4,71 +4,25 @@ using PeglinMods.Spectator.Spectator;
 
 namespace PeglinMods.Spectator.Patches;
 
-/// <summary>
-/// Harmony patches applied on spectator clients to suppress game logic
-/// that should only run on the host. Prevents the spectator from running
-/// their own battle simulation, saving data, or processing input.
-/// </summary>
+[HarmonyPatch]
 public static class SpectatorClientPatches
 {
-    private static ISpectatorMode _spectatorMode;
+    private static bool IsSpectating =>
+        SpectatorPlugin.Services?.TryResolve<ISpectatorMode>(out var mode) == true && mode.IsSpectating;
 
-    public static void Initialize(ISpectatorMode spectatorMode)
-    {
-        _spectatorMode = spectatorMode;
-    }
-
-    private static bool IsSpectating => _spectatorMode?.IsSpectating == true;
-
-    /// <summary>
-    /// Suppress BattleController.Update on spectator clients.
-    /// The battle state machine should not advance locally; all state
-    /// comes from the host via network events.
-    /// </summary>
     [HarmonyPatch(typeof(BattleController), "Update")]
-    public static class SuppressBattleUpdate
-    {
-        public static bool Prefix()
-        {
-            return !IsSpectating;
-        }
-    }
+    [HarmonyPrefix]
+    public static bool BattleController_Update_Prefix() => !IsSpectating;
 
-    /// <summary>
-    /// Suppress SaveRun on spectator clients.
-    /// Spectators should not overwrite the player's local save data.
-    /// </summary>
     [HarmonyPatch(typeof(SaveManager), "SaveRun")]
-    public static class SuppressSaveRun
-    {
-        public static bool Prefix()
-        {
-            return !IsSpectating;
-        }
-    }
+    [HarmonyPrefix]
+    public static bool SaveManager_SaveRun_Prefix() => !IsSpectating;
 
-    /// <summary>
-    /// Suppress SaveBase on spectator clients.
-    /// </summary>
     [HarmonyPatch(typeof(SaveManager), "SaveBase")]
-    public static class SuppressSaveBase
-    {
-        public static bool Prefix()
-        {
-            return !IsSpectating;
-        }
-    }
+    [HarmonyPrefix]
+    public static bool SaveManager_SaveBase_Prefix() => !IsSpectating;
 
-    /// <summary>
-    /// Suppress GameInit.Start on spectator clients.
-    /// Prevents the spectator from initializing a new run locally.
-    /// </summary>
     [HarmonyPatch(typeof(GameInit), "Start")]
-    public static class SuppressGameInit
-    {
-        public static bool Prefix()
-        {
-            return !IsSpectating;
-        }
-    }
+    [HarmonyPrefix]
+    public static bool GameInit_Start_Prefix() => !IsSpectating;
 }
