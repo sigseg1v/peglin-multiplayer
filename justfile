@@ -1,4 +1,7 @@
 # PeglinMods development commands
+# All scripts use PowerShell (pwsh) for cross-platform compatibility.
+
+set shell := ["pwsh", "-NoProfile", "-Command"]
 
 root := justfile_directory()
 src := root / "src"
@@ -13,104 +16,87 @@ bepinex_cache := root / "vendor" / bepinex_zip
 
 # Build debug
 build:
-    dotnet build {{src}}/PeglinMods.sln -c Debug --nologo
+    dotnet build '{{src}}/PeglinMods.sln' -c Debug --nologo
 
 # Build release and copy to build/
 publish:
-    dotnet build {{src}}/PeglinMods.sln -c Release --nologo
-    mkdir -p {{root}}/build
-    cp {{src}}/PeglinMods.Core/bin/Release/net462/PeglinMods.Core.dll {{root}}/build/
-    cp {{src}}/PeglinMods.Spectator/bin/Release/net462/PeglinMods.Spectator.dll {{root}}/build/
-    cp {{src}}/PeglinMods.Spectator/bin/Release/net462/LiteNetLib.dll {{root}}/build/
-    cp {{src}}/PeglinMods.Spectator/bin/Release/net462/System.Text.Json.dll {{root}}/build/
-    @echo ""
-    @echo "Publish output:"
-    @ls -la {{root}}/build/*.dll
+    dotnet build '{{src}}/PeglinMods.sln' -c Release --nologo; \
+    New-Item -ItemType Directory -Path '{{root}}/build' -Force | Out-Null; \
+    Copy-Item '{{src}}/PeglinMods.Core/bin/Release/net462/PeglinMods.Core.dll' '{{root}}/build/'; \
+    Copy-Item '{{src}}/PeglinMods.Spectator/bin/Release/net462/PeglinMods.Spectator.dll' '{{root}}/build/'; \
+    Copy-Item '{{src}}/PeglinMods.Spectator/bin/Release/net462/LiteNetLib.dll' '{{root}}/build/'; \
+    Copy-Item '{{src}}/PeglinMods.Spectator/bin/Release/net462/System.Text.Json.dll' '{{root}}/build/'; \
+    Write-Host "`nPublish output:"; \
+    Get-ChildItem '{{root}}/build/*.dll' | Format-Table Name, Length
 
 # Install BepInEx into release/ (downloads once, cached in vendor/)
 setup:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [ -f "{{game}}/winhttp.dll" ] && [ -d "{{game}}/BepInEx/core" ]; then
-        echo "BepInEx already installed in release/"
-        exit 0
-    fi
-    echo "==> Downloading BepInEx {{bepinex_version}} (cached in vendor/)..."
-    mkdir -p "{{root}}/vendor"
-    if [ ! -f "{{bepinex_cache}}" ]; then
-        curl -fSL --progress-bar "{{bepinex_url}}" -o "{{bepinex_cache}}"
-    fi
-    echo "==> Extracting BepInEx to release/..."
-    unzip -qo "{{bepinex_cache}}" -d "{{game}}"
-    mkdir -p "{{game}}/BepInEx/plugins" "{{game}}/BepInEx/patchers" "{{game}}/BepInEx/config"
-    echo "BepInEx {{bepinex_version}} installed to release/"
+    if (Test-Path '{{game}}/winhttp.dll') { \
+        Write-Host 'BepInEx already installed in release/'; \
+        return; \
+    } \
+    Write-Host '==> Downloading BepInEx {{bepinex_version}}...'; \
+    New-Item -ItemType Directory -Path '{{root}}/vendor' -Force | Out-Null; \
+    if (-not (Test-Path '{{bepinex_cache}}')) { \
+        Invoke-WebRequest -Uri '{{bepinex_url}}' -OutFile '{{bepinex_cache}}'; \
+    } \
+    Write-Host '==> Extracting BepInEx to release/...'; \
+    Expand-Archive -Path '{{bepinex_cache}}' -DestinationPath '{{game}}' -Force; \
+    foreach ($d in @('plugins','patchers','config')) { \
+        New-Item -ItemType Directory -Path (Join-Path '{{game}}' "BepInEx/$d") -Force | Out-Null; \
+    } \
+    Write-Host 'BepInEx {{bepinex_version}} installed to release/'
+
+# Deploy plugin DLLs to game dir
+[private]
+copy-plugins config="Debug":
+    New-Item -ItemType Directory -Path '{{plugins}}' -Force | Out-Null; \
+    $bin = '{{src}}/PeglinMods.Spectator/bin/{{config}}/net462'; \
+    Copy-Item '{{src}}/PeglinMods.Core/bin/{{config}}/net462/PeglinMods.Core.dll' '{{plugins}}/'; \
+    Copy-Item "$bin/PeglinMods.Spectator.dll" '{{plugins}}/'; \
+    Copy-Item "$bin/LiteNetLib.dll" '{{plugins}}/'; \
+    Copy-Item "$bin/System.Text.Json.dll" '{{plugins}}/'; \
+    foreach ($dep in @('System.Text.Encodings.Web','System.Buffers','System.Memory','System.Numerics.Vectors','System.Runtime.CompilerServices.Unsafe')) { \
+        $f = "$bin/$dep.dll"; \
+        if (Test-Path $f) { Copy-Item $f '{{plugins}}/' } \
+    }
 
 # Build debug, deploy to game dir, launch game, tail logs
 dev: setup
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    echo "==> Building (Debug)..."
-    dotnet build {{src}}/PeglinMods.sln -c Debug --nologo -v quiet
-
-    echo "==> Deploying to game dir..."
-    mkdir -p {{plugins}}
-    cp {{src}}/PeglinMods.Core/bin/Debug/net462/PeglinMods.Core.dll {{plugins}}/
-    cp {{src}}/PeglinMods.Spectator/bin/Debug/net462/PeglinMods.Spectator.dll {{plugins}}/
-    cp {{src}}/PeglinMods.Spectator/bin/Debug/net462/LiteNetLib.dll {{plugins}}/
-    cp {{src}}/PeglinMods.Spectator/bin/Debug/net462/System.Text.Json.dll {{plugins}}/
-    for dep in System.Text.Encodings.Web System.Buffers System.Memory System.Numerics.Vectors System.Runtime.CompilerServices.Unsafe; do
-        f="{{src}}/PeglinMods.Spectator/bin/Debug/net462/${dep}.dll"
-        [ -f "$f" ] && cp "$f" {{plugins}}/ || true
-    done
-
-    echo "==> Creating dev log file..."
-    mkdir -p "$(dirname {{logfile}})"
-    : > {{logfile}}
-
-    echo "==> Launching game..."
-    {{root}}/launch.sh &
-    GAME_PID=$!
-
-    echo "==> Tailing logs (Ctrl+C to stop)..."
-    echo "    Log: {{logfile}}"
-    echo ""
-
-    sleep 1
-    tail -f {{logfile}} || true
-
-    kill $GAME_PID 2>/dev/null || true
+    dotnet build '{{src}}/PeglinMods.sln' -c Debug --nologo -v quiet; \
+    just copy-plugins Debug; \
+    New-Item -ItemType Directory -Path (Split-Path '{{logfile}}') -Force | Out-Null; \
+    '' | Set-Content '{{logfile}}'; \
+    Write-Host '==> Launching game...'; \
+    $game = Start-Process pwsh -ArgumentList '-NoProfile','-File','{{root}}/launch.ps1' -PassThru; \
+    Write-Host "==> Tailing logs (Ctrl+C to stop)"; \
+    Write-Host "    Log: {{logfile}}`n"; \
+    Start-Sleep 1; \
+    Get-Content '{{logfile}}' -Wait
 
 # Deploy plugin to game dir without launching
 deploy: setup
-    #!/usr/bin/env bash
-    set -euo pipefail
-    echo "==> Building (Debug)..."
-    dotnet build {{src}}/PeglinMods.sln -c Debug --nologo -v quiet
-    echo "==> Deploying..."
-    mkdir -p {{plugins}}
-    cp {{src}}/PeglinMods.Core/bin/Debug/net462/PeglinMods.Core.dll {{plugins}}/
-    cp {{src}}/PeglinMods.Spectator/bin/Debug/net462/PeglinMods.Spectator.dll {{plugins}}/
-    cp {{src}}/PeglinMods.Spectator/bin/Debug/net462/LiteNetLib.dll {{plugins}}/
-    cp {{src}}/PeglinMods.Spectator/bin/Debug/net462/System.Text.Json.dll {{plugins}}/
-    for dep in System.Text.Encodings.Web System.Buffers System.Memory System.Numerics.Vectors System.Runtime.CompilerServices.Unsafe; do
-        f="{{src}}/PeglinMods.Spectator/bin/Debug/net462/${dep}.dll"
-        [ -f "$f" ] && cp "$f" {{plugins}}/ || true
-    done
-    @echo "Deployed to {{plugins}}"
+    dotnet build '{{src}}/PeglinMods.sln' -c Debug --nologo -v quiet; \
+    just copy-plugins Debug; \
+    Write-Host "Deployed to {{plugins}}"
 
 # Tail the dev log
 log:
-    tail -f {{logfile}}
+    Get-Content '{{logfile}}' -Wait
 
 # Clean build artifacts
 clean:
-    rm -rf {{root}}/build {{root}}/dist {{root}}/vendor
-    rm -rf {{src}}/PeglinMods.Core/bin {{src}}/PeglinMods.Core/obj
-    rm -rf {{src}}/PeglinMods.Spectator/bin {{src}}/PeglinMods.Spectator/obj
+    Remove-Item '{{root}}/build','{{root}}/dist','{{root}}/vendor' -Recurse -Force -ErrorAction SilentlyContinue; \
+    Remove-Item '{{src}}/PeglinMods.Core/bin','{{src}}/PeglinMods.Core/obj' -Recurse -Force -ErrorAction SilentlyContinue; \
+    Remove-Item '{{src}}/PeglinMods.Spectator/bin','{{src}}/PeglinMods.Spectator/obj' -Recurse -Force -ErrorAction SilentlyContinue; \
+    Write-Host 'Cleaned'
 
 # Remove BepInEx from release/ (restore to vanilla)
 uninstall:
-    rm -f {{game}}/winhttp.dll {{game}}/doorstop_config.ini {{game}}/.doorstop_version
-    rm -rf {{game}}/BepInEx
-    @echo "BepInEx removed from release/"
+    foreach ($f in @('winhttp.dll','doorstop_config.ini','.doorstop_version')) { \
+        $p = Join-Path '{{game}}' $f; \
+        if (Test-Path $p) { Remove-Item $p -Force } \
+    }; \
+    $bep = Join-Path '{{game}}' 'BepInEx'; \
+    if (Test-Path $bep) { Remove-Item $bep -Recurse -Force }; \
+    Write-Host 'BepInEx removed from release/'

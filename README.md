@@ -2,7 +2,8 @@
 
 A modding framework and multiplayer spectator mode for [Peglin](https://store.steampowered.com/app/1296610/Peglin/) (v2.0.7, Unity 2022.3, Mono).
 
-Built with BepInEx 5 + HarmonyX. Runs on Linux via Proton/Wine.
+Built with BepInEx 5 + HarmonyX. Cross-platform: Windows (native) and Linux (Proton/Wine).
+All scripts use PowerShell (pwsh) for portability.
 
 ## Quick Start
 
@@ -29,7 +30,8 @@ just uninstall # remove BepInEx from release/ (restore to vanilla)
 
 - [.NET SDK](https://dotnet.microsoft.com/) 8+
 - [just](https://github.com/casey/just) command runner
-- Proton or Wine (for running the game on Linux)
+- [PowerShell](https://github.com/PowerShell/PowerShell) (pwsh) - cross-platform scripting
+- Linux only: Proton or Wine (for running the game)
 
 ## Project Structure
 
