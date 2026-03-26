@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Sockets;
 using BepInEx.Logging;
 using PeglinMods.Spectator.DI;
+using PeglinMods.Spectator.Events.Handlers;
 using PeglinMods.Spectator.Network;
 using PeglinMods.Spectator.Spectator;
 using TMPro;
@@ -41,6 +42,8 @@ public class MultiplayerUI : MonoBehaviour
 
     // Host panel elements
     private TextMeshProUGUI _hostInfoText;
+    private TextMeshProUGUI _hostVersionText;
+    private TextMeshProUGUI _lobbyText;
 
     // State
     private bool _overlayVisible;
@@ -131,13 +134,23 @@ public class MultiplayerUI : MonoBehaviour
 
         if (_spectatorMode.IsHosting)
         {
-            _cornerText.text = "Hosting";
+            _cornerText.text = _transport.IsConnected ? "Hosting (1)" : "Hosting";
             _cornerIndicator.GetComponent<Image>().color = new Color(0.1f, 0.4f, 0.15f, 0.8f);
+            UpdateLobbyText();
         }
         else if (_spectatorMode.IsSpectating && _transport.IsConnected)
         {
             _cornerText.text = "Spectating";
             _cornerIndicator.GetComponent<Image>().color = new Color(0.15f, 0.2f, 0.5f, 0.8f);
+
+            // Update join panel with host version after handshake
+            if (RemotePeerInfo.Received && _statusText != null && !_statusText.text.Contains("Host Version"))
+            {
+                var mismatch = RemotePeerInfo.GameVersion != (Application.version ?? "")
+                    ? " <color=#FF6666>(MISMATCH!)</color>" : "";
+                _statusText.text = $"Connected!\nClient Version: mod={SpectatorPluginInfo.VERSION} game={Application.version}\n" +
+                    $"Host Version: mod={RemotePeerInfo.ModVersion} game={RemotePeerInfo.GameVersion}{mismatch}";
+            }
         }
         else if (_spectatorMode.IsSpectating && !_transport.IsConnected)
         {
@@ -217,11 +230,29 @@ public class MultiplayerUI : MonoBehaviour
         infoRect.anchorMin = new Vector2(0.5f, 0.5f);
         infoRect.anchorMax = new Vector2(0.5f, 0.5f);
         infoRect.pivot = new Vector2(0.5f, 0.5f);
-        infoRect.anchoredPosition = new Vector2(0, 30);
-        infoRect.sizeDelta = new Vector2(400, 80);
+        infoRect.anchoredPosition = new Vector2(0, 50);
+        infoRect.sizeDelta = new Vector2(400, 40);
+
+        _hostVersionText = CreateText(_hostPanel.transform, "HostVersion", "", 14);
+        _hostVersionText.color = new Color(0.6f, 0.6f, 0.6f, 1f);
+        var verRect = _hostVersionText.rectTransform;
+        verRect.anchorMin = new Vector2(0.5f, 0.5f);
+        verRect.anchorMax = new Vector2(0.5f, 0.5f);
+        verRect.pivot = new Vector2(0.5f, 0.5f);
+        verRect.anchoredPosition = new Vector2(0, 15);
+        verRect.sizeDelta = new Vector2(400, 25);
+
+        _lobbyText = CreateText(_hostPanel.transform, "LobbyInfo", "", 15);
+        _lobbyText.alignment = TextAlignmentOptions.Center;
+        var lobbyRect = _lobbyText.rectTransform;
+        lobbyRect.anchorMin = new Vector2(0.5f, 0.5f);
+        lobbyRect.anchorMax = new Vector2(0.5f, 0.5f);
+        lobbyRect.pivot = new Vector2(0.5f, 0.5f);
+        lobbyRect.anchoredPosition = new Vector2(0, -20);
+        lobbyRect.sizeDelta = new Vector2(400, 50);
 
         var stopBtn = CreateButton(_hostPanel.transform, "StopHostBtn", "Stop Hosting",
-            new Color(0.5f, 0.2f, 0.2f, 1f), new Vector2(0, -60), new Vector2(300, 55));
+            new Color(0.5f, 0.2f, 0.2f, 1f), new Vector2(0, -80), new Vector2(300, 55));
         stopBtn.onClick.AddListener(OnStopHostClicked);
 
         _hostPanel.SetActive(false);
@@ -316,10 +347,33 @@ public class MultiplayerUI : MonoBehaviour
     private void ShowHostingState()
     {
         var ip = GetLocalIP();
-        _hostInfoText.text = $"Hosting on:\n<b>{ip}:{NetworkConfig.DefaultPort}</b>";
+        _hostInfoText.text = $"Hosting on: <b>{ip}:{NetworkConfig.DefaultPort}</b>";
+        _hostVersionText.text = $"Host Version: mod={SpectatorPluginInfo.VERSION} game={Application.version}";
+        UpdateLobbyText();
         _mainPanel.SetActive(false);
         _joinPanel.SetActive(false);
         _hostPanel.SetActive(true);
+    }
+
+    private void UpdateLobbyText()
+    {
+        if (_lobbyText == null) return;
+
+        if (RemotePeerInfo.Received)
+        {
+            var mismatch = RemotePeerInfo.GameVersion != (Application.version ?? "unknown")
+                ? " <color=#FF6666>(MISMATCH!)</color>" : "";
+            _lobbyText.text = $"Client connected\n" +
+                $"Client Version: mod={RemotePeerInfo.ModVersion} game={RemotePeerInfo.GameVersion}{mismatch}";
+        }
+        else if (_transport.IsConnected)
+        {
+            _lobbyText.text = "Client connected (awaiting handshake...)";
+        }
+        else
+        {
+            _lobbyText.text = "Waiting for client to connect...";
+        }
     }
 
     // --- Button handlers ---
@@ -405,20 +459,23 @@ public class MultiplayerUI : MonoBehaviour
         _lastConnectionStatus = "Connected!";
         if (_statusText != null)
         {
-            _statusText.text = "Connected!";
+            _statusText.text = $"Connected!\nClient Version: mod={SpectatorPluginInfo.VERSION} game={Application.version}";
             _statusText.color = new Color(0.3f, 0.8f, 0.3f, 1f);
         }
+        UpdateLobbyText();
         Log.LogInfo("Connected to host");
     }
 
     private void OnDisconnected()
     {
         _lastConnectionStatus = "Disconnected";
+        RemotePeerInfo.Reset();
         if (_statusText != null)
         {
             _statusText.text = "Disconnected";
             _statusText.color = new Color(0.8f, 0.3f, 0.3f, 1f);
         }
+        UpdateLobbyText();
         Log.LogInfo("Disconnected from host");
     }
 

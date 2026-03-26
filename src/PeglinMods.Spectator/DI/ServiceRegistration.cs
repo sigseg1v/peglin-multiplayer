@@ -1,5 +1,6 @@
 using BepInEx.Logging;
 using PeglinMods.Spectator.Events;
+using PeglinMods.Spectator.Events.Handlers;
 using PeglinMods.Spectator.Events.Handlers.Ball;
 using PeglinMods.Spectator.Events.Handlers.Battle;
 using PeglinMods.Spectator.Events.Handlers.Currency;
@@ -10,6 +11,7 @@ using PeglinMods.Spectator.Events.Handlers.Map;
 using PeglinMods.Spectator.Events.Handlers.Peg;
 using PeglinMods.Spectator.Events.Handlers.Relic;
 using PeglinMods.Spectator.Events.Handlers.StatusEffect;
+using PeglinMods.Spectator.Events.Network;
 using PeglinMods.Spectator.Events.Network.Ball;
 using PeglinMods.Spectator.Events.Network.Battle;
 using PeglinMods.Spectator.Events.Network.Currency;
@@ -66,8 +68,23 @@ public static class ServiceRegistration
         container.RegisterSingleton(new EnemyIdentifier());
         container.RegisterSingleton(new OrbIdentifier());
 
-        // Register all event handler pairs
+        // Version checker
+        var versionChecker = new VersionChecker(log);
+        versionChecker.Check();
+        container.RegisterSingleton(versionChecker);
+
+        // Event discovery
+        var eventDiscovery = new EventDiscovery(log);
+        eventDiscovery.ScanGameDelegates();
+        container.RegisterSingleton(eventDiscovery);
+
+        // Register all event handler pairs (including handshake)
         RegisterAllHandlers(eventRegistry);
+
+        // Log event discovery report
+        foreach (var typeId in eventRegistry.RegisteredTypeIds)
+            eventDiscovery.MarkRegistered(typeId);
+        eventDiscovery.LogReport();
 
         // Subscribe to game events
         var spectatorMode = container.Resolve<ISpectatorMode>();
@@ -75,11 +92,27 @@ public static class ServiceRegistration
         var orbId = container.Resolve<OrbIdentifier>();
         SubscribeAll(eventRegistry, spectatorMode, enemyId, orbId, log);
 
+        // Send handshake on connect
+        transport.OnClientConnected += () =>
+        {
+            eventRegistry.Dispatch(new HandshakeEvent
+            {
+                ModVersion = SpectatorPluginInfo.VERSION,
+                CompiledGameVersion = SpectatorPluginInfo.COMPILED_GAME_VERSION,
+                RuntimeGameVersion = UnityEngine.Application.version ?? "unknown",
+                IsHost = transport.IsHost,
+                RegisteredHandlerCount = eventRegistry.RegisteredTypeIds.Count
+            });
+        };
+
         return container;
     }
 
     private static void RegisterAllHandlers(IGameEventRegistry registry)
     {
+        // Handshake (version exchange)
+        registry.Register(new HandshakeServerHandler(), new HandshakeClientHandler());
+
         // Battle events
         registry.Register(new BattleStartedServerHandler(), new BattleStartedClientHandler());
         registry.Register(new BattleEndedServerHandler(), new BattleEndedClientHandler());

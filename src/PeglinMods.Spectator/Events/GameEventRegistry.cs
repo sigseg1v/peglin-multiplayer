@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using BepInEx.Logging;
 using PeglinMods.Spectator.Network;
@@ -16,6 +17,13 @@ public class GameEventRegistry : IGameEventRegistry
 
     private readonly Dictionary<Type, Action<object>> _serverDispatchers = new Dictionary<Type, Action<object>>();
     private readonly Dictionary<string, Action<string>> _clientDispatchers = new Dictionary<string, Action<string>>();
+
+    /// <summary>All registered type IDs for introspection.</summary>
+    public IReadOnlyCollection<string> RegisteredTypeIds => _clientDispatchers.Keys.ToList();
+
+    /// <summary>Type IDs received from remote that we had no handler for.</summary>
+    public IReadOnlyCollection<string> UnhandledTypeIds => _unhandledTypeIds;
+    private readonly HashSet<string> _unhandledTypeIds = new HashSet<string>();
 
     public GameEventRegistry(
         INetworkSerializer serializer,
@@ -38,6 +46,7 @@ public class GameEventRegistry : IGameEventRegistry
         {
             var networkEvent = (TNetworkEvent)obj;
             var result = serverHandler.Handle(networkEvent);
+            if (result == null) return;
             var data = _serializer.Serialize(result);
             _transport.Broadcast(data);
         };
@@ -84,7 +93,23 @@ public class GameEventRegistry : IGameEventRegistry
         }
         else
         {
-            _log.LogWarning($"No client dispatcher registered for typeId '{typeId}'");
+            // Unknown event - log it but don't crash
+            if (_unhandledTypeIds.Add(typeId))
+            {
+                // First time seeing this typeId - log a warning
+                _log.LogWarning($"UNHANDLED EVENT from remote: '{typeId}' (no client handler registered)");
+                _log.LogWarning($"  This may be from a newer mod version. Payload preview: {Truncate(jsonPayload, 200)}");
+            }
+            else
+            {
+                _log.LogDebug($"Unhandled event (repeated): '{typeId}'");
+            }
         }
+    }
+
+    private static string Truncate(string s, int maxLen)
+    {
+        if (string.IsNullOrEmpty(s)) return "(empty)";
+        return s.Length <= maxLen ? s : s.Substring(0, maxLen) + "...";
     }
 }
