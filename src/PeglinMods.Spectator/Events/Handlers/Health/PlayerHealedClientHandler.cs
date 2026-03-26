@@ -1,5 +1,6 @@
 namespace PeglinMods.Spectator.Events.Handlers.Health;
 
+using System;
 using global::Battle;
 using PeglinMods.Spectator.Events.Network.Health;
 
@@ -7,6 +8,13 @@ public sealed class PlayerHealedClientHandler : IClientHandler<PlayerHealedEvent
 {
     public void Handle(PlayerHealedEvent networkEvent)
     {
-        PlayerHealthController.OnPlayerHealed?.Invoke(networkEvent.Amount);
+        try
+        {
+            PlayerHealthController.OnPlayerHealed?.Invoke(networkEvent.Amount);
+        }
+        catch (Exception e)
+        {
+            SpectatorPlugin.Logger.LogWarning($"PlayerHealed handler failed: {e.Message}");
+        }
     }
 }

@@ -1,5 +1,6 @@
 namespace PeglinMods.Spectator.Events.Handlers.Battle;
 
+using System;
 using global::Battle;
 using PeglinMods.Spectator.Events.Network.Battle;
 
@@ -7,6 +8,13 @@ public sealed class ReloadStartedClientHandler : IClientHandler<ReloadStartedEve
 {
     public void Handle(ReloadStartedEvent networkEvent)
     {
-        BattleController.OnReloadStarted?.Invoke();
+        try
+        {
+            BattleController.OnReloadStarted?.Invoke();
+        }
+        catch (Exception e)
+        {
+            SpectatorPlugin.Logger.LogWarning($"ReloadStarted handler failed: {e.Message}");
+        }
     }
 }

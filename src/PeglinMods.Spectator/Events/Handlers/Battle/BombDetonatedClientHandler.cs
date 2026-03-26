@@ -1,5 +1,6 @@
 namespace PeglinMods.Spectator.Events.Handlers.Battle;
 
+using System;
 using global::Battle;
 using PeglinMods.Spectator.Events.Network.Battle;
 
@@ -7,6 +8,13 @@ public sealed class BombDetonatedClientHandler : IClientHandler<BombDetonatedEve
 {
     public void Handle(BombDetonatedEvent networkEvent)
     {
-        BattleController.OnBombDetonated?.Invoke();
+        try
+        {
+            BattleController.OnBombDetonated?.Invoke();
+        }
+        catch (Exception e)
+        {
+            SpectatorPlugin.Logger.LogWarning($"BombDetonated handler failed: {e.Message}");
+        }
     }
 }

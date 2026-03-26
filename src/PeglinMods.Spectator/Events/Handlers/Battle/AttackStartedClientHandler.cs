@@ -1,5 +1,6 @@
 namespace PeglinMods.Spectator.Events.Handlers.Battle;
 
+using System;
 using global::Battle;
 using PeglinMods.Spectator.Events.Network.Battle;
 
@@ -7,6 +8,13 @@ public sealed class AttackStartedClientHandler : IClientHandler<AttackStartedEve
 {
     public void Handle(AttackStartedEvent networkEvent)
     {
-        BattleController.OnAttackStarted?.Invoke();
+        try
+        {
+            BattleController.OnAttackStarted?.Invoke();
+        }
+        catch (Exception e)
+        {
+            SpectatorPlugin.Logger.LogWarning($"AttackStarted handler failed: {e.Message}");
+        }
     }
 }

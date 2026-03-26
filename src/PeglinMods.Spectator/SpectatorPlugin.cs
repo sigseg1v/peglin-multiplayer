@@ -5,6 +5,7 @@ using HarmonyLib;
 using PeglinMods.Spectator.DI;
 using PeglinMods.Spectator.Network;
 using PeglinMods.Spectator.Spectator;
+using PeglinMods.Spectator.UI;
 using PeglinMods.Spectator.Utility;
 using UnityEngine;
 
@@ -36,6 +37,8 @@ public class SpectatorPlugin : BaseUnityPlugin
 
         var dispatcher = _networkObj.AddComponent<MainThreadDispatcher>();
         Services.RegisterSingleton<MainThreadDispatcher>(dispatcher);
+
+        _networkObj.AddComponent<MultiplayerUI>();
 
         _harmony = new Harmony(SpectatorPluginInfo.GUID);
         _harmony.PatchAll();

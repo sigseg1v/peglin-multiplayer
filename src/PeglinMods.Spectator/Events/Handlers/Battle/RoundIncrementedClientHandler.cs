@@ -1,5 +1,6 @@
 namespace PeglinMods.Spectator.Events.Handlers.Battle;
 
+using System;
 using global::Battle;
 using PeglinMods.Spectator.Events.Network.Battle;
 
@@ -7,6 +8,13 @@ public sealed class RoundIncrementedClientHandler : IClientHandler<RoundIncremen
 {
     public void Handle(RoundIncrementedEvent networkEvent)
     {
-        BattleController.OnRoundCountIncremented?.Invoke(networkEvent.RoundCount);
+        try
+        {
+            BattleController.OnRoundCountIncremented?.Invoke(networkEvent.RoundCount);
+        }
+        catch (Exception e)
+        {
+            SpectatorPlugin.Logger.LogWarning($"RoundIncremented handler failed: {e.Message}");
+        }
     }
 }
