@@ -7,12 +7,22 @@ Built with BepInEx 5 + HarmonyX. Runs on Linux via Proton/Wine.
 ## Quick Start
 
 ```bash
+just dev       # build + install BepInEx + deploy plugin + launch game + tail logs
+```
+
+That's it. On first run it downloads BepInEx automatically.
+
+## All Commands
+
+```bash
 just build     # compile (debug)
 just publish   # compile (release) + copy DLLs to build/
-just deploy    # build + copy plugin into release/BepInEx/plugins/
+just setup     # download + install BepInEx into release/ (auto-run by dev/deploy)
+just deploy    # build + deploy plugin into release/BepInEx/plugins/
 just dev       # build + deploy + launch game + tail logs
 just log       # tail the dev log file
 just clean     # remove build artifacts
+just uninstall # remove BepInEx from release/ (restore to vanilla)
 ```
 
 ## Prerequisites
@@ -20,7 +30,6 @@ just clean     # remove build artifacts
 - [.NET SDK](https://dotnet.microsoft.com/) 8+
 - [just](https://github.com/casey/just) command runner
 - Proton or Wine (for running the game on Linux)
-- BepInEx installed in `release/` (run `./install/install.sh release/` once)
 
 ## Project Structure
 
@@ -34,17 +43,12 @@ install/                   Install/uninstall scripts for end users
 
 ## Development Workflow
 
-1. Install BepInEx into the game directory once:
-   ```bash
-   ./install/install.sh release/
-   ```
-
-2. Build, deploy, and launch with live logs:
+1. Build, deploy, and launch with live logs:
    ```bash
    just dev
    ```
 
-3. Press **F7** in-game to open the Multiplayer overlay.
+2. Press **F7** in-game to open the Multiplayer overlay.
 
 ## Multiplayer (Spectator Mode)
 

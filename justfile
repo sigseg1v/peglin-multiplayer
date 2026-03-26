@@ -6,6 +6,11 @@ game := root / "release"
 plugins := game / "BepInEx" / "plugins" / "PeglinMods"
 logfile := game / "BepInEx" / "logs" / "peglinmods_dev.log"
 
+bepinex_version := "5.4.23.2"
+bepinex_zip := "BepInEx_win_x64_" + bepinex_version + ".zip"
+bepinex_url := "https://github.com/BepInEx/BepInEx/releases/download/v" + bepinex_version + "/" + bepinex_zip
+bepinex_cache := root / "vendor" / bepinex_zip
+
 # Build debug
 build:
     dotnet build {{src}}/PeglinMods.sln -c Debug --nologo
@@ -21,11 +26,27 @@ publish:
     @echo ""
     @echo "Publish output:"
     @ls -la {{root}}/build/*.dll
-    @echo ""
-    @echo "To install: ./install/install.sh {{game}}"
+
+# Install BepInEx into release/ (downloads once, cached in vendor/)
+setup:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -f "{{game}}/winhttp.dll" ] && [ -d "{{game}}/BepInEx/core" ]; then
+        echo "BepInEx already installed in release/"
+        exit 0
+    fi
+    echo "==> Downloading BepInEx {{bepinex_version}} (cached in vendor/)..."
+    mkdir -p "{{root}}/vendor"
+    if [ ! -f "{{bepinex_cache}}" ]; then
+        curl -fSL --progress-bar "{{bepinex_url}}" -o "{{bepinex_cache}}"
+    fi
+    echo "==> Extracting BepInEx to release/..."
+    unzip -qo "{{bepinex_cache}}" -d "{{game}}"
+    mkdir -p "{{game}}/BepInEx/plugins" "{{game}}/BepInEx/patchers" "{{game}}/BepInEx/config"
+    echo "BepInEx {{bepinex_version}} installed to release/"
 
 # Build debug, deploy to game dir, launch game, tail logs
-dev:
+dev: setup
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -38,19 +59,10 @@ dev:
     cp {{src}}/PeglinMods.Spectator/bin/Debug/net462/PeglinMods.Spectator.dll {{plugins}}/
     cp {{src}}/PeglinMods.Spectator/bin/Debug/net462/LiteNetLib.dll {{plugins}}/
     cp {{src}}/PeglinMods.Spectator/bin/Debug/net462/System.Text.Json.dll {{plugins}}/
-    # Copy System.Text.Json transitive deps
     for dep in System.Text.Encodings.Web System.Buffers System.Memory System.Numerics.Vectors System.Runtime.CompilerServices.Unsafe; do
         f="{{src}}/PeglinMods.Spectator/bin/Debug/net462/${dep}.dll"
         [ -f "$f" ] && cp "$f" {{plugins}}/ || true
     done
-
-    echo "==> Setting up BepInEx (if needed)..."
-    # Ensure BepInEx core is deployed (install script handles this properly,
-    # but for quick dev we just need winhttp.dll + doorstop_config.ini + core/)
-    if [ ! -f "{{game}}/winhttp.dll" ]; then
-        echo "    BepInEx not installed in release/. Run: ./install/install.sh {{game}}"
-        exit 1
-    fi
 
     echo "==> Creating dev log file..."
     mkdir -p "$(dirname {{logfile}})"
@@ -64,15 +76,13 @@ dev:
     echo "    Log: {{logfile}}"
     echo ""
 
-    # Wait a moment for game to start writing, then tail
     sleep 1
     tail -f {{logfile}} || true
 
-    # If tail exits, also stop the game
     kill $GAME_PID 2>/dev/null || true
 
 # Deploy plugin to game dir without launching
-deploy:
+deploy: setup
     #!/usr/bin/env bash
     set -euo pipefail
     echo "==> Building (Debug)..."
@@ -98,3 +108,9 @@ clean:
     rm -rf {{root}}/build {{root}}/dist {{root}}/vendor
     rm -rf {{src}}/PeglinMods.Core/bin {{src}}/PeglinMods.Core/obj
     rm -rf {{src}}/PeglinMods.Spectator/bin {{src}}/PeglinMods.Spectator/obj
+
+# Remove BepInEx from release/ (restore to vanilla)
+uninstall:
+    rm -f {{game}}/winhttp.dll {{game}}/doorstop_config.ini {{game}}/.doorstop_version
+    rm -rf {{game}}/BepInEx
+    @echo "BepInEx removed from release/"
