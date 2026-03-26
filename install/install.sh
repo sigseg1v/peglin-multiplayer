@@ -169,8 +169,8 @@ BEPINEX_CFG="$GAME_DIR/BepInEx/config/BepInEx.cfg"
 if [ ! -f "$BEPINEX_CFG" ]; then
     cat > "$BEPINEX_CFG" << 'BEPINEX_CONFIG'
 [Logging.Console]
-## Enable the BepInEx console (useful for debugging mods)
-Enabled = true
+## Disable the BepInEx console window - logs go to BepInEx/logs/ instead
+Enabled = false
 
 [Logging.Disk]
 ## Log to file

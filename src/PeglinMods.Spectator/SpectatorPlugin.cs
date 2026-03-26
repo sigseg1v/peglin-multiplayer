@@ -21,11 +21,17 @@ public class SpectatorPlugin : BaseUnityPlugin
 
     private Harmony _harmony;
     private GameObject _networkObj;
+    private FileLogger _fileLogger;
 
     private void Awake()
     {
         Instance = this;
         Logger = base.Logger;
+
+        var logsDir = System.IO.Path.Combine(Paths.BepInExRootPath, "logs");
+        _fileLogger = new FileLogger(logsDir);
+        BepInEx.Logging.Logger.Listeners.Add(new FileLogListener(_fileLogger));
+        Logger.LogInfo($"Log file: {_fileLogger.FilePath}");
 
         Services = ServiceRegistration.CreateAndConfigure(Logger);
 
@@ -51,6 +57,7 @@ public class SpectatorPlugin : BaseUnityPlugin
     {
         _harmony?.UnpatchSelf();
         try { Services?.Resolve<INetworkTransport>()?.Stop(); } catch { }
+        _fileLogger?.Dispose();
         if (_networkObj != null) Destroy(_networkObj);
     }
 }
