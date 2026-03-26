@@ -11,6 +11,10 @@ src/**/obj/
 *.user
 *.suo
 
+# Logs
+*.log
+BepInEx/logs/
+
 # OS
 .DS_Store
 Thumbs.db
