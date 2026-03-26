@@ -13,8 +13,12 @@ public sealed class FileLogger : IDisposable
     {
         Directory.CreateDirectory(logsDirectory);
 
+#if DEBUG
+        _filePath = Path.Combine(logsDirectory, "peglinmods_dev.log");
+#else
         var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
         _filePath = Path.Combine(logsDirectory, $"peglinmods_{timestamp}.log");
+#endif
         _writer = new StreamWriter(_filePath, append: false) { AutoFlush = true };
 
         _writer.WriteLine($"PeglinMods log started at {DateTime.Now:O}");

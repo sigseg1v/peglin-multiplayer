@@ -28,29 +28,35 @@ public class SpectatorPlugin : BaseUnityPlugin
         Instance = this;
         Logger = base.Logger;
 
-        var logsDir = System.IO.Path.Combine(Paths.BepInExRootPath, "logs");
-        _fileLogger = new FileLogger(logsDir);
-        BepInEx.Logging.Logger.Listeners.Add(new FileLogListener(_fileLogger));
-        Logger.LogInfo($"Log file: {_fileLogger.FilePath}");
+        try
+        {
+            var logsDir = System.IO.Path.Combine(Paths.BepInExRootPath, "logs");
+            _fileLogger = new FileLogger(logsDir);
+            BepInEx.Logging.Logger.Listeners.Add(new FileLogListener(_fileLogger));
+            Logger.LogInfo($"Log file: {_fileLogger.FilePath}");
 
-        Services = ServiceRegistration.CreateAndConfigure(Logger);
+            Services = ServiceRegistration.CreateAndConfigure(Logger);
 
-        _networkObj = new GameObject("PeglinMods_Spectator");
-        DontDestroyOnLoad(_networkObj);
+            _networkObj = new GameObject("PeglinMods_Spectator");
+            DontDestroyOnLoad(_networkObj);
 
-        var poller = _networkObj.AddComponent<NetworkPollBehaviour>();
-        poller.Initialize(Services.Resolve<INetworkTransport>());
+            var poller = _networkObj.AddComponent<NetworkPollBehaviour>();
+            poller.Initialize(Services.Resolve<INetworkTransport>());
 
-        var dispatcher = _networkObj.AddComponent<MainThreadDispatcher>();
-        Services.RegisterSingleton<MainThreadDispatcher>(dispatcher);
+            var dispatcher = _networkObj.AddComponent<MainThreadDispatcher>();
+            Services.RegisterSingleton<MainThreadDispatcher>(dispatcher);
 
-        _networkObj.AddComponent<MultiplayerUI>();
+            _networkObj.AddComponent<MultiplayerUI>();
 
-        _harmony = new Harmony(SpectatorPluginInfo.GUID);
-        _harmony.PatchAll();
+            _harmony = new Harmony(SpectatorPluginInfo.GUID);
+            _harmony.PatchAll();
 
-        Logger.LogInfo($"{SpectatorPluginInfo.NAME} v{SpectatorPluginInfo.VERSION} loaded");
-        Logger.LogInfo("Use BepInEx console to type 'host' or 'join <ip>' (not yet implemented - API ready)");
+            Logger.LogInfo($"{SpectatorPluginInfo.NAME} v{SpectatorPluginInfo.VERSION} loaded");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError($"Failed to initialize: {ex}");
+        }
     }
 
     private void OnDestroy()
