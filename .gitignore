@@ -11,9 +11,17 @@ src/**/obj/
 *.user
 *.suo
 
+# BepInEx installed into game dir (added by install.sh / just deploy)
+release/winhttp.dll
+release/doorstop_config.ini
+release/.doorstop_version
+release/BepInEx/
+
+# Crash handler disabled by launch.sh
+release/*.disabled
+
 # Logs
 *.log
-BepInEx/logs/
 
 # OS
 .DS_Store
