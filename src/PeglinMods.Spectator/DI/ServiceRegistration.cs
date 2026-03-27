@@ -37,8 +37,12 @@ public static class ServiceRegistration
         log.LogInfo("[DI] Phase 1: Core services...");
         var container = Phase1_Core(log);
 
-        log.LogInfo("[DI] Phase 2: Network...");
-        Phase2_Network(container, log);
+        log.LogInfo("[DI] Phase 2a: MessageTypeRegistry...");
+        Phase2a_TypeRegistry(container);
+        log.LogInfo("[DI] Phase 2b: JsonNetworkSerializer...");
+        Phase2b_Serializer(container);
+        log.LogInfo("[DI] Phase 2c: LiteNetTransport...");
+        Phase2c_Transport(container);
 
         log.LogInfo("[DI] Phase 3: Events...");
         Phase3_Events(container, log);
@@ -64,14 +68,21 @@ public static class ServiceRegistration
         return container;
     }
 
-    private static void Phase2_Network(ServiceContainer container, ManualLogSource log)
+    private static void Phase2a_TypeRegistry(ServiceContainer container)
     {
         var typeRegistry = new MessageTypeRegistry();
         container.RegisterSingleton(typeRegistry);
+    }
 
+    private static void Phase2b_Serializer(ServiceContainer container)
+    {
+        var typeRegistry = container.Resolve<MessageTypeRegistry>();
         var serializer = new JsonNetworkSerializer(typeRegistry);
         container.RegisterSingleton<INetworkSerializer>(serializer);
+    }
 
+    private static void Phase2c_Transport(ServiceContainer container)
+    {
         var transport = new LiteNetTransport();
         container.RegisterSingleton<INetworkTransport>(transport);
     }
@@ -84,6 +95,7 @@ public static class ServiceRegistration
 
         var eventRegistry = new GameEventRegistry(serializer, transport, typeRegistry, log);
         container.RegisterSingleton<IGameEventRegistry>(eventRegistry);
+        container.RegisterSingleton(eventRegistry);
 
         var host = new NetworkHost(transport, serializer);
         container.RegisterSingleton<IMessageSender>(host);

@@ -56,7 +56,7 @@ copy-plugins config="Debug":
     Copy-Item "$bin/PeglinMods.Spectator.dll" '{{plugins}}/'; \
     Copy-Item "$bin/LiteNetLib.dll" '{{plugins}}/'; \
     Copy-Item "$bin/System.Text.Json.dll" '{{plugins}}/'; \
-    foreach ($dep in @('System.Text.Encodings.Web','System.Buffers','System.Memory','System.Numerics.Vectors','System.Runtime.CompilerServices.Unsafe')) { \
+    foreach ($dep in @('System.Text.Encodings.Web','System.Buffers','System.Memory','System.Numerics.Vectors','System.Runtime.CompilerServices.Unsafe','System.Threading.Tasks.Extensions','Microsoft.Bcl.AsyncInterfaces','System.ValueTuple')) { \
         $f = "$bin/$dep.dll"; \
         if (Test-Path $f) { Copy-Item $f '{{plugins}}/' } \
     }
