@@ -25,6 +25,11 @@ public class SpectatorPlugin : BaseUnityPlugin
 
     private void Awake()
     {
+        var diagPath = System.IO.Path.Combine(
+            System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) ?? ".",
+            "spectator_diag.txt");
+        System.IO.File.WriteAllText(diagPath, $"Awake() entered at {DateTime.Now:O}\n");
+
         Instance = this;
         Logger = base.Logger;
 
@@ -55,6 +60,7 @@ public class SpectatorPlugin : BaseUnityPlugin
         }
         catch (Exception ex)
         {
+            System.IO.File.AppendAllText(diagPath, $"EXCEPTION: {ex}\n");
             Logger.LogError($"Failed to initialize: {ex}");
         }
     }

@@ -8,7 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="BepInEx.Core" Version="5.4.21" />
-    <PackageReference Include="HarmonyX" Version="2.13.0" />
+    <PackageReference Include="HarmonyX" Version="2.9.0" />
   </ItemGroup>
 
   <!-- Game assemblies (reference only, not copied to output) -->

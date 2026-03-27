@@ -66,7 +66,7 @@ dev: setup
     dotnet build '{{src}}/PeglinMods.sln' -c Debug --nologo -v quiet; \
     just copy-plugins Debug; \
     New-Item -ItemType Directory -Path (Split-Path '{{logfile}}') -Force | Out-Null; \
-    '' | Set-Content '{{logfile}}'; \
+    [IO.File]::Create('{{logfile}}').Close(); \
     Write-Host '==> Launching game...'; \
     $game = Start-Process pwsh -ArgumentList '-NoProfile','-File','{{root}}/launch.ps1' -PassThru; \
     Write-Host "==> Tailing logs (Ctrl+C to stop)"; \

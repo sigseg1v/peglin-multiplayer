@@ -34,65 +34,101 @@ public static class ServiceRegistration
 {
     public static IServiceContainer CreateAndConfigure(ManualLogSource log)
     {
+        log.LogInfo("[DI] Phase 1: Core services...");
+        var container = Phase1_Core(log);
+
+        log.LogInfo("[DI] Phase 2: Network...");
+        Phase2_Network(container, log);
+
+        log.LogInfo("[DI] Phase 3: Events...");
+        Phase3_Events(container, log);
+
+        log.LogInfo("[DI] Phase 4: Handlers...");
+        Phase4_Handlers(container);
+
+        log.LogInfo("[DI] Phase 5: Subscriptions...");
+        Phase5_Subscriptions(container, log);
+
+        log.LogInfo("[DI] Phase 6: Handshake hook...");
+        Phase6_Handshake(container);
+
+        log.LogInfo("[DI] All phases complete.");
+        return container;
+    }
+
+    private static ServiceContainer Phase1_Core(ManualLogSource log)
+    {
         var container = new ServiceContainer();
-
-        // Core
         container.RegisterSingleton<ManualLogSource>(log);
-
-        // Spectator mode
         container.RegisterSingleton<ISpectatorMode>(new SpectatorMode());
+        return container;
+    }
 
-        // Network protocol
+    private static void Phase2_Network(ServiceContainer container, ManualLogSource log)
+    {
         var typeRegistry = new MessageTypeRegistry();
         container.RegisterSingleton(typeRegistry);
 
         var serializer = new JsonNetworkSerializer(typeRegistry);
         container.RegisterSingleton<INetworkSerializer>(serializer);
 
-        // Network transport
         var transport = new LiteNetTransport();
         container.RegisterSingleton<INetworkTransport>(transport);
+    }
 
-        // Event registry
+    private static void Phase3_Events(ServiceContainer container, ManualLogSource log)
+    {
+        var serializer = container.Resolve<INetworkSerializer>();
+        var transport = container.Resolve<INetworkTransport>();
+        var typeRegistry = container.Resolve<MessageTypeRegistry>();
+
         var eventRegistry = new GameEventRegistry(serializer, transport, typeRegistry, log);
         container.RegisterSingleton<IGameEventRegistry>(eventRegistry);
 
-        // Network host/client
         var host = new NetworkHost(transport, serializer);
         container.RegisterSingleton<IMessageSender>(host);
 
         var client = new NetworkClient(transport, eventRegistry, serializer);
         container.RegisterSingleton<IMessageReceiver>(client);
 
-        // Identifiers
         container.RegisterSingleton(new EnemyIdentifier());
         container.RegisterSingleton(new OrbIdentifier());
 
-        // Version checker
         var versionChecker = new VersionChecker(log);
         versionChecker.Check();
         container.RegisterSingleton(versionChecker);
 
-        // Event discovery
         var eventDiscovery = new EventDiscovery(log);
         eventDiscovery.ScanGameDelegates();
         container.RegisterSingleton(eventDiscovery);
+    }
 
-        // Register all event handler pairs (including handshake)
+    private static void Phase4_Handlers(ServiceContainer container)
+    {
+        var eventRegistry = container.Resolve<GameEventRegistry>();
+        var eventDiscovery = container.Resolve<EventDiscovery>();
+
         RegisterAllHandlers(eventRegistry);
 
-        // Log event discovery report
         foreach (var typeId in eventRegistry.RegisteredTypeIds)
             eventDiscovery.MarkRegistered(typeId);
         eventDiscovery.LogReport();
+    }
 
-        // Subscribe to game events
+    private static void Phase5_Subscriptions(ServiceContainer container, ManualLogSource log)
+    {
+        var eventRegistry = container.Resolve<IGameEventRegistry>();
         var spectatorMode = container.Resolve<ISpectatorMode>();
         var enemyId = container.Resolve<EnemyIdentifier>();
         var orbId = container.Resolve<OrbIdentifier>();
         SubscribeAll(eventRegistry, spectatorMode, enemyId, orbId, log);
+    }
 
-        // Send handshake on connect
+    private static void Phase6_Handshake(ServiceContainer container)
+    {
+        var transport = container.Resolve<INetworkTransport>();
+        var eventRegistry = container.Resolve<GameEventRegistry>();
+
         transport.OnClientConnected += () =>
         {
             eventRegistry.Dispatch(new HandshakeEvent
@@ -104,8 +140,6 @@ public static class ServiceRegistration
                 RegisteredHandlerCount = eventRegistry.RegisteredTypeIds.Count
             });
         };
-
-        return container;
     }
 
     private static void RegisterAllHandlers(IGameEventRegistry registry)
