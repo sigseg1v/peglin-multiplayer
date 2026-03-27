@@ -4,6 +4,7 @@ using BepInEx.Logging;
 using HarmonyLib;
 using PeglinMods.Spectator.DI;
 using PeglinMods.Spectator.Network;
+using PeglinMods.Spectator.Patches;
 using PeglinMods.Spectator.Spectator;
 using PeglinMods.Spectator.UI;
 using PeglinMods.Spectator.Utility;
@@ -22,67 +23,52 @@ public class SpectatorPlugin : BaseUnityPlugin
     private Harmony _harmony;
     private GameObject _networkObj;
     private FileLogger _fileLogger;
-    private static System.Threading.SynchronizationContext _mainThreadCtx;
 
     private void Awake()
     {
-        var diagPath = System.IO.Path.Combine(
-            System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) ?? ".",
-            "spectator_diag.txt");
-        System.IO.File.WriteAllText(diagPath, $"Awake() entered at {DateTime.Now:O}\n");
-
         Instance = this;
         Logger = base.Logger;
 
-        _mainThreadCtx = System.Threading.SynchronizationContext.Current;
-        Logger.LogInfo($"SynchronizationContext: {_mainThreadCtx?.GetType().FullName ?? "null"}");
-
         try
         {
+            // File logging
             var logsDir = System.IO.Path.Combine(Paths.BepInExRootPath, "logs");
             _fileLogger = new FileLogger(logsDir);
             BepInEx.Logging.Logger.Listeners.Add(new FileLogListener(_fileLogger));
             Logger.LogInfo($"Log file: {_fileLogger.FilePath}");
 
+            // DI container
             Services = ServiceRegistration.CreateAndConfigure(Logger);
 
+            // Persistent game object for MonoBehaviour components
             _networkObj = new GameObject("PeglinMods_Spectator");
             DontDestroyOnLoad(_networkObj);
 
+            // Network polling (calls transport.PollEvents() every frame)
             var poller = _networkObj.AddComponent<NetworkPollBehaviour>();
             poller.Initialize(Services.Resolve<INetworkTransport>());
 
+            // Main thread dispatcher for network callbacks
             var dispatcher = _networkObj.AddComponent<MainThreadDispatcher>();
             Services.RegisterSingleton<MainThreadDispatcher>(dispatcher);
 
+            // Multiplayer UI overlay (F7 hotkey, host/join panels)
             _networkObj.AddComponent<MultiplayerUI>();
 
+            // Scene watcher - detects scene changes via SceneManager.sceneLoaded
+            // and injects the Multiplayer button into the main menu
+            _networkObj.AddComponent<SceneWatcher>();
+
+            // Harmony patches
             _harmony = new Harmony(SpectatorPluginInfo.GUID);
             _harmony.PatchAll();
-
-            // MonoBehaviour lifecycle & Harmony detours don't work from BepInEx on Proton.
-            // Use Application.onBeforeRender to run code on the main thread each frame.
-            Application.onBeforeRender += OnBeforeRender;
 
             Logger.LogInfo($"{SpectatorPluginInfo.NAME} v{SpectatorPluginInfo.VERSION} loaded");
         }
         catch (Exception ex)
         {
-            System.IO.File.AppendAllText(diagPath, $"EXCEPTION: {ex}\n");
             Logger.LogError($"Failed to initialize: {ex}");
         }
-    }
-
-    private static bool _renderCallbackLogged;
-    private static void OnBeforeRender()
-    {
-        if (!_renderCallbackLogged)
-        {
-            _renderCallbackLogged = true;
-            Logger?.LogInfo("OnBeforeRender fired — main thread callback works!");
-        }
-        try { Patches.MainMenuButtonInjector.SearchAndInject(Logger); }
-        catch (Exception ex) { Logger?.LogError($"Menu search error: {ex.Message}"); }
     }
 
     private void OnDestroy()
