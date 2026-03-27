@@ -22,6 +22,7 @@ public class SpectatorPlugin : BaseUnityPlugin
     private Harmony _harmony;
     private GameObject _networkObj;
     private FileLogger _fileLogger;
+    private static System.Threading.SynchronizationContext _mainThreadCtx;
 
     private void Awake()
     {
@@ -32,6 +33,9 @@ public class SpectatorPlugin : BaseUnityPlugin
 
         Instance = this;
         Logger = base.Logger;
+
+        _mainThreadCtx = System.Threading.SynchronizationContext.Current;
+        Logger.LogInfo($"SynchronizationContext: {_mainThreadCtx?.GetType().FullName ?? "null"}");
 
         try
         {
@@ -56,6 +60,10 @@ public class SpectatorPlugin : BaseUnityPlugin
             _harmony = new Harmony(SpectatorPluginInfo.GUID);
             _harmony.PatchAll();
 
+            // MonoBehaviour lifecycle & Harmony detours don't work from BepInEx on Proton.
+            // Use Application.onBeforeRender to run code on the main thread each frame.
+            Application.onBeforeRender += OnBeforeRender;
+
             Logger.LogInfo($"{SpectatorPluginInfo.NAME} v{SpectatorPluginInfo.VERSION} loaded");
         }
         catch (Exception ex)
@@ -63,6 +71,18 @@ public class SpectatorPlugin : BaseUnityPlugin
             System.IO.File.AppendAllText(diagPath, $"EXCEPTION: {ex}\n");
             Logger.LogError($"Failed to initialize: {ex}");
         }
+    }
+
+    private static bool _renderCallbackLogged;
+    private static void OnBeforeRender()
+    {
+        if (!_renderCallbackLogged)
+        {
+            _renderCallbackLogged = true;
+            Logger?.LogInfo("OnBeforeRender fired — main thread callback works!");
+        }
+        try { Patches.MainMenuButtonInjector.SearchAndInject(Logger); }
+        catch (Exception ex) { Logger?.LogError($"Menu search error: {ex.Message}"); }
     }
 
     private void OnDestroy()

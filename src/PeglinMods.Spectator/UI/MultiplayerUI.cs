@@ -45,12 +45,16 @@ public class MultiplayerUI : MonoBehaviour
     private TextMeshProUGUI _hostVersionText;
     private TextMeshProUGUI _lobbyText;
 
+    // Static access for menu button
+    private static MultiplayerUI _instance;
+
     // State
     private bool _overlayVisible;
     private string _lastConnectionStatus = "";
 
     private void Start()
     {
+        _instance = this;
         _transport = SpectatorPlugin.Services.Resolve<INetworkTransport>();
         _spectatorMode = SpectatorPlugin.Services.Resolve<ISpectatorMode>();
 
@@ -334,6 +338,12 @@ public class MultiplayerUI : MonoBehaviour
     {
         if (_overlayVisible) HideOverlay();
         else ShowOverlay();
+    }
+
+    public static void ToggleOverlayStatic()
+    {
+        if (_instance != null)
+            _instance.ToggleOverlay();
     }
 
     private void ShowJoinPanel()
