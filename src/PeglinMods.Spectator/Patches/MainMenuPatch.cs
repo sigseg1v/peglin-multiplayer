@@ -1,4 +1,6 @@
+using System;
 using BepInEx.Logging;
+using HarmonyLib;
 using PeglinMods.Spectator.UI;
 using TMPro;
 using UnityEngine;
@@ -8,14 +10,105 @@ using UnityEngine.UI;
 namespace PeglinMods.Spectator.Patches;
 
 /// <summary>
-/// Manages scene change detection and menu button injection.
-/// Attached as a MonoBehaviour to the persistent PeglinMods_Spectator GameObject.
-/// Uses SceneManager.sceneLoaded (the standard Unity pattern used by ProLib/existing Peglin mods).
+/// Injects a "Multiplayer" button into the main menu.
+/// Two mechanisms for reliability:
+///   1. Harmony postfix on PlayButton.Awake (primary - fires at exact right time)
+///   2. SceneWatcher MonoBehaviour with SceneManager.sceneLoaded (fallback)
+/// </summary>
+public static class MenuButtonInjector
+{
+    private static ManualLogSource Log => SpectatorPlugin.Logger;
+    private static GameObject _multiplayerButton;
+
+    public static void InjectIfNeeded()
+    {
+        try
+        {
+            if (_multiplayerButton != null && _multiplayerButton) return;
+            _multiplayerButton = null;
+
+            var allButtons = UnityEngine.Object.FindObjectsOfType<Button>(true);
+            Log?.LogInfo($"MenuButtonInjector: scanning {allButtons.Length} buttons");
+
+            foreach (var btn in allButtons)
+            {
+                var text = btn.GetComponentInChildren<TextMeshProUGUI>(true);
+                if (text == null) continue;
+
+                Log?.LogDebug($"  Button: '{text.text}' obj='{btn.gameObject.name}'");
+
+                // Find Quit button to clone (ensures matching style/layout)
+                var upper = text.text.ToUpperInvariant();
+                var nameUpper = btn.gameObject.name.ToUpperInvariant();
+                if (!upper.Contains("QUIT") && !nameUpper.Contains("QUIT")) continue;
+
+                Log?.LogInfo($"MenuButtonInjector: cloning '{btn.gameObject.name}'");
+
+                var quitTransform = btn.transform;
+                var parent = quitTransform.parent;
+
+                _multiplayerButton = UnityEngine.Object.Instantiate(quitTransform.gameObject, parent);
+                _multiplayerButton.name = "MultiplayerButton";
+                _multiplayerButton.transform.SetSiblingIndex(quitTransform.GetSiblingIndex());
+
+                // Update text
+                var tmpText = _multiplayerButton.GetComponentInChildren<TextMeshProUGUI>(true);
+                if (tmpText != null)
+                    tmpText.text = "Multiplayer";
+
+                // Remove localization that would overwrite our text
+                foreach (var comp in _multiplayerButton.GetComponentsInChildren<Component>(true))
+                {
+                    if (comp != null && comp.GetType().Name.Contains("Localize"))
+                        UnityEngine.Object.Destroy(comp);
+                }
+
+                // Rewire button click
+                var button = _multiplayerButton.GetComponent<Button>();
+                button.onClick.RemoveAllListeners();
+                button.onClick.AddListener(MultiplayerUI.ToggleOverlayStatic);
+
+                Log?.LogInfo("MenuButtonInjector: Multiplayer button injected!");
+                return;
+            }
+
+            Log?.LogWarning("MenuButtonInjector: no Quit button found to clone");
+        }
+        catch (Exception ex)
+        {
+            Log?.LogError($"MenuButtonInjector: {ex}");
+        }
+    }
+
+    public static void Reset()
+    {
+        _multiplayerButton = null;
+    }
+}
+
+/// <summary>
+/// Primary injection: Harmony postfix on PlayButton.Awake.
+/// Fires at exactly the right time when the main menu is ready.
+/// This is the same pattern the Morbs mod uses successfully.
+/// </summary>
+[HarmonyPatch(typeof(PeglinUI.MainMenu.PlayButton), "Awake")]
+public static class PlayButtonAwakePatch
+{
+    public static void Postfix()
+    {
+        SpectatorPlugin.Logger?.LogInfo("PlayButtonAwakePatch: PlayButton.Awake fired");
+        MenuButtonInjector.InjectIfNeeded();
+    }
+}
+
+/// <summary>
+/// Fallback injection: SceneManager.sceneLoaded on a persistent MonoBehaviour.
+/// Fires when any scene loads. If Harmony patch on PlayButton fails (e.g. class
+/// renamed in a game update), this still works.
 /// </summary>
 public class SceneWatcher : MonoBehaviour
 {
     private static ManualLogSource Log => SpectatorPlugin.Logger;
-    private GameObject _multiplayerButton;
 
     private void OnEnable()
     {
@@ -30,79 +123,27 @@ public class SceneWatcher : MonoBehaviour
 
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
-        Log?.LogInfo($"SceneWatcher: scene loaded '{scene.name}' (mode={mode})");
-
-        // Reset button reference on any scene change
-        _multiplayerButton = null;
-
-        if (scene.name == "MainMenu")
+        try
         {
-            // Wait one frame for all scene objects to initialize
-            StartCoroutine(InjectMenuButtonDelayed());
-        }
-    }
+            Log?.LogInfo($"SceneWatcher: scene '{scene.name}' loaded (mode={mode})");
+            MenuButtonInjector.Reset();
 
-    private System.Collections.IEnumerator InjectMenuButtonDelayed()
-    {
-        yield return null; // Wait one frame
-        yield return null; // Wait a second frame for good measure (localization, etc.)
-        InjectMenuButton();
-    }
-
-    private void InjectMenuButton()
-    {
-        if (_multiplayerButton != null) return;
-
-        var allButtons = FindObjectsOfType<Button>(true);
-        Log?.LogInfo($"SceneWatcher: scanning {allButtons.Length} buttons in MainMenu");
-
-        foreach (var btn in allButtons)
-        {
-            var text = btn.GetComponentInChildren<TextMeshProUGUI>(true);
-            if (text == null) continue;
-
-            Log?.LogInfo($"  Button: '{text.text}' obj='{btn.gameObject.name}' active={btn.gameObject.activeInHierarchy}");
-
-            // Find the Quit button to clone it (ensures matching style)
-            var upper = text.text.ToUpperInvariant();
-            var nameUpper = btn.gameObject.name.ToUpperInvariant();
-            if (!upper.Contains("QUIT") && !nameUpper.Contains("QUIT")) continue;
-
-            Log?.LogInfo($"SceneWatcher: cloning Quit button '{btn.gameObject.name}'");
-
-            var quitTransform = btn.transform;
-            var parent = quitTransform.parent;
-
-            _multiplayerButton = Instantiate(quitTransform.gameObject, parent);
-            _multiplayerButton.name = "MultiplayerButton";
-
-            // Place it above the Quit button
-            _multiplayerButton.transform.SetSiblingIndex(quitTransform.GetSiblingIndex());
-
-            // Update text
-            var tmpText = _multiplayerButton.GetComponentInChildren<TextMeshProUGUI>(true);
-            if (tmpText != null)
-                tmpText.text = "Multiplayer";
-
-            // Remove localization components that would overwrite our text
-            foreach (var comp in _multiplayerButton.GetComponentsInChildren<Component>(true))
+            if (scene.name == "MainMenu")
             {
-                if (comp != null && comp.GetType().Name.Contains("Localize"))
-                {
-                    Log?.LogInfo($"  Removing localization component: {comp.GetType().Name}");
-                    Destroy(comp);
-                }
+                // Delay 2 frames then try injection (in case Harmony patch didn't fire)
+                StartCoroutine(DelayedInject());
             }
-
-            // Rewire button
-            var button = _multiplayerButton.GetComponent<Button>();
-            button.onClick.RemoveAllListeners();
-            button.onClick.AddListener(MultiplayerUI.ToggleOverlayStatic);
-
-            Log?.LogInfo("SceneWatcher: Multiplayer button injected into main menu!");
-            return;
         }
+        catch (Exception ex)
+        {
+            Log?.LogError($"SceneWatcher.OnSceneLoaded: {ex}");
+        }
+    }
 
-        Log?.LogWarning("SceneWatcher: could not find Quit button to clone");
+    private System.Collections.IEnumerator DelayedInject()
+    {
+        yield return null;
+        yield return null;
+        MenuButtonInjector.InjectIfNeeded();
     }
 }
