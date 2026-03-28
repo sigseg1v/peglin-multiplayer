@@ -23,7 +23,7 @@ publish:
     dotnet build '{{src}}/PeglinMods.sln' -c Release --nologo; \
     New-Item -ItemType Directory -Path '{{root}}/build' -Force | Out-Null; \
     Copy-Item '{{src}}/PeglinMods.Core/bin/Release/netstandard2.1/PeglinMods.Core.dll' '{{root}}/build/'; \
-    Copy-Item '{{src}}/PeglinMods.Spectator/bin/Release/netstandard2.1/PeglinMods.Spectator.dll' '{{root}}/build/'; \
+    Copy-Item '{{src}}/PeglinMods.Multiplayer/bin/Release/netstandard2.1/PeglinMods.Multiplayer.dll' '{{root}}/build/'; \
     Write-Host "`nPublish output:"; \
     Get-ChildItem '{{root}}/build/*.dll' | Format-Table Name, Length
 
@@ -49,9 +49,9 @@ setup:
 [private]
 copy-plugins config="Debug":
     New-Item -ItemType Directory -Path '{{plugins}}' -Force | Out-Null; \
-    $bin = '{{src}}/PeglinMods.Spectator/bin/{{config}}/netstandard2.1'; \
+    $bin = '{{src}}/PeglinMods.Multiplayer/bin/{{config}}/netstandard2.1'; \
     Copy-Item '{{src}}/PeglinMods.Core/bin/{{config}}/netstandard2.1/PeglinMods.Core.dll' '{{plugins}}/'; \
-    Copy-Item "$bin/PeglinMods.Spectator.dll" '{{plugins}}/'; \
+    Copy-Item "$bin/PeglinMods.Multiplayer.dll" '{{plugins}}/'; \
     Copy-Item "$bin/LiteNetLib.dll" '{{plugins}}/'
 
 # Build debug, deploy to game dir, launch game, tail logs
@@ -110,7 +110,7 @@ log:
 clean:
     Remove-Item '{{root}}/build','{{root}}/dist','{{root}}/vendor' -Recurse -Force -ErrorAction SilentlyContinue; \
     Remove-Item '{{src}}/PeglinMods.Core/bin','{{src}}/PeglinMods.Core/obj' -Recurse -Force -ErrorAction SilentlyContinue; \
-    Remove-Item '{{src}}/PeglinMods.Spectator/bin','{{src}}/PeglinMods.Spectator/obj' -Recurse -Force -ErrorAction SilentlyContinue; \
+    Remove-Item '{{src}}/PeglinMods.Multiplayer/bin','{{src}}/PeglinMods.Multiplayer/obj' -Recurse -Force -ErrorAction SilentlyContinue; \
     Write-Host 'Cleaned'
 
 # Remove BepInEx from release/ (restore to vanilla)

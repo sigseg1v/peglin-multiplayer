@@ -1,0 +1,8 @@
+namespace PeglinMods.Multiplayer.Events.Handlers.Enemy;
+
+using PeglinMods.Multiplayer.Events.Network.Enemy;
+
+public sealed class EnemyAttackServerHandler : IServerHandler<EnemyAttackEvent>
+{
+    public EnemyAttackEvent Handle(EnemyAttackEvent networkEvent) => networkEvent;
+}
