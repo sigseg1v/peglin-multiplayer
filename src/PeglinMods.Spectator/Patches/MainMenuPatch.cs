@@ -102,13 +102,14 @@ public static class PlayButtonAwakePatch
 }
 
 /// <summary>
-/// Fallback injection: SceneManager.sceneLoaded on a persistent MonoBehaviour.
-/// Fires when any scene loads. If Harmony patch on PlayButton fails (e.g. class
-/// renamed in a game update), this still works.
+/// Fallback A: SceneManager.sceneLoaded on a persistent MonoBehaviour.
 /// </summary>
 public class SceneWatcher : MonoBehaviour
 {
     private static ManualLogSource Log => SpectatorPlugin.Logger;
+    private string _lastScene = "";
+    private float _injectTimer = -1f;
+    private bool _loggedUpdate;
 
     private void OnEnable()
     {
@@ -121,16 +122,67 @@ public class SceneWatcher : MonoBehaviour
         SceneManager.sceneLoaded -= OnSceneLoaded;
     }
 
+    /// <summary>
+    /// Fallback B: Update() poll. Checks active scene name every frame.
+    /// If we're in MainMenu and haven't injected yet, inject.
+    /// This is the nuclear option - if SceneManager.sceneLoaded and
+    /// Harmony both fail, this still works because Update() on a
+    /// DontDestroyOnLoad MonoBehaviour always fires.
+    /// </summary>
+    private void Update()
+    {
+        if (!_loggedUpdate)
+        {
+            _loggedUpdate = true;
+            Log?.LogInfo("SceneWatcher: Update() is firing (MonoBehaviour lifecycle works)");
+        }
+
+        // Timer-based injection after scene change detection
+        if (_injectTimer >= 0f)
+        {
+            _injectTimer -= Time.deltaTime;
+            if (_injectTimer <= 0f)
+            {
+                _injectTimer = -1f;
+                Log?.LogInfo("SceneWatcher: timer-based injection firing");
+                MenuButtonInjector.InjectIfNeeded();
+            }
+            return;
+        }
+
+        // Poll-based scene detection
+        try
+        {
+            var currentScene = SceneManager.GetActiveScene().name;
+            if (currentScene != _lastScene)
+            {
+                Log?.LogInfo($"SceneWatcher: detected scene change '{_lastScene}' -> '{currentScene}' (via Update poll)");
+                _lastScene = currentScene;
+                MenuButtonInjector.Reset();
+
+                if (currentScene == "MainMenu")
+                {
+                    // Wait 0.5 seconds for scene objects to fully initialize
+                    _injectTimer = 0.5f;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log?.LogDebug($"SceneWatcher.Update scene poll: {ex.Message}");
+        }
+    }
+
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
         try
         {
-            Log?.LogInfo($"SceneWatcher: scene '{scene.name}' loaded (mode={mode})");
+            Log?.LogInfo($"SceneWatcher: scene '{scene.name}' loaded (mode={mode}) [via sceneLoaded event]");
             MenuButtonInjector.Reset();
+            _lastScene = scene.name;
 
             if (scene.name == "MainMenu")
             {
-                // Delay 2 frames then try injection (in case Harmony patch didn't fire)
                 StartCoroutine(DelayedInject());
             }
         }
