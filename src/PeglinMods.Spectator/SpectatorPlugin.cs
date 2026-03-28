@@ -55,6 +55,15 @@ public class SpectatorPlugin : BaseUnityPlugin
             _harmony = new Harmony(SpectatorPluginInfo.GUID);
             _harmony.PatchAll();
 
+            // Verify what Harmony actually patched
+            int patchCount = 0;
+            foreach (var method in _harmony.GetPatchedMethods())
+            {
+                Logger.LogInfo($"Harmony patched: {method.DeclaringType?.FullName}.{method.Name}");
+                patchCount++;
+            }
+            Logger.LogInfo($"Harmony total patches applied: {patchCount}");
+
             Logger.LogInfo($"{SpectatorPluginInfo.NAME} v{SpectatorPluginInfo.VERSION} loaded");
         }
         catch (Exception ex)

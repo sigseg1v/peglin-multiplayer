@@ -132,11 +132,53 @@ public class SceneWatcher : MonoBehaviour
         DiagWrite("SceneWatcher.OnEnable() called");
         SceneManager.sceneLoaded += OnSceneLoaded;
         Log?.LogInfo("SceneWatcher: subscribed to SceneManager.sceneLoaded");
+
+        // Start a coroutine-based update loop as alternative to Update().
+        // Coroutines use Unity's coroutine scheduler, which is separate from
+        // the MonoBehaviour Update registration that fails during chainloader.
+        StartCoroutine(CoroutineUpdateLoop());
     }
 
     private void OnDisable()
     {
         SceneManager.sceneLoaded -= OnSceneLoaded;
+    }
+
+    private System.Collections.IEnumerator CoroutineUpdateLoop()
+    {
+        DiagWrite("CoroutineUpdateLoop started");
+        int frame = 0;
+        while (true)
+        {
+            yield return null;
+            frame++;
+
+            if (frame == 1)
+                DiagWrite($"Coroutine first yield-back! scene={SceneManager.GetActiveScene().name}");
+            if (frame % 300 == 0)
+                DiagWrite($"Coroutine heartbeat frame={frame} scene={SceneManager.GetActiveScene().name}");
+
+            // Scene change detection
+            string currentScene = "";
+            try { currentScene = SceneManager.GetActiveScene().name; }
+            catch { continue; }
+
+            if (currentScene != _lastScene)
+            {
+                DiagWrite($"Coroutine detected scene: '{_lastScene}' -> '{currentScene}'");
+                Log?.LogInfo($"SceneWatcher: scene change '{_lastScene}' -> '{currentScene}' (via coroutine)");
+                _lastScene = currentScene;
+                MenuButtonInjector.Reset();
+
+                if (currentScene == "MainMenu")
+                {
+                    DiagWrite("Coroutine: MainMenu detected, waiting 30 frames...");
+                    for (int i = 0; i < 30; i++) yield return null;
+                    DiagWrite("Coroutine: injecting menu button");
+                    MenuButtonInjector.InjectIfNeeded();
+                }
+            }
+        }
     }
 
     /// <summary>
