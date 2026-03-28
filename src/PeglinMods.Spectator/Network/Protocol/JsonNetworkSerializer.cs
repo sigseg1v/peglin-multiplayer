@@ -36,6 +36,8 @@ public class JsonNetworkSerializer : INetworkSerializer
     {
         var json = Encoding.UTF8.GetString(data);
         var envelope = JsonConvert.DeserializeObject<NetworkEnvelope>(json);
+        if (envelope == null || string.IsNullOrEmpty(envelope.TypeId))
+            throw new InvalidOperationException($"Malformed network envelope (json length={json.Length})");
         return (envelope.TypeId, envelope.Payload);
     }
 }

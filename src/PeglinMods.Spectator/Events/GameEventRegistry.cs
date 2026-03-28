@@ -53,7 +53,17 @@ public class GameEventRegistry : IGameEventRegistry
 
         _clientDispatchers[typeId] = jsonPayload =>
         {
+            if (string.IsNullOrEmpty(jsonPayload))
+            {
+                _log.LogWarning($"Received empty payload for {typeId}, skipping");
+                return;
+            }
             var networkEvent = JsonConvert.DeserializeObject<TNetworkEvent>(jsonPayload);
+            if (networkEvent == null)
+            {
+                _log.LogWarning($"Failed to deserialize {typeId} payload, skipping");
+                return;
+            }
             clientHandler.Handle(networkEvent);
         };
     }
