@@ -400,7 +400,7 @@ public class MultiplayerUI : MonoBehaviour
         StretchFill(_spectatorPanel.GetComponent<RectTransform>());
 
         // Title bar
-        var title = CreateText(_spectatorPanel.transform, "SpectatorTitle", "Spectating — Event Feed", 32);
+        var title = CreateText(_spectatorPanel.transform, "SpectatorTitle", "Spectating — Event Feed", 42);
         var titleRect = title.rectTransform;
         titleRect.anchorMin = new Vector2(0, 1);
         titleRect.anchorMax = new Vector2(1, 1);
@@ -409,7 +409,7 @@ public class MultiplayerUI : MonoBehaviour
         titleRect.sizeDelta = new Vector2(0, 48);
 
         // Scrolling event text
-        _spectatorFeedText = CreateText(_spectatorPanel.transform, "FeedText", "", 18);
+        _spectatorFeedText = CreateText(_spectatorPanel.transform, "FeedText", "", 36);
         _spectatorFeedText.alignment = TextAlignmentOptions.TopLeft;
         _spectatorFeedText.enableWordWrapping = true;
         _spectatorFeedText.overflowMode = TextOverflowModes.Truncate;
