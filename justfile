@@ -22,8 +22,8 @@ build:
 publish:
     dotnet build '{{src}}/PeglinMods.sln' -c Release --nologo; \
     New-Item -ItemType Directory -Path '{{root}}/build' -Force | Out-Null; \
-    Copy-Item '{{src}}/PeglinMods.Core/bin/Release/net46/PeglinMods.Core.dll' '{{root}}/build/'; \
-    Copy-Item '{{src}}/PeglinMods.Spectator/bin/Release/net46/PeglinMods.Spectator.dll' '{{root}}/build/'; \
+    Copy-Item '{{src}}/PeglinMods.Core/bin/Release/netstandard2.1/PeglinMods.Core.dll' '{{root}}/build/'; \
+    Copy-Item '{{src}}/PeglinMods.Spectator/bin/Release/netstandard2.1/PeglinMods.Spectator.dll' '{{root}}/build/'; \
     Write-Host "`nPublish output:"; \
     Get-ChildItem '{{root}}/build/*.dll' | Format-Table Name, Length
 
@@ -49,8 +49,8 @@ setup:
 [private]
 copy-plugins config="Debug":
     New-Item -ItemType Directory -Path '{{plugins}}' -Force | Out-Null; \
-    $bin = '{{src}}/PeglinMods.Spectator/bin/{{config}}/net46'; \
-    Copy-Item '{{src}}/PeglinMods.Core/bin/{{config}}/net46/PeglinMods.Core.dll' '{{plugins}}/'; \
+    $bin = '{{src}}/PeglinMods.Spectator/bin/{{config}}/netstandard2.1'; \
+    Copy-Item '{{src}}/PeglinMods.Core/bin/{{config}}/netstandard2.1/PeglinMods.Core.dll' '{{plugins}}/'; \
     Copy-Item "$bin/PeglinMods.Spectator.dll" '{{plugins}}/'; \
     foreach ($dep in @('System.ValueTuple')) { \
         $f = "$bin/$dep.dll"; \
