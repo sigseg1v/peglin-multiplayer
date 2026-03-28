@@ -51,6 +51,17 @@ public static class MenuButtonInjector
                 _multiplayerButton = UnityEngine.Object.Instantiate(templateBtn.gameObject, parent);
                 _multiplayerButton.name = "MultiplayerButton";
 
+                // Remove ALL components except Transform, RectTransform, Button,
+                // Image, and TMP text. The cloned Quit button may have components
+                // that trigger Application.Quit() or other unwanted behavior.
+                foreach (var comp in _multiplayerButton.GetComponents<Component>())
+                {
+                    if (comp is Transform || comp is RectTransform ||
+                        comp is Button || comp is Image)
+                        continue;
+                    UnityEngine.Object.Destroy(comp);
+                }
+
                 // Place above Encirclepedia if found, otherwise above Quit
                 var targetSibling = encirclepediaTransform ?? templateBtn.transform;
                 _multiplayerButton.transform.SetSiblingIndex(targetSibling.GetSiblingIndex());
