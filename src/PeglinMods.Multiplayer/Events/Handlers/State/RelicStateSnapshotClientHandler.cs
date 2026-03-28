@@ -1,4 +1,7 @@
+using System;
+using PeglinMods.Multiplayer.GameState;
 using PeglinMods.Multiplayer.GameState.Snapshots;
+using PeglinMods.Multiplayer.Multiplayer;
 
 namespace PeglinMods.Multiplayer.Events.Handlers.State;
 
@@ -7,8 +10,22 @@ public sealed class RelicStateSnapshotClientHandler : IClientHandler<RelicStateS
     public void Handle(RelicStateSnapshot e)
     {
         var log = MultiplayerPlugin.Logger;
-        log?.LogInfo($"[StateSync] Relics: {e.TotalRelicCount} owned");
-        foreach (var relic in e.OwnedRelics ?? new System.Collections.Generic.List<RelicEntry>())
-            log?.LogInfo($"  Relic: {relic.EffectName} ({relic.LocKey}) rarity={relic.Rarity} countdown={relic.RemainingCountdown}");
+        try
+        {
+            var mode = MultiplayerPlugin.Services?.Resolve<IMultiplayerMode>();
+            if (mode?.ClientMode == ClientMode.Mirror)
+            {
+                var applyService = MultiplayerPlugin.Services?.Resolve<GameStateApplyService>();
+                applyService?.ApplyRelicState(e);
+                return;
+            }
+
+            // Diagnostics mode: log
+            log?.LogInfo("[StateSync] RelicState received (diagnostics mode)");
+        }
+        catch (Exception ex)
+        {
+            log?.LogError("RelicStateSnapshotClientHandler: {ex.Message}");
+        }
     }
 }

@@ -1,4 +1,7 @@
+using System;
+using PeglinMods.Multiplayer.GameState;
 using PeglinMods.Multiplayer.GameState.Snapshots;
+using PeglinMods.Multiplayer.Multiplayer;
 
 namespace PeglinMods.Multiplayer.Events.Handlers.State;
 
@@ -6,7 +9,23 @@ public sealed class PlayerStateSnapshotClientHandler : IClientHandler<PlayerStat
 {
     public void Handle(PlayerStateSnapshot e)
     {
-        var effects = string.Join(", ", e.StatusEffects?.ConvertAll(s => $"{s.EffectName}x{s.Intensity}") ?? new System.Collections.Generic.List<string>());
-        MultiplayerPlugin.Logger?.LogInfo($"[StateSync] Player: hp={e.CurrentHealth}/{e.MaxHealth}, gold={e.Gold}, speedup={e.IsSpedUp}, effects=[{effects}]");
+        var log = MultiplayerPlugin.Logger;
+        try
+        {
+            var mode = MultiplayerPlugin.Services?.Resolve<IMultiplayerMode>();
+            if (mode?.ClientMode == ClientMode.Mirror)
+            {
+                var applyService = MultiplayerPlugin.Services?.Resolve<GameStateApplyService>();
+                applyService?.ApplyPlayerState(e);
+                return;
+            }
+
+            // Diagnostics mode: log
+            log?.LogInfo("[StateSync] PlayerState received (diagnostics mode)");
+        }
+        catch (Exception ex)
+        {
+            log?.LogError("PlayerStateSnapshotClientHandler: {ex.Message}");
+        }
     }
 }

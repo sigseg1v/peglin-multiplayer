@@ -109,9 +109,13 @@ public static class ServiceRegistration
         container.RegisterSingleton(new EnemyIdentifier());
         container.RegisterSingleton(new OrbIdentifier());
 
-        // Game state sync service
+        // Game state sync service (host -> captures state and sends)
         var syncService = new GameStateSyncService(log, eventRegistry, container.Resolve<IMultiplayerMode>());
         container.RegisterSingleton<IGameStateSyncService>(syncService);
+
+        // Game state apply service (client -> receives state and applies)
+        var applyService = new GameStateApplyService(log);
+        container.RegisterSingleton(applyService);
 
         var versionChecker = new VersionChecker(log);
         versionChecker.Check();

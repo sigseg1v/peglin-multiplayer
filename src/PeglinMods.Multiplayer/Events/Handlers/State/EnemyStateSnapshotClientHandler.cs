@@ -1,4 +1,7 @@
+using System;
+using PeglinMods.Multiplayer.GameState;
 using PeglinMods.Multiplayer.GameState.Snapshots;
+using PeglinMods.Multiplayer.Multiplayer;
 
 namespace PeglinMods.Multiplayer.Events.Handlers.State;
 
@@ -7,11 +10,22 @@ public sealed class EnemyStateSnapshotClientHandler : IClientHandler<EnemyStateS
     public void Handle(EnemyStateSnapshot e)
     {
         var log = MultiplayerPlugin.Logger;
-        log?.LogInfo($"[StateSync] Enemies: battleState={e.BattleStateName}, count={e.Enemies?.Count ?? 0}");
-        foreach (var enemy in e.Enemies ?? new System.Collections.Generic.List<EnemyEntry>())
+        try
         {
-            var effects = string.Join(",", enemy.StatusEffects?.ConvertAll(s => $"{s.EffectName}x{s.Intensity}") ?? new System.Collections.Generic.List<string>());
-            log?.LogInfo($"  [{enemy.SlotIndex}] {enemy.LocKey}: hp={enemy.CurrentHealth}/{enemy.MaxHealth} dmg={enemy.MeleeDamage}/{enemy.RangedDamage} charge={enemy.CurrentCharge}/{enemy.ChargeTime} effects=[{effects}]");
+            var mode = MultiplayerPlugin.Services?.Resolve<IMultiplayerMode>();
+            if (mode?.ClientMode == ClientMode.Mirror)
+            {
+                var applyService = MultiplayerPlugin.Services?.Resolve<GameStateApplyService>();
+                applyService?.ApplyEnemyState(e);
+                return;
+            }
+
+            // Diagnostics mode: log
+            log?.LogInfo("[StateSync] EnemyState received (diagnostics mode)");
+        }
+        catch (Exception ex)
+        {
+            log?.LogError("EnemyStateSnapshotClientHandler: {ex.Message}");
         }
     }
 }

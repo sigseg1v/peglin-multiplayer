@@ -1,4 +1,7 @@
+using System;
+using PeglinMods.Multiplayer.GameState;
 using PeglinMods.Multiplayer.GameState.Snapshots;
+using PeglinMods.Multiplayer.Multiplayer;
 
 namespace PeglinMods.Multiplayer.Events.Handlers.State;
 
@@ -6,6 +9,23 @@ public sealed class MapStateSnapshotClientHandler : IClientHandler<MapStateSnaps
 {
     public void Handle(MapStateSnapshot e)
     {
-        MultiplayerPlugin.Logger?.LogInfo($"[StateSync] Map: scene={e.ActiveScene}, floor={e.TotalFloorCount}, class={e.ChosenClassName}, seed={e.CurrentSeed}, boss={e.HasReachedBoss}");
+        var log = MultiplayerPlugin.Logger;
+        try
+        {
+            var mode = MultiplayerPlugin.Services?.Resolve<IMultiplayerMode>();
+            if (mode?.ClientMode == ClientMode.Mirror)
+            {
+                var applyService = MultiplayerPlugin.Services?.Resolve<GameStateApplyService>();
+                applyService?.ApplyMapState(e);
+                return;
+            }
+
+            // Diagnostics mode: log
+            log?.LogInfo("[StateSync] MapState received (diagnostics mode)");
+        }
+        catch (Exception ex)
+        {
+            log?.LogError("MapStateSnapshotClientHandler: {ex.Message}");
+        }
     }
 }

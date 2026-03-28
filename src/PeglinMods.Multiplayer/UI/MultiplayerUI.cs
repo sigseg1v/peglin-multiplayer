@@ -42,6 +42,7 @@ public class MultiplayerUI : MonoBehaviour
     // Join panel elements
     private TMP_InputField _codeInput;
     private TextMeshProUGUI _statusText;
+    private Toggle _diagToggle;
 
     // Host panel elements
     private TextMeshProUGUI _hostInfoText;
@@ -92,8 +93,10 @@ public class MultiplayerUI : MonoBehaviour
         if (_lobbyPanel != null && _lobbyPanel.activeSelf)
             UpdateLobbyPanel();
 
-        // Refresh multiplayer feed when visible and new events arrived
-        if (_multiplayerPanel != null && _multiplayerPanel.activeSelf && EventFeed.Version != _lastFeedVersion)
+        // Refresh multiplayer feed when visible in diagnostics mode and new events arrived
+        if (_multiplayerPanel != null && _multiplayerPanel.activeSelf
+            && _multiplayerMode.ClientMode == ClientMode.Diagnostics
+            && EventFeed.Version != _lastFeedVersion)
         {
             _lastFeedVersion = EventFeed.Version;
             _multiplayerFeedText.text = EventFeed.GetText(40);
@@ -250,9 +253,13 @@ public class MultiplayerUI : MonoBehaviour
             "IP:PORT", new Vector2(0, 32), new Vector2(560, 72));
         _codeInput.text = $"127.0.0.1:{NetworkConfig.DefaultPort}";
 
+        // Diagnostics mode toggle
+        _diagToggle = CreateToggle(_joinPanel.transform, "DiagToggle", "Diagnostics Mode",
+            new Vector2(0, -40), new Vector2(480, 40));
+
         // Connect button
         var connectBtn = CreateButton(_joinPanel.transform, "ConnectBtn", "Connect",
-            new Color(0.2f, 0.35f, 0.6f, 1f), new Vector2(0, -64), new Vector2(480, 88));
+            new Color(0.2f, 0.35f, 0.6f, 1f), new Vector2(0, -104), new Vector2(480, 88));
         connectBtn.onClick.AddListener(OnConnectClicked);
 
         // Status text
@@ -262,12 +269,12 @@ public class MultiplayerUI : MonoBehaviour
         statusRect.anchorMin = new Vector2(0.5f, 0.5f);
         statusRect.anchorMax = new Vector2(0.5f, 0.5f);
         statusRect.pivot = new Vector2(0.5f, 0.5f);
-        statusRect.anchoredPosition = new Vector2(0, -144);
+        statusRect.anchoredPosition = new Vector2(0, -184);
         statusRect.sizeDelta = new Vector2(640, 48);
 
         // Cancel button
         var cancelBtn = CreateButton(_joinPanel.transform, "CancelBtn", "Back",
-            new Color(0.35f, 0.2f, 0.2f, 1f), new Vector2(0, -208), new Vector2(480, 88));
+            new Color(0.35f, 0.2f, 0.2f, 1f), new Vector2(0, -248), new Vector2(480, 88));
         cancelBtn.onClick.AddListener(OnCancelJoinClicked);
 
         _joinPanel.SetActive(false);
@@ -434,14 +441,25 @@ public class MultiplayerUI : MonoBehaviour
 
     private void ShowMultiplayerView()
     {
-        if (_multiplayerPanel == null)
-            CreateMultiplayerPanel();
-
         _overlayPanel.SetActive(false);
-        _multiplayerPanel.SetActive(true);
-        _overlayVisible = true;
-        EventFeed.Clear();
-        _lastFeedVersion = -1;
+
+        if (_multiplayerMode.ClientMode == ClientMode.Diagnostics)
+        {
+            // Diagnostics mode: show fullscreen event feed
+            if (_multiplayerPanel == null)
+                CreateMultiplayerPanel();
+            _multiplayerPanel.SetActive(true);
+            _overlayVisible = true;
+            EventFeed.Clear();
+            _lastFeedVersion = -1;
+        }
+        else
+        {
+            // Mirror mode: hide everything so the game renders normally
+            if (_multiplayerPanel != null)
+                _multiplayerPanel.SetActive(false);
+            _overlayVisible = false;
+        }
     }
 
     // --- Panel switching ---
@@ -567,6 +585,8 @@ public class MultiplayerUI : MonoBehaviour
         {
             _statusText.text = $"Connecting to {ip}:{port}...";
             _multiplayerMode.EnableSpectating();
+            if (_multiplayerMode is MultiplayerMode mode)
+                mode.ClientMode = _diagToggle != null && _diagToggle.isOn ? ClientMode.Diagnostics : ClientMode.Mirror;
             _transport.Connect(ip, port);
             Log.LogInfo($"Connecting to {ip}:{port}");
             // OnConnected callback will switch to lobby panel
@@ -767,6 +787,58 @@ public class MultiplayerUI : MonoBehaviour
         rect.sizeDelta = size;
 
         return obj;
+    }
+
+    private static Toggle CreateToggle(Transform parent, string name, string label,
+        Vector2 position, Vector2 size)
+    {
+        var obj = new GameObject(name);
+        obj.transform.SetParent(parent, false);
+        var rect = obj.AddComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = position;
+        rect.sizeDelta = size;
+
+        // Background box
+        var bgObj = new GameObject("Background");
+        bgObj.transform.SetParent(obj.transform, false);
+        var bgImg = bgObj.AddComponent<Image>();
+        bgImg.color = new Color(0.2f, 0.2f, 0.2f, 1f);
+        var bgRect = bgObj.GetComponent<RectTransform>();
+        bgRect.anchorMin = new Vector2(0, 0.5f);
+        bgRect.anchorMax = new Vector2(0, 0.5f);
+        bgRect.pivot = new Vector2(0, 0.5f);
+        bgRect.anchoredPosition = new Vector2(0, 0);
+        bgRect.sizeDelta = new Vector2(32, 32);
+
+        // Checkmark
+        var checkObj = new GameObject("Checkmark");
+        checkObj.transform.SetParent(bgObj.transform, false);
+        var checkImg = checkObj.AddComponent<Image>();
+        checkImg.color = new Color(0.3f, 0.8f, 0.3f, 1f);
+        var checkRect = checkObj.GetComponent<RectTransform>();
+        checkRect.anchorMin = new Vector2(0.15f, 0.15f);
+        checkRect.anchorMax = new Vector2(0.85f, 0.85f);
+        checkRect.offsetMin = Vector2.zero;
+        checkRect.offsetMax = Vector2.zero;
+
+        var toggle = obj.AddComponent<Toggle>();
+        toggle.targetGraphic = bgImg;
+        toggle.graphic = checkImg;
+        toggle.isOn = false;
+
+        // Label text to the right of the checkbox
+        var labelText = CreateText(obj.transform, "Label", label, 22);
+        labelText.alignment = TextAlignmentOptions.MidlineLeft;
+        var labelRect = labelText.rectTransform;
+        labelRect.anchorMin = new Vector2(0, 0);
+        labelRect.anchorMax = new Vector2(1, 1);
+        labelRect.offsetMin = new Vector2(42, 0);
+        labelRect.offsetMax = Vector2.zero;
+
+        return toggle;
     }
 
     private static void StretchFill(RectTransform rect)
