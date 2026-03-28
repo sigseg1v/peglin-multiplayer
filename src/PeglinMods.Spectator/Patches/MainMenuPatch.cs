@@ -96,6 +96,7 @@ public static class PlayButtonAwakePatch
 {
     public static void Postfix()
     {
+        SceneWatcher.DiagWrite("PlayButtonAwakePatch.Postfix() FIRED!");
         SpectatorPlugin.Logger?.LogInfo("PlayButtonAwakePatch: PlayButton.Awake fired");
         MenuButtonInjector.InjectIfNeeded();
     }
@@ -107,12 +108,28 @@ public static class PlayButtonAwakePatch
 public class SceneWatcher : MonoBehaviour
 {
     private static ManualLogSource Log => SpectatorPlugin.Logger;
+    private static readonly string DiagFile = System.IO.Path.Combine(
+        System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) ?? ".",
+        "scenewatcher_diag.txt");
     private string _lastScene = "";
     private float _injectTimer = -1f;
     private bool _loggedUpdate;
+    private int _frameCount;
+
+    internal static void DiagWrite(string msg)
+    {
+        try { System.IO.File.AppendAllText(DiagFile, $"[{System.DateTime.Now:HH:mm:ss.fff}] {msg}\n"); }
+        catch { }
+    }
+
+    private void Awake()
+    {
+        DiagWrite($"SceneWatcher.Awake() called on '{gameObject.name}' active={gameObject.activeSelf}");
+    }
 
     private void OnEnable()
     {
+        DiagWrite("SceneWatcher.OnEnable() called");
         SceneManager.sceneLoaded += OnSceneLoaded;
         Log?.LogInfo("SceneWatcher: subscribed to SceneManager.sceneLoaded");
     }
@@ -131,10 +148,16 @@ public class SceneWatcher : MonoBehaviour
     /// </summary>
     private void Update()
     {
+        _frameCount++;
         if (!_loggedUpdate)
         {
             _loggedUpdate = true;
+            DiagWrite($"Update() first call! frame={_frameCount}");
             Log?.LogInfo("SceneWatcher: Update() is firing (MonoBehaviour lifecycle works)");
+        }
+        if (_frameCount % 300 == 0) // Every ~5 seconds at 60fps
+        {
+            DiagWrite($"Update() heartbeat frame={_frameCount} scene={SceneManager.GetActiveScene().name}");
         }
 
         // Timer-based injection after scene change detection
