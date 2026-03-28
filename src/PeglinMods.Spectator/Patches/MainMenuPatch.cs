@@ -31,79 +31,55 @@ public static class MenuButtonInjector
 
             var allButtons = UnityEngine.Object.FindObjectsOfType<Button>(true);
 
-            // Find a menu button to clone (prefer Quit for styling)
-            Button templateBtn = null;
+            // Find a neutral button to clone (Credits/Options — NOT Quit which has red styling)
+            Button cloneSource = null;
             Transform encirclepediaTransform = null;
 
             foreach (var btn in allButtons)
             {
                 var nameUpper = btn.gameObject.name.ToUpperInvariant();
-                if (nameUpper.Contains("QUIT"))
-                    templateBtn = btn;
                 if (nameUpper.Contains("ENCIRCLEPEDIA") || nameUpper.Contains("ENCYCLOPEDIA"))
                     encirclepediaTransform = btn.transform;
+                if (cloneSource == null && (nameUpper.Contains("CREDIT") || nameUpper.Contains("OPTION")))
+                    cloneSource = btn;
             }
 
-            if (templateBtn != null)
+            if (cloneSource == null)
             {
-                var parent = templateBtn.transform.parent;
-
-                // DON'T clone the Quit button - it has child objects, animations,
-                // and scripts that trigger Application.Quit() even after stripping.
-                // Create a fresh button from scratch and match the layout.
-                _multiplayerButton = new GameObject("MultiplayerButton");
-                _multiplayerButton.transform.SetParent(parent, false);
-
-                // Copy RectTransform sizing from template
-                var templateRect = templateBtn.GetComponent<RectTransform>();
-                var rect = _multiplayerButton.AddComponent<RectTransform>();
-                rect.sizeDelta = templateRect.sizeDelta;
-
-                // Copy visual style from template
-                var templateImg = templateBtn.GetComponent<Image>();
-                var img = _multiplayerButton.AddComponent<Image>();
-                if (templateImg != null)
-                {
-                    img.sprite = templateImg.sprite;
-                    img.type = templateImg.type;
-                    img.color = templateImg.color;
-                    img.material = templateImg.material;
-                }
-
-                // Add button with matching color block
-                var btn = _multiplayerButton.AddComponent<Button>();
-                btn.targetGraphic = img;
-                btn.colors = templateBtn.colors;
-                btn.onClick.AddListener(MultiplayerUI.ToggleOverlayStatic);
-
-                // Create text child matching the template's text style
-                var templateText = templateBtn.GetComponentInChildren<TextMeshProUGUI>(true);
-                var textObj = new GameObject("Text");
-                textObj.transform.SetParent(_multiplayerButton.transform, false);
-                var tmp = textObj.AddComponent<TextMeshProUGUI>();
-                tmp.text = "Multiplayer";
-                tmp.alignment = TextAlignmentOptions.Center;
-                if (templateText != null)
-                {
-                    tmp.font = templateText.font;
-                    tmp.fontSize = templateText.fontSize;
-                    tmp.fontStyle = templateText.fontStyle;
-                    tmp.color = templateText.color;
-                    tmp.material = templateText.material;
-                }
-                var textRect = textObj.GetComponent<RectTransform>();
-                textRect.anchorMin = Vector2.zero;
-                textRect.anchorMax = Vector2.one;
-                textRect.offsetMin = Vector2.zero;
-                textRect.offsetMax = Vector2.zero;
-
-                // Place above Encirclepedia if found, otherwise above Quit
-                var targetSibling = encirclepediaTransform ?? templateBtn.transform;
-                _multiplayerButton.transform.SetSiblingIndex(targetSibling.GetSiblingIndex());
-
-                Log?.LogInfo($"MenuButtonInjector: created fresh button above '{targetSibling.gameObject.name}'");
+                Log?.LogWarning("MenuButtonInjector: no Credits/Options button found to clone");
                 return;
             }
+
+            // Clone the entire button — preserves all components, animations, hover behavior
+            _multiplayerButton = UnityEngine.Object.Instantiate(cloneSource.gameObject, cloneSource.transform.parent);
+            _multiplayerButton.name = "MultiplayerButton";
+
+            // Change the text
+            var tmp = _multiplayerButton.GetComponentInChildren<TextMeshProUGUI>(true);
+            if (tmp != null)
+                tmp.text = "Multiplayer";
+
+            // Remove localization so it doesn't overwrite our text
+            foreach (var comp in _multiplayerButton.GetComponentsInChildren<Component>(true))
+            {
+                if (comp != null && comp.GetType().Name == "Localize")
+                    UnityEngine.Object.Destroy(comp);
+            }
+
+            // Rewire click handler — must reset the entire onClick to clear
+            // persistent (inspector-wired) listeners that RemoveAllListeners doesn't touch
+            var button = _multiplayerButton.GetComponent<Button>();
+            if (button != null)
+            {
+                button.onClick = new Button.ButtonClickedEvent();
+                button.onClick.AddListener(MultiplayerUI.ToggleOverlayStatic);
+            }
+
+            // Place above Encirclepedia
+            var targetSibling = encirclepediaTransform ?? cloneSource.transform;
+            _multiplayerButton.transform.SetSiblingIndex(targetSibling.GetSiblingIndex());
+
+            Log?.LogInfo($"MenuButtonInjector: cloned '{cloneSource.gameObject.name}', placed above '{targetSibling.gameObject.name}'");
         }
         catch (Exception ex)
         {
