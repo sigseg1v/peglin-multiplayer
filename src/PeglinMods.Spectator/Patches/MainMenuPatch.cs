@@ -10,10 +10,10 @@ using UnityEngine.UI;
 namespace PeglinMods.Spectator.Patches;
 
 /// <summary>
-/// Injects a "Multiplayer" button into the main menu.
+/// Injects a "Multiplayer" button into the main menu by cloning the Quit button.
 /// Two mechanisms for reliability:
-///   1. Harmony postfix on PlayButton.Awake (primary - fires at exact right time)
-///   2. SceneWatcher MonoBehaviour with SceneManager.sceneLoaded (fallback)
+///   1. Harmony postfix on PlayButton.Awake (fires at exact right time)
+///   2. SceneWatcher with Update() scene polling (fallback)
 /// </summary>
 public static class MenuButtonInjector
 {
@@ -35,9 +35,6 @@ public static class MenuButtonInjector
                 var text = btn.GetComponentInChildren<TextMeshProUGUI>(true);
                 if (text == null) continue;
 
-                Log?.LogDebug($"  Button: '{text.text}' obj='{btn.gameObject.name}'");
-
-                // Find Quit button to clone (ensures matching style/layout)
                 var upper = text.text.ToUpperInvariant();
                 var nameUpper = btn.gameObject.name.ToUpperInvariant();
                 if (!upper.Contains("QUIT") && !nameUpper.Contains("QUIT")) continue;
@@ -51,19 +48,16 @@ public static class MenuButtonInjector
                 _multiplayerButton.name = "MultiplayerButton";
                 _multiplayerButton.transform.SetSiblingIndex(quitTransform.GetSiblingIndex());
 
-                // Update text
                 var tmpText = _multiplayerButton.GetComponentInChildren<TextMeshProUGUI>(true);
                 if (tmpText != null)
                     tmpText.text = "Multiplayer";
 
-                // Remove localization that would overwrite our text
                 foreach (var comp in _multiplayerButton.GetComponentsInChildren<Component>(true))
                 {
                     if (comp != null && comp.GetType().Name.Contains("Localize"))
                         UnityEngine.Object.Destroy(comp);
                 }
 
-                // Rewire button click
                 var button = _multiplayerButton.GetComponent<Button>();
                 button.onClick.RemoveAllListeners();
                 button.onClick.AddListener(MultiplayerUI.ToggleOverlayStatic);
@@ -72,7 +66,7 @@ public static class MenuButtonInjector
                 return;
             }
 
-            Log?.LogWarning("MenuButtonInjector: no Quit button found to clone");
+            Log?.LogWarning("MenuButtonInjector: no Quit button found");
         }
         catch (Exception ex)
         {
@@ -87,79 +81,45 @@ public static class MenuButtonInjector
 }
 
 /// <summary>
-/// Primary injection: Harmony postfix on PlayButton.Awake.
-/// Fires at exactly the right time when the main menu is ready.
-/// This is the same pattern the Morbs mod uses successfully.
+/// Harmony postfix on PlayButton.Awake - fires when main menu is ready.
 /// </summary>
 [HarmonyPatch(typeof(PeglinUI.MainMenu.PlayButton), "Awake")]
 public static class PlayButtonAwakePatch
 {
     public static void Postfix()
     {
-        SceneWatcher.DiagWrite("PlayButtonAwakePatch.Postfix() FIRED!");
         SpectatorPlugin.Logger?.LogInfo("PlayButtonAwakePatch: PlayButton.Awake fired");
         MenuButtonInjector.InjectIfNeeded();
     }
 }
 
 /// <summary>
-/// Fallback A: SceneManager.sceneLoaded on a persistent MonoBehaviour.
+/// Scene watcher on a persistent HideAndDontSave GameObject.
+/// Uses both SceneManager.sceneLoaded and Update() polling.
 /// </summary>
 public class SceneWatcher : MonoBehaviour
 {
     private static ManualLogSource Log => SpectatorPlugin.Logger;
-    private static readonly string DiagFile = System.IO.Path.Combine(
-        System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) ?? ".",
-        "scenewatcher_diag.txt");
     private string _lastScene = "";
     private float _injectTimer = -1f;
-    private bool _loggedUpdate;
-    private int _frameCount;
-
-    internal static void DiagWrite(string msg)
-    {
-        try { System.IO.File.AppendAllText(DiagFile, $"[{System.DateTime.Now:HH:mm:ss.fff}] {msg}\n"); }
-        catch { }
-    }
-
-    private void Awake()
-    {
-        DiagWrite($"SceneWatcher.Awake() called on '{gameObject.name}' active={gameObject.activeSelf}");
-    }
 
     private void OnEnable()
     {
-        DiagWrite("SceneWatcher.OnEnable() called");
         SceneManager.sceneLoaded += OnSceneLoaded;
-        Log?.LogInfo("SceneWatcher: subscribed to SceneManager.sceneLoaded");
-
-        // MonoBehaviour Update() and coroutines don't work for objects created
-        // during BepInEx chainloader phase. Use Application.onBeforeRender instead -
-        // it's a static callback that fires every frame regardless of lifecycle.
-        Application.onBeforeRender += OnBeforeRender;
-        DiagWrite("Subscribed to Application.onBeforeRender");
     }
 
     private void OnDisable()
     {
         SceneManager.sceneLoaded -= OnSceneLoaded;
-        Application.onBeforeRender -= OnBeforeRender;
     }
 
-    private void OnBeforeRender()
+    private void Update()
     {
-        _frameCount++;
-        if (_frameCount == 1)
-            DiagWrite($"onBeforeRender first call! scene={SceneManager.GetActiveScene().name}");
-        if (_frameCount % 300 == 0)
-            DiagWrite($"onBeforeRender heartbeat frame={_frameCount} scene={SceneManager.GetActiveScene().name}");
-
         try
         {
             var currentScene = SceneManager.GetActiveScene().name;
             if (currentScene != _lastScene)
             {
-                DiagWrite($"onBeforeRender scene change: '{_lastScene}' -> '{currentScene}'");
                 Log?.LogInfo($"SceneWatcher: scene change '{_lastScene}' -> '{currentScene}'");
                 _lastScene = currentScene;
                 MenuButtonInjector.Reset();
@@ -174,128 +134,25 @@ public class SceneWatcher : MonoBehaviour
                 if (_injectTimer <= 0f)
                 {
                     _injectTimer = -1f;
-                    DiagWrite("onBeforeRender: injecting menu button");
                     MenuButtonInjector.InjectIfNeeded();
                 }
             }
         }
-        catch (Exception ex)
-        {
-            DiagWrite($"onBeforeRender error: {ex.Message}");
-        }
-    }
-
-    private System.Collections.IEnumerator CoroutineUpdateLoop()
-    {
-        DiagWrite("CoroutineUpdateLoop started");
-        int frame = 0;
-        while (true)
-        {
-            yield return null;
-            frame++;
-
-            if (frame == 1)
-                DiagWrite($"Coroutine first yield-back! scene={SceneManager.GetActiveScene().name}");
-            if (frame % 300 == 0)
-                DiagWrite($"Coroutine heartbeat frame={frame} scene={SceneManager.GetActiveScene().name}");
-
-            // Scene change detection
-            string currentScene = "";
-            try { currentScene = SceneManager.GetActiveScene().name; }
-            catch { continue; }
-
-            if (currentScene != _lastScene)
-            {
-                DiagWrite($"Coroutine detected scene: '{_lastScene}' -> '{currentScene}'");
-                Log?.LogInfo($"SceneWatcher: scene change '{_lastScene}' -> '{currentScene}' (via coroutine)");
-                _lastScene = currentScene;
-                MenuButtonInjector.Reset();
-
-                if (currentScene == "MainMenu")
-                {
-                    DiagWrite("Coroutine: MainMenu detected, waiting 30 frames...");
-                    for (int i = 0; i < 30; i++) yield return null;
-                    DiagWrite("Coroutine: injecting menu button");
-                    MenuButtonInjector.InjectIfNeeded();
-                }
-            }
-        }
-    }
-
-    /// <summary>
-    /// Fallback B: Update() poll. Checks active scene name every frame.
-    /// If we're in MainMenu and haven't injected yet, inject.
-    /// This is the nuclear option - if SceneManager.sceneLoaded and
-    /// Harmony both fail, this still works because Update() on a
-    /// DontDestroyOnLoad MonoBehaviour always fires.
-    /// </summary>
-    private void Update()
-    {
-        _frameCount++;
-        if (!_loggedUpdate)
-        {
-            _loggedUpdate = true;
-            DiagWrite($"Update() first call! frame={_frameCount}");
-            Log?.LogInfo("SceneWatcher: Update() is firing (MonoBehaviour lifecycle works)");
-        }
-        if (_frameCount % 300 == 0) // Every ~5 seconds at 60fps
-        {
-            DiagWrite($"Update() heartbeat frame={_frameCount} scene={SceneManager.GetActiveScene().name}");
-        }
-
-        // Timer-based injection after scene change detection
-        if (_injectTimer >= 0f)
-        {
-            _injectTimer -= Time.deltaTime;
-            if (_injectTimer <= 0f)
-            {
-                _injectTimer = -1f;
-                Log?.LogInfo("SceneWatcher: timer-based injection firing");
-                MenuButtonInjector.InjectIfNeeded();
-            }
-            return;
-        }
-
-        // Poll-based scene detection
-        try
-        {
-            var currentScene = SceneManager.GetActiveScene().name;
-            if (currentScene != _lastScene)
-            {
-                Log?.LogInfo($"SceneWatcher: detected scene change '{_lastScene}' -> '{currentScene}' (via Update poll)");
-                _lastScene = currentScene;
-                MenuButtonInjector.Reset();
-
-                if (currentScene == "MainMenu")
-                {
-                    // Wait 0.5 seconds for scene objects to fully initialize
-                    _injectTimer = 0.5f;
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Log?.LogDebug($"SceneWatcher.Update scene poll: {ex.Message}");
-        }
+        catch { }
     }
 
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
         try
         {
-            Log?.LogInfo($"SceneWatcher: scene '{scene.name}' loaded (mode={mode}) [via sceneLoaded event]");
-            MenuButtonInjector.Reset();
+            Log?.LogInfo($"SceneWatcher: scene '{scene.name}' loaded");
             _lastScene = scene.name;
+            MenuButtonInjector.Reset();
 
             if (scene.name == "MainMenu")
-            {
                 StartCoroutine(DelayedInject());
-            }
         }
-        catch (Exception ex)
-        {
-            Log?.LogError($"SceneWatcher.OnSceneLoaded: {ex}");
-        }
+        catch { }
     }
 
     private System.Collections.IEnumerator DelayedInject()

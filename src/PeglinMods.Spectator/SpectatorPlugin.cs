@@ -76,9 +76,9 @@ public class SpectatorPlugin : BaseUnityPlugin
 
     private void OnDestroy()
     {
-        // BepInEx_Manager gets destroyed - but our _modObject survives
-        // because of HideAndDontSave. Don't destroy it here.
-        _harmony?.UnpatchSelf();
-        _fileLogger?.Dispose();
+        // BepInEx_Manager gets destroyed ~2s after startup, but our
+        // _modObject survives because of HideAndDontSave.
+        // Do NOT dispose fileLogger here - it's still needed by _modObject.
+        // Do NOT unpatch Harmony - patches survive independently.
     }
 }
