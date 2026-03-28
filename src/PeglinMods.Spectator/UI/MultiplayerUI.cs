@@ -85,8 +85,11 @@ public class MultiplayerUI : MonoBehaviour
 
     private void CreateCanvas()
     {
+        // Canvas must be a root-level visible object - NOT parented to the
+        // HideAndDontSave mod object, or Unity UI raycasting won't work.
         _canvasObj = new GameObject("SpectatorMultiplayerCanvas");
-        _canvasObj.transform.SetParent(transform, false);
+        DontDestroyOnLoad(_canvasObj);
+
         _canvas = _canvasObj.AddComponent<Canvas>();
         _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         _canvas.sortingOrder = 100;

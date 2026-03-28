@@ -31,22 +31,31 @@ public static class MenuButtonInjector
 
             var allButtons = UnityEngine.Object.FindObjectsOfType<Button>(true);
 
+            // Find a menu button to clone (prefer Quit for styling)
+            Button templateBtn = null;
+            Transform encirclepediaTransform = null;
+
             foreach (var btn in allButtons)
             {
-                var text = btn.GetComponentInChildren<TextMeshProUGUI>(true);
-                if (text == null) continue;
-
                 var nameUpper = btn.gameObject.name.ToUpperInvariant();
-                if (!nameUpper.Contains("QUIT")) continue;
+                if (nameUpper.Contains("QUIT"))
+                    templateBtn = btn;
+                if (nameUpper.Contains("ENCIRCLEPEDIA") || nameUpper.Contains("ENCYCLOPEDIA"))
+                    encirclepediaTransform = btn.transform;
+            }
 
-                Log?.LogInfo($"MenuButtonInjector: cloning '{btn.gameObject.name}'");
+            if (templateBtn != null)
+            {
+                var parent = templateBtn.transform.parent;
 
-                var quitTransform = btn.transform;
-                var parent = quitTransform.parent;
-
-                _multiplayerButton = UnityEngine.Object.Instantiate(quitTransform.gameObject, parent);
+                _multiplayerButton = UnityEngine.Object.Instantiate(templateBtn.gameObject, parent);
                 _multiplayerButton.name = "MultiplayerButton";
-                _multiplayerButton.transform.SetSiblingIndex(quitTransform.GetSiblingIndex());
+
+                // Place above Encirclepedia if found, otherwise above Quit
+                var targetSibling = encirclepediaTransform ?? templateBtn.transform;
+                _multiplayerButton.transform.SetSiblingIndex(targetSibling.GetSiblingIndex());
+
+                Log?.LogInfo($"MenuButtonInjector: placed above '{targetSibling.gameObject.name}'");
 
                 var tmpText = _multiplayerButton.GetComponentInChildren<TextMeshProUGUI>(true);
                 if (tmpText != null)
