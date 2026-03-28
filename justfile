@@ -78,7 +78,7 @@ dev-multi: setup
     $clientLog = Join-Path $logsDir 'peglinmods_client.log'; \
     [IO.File]::Create($hostLog).Close(); \
     [IO.File]::Create($clientLog).Close(); \
-    $windowArgs = @('-screen-fullscreen','0','-screen-width','960','-screen-height','540'); \
+    $windowArgs = @('-screen-fullscreen','0','-screen-width','1280','-screen-height','720'); \
     $compatBase = "$HOME/.steam/steam/steamapps/compatdata"; \
     Write-Host '==> Launching HOST (windowed)...'; \
     $env:PEGLINMODS_INSTANCE = 'host'; \

@@ -145,6 +145,7 @@ public static class ServiceRegistration
         {
             eventRegistry.Dispatch(new HandshakeEvent
             {
+                PlayerName = UI.MultiplayerUI.LocalPlayerName,
                 ModVersion = SpectatorPluginInfo.VERSION,
                 CompiledGameVersion = SpectatorPluginInfo.COMPILED_GAME_VERSION,
                 RuntimeGameVersion = UnityEngine.Application.version ?? "unknown",

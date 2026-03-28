@@ -8,7 +8,7 @@ public sealed class HandshakeClientHandler : IClientHandler<HandshakeEvent>
     {
         var log = SpectatorPlugin.Logger;
 
-        log.LogInfo($"Received handshake from {(networkEvent.IsHost ? "HOST" : "CLIENT")}:");
+        log.LogInfo($"Received handshake from {(networkEvent.IsHost ? "HOST" : "CLIENT")} '{networkEvent.PlayerName}':");
         log.LogInfo($"  Mod version: {networkEvent.ModVersion}");
         log.LogInfo($"  Compiled for Peglin: {networkEvent.CompiledGameVersion}");
         log.LogInfo($"  Running Peglin: {networkEvent.RuntimeGameVersion}");
@@ -28,6 +28,7 @@ public sealed class HandshakeClientHandler : IClientHandler<HandshakeEvent>
         }
 
         // Store remote info for UI display
+        RemotePeerInfo.PlayerName = networkEvent.PlayerName ?? "Unknown";
         RemotePeerInfo.ModVersion = networkEvent.ModVersion;
         RemotePeerInfo.GameVersion = networkEvent.RuntimeGameVersion;
         RemotePeerInfo.IsHost = networkEvent.IsHost;
@@ -42,6 +43,7 @@ public sealed class HandshakeClientHandler : IClientHandler<HandshakeEvent>
 public static class RemotePeerInfo
 {
     public static bool Received;
+    public static string PlayerName = "";
     public static string ModVersion = "";
     public static string GameVersion = "";
     public static bool IsHost;
@@ -50,6 +52,7 @@ public static class RemotePeerInfo
     public static void Reset()
     {
         Received = false;
+        PlayerName = "";
         ModVersion = "";
         GameVersion = "";
         IsHost = false;

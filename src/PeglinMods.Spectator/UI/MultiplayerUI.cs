@@ -31,6 +31,12 @@ public class MultiplayerUI : MonoBehaviour
     private GameObject _mainPanel;
     private GameObject _hostPanel;
     private GameObject _joinPanel;
+    private GameObject _lobbyPanel;
+
+    // Main panel elements
+    private TMP_InputField _nameInput;
+    private Button _hostButton;
+    private Button _joinButton;
 
     // Join panel elements
     private TMP_InputField _codeInput;
@@ -38,11 +44,14 @@ public class MultiplayerUI : MonoBehaviour
 
     // Host panel elements
     private TextMeshProUGUI _hostInfoText;
-    private TextMeshProUGUI _hostVersionText;
-    private TextMeshProUGUI _lobbyText;
 
-    // Static access for menu button
+    // Lobby panel elements
+    private TextMeshProUGUI _lobbyListText;
+    private TextMeshProUGUI _lobbyStatusText;
+
+    // Static access for menu button and player name
     private static MultiplayerUI _instance;
+    public static string LocalPlayerName { get; private set; } = "";
 
     // State
     private bool _overlayVisible;
@@ -115,20 +124,21 @@ public class MultiplayerUI : MonoBehaviour
 
         // Centered content panel
         var centerPanel = CreatePanel(_overlayPanel.transform, "CenterPanel",
-            new Color(0.12f, 0.12f, 0.12f, 1f), new Vector2(450, 380));
+            new Color(0.12f, 0.12f, 0.12f, 1f), new Vector2(720, 608));
 
         // Title
-        var title = CreateText(centerPanel.transform, "Title", "Multiplayer", 30);
+        var title = CreateText(centerPanel.transform, "Title", "Multiplayer", 48);
         var titleRect = title.rectTransform;
         titleRect.anchorMin = new Vector2(0.5f, 1);
         titleRect.anchorMax = new Vector2(0.5f, 1);
         titleRect.pivot = new Vector2(0.5f, 1);
-        titleRect.anchoredPosition = new Vector2(0, -20);
-        titleRect.sizeDelta = new Vector2(400, 40);
+        titleRect.anchoredPosition = new Vector2(0, -32);
+        titleRect.sizeDelta = new Vector2(640, 64);
 
         CreateMainPanel(centerPanel.transform);
         CreateHostPanel(centerPanel.transform);
         CreateJoinPanel(centerPanel.transform);
+        CreateLobbyPanel(centerPanel.transform);
 
         ShowMainPanel();
     }
@@ -140,20 +150,45 @@ public class MultiplayerUI : MonoBehaviour
         var mainRect = _mainPanel.GetComponent<RectTransform>() ?? _mainPanel.AddComponent<RectTransform>();
         StretchFill(mainRect);
 
-        // Host button
-        var hostBtn = CreateButton(_mainPanel.transform, "HostBtn", "Host Game",
-            new Color(0.2f, 0.55f, 0.25f, 1f), new Vector2(0, 20), new Vector2(300, 55));
-        hostBtn.onClick.AddListener(OnHostClicked);
+        // Name label
+        var nameLabel = CreateText(_mainPanel.transform, "NameLabel", "Name:", 29);
+        var nameLabelRect = nameLabel.rectTransform;
+        nameLabelRect.anchorMin = new Vector2(0.5f, 0.5f);
+        nameLabelRect.anchorMax = new Vector2(0.5f, 0.5f);
+        nameLabelRect.pivot = new Vector2(0.5f, 0.5f);
+        nameLabelRect.anchoredPosition = new Vector2(0, 120);
+        nameLabelRect.sizeDelta = new Vector2(480, 40);
 
-        // Join button
-        var joinBtn = CreateButton(_mainPanel.transform, "JoinBtn", "Join Game",
-            new Color(0.2f, 0.35f, 0.6f, 1f), new Vector2(0, -50), new Vector2(300, 55));
-        joinBtn.onClick.AddListener(OnJoinClicked);
+        // Name input
+        _nameInput = CreateInputField(_mainPanel.transform, "NameInput",
+            "Enter your name...", new Vector2(0, 72), new Vector2(480, 64));
+        _nameInput.characterLimit = 20;
+        _nameInput.onValueChanged.AddListener(OnNameChanged);
+
+        // Host button (disabled until name entered)
+        _hostButton = CreateButton(_mainPanel.transform, "HostBtn", "Host Game",
+            new Color(0.2f, 0.55f, 0.25f, 1f), new Vector2(0, -16), new Vector2(480, 88));
+        _hostButton.onClick.AddListener(OnHostClicked);
+        _hostButton.interactable = false;
+
+        // Join button (disabled until name entered)
+        _joinButton = CreateButton(_mainPanel.transform, "JoinBtn", "Join Game",
+            new Color(0.2f, 0.35f, 0.6f, 1f), new Vector2(0, -120), new Vector2(480, 88));
+        _joinButton.onClick.AddListener(OnJoinClicked);
+        _joinButton.interactable = false;
 
         // Back button
         var backBtn = CreateButton(_mainPanel.transform, "BackBtn", "Close",
-            new Color(0.35f, 0.2f, 0.2f, 1f), new Vector2(0, -120), new Vector2(300, 55));
+            new Color(0.35f, 0.2f, 0.2f, 1f), new Vector2(0, -224), new Vector2(480, 88));
         backBtn.onClick.AddListener(HideOverlay);
+    }
+
+    private void OnNameChanged(string name)
+    {
+        var hasName = !string.IsNullOrWhiteSpace(name);
+        _hostButton.interactable = hasName;
+        _joinButton.interactable = hasName;
+        LocalPlayerName = name.Trim();
     }
 
     private void CreateHostPanel(Transform parent)
@@ -163,35 +198,13 @@ public class MultiplayerUI : MonoBehaviour
         var hostRect = _hostPanel.GetComponent<RectTransform>() ?? _hostPanel.AddComponent<RectTransform>();
         StretchFill(hostRect);
 
-        _hostInfoText = CreateText(_hostPanel.transform, "HostInfo", "", 20);
+        _hostInfoText = CreateText(_hostPanel.transform, "HostInfo", "", 29);
         var infoRect = _hostInfoText.rectTransform;
         infoRect.anchorMin = new Vector2(0.5f, 0.5f);
         infoRect.anchorMax = new Vector2(0.5f, 0.5f);
         infoRect.pivot = new Vector2(0.5f, 0.5f);
-        infoRect.anchoredPosition = new Vector2(0, 50);
-        infoRect.sizeDelta = new Vector2(400, 40);
-
-        _hostVersionText = CreateText(_hostPanel.transform, "HostVersion", "", 14);
-        _hostVersionText.color = new Color(0.6f, 0.6f, 0.6f, 1f);
-        var verRect = _hostVersionText.rectTransform;
-        verRect.anchorMin = new Vector2(0.5f, 0.5f);
-        verRect.anchorMax = new Vector2(0.5f, 0.5f);
-        verRect.pivot = new Vector2(0.5f, 0.5f);
-        verRect.anchoredPosition = new Vector2(0, 15);
-        verRect.sizeDelta = new Vector2(400, 25);
-
-        _lobbyText = CreateText(_hostPanel.transform, "LobbyInfo", "", 15);
-        _lobbyText.alignment = TextAlignmentOptions.Center;
-        var lobbyRect = _lobbyText.rectTransform;
-        lobbyRect.anchorMin = new Vector2(0.5f, 0.5f);
-        lobbyRect.anchorMax = new Vector2(0.5f, 0.5f);
-        lobbyRect.pivot = new Vector2(0.5f, 0.5f);
-        lobbyRect.anchoredPosition = new Vector2(0, -20);
-        lobbyRect.sizeDelta = new Vector2(400, 50);
-
-        var stopBtn = CreateButton(_hostPanel.transform, "StopHostBtn", "Stop Hosting",
-            new Color(0.5f, 0.2f, 0.2f, 1f), new Vector2(0, -80), new Vector2(300, 55));
-        stopBtn.onClick.AddListener(OnStopHostClicked);
+        infoRect.anchoredPosition = new Vector2(0, 80);
+        infoRect.sizeDelta = new Vector2(640, 48);
 
         _hostPanel.SetActive(false);
     }
@@ -204,39 +217,125 @@ public class MultiplayerUI : MonoBehaviour
         StretchFill(joinRect);
 
         // Label
-        var label = CreateText(_joinPanel.transform, "Label", "Enter host code (IP:PORT):", 18);
+        var label = CreateText(_joinPanel.transform, "Label", "Enter host address (IP:PORT):", 29);
         var labelRect = label.rectTransform;
         labelRect.anchorMin = new Vector2(0.5f, 0.5f);
         labelRect.anchorMax = new Vector2(0.5f, 0.5f);
         labelRect.pivot = new Vector2(0.5f, 0.5f);
-        labelRect.anchoredPosition = new Vector2(0, 60);
-        labelRect.sizeDelta = new Vector2(400, 30);
+        labelRect.anchoredPosition = new Vector2(0, 96);
+        labelRect.sizeDelta = new Vector2(640, 48);
 
-        // Input field
+        // Input field with default value
         _codeInput = CreateInputField(_joinPanel.transform, "CodeInput",
-            $"127.0.0.1:{NetworkConfig.DefaultPort}", new Vector2(0, 20), new Vector2(350, 45));
+            "IP:PORT", new Vector2(0, 32), new Vector2(560, 72));
+        _codeInput.text = $"127.0.0.1:{NetworkConfig.DefaultPort}";
 
         // Connect button
         var connectBtn = CreateButton(_joinPanel.transform, "ConnectBtn", "Connect",
-            new Color(0.2f, 0.35f, 0.6f, 1f), new Vector2(0, -40), new Vector2(300, 55));
+            new Color(0.2f, 0.35f, 0.6f, 1f), new Vector2(0, -64), new Vector2(480, 88));
         connectBtn.onClick.AddListener(OnConnectClicked);
 
         // Status text
-        _statusText = CreateText(_joinPanel.transform, "StatusText", "", 16);
+        _statusText = CreateText(_joinPanel.transform, "StatusText", "", 26);
         _statusText.color = new Color(0.8f, 0.8f, 0.3f, 1f);
         var statusRect = _statusText.rectTransform;
         statusRect.anchorMin = new Vector2(0.5f, 0.5f);
         statusRect.anchorMax = new Vector2(0.5f, 0.5f);
         statusRect.pivot = new Vector2(0.5f, 0.5f);
-        statusRect.anchoredPosition = new Vector2(0, -90);
-        statusRect.sizeDelta = new Vector2(400, 30);
+        statusRect.anchoredPosition = new Vector2(0, -144);
+        statusRect.sizeDelta = new Vector2(640, 48);
 
         // Cancel button
         var cancelBtn = CreateButton(_joinPanel.transform, "CancelBtn", "Back",
-            new Color(0.35f, 0.2f, 0.2f, 1f), new Vector2(0, -130), new Vector2(300, 55));
+            new Color(0.35f, 0.2f, 0.2f, 1f), new Vector2(0, -208), new Vector2(480, 88));
         cancelBtn.onClick.AddListener(OnCancelJoinClicked);
 
         _joinPanel.SetActive(false);
+    }
+
+    private void CreateLobbyPanel(Transform parent)
+    {
+        _lobbyPanel = new GameObject("LobbyPanel");
+        _lobbyPanel.transform.SetParent(parent, false);
+        var rect = _lobbyPanel.GetComponent<RectTransform>() ?? _lobbyPanel.AddComponent<RectTransform>();
+        StretchFill(rect);
+
+        // Lobby title
+        var lobbyTitle = CreateText(_lobbyPanel.transform, "LobbyTitle", "Lobby", 38);
+        var titleRect = lobbyTitle.rectTransform;
+        titleRect.anchorMin = new Vector2(0.5f, 1);
+        titleRect.anchorMax = new Vector2(0.5f, 1);
+        titleRect.pivot = new Vector2(0.5f, 1);
+        titleRect.anchoredPosition = new Vector2(0, -16);
+        titleRect.sizeDelta = new Vector2(640, 48);
+
+        // Player list
+        _lobbyListText = CreateText(_lobbyPanel.transform, "LobbyList", "", 28);
+        _lobbyListText.alignment = TextAlignmentOptions.TopLeft;
+        var listRect = _lobbyListText.rectTransform;
+        listRect.anchorMin = new Vector2(0.5f, 0.5f);
+        listRect.anchorMax = new Vector2(0.5f, 0.5f);
+        listRect.pivot = new Vector2(0.5f, 0.5f);
+        listRect.anchoredPosition = new Vector2(0, 40);
+        listRect.sizeDelta = new Vector2(580, 160);
+
+        // Status line
+        _lobbyStatusText = CreateText(_lobbyPanel.transform, "LobbyStatus", "", 22);
+        _lobbyStatusText.color = new Color(0.6f, 0.6f, 0.6f, 1f);
+        var statusRect = _lobbyStatusText.rectTransform;
+        statusRect.anchorMin = new Vector2(0.5f, 0.5f);
+        statusRect.anchorMax = new Vector2(0.5f, 0.5f);
+        statusRect.pivot = new Vector2(0.5f, 0.5f);
+        statusRect.anchoredPosition = new Vector2(0, -80);
+        statusRect.sizeDelta = new Vector2(640, 40);
+
+        // Disconnect button
+        var disconnectBtn = CreateButton(_lobbyPanel.transform, "DisconnectBtn", "Disconnect",
+            new Color(0.5f, 0.2f, 0.2f, 1f), new Vector2(0, -160), new Vector2(480, 88));
+        disconnectBtn.onClick.AddListener(OnDisconnectClicked);
+
+        _lobbyPanel.SetActive(false);
+    }
+
+    private void UpdateLobbyPanel()
+    {
+        if (_lobbyListText == null) return;
+
+        var lines = "";
+        var myRole = _spectatorMode.IsHosting ? "Host" : "Client";
+        lines += $"  <color=#88FF88>{LocalPlayerName}</color>  <color=#AAAAAA>({myRole} - You)</color>\n";
+
+        if (RemotePeerInfo.Received)
+        {
+            var remoteRole = RemotePeerInfo.IsHost ? "Host" : "Client";
+            lines += $"  <color=#88AAFF>{RemotePeerInfo.PlayerName}</color>  <color=#AAAAAA>({remoteRole})</color>\n";
+        }
+        else if (_transport.IsConnected)
+        {
+            lines += "  <color=#AAAA55>Connecting...</color>\n";
+        }
+        else if (_spectatorMode.IsHosting)
+        {
+            lines += "  <color=#AAAA55>Waiting for player...</color>\n";
+        }
+
+        _lobbyListText.text = lines;
+
+        if (_spectatorMode.IsHosting)
+            _lobbyStatusText.text = $"Hosting on port {NetworkConfig.DefaultPort}";
+        else if (_transport.IsConnected)
+            _lobbyStatusText.text = "Connected";
+        else
+            _lobbyStatusText.text = "Connecting...";
+    }
+
+    private void OnDisconnectClicked()
+    {
+        _transport.Stop();
+        _spectatorMode.Disable();
+        RemotePeerInfo.Reset();
+        Log?.LogInfo("Disconnected");
+        ShowMainPanel();
     }
 
     // --- Panel switching ---
@@ -246,6 +345,16 @@ public class MultiplayerUI : MonoBehaviour
         _mainPanel.SetActive(true);
         _hostPanel.SetActive(false);
         _joinPanel.SetActive(false);
+        _lobbyPanel.SetActive(false);
+    }
+
+    private void ShowLobby()
+    {
+        _mainPanel.SetActive(false);
+        _hostPanel.SetActive(false);
+        _joinPanel.SetActive(false);
+        _lobbyPanel.SetActive(true);
+        UpdateLobbyPanel();
     }
 
     private void ShowOverlay()
@@ -253,11 +362,9 @@ public class MultiplayerUI : MonoBehaviour
         _overlayVisible = true;
         _overlayPanel.SetActive(true);
 
-        // If already hosting or spectating, show the relevant panel
-        if (_spectatorMode.IsHosting)
-            ShowHostingState();
-        else if (_spectatorMode.IsSpectating)
-            ShowJoinPanel();
+        // If already hosting or spectating, show the lobby
+        if (_spectatorMode.IsHosting || _spectatorMode.IsSpectating)
+            ShowLobby();
         else
             ShowMainPanel();
     }
@@ -294,39 +401,13 @@ public class MultiplayerUI : MonoBehaviour
         _mainPanel.SetActive(false);
         _hostPanel.SetActive(false);
         _joinPanel.SetActive(true);
+        _lobbyPanel.SetActive(false);
         _statusText.text = _lastConnectionStatus;
     }
 
     private void ShowHostingState()
     {
-        var ip = GetLocalIP();
-        _hostInfoText.text = $"Hosting on: <b>{ip}:{NetworkConfig.DefaultPort}</b>";
-        _hostVersionText.text = $"Host Version: mod={SpectatorPluginInfo.VERSION} game={Application.version}";
-        UpdateLobbyText();
-        _mainPanel.SetActive(false);
-        _joinPanel.SetActive(false);
-        _hostPanel.SetActive(true);
-    }
-
-    private void UpdateLobbyText()
-    {
-        if (_lobbyText == null) return;
-
-        if (RemotePeerInfo.Received)
-        {
-            var mismatch = RemotePeerInfo.GameVersion != (Application.version ?? "unknown")
-                ? " <color=#FF6666>(MISMATCH!)</color>" : "";
-            _lobbyText.text = $"Client connected\n" +
-                $"Client Version: mod={RemotePeerInfo.ModVersion} game={RemotePeerInfo.GameVersion}{mismatch}";
-        }
-        else if (_transport.IsConnected)
-        {
-            _lobbyText.text = "Client connected (awaiting handshake...)";
-        }
-        else
-        {
-            _lobbyText.text = "Waiting for client to connect...";
-        }
+        ShowLobby();
     }
 
     // --- Button handlers ---
@@ -338,7 +419,7 @@ public class MultiplayerUI : MonoBehaviour
             _spectatorMode.EnableHosting();
             _transport.StartHost(NetworkConfig.DefaultPort);
             Log.LogInfo($"Started hosting on port {NetworkConfig.DefaultPort}");
-            ShowHostingState();
+            ShowLobby();
         }
         catch (Exception ex)
         {
@@ -372,10 +453,10 @@ public class MultiplayerUI : MonoBehaviour
         try
         {
             _statusText.text = $"Connecting to {ip}:{port}...";
-            _lastConnectionStatus = _statusText.text;
-            _transport.Connect(ip, port);
             _spectatorMode.EnableSpectating();
+            _transport.Connect(ip, port);
             Log.LogInfo($"Connecting to {ip}:{port}");
+            // OnConnected callback will switch to lobby panel
         }
         catch (Exception ex)
         {
@@ -385,23 +466,8 @@ public class MultiplayerUI : MonoBehaviour
         }
     }
 
-    private void OnStopHostClicked()
-    {
-        _transport.Stop();
-        _spectatorMode.Disable();
-        Log.LogInfo("Stopped hosting");
-        ShowMainPanel();
-    }
-
     private void OnCancelJoinClicked()
     {
-        if (_spectatorMode.IsSpectating)
-        {
-            _transport.Stop();
-            _spectatorMode.Disable();
-            _lastConnectionStatus = "";
-            Log.LogInfo("Disconnected");
-        }
         ShowMainPanel();
     }
 
@@ -411,11 +477,14 @@ public class MultiplayerUI : MonoBehaviour
     {
         _lastConnectionStatus = "Connected!";
         if (_statusText != null)
-        {
-            _statusText.text = $"Connected!\nClient Version: mod={SpectatorPluginInfo.VERSION} game={Application.version}";
-            _statusText.color = new Color(0.3f, 0.8f, 0.3f, 1f);
-        }
-        UpdateLobbyText();
+            _statusText.text = "Connected!";
+
+        // If we're on the join panel, switch to lobby
+        if (_joinPanel.activeSelf)
+            ShowLobby();
+        else
+            UpdateLobbyPanel();
+
         Log.LogInfo("Connected to host");
     }
 
@@ -423,12 +492,7 @@ public class MultiplayerUI : MonoBehaviour
     {
         _lastConnectionStatus = "Disconnected";
         RemotePeerInfo.Reset();
-        if (_statusText != null)
-        {
-            _statusText.text = "Disconnected";
-            _statusText.color = new Color(0.8f, 0.3f, 0.3f, 1f);
-        }
-        UpdateLobbyText();
+        UpdateLobbyPanel();
         Log.LogInfo("Disconnected from host");
     }
 
@@ -508,7 +572,7 @@ public class MultiplayerUI : MonoBehaviour
         rect.anchoredPosition = position;
         rect.sizeDelta = size;
 
-        var text = CreateText(obj.transform, "Label", label, 22);
+        var text = CreateText(obj.transform, "Label", label, 35);
         StretchFill(text.rectTransform);
 
         return btn;
@@ -543,7 +607,7 @@ public class MultiplayerUI : MonoBehaviour
         var inputTextObj = new GameObject("Text");
         inputTextObj.transform.SetParent(textArea.transform, false);
         var inputText = inputTextObj.AddComponent<TextMeshProUGUI>();
-        inputText.fontSize = 20;
+        inputText.fontSize = 32;
         inputText.color = Color.white;
         inputText.alignment = TextAlignmentOptions.MidlineLeft;
         StretchFill(inputText.rectTransform);
@@ -553,7 +617,7 @@ public class MultiplayerUI : MonoBehaviour
         placeholderObj.transform.SetParent(textArea.transform, false);
         var placeholderText = placeholderObj.AddComponent<TextMeshProUGUI>();
         placeholderText.text = placeholder;
-        placeholderText.fontSize = 20;
+        placeholderText.fontSize = 32;
         placeholderText.color = new Color(0.5f, 0.5f, 0.5f, 0.8f);
         placeholderText.fontStyle = FontStyles.Italic;
         placeholderText.alignment = TextAlignmentOptions.MidlineLeft;
@@ -565,7 +629,7 @@ public class MultiplayerUI : MonoBehaviour
         inputField.textComponent = inputText;
         inputField.placeholder = placeholderText;
         inputField.fontAsset = inputText.font;
-        inputField.pointSize = 20;
+        inputField.pointSize = 32;
         inputField.characterLimit = 50;
 
         return inputField;
