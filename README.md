@@ -1,6 +1,6 @@
 # PeglinMods
 
-A modding framework and multiplayer spectator mode for [Peglin](https://store.steampowered.com/app/1296610/Peglin/) (v2.0.7, Unity 2022.3, Mono).
+A modding framework and multiplayer multiplayer mode for [Peglin](https://store.steampowered.com/app/1296610/Peglin/) (v2.0.7, Unity 2022.3, Mono).
 
 Built with BepInEx 5 + HarmonyX. Cross-platform: Windows (native) and Linux (Proton/Wine).
 All scripts use PowerShell (pwsh) for portability.
@@ -38,7 +38,7 @@ just uninstall # remove BepInEx from release/ (restore to vanilla)
 ```
 src/
   PeglinMods.Core/         Core plugin: crash reporter disable, Harmony bootstrap
-  PeglinMods.Spectator/    Multiplayer spectator mode
+  PeglinMods.Multiplayer/    Multiplayer mode
 release/                   Game files (do not modify directly)
 install/                   Install/uninstall scripts for end users
 ```
@@ -52,14 +52,14 @@ install/                   Install/uninstall scripts for end users
 
 2. Press **F7** in-game to open the Multiplayer overlay.
 
-## Multiplayer (Spectator Mode)
+## Multiplayer (Multiplayer Mode)
 
 One player hosts, another spectates in real-time.
 
 - **Host**: Press F7 > Host Game. Share the displayed IP:PORT code.
 - **Join**: Press F7 > Join Game. Enter the host's code and click Connect.
 
-The host's game events are captured via static delegate subscriptions, serialized as JSON, and sent over LiteNetLib UDP to the spectator client, which replays them by invoking the same game delegates locally.
+The host's game events are captured via static delegate subscriptions, serialized as JSON, and sent over LiteNetLib UDP to the multiplayer client, which replays them by invoking the same game delegates locally.
 
 ## Architecture
 
