@@ -32,6 +32,7 @@ public class MultiplayerUI : MonoBehaviour
     private GameObject _hostPanel;
     private GameObject _joinPanel;
     private GameObject _lobbyPanel;
+    private GameObject _spectatorPanel;
 
     // Main panel elements
     private TMP_InputField _nameInput;
@@ -48,6 +49,11 @@ public class MultiplayerUI : MonoBehaviour
     // Lobby panel elements
     private TextMeshProUGUI _lobbyListText;
     private TextMeshProUGUI _lobbyStatusText;
+    private Button _playButton;
+
+    // Spectator panel elements (client fullscreen event feed)
+    private TextMeshProUGUI _spectatorFeedText;
+    private int _lastFeedVersion;
 
     // Static access for menu button and player name
     private static MultiplayerUI _instance;
@@ -77,6 +83,20 @@ public class MultiplayerUI : MonoBehaviour
         catch (Exception ex)
         {
             Log?.LogError($"MultiplayerUI.Start() failed: {ex}");
+        }
+    }
+
+    private void Update()
+    {
+        // Refresh lobby display when visible (handshake arrives asynchronously)
+        if (_lobbyPanel != null && _lobbyPanel.activeSelf)
+            UpdateLobbyPanel();
+
+        // Refresh spectator feed when visible and new events arrived
+        if (_spectatorPanel != null && _spectatorPanel.activeSelf && EventFeed.Version != _lastFeedVersion)
+        {
+            _lastFeedVersion = EventFeed.Version;
+            _spectatorFeedText.text = EventFeed.GetText(40);
         }
     }
 
@@ -260,24 +280,25 @@ public class MultiplayerUI : MonoBehaviour
         var rect = _lobbyPanel.GetComponent<RectTransform>() ?? _lobbyPanel.AddComponent<RectTransform>();
         StretchFill(rect);
 
-        // Lobby title
-        var lobbyTitle = CreateText(_lobbyPanel.transform, "LobbyTitle", "Lobby", 38);
-        var titleRect = lobbyTitle.rectTransform;
-        titleRect.anchorMin = new Vector2(0.5f, 1);
-        titleRect.anchorMax = new Vector2(0.5f, 1);
-        titleRect.pivot = new Vector2(0.5f, 1);
-        titleRect.anchoredPosition = new Vector2(0, -16);
-        titleRect.sizeDelta = new Vector2(640, 48);
+        // "Players:" label — positioned below the parent's "Multiplayer" title
+        var playersLabel = CreateText(_lobbyPanel.transform, "PlayersLabel", "Players:", 28);
+        playersLabel.alignment = TextAlignmentOptions.Left;
+        var plRect = playersLabel.rectTransform;
+        plRect.anchorMin = new Vector2(0.5f, 0.5f);
+        plRect.anchorMax = new Vector2(0.5f, 0.5f);
+        plRect.pivot = new Vector2(0.5f, 0.5f);
+        plRect.anchoredPosition = new Vector2(0, 120);
+        plRect.sizeDelta = new Vector2(580, 36);
 
         // Player list
-        _lobbyListText = CreateText(_lobbyPanel.transform, "LobbyList", "", 28);
+        _lobbyListText = CreateText(_lobbyPanel.transform, "LobbyList", "", 26);
         _lobbyListText.alignment = TextAlignmentOptions.TopLeft;
         var listRect = _lobbyListText.rectTransform;
         listRect.anchorMin = new Vector2(0.5f, 0.5f);
         listRect.anchorMax = new Vector2(0.5f, 0.5f);
         listRect.pivot = new Vector2(0.5f, 0.5f);
-        listRect.anchoredPosition = new Vector2(0, 40);
-        listRect.sizeDelta = new Vector2(580, 160);
+        listRect.anchoredPosition = new Vector2(0, 50);
+        listRect.sizeDelta = new Vector2(580, 100);
 
         // Status line
         _lobbyStatusText = CreateText(_lobbyPanel.transform, "LobbyStatus", "", 22);
@@ -286,12 +307,18 @@ public class MultiplayerUI : MonoBehaviour
         statusRect.anchorMin = new Vector2(0.5f, 0.5f);
         statusRect.anchorMax = new Vector2(0.5f, 0.5f);
         statusRect.pivot = new Vector2(0.5f, 0.5f);
-        statusRect.anchoredPosition = new Vector2(0, -80);
-        statusRect.sizeDelta = new Vector2(640, 40);
+        statusRect.anchoredPosition = new Vector2(0, -20);
+        statusRect.sizeDelta = new Vector2(640, 36);
+
+        // Play button (host only, hidden until client connects)
+        _playButton = CreateButton(_lobbyPanel.transform, "PlayBtn", "Play",
+            new Color(0.2f, 0.55f, 0.25f, 1f), new Vector2(0, -100), new Vector2(480, 88));
+        _playButton.onClick.AddListener(OnPlayClicked);
+        _playButton.gameObject.SetActive(false);
 
         // Disconnect button
         var disconnectBtn = CreateButton(_lobbyPanel.transform, "DisconnectBtn", "Disconnect",
-            new Color(0.5f, 0.2f, 0.2f, 1f), new Vector2(0, -160), new Vector2(480, 88));
+            new Color(0.5f, 0.2f, 0.2f, 1f), new Vector2(0, -200), new Vector2(480, 88));
         disconnectBtn.onClick.AddListener(OnDisconnectClicked);
 
         _lobbyPanel.SetActive(false);
@@ -305,10 +332,12 @@ public class MultiplayerUI : MonoBehaviour
         var myRole = _spectatorMode.IsHosting ? "Host" : "Client";
         lines += $"  <color=#88FF88>{LocalPlayerName}</color>  <color=#AAAAAA>({myRole} - You)</color>\n";
 
+        bool remoteConnected = false;
         if (RemotePeerInfo.Received)
         {
             var remoteRole = RemotePeerInfo.IsHost ? "Host" : "Client";
             lines += $"  <color=#88AAFF>{RemotePeerInfo.PlayerName}</color>  <color=#AAAAAA>({remoteRole})</color>\n";
+            remoteConnected = true;
         }
         else if (_transport.IsConnected)
         {
@@ -327,6 +356,10 @@ public class MultiplayerUI : MonoBehaviour
             _lobbyStatusText.text = "Connected";
         else
             _lobbyStatusText.text = "Connecting...";
+
+        // Show Play button for host when a client is connected
+        if (_playButton != null)
+            _playButton.gameObject.SetActive(_spectatorMode.IsHosting && remoteConnected);
     }
 
     private void OnDisconnectClicked()
@@ -334,8 +367,81 @@ public class MultiplayerUI : MonoBehaviour
         _transport.Stop();
         _spectatorMode.Disable();
         RemotePeerInfo.Reset();
+        if (_spectatorPanel != null)
+            _spectatorPanel.SetActive(false);
+        _overlayPanel.SetActive(true);
         Log?.LogInfo("Disconnected");
         ShowMainPanel();
+    }
+
+    private void OnPlayClicked()
+    {
+        // Host clicks Play → hide overlay and start a new game
+        HideOverlay();
+        var playButton = UnityEngine.Object.FindObjectOfType<PeglinUI.MainMenu.PlayButton>();
+        if (playButton != null)
+        {
+            playButton.MovetoCharacterSelect();
+            Log?.LogInfo("Host starting game via PlayButton.MovetoCharacterSelect()");
+        }
+        else
+        {
+            Log?.LogWarning("PlayButton not found — cannot start game");
+        }
+    }
+
+    private void CreateSpectatorPanel()
+    {
+        // Fullscreen event feed for the client — created on the canvas directly, not inside centerPanel
+        _spectatorPanel = new GameObject("SpectatorPanel");
+        _spectatorPanel.transform.SetParent(_canvasObj.transform, false);
+        var bg = _spectatorPanel.AddComponent<Image>();
+        bg.color = new Color(0.05f, 0.05f, 0.1f, 0.95f);
+        StretchFill(_spectatorPanel.GetComponent<RectTransform>());
+
+        // Title bar
+        var title = CreateText(_spectatorPanel.transform, "SpectatorTitle", "Spectating — Event Feed", 32);
+        var titleRect = title.rectTransform;
+        titleRect.anchorMin = new Vector2(0, 1);
+        titleRect.anchorMax = new Vector2(1, 1);
+        titleRect.pivot = new Vector2(0.5f, 1);
+        titleRect.anchoredPosition = new Vector2(0, -10);
+        titleRect.sizeDelta = new Vector2(0, 48);
+
+        // Scrolling event text
+        _spectatorFeedText = CreateText(_spectatorPanel.transform, "FeedText", "", 18);
+        _spectatorFeedText.alignment = TextAlignmentOptions.TopLeft;
+        _spectatorFeedText.enableWordWrapping = true;
+        _spectatorFeedText.overflowMode = TextOverflowModes.Truncate;
+        var feedRect = _spectatorFeedText.rectTransform;
+        feedRect.anchorMin = new Vector2(0, 0);
+        feedRect.anchorMax = new Vector2(1, 1);
+        feedRect.offsetMin = new Vector2(20, 80);
+        feedRect.offsetMax = new Vector2(-20, -64);
+
+        // Disconnect button at bottom
+        var disconnectBtn = CreateButton(_spectatorPanel.transform, "SpectatorDisconnect", "Disconnect",
+            new Color(0.5f, 0.2f, 0.2f, 1f), new Vector2(0, 0), new Vector2(300, 60));
+        var dcRect = disconnectBtn.GetComponent<RectTransform>();
+        dcRect.anchorMin = new Vector2(0.5f, 0);
+        dcRect.anchorMax = new Vector2(0.5f, 0);
+        dcRect.pivot = new Vector2(0.5f, 0);
+        dcRect.anchoredPosition = new Vector2(0, 10);
+        disconnectBtn.onClick.AddListener(OnDisconnectClicked);
+
+        _spectatorPanel.SetActive(false);
+    }
+
+    private void ShowSpectatorView()
+    {
+        if (_spectatorPanel == null)
+            CreateSpectatorPanel();
+
+        _overlayPanel.SetActive(false);
+        _spectatorPanel.SetActive(true);
+        _overlayVisible = true;
+        EventFeed.Clear();
+        _lastFeedVersion = -1;
     }
 
     // --- Panel switching ---
@@ -360,10 +466,17 @@ public class MultiplayerUI : MonoBehaviour
     private void ShowOverlay()
     {
         _overlayVisible = true;
+
+        // Client spectating: show fullscreen event feed
+        if (_spectatorMode.IsSpectating && _transport.IsConnected)
+        {
+            ShowSpectatorView();
+            return;
+        }
+
         _overlayPanel.SetActive(true);
 
-        // If already hosting or spectating, show the lobby
-        if (_spectatorMode.IsHosting || _spectatorMode.IsSpectating)
+        if (_spectatorMode.IsHosting)
             ShowLobby();
         else
             ShowMainPanel();
@@ -476,14 +589,17 @@ public class MultiplayerUI : MonoBehaviour
     private void OnConnected()
     {
         _lastConnectionStatus = "Connected!";
-        if (_statusText != null)
-            _statusText.text = "Connected!";
 
-        // If we're on the join panel, switch to lobby
-        if (_joinPanel.activeSelf)
-            ShowLobby();
+        if (_spectatorMode.IsSpectating)
+        {
+            // Client: switch to fullscreen spectator event feed
+            ShowSpectatorView();
+        }
         else
+        {
+            // Host: refresh lobby
             UpdateLobbyPanel();
+        }
 
         Log.LogInfo("Connected to host");
     }

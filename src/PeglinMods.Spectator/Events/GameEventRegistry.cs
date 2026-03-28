@@ -90,6 +90,9 @@ public class GameEventRegistry : IGameEventRegistry
 
     public void HandleIncoming(string typeId, string jsonPayload)
     {
+        // Feed all incoming events to the spectator UI
+        UI.EventFeed.Add(typeId, jsonPayload ?? "");
+
         if (_clientDispatchers.TryGetValue(typeId, out var dispatcher))
         {
             try
