@@ -7,6 +7,7 @@ using PeglinMods.Multiplayer.DI;
 using PeglinMods.Multiplayer.Events.Handlers;
 using PeglinMods.Multiplayer.Network;
 using PeglinMods.Multiplayer.Multiplayer;
+using PeglinMods.Multiplayer.GameState.Appliers;
 using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -56,6 +57,10 @@ public class MultiplayerUI : MonoBehaviour
     private TextMeshProUGUI _multiplayerFeedText;
     private int _lastFeedVersion;
 
+    // Mirror mode waiting overlay
+    private GameObject _waitingPanel;
+    private TextMeshProUGUI _waitingText;
+
     // Static access for menu button and player name
     private static MultiplayerUI _instance;
     public static string LocalPlayerName { get; private set; } = "";
@@ -100,6 +105,26 @@ public class MultiplayerUI : MonoBehaviour
         {
             _lastFeedVersion = EventFeed.Version;
             _multiplayerFeedText.text = EventFeed.GetText(40);
+        }
+
+        // Mirror mode waiting overlay — shows when host is on a non-followable scene
+        if (_multiplayerMode.IsSpectating && _multiplayerMode.ClientMode == ClientMode.Mirror)
+        {
+            var waitMsg = MapStateApplier.ClientWaitingMessage;
+            if (!string.IsNullOrEmpty(waitMsg))
+            {
+                if (_waitingPanel == null) CreateWaitingPanel();
+                _waitingPanel.SetActive(true);
+                _waitingText.text = waitMsg;
+            }
+            else if (_waitingPanel != null)
+            {
+                _waitingPanel.SetActive(false);
+            }
+        }
+        else if (_waitingPanel != null)
+        {
+            _waitingPanel.SetActive(false);
         }
     }
 
@@ -437,6 +462,26 @@ public class MultiplayerUI : MonoBehaviour
         disconnectBtn.onClick.AddListener(OnDisconnectClicked);
 
         _multiplayerPanel.SetActive(false);
+    }
+
+    private void CreateWaitingPanel()
+    {
+        _waitingPanel = new GameObject("WaitingPanel");
+        _waitingPanel.transform.SetParent(_canvasObj.transform, false);
+        var bg = _waitingPanel.AddComponent<Image>();
+        bg.color = new Color(0.05f, 0.05f, 0.1f, 0.92f);
+        StretchFill(_waitingPanel.GetComponent<RectTransform>());
+
+        _waitingText = CreateText(_waitingPanel.transform, "WaitingText", "", 42);
+        _waitingText.alignment = TextAlignmentOptions.Center;
+        var rect = _waitingText.rectTransform;
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = Vector2.zero;
+        rect.sizeDelta = new Vector2(800, 200);
+
+        _waitingPanel.SetActive(false);
     }
 
     private void ShowMultiplayerView()

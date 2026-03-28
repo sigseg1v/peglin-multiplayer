@@ -36,7 +36,7 @@ public class BallPositionSync : MonoBehaviour
         if (Time.time - _lastSendTime < _sendInterval) return;
         _lastSendTime = Time.time;
 
-        var ball = FindObjectOfType<PachinkoBall>();
+        var ball = FindActiveBall();
         if (ball == null) return;
 
         var rb = ball.GetComponent<Rigidbody2D>();
@@ -50,5 +50,19 @@ public class BallPositionSync : MonoBehaviour
             VelX = vel.x,
             VelY = vel.y,
         });
+    }
+
+    /// <summary>
+    /// Find the real battle ball, not a menu background dummy ball.
+    /// PachinkoBall.IsDummy is true for decorative balls in the menu.
+    /// </summary>
+    private static PachinkoBall FindActiveBall()
+    {
+        foreach (var ball in FindObjectsOfType<PachinkoBall>())
+        {
+            if (!ball.IsDummy)
+                return ball;
+        }
+        return null;
     }
 }

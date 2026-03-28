@@ -3,6 +3,7 @@ using Battle;
 using BepInEx.Logging;
 using PeglinMods.Multiplayer.GameState;
 using PeglinMods.Multiplayer.Multiplayer;
+using UnityEngine.SceneManagement;
 
 namespace PeglinMods.Multiplayer.Events.Subscriptions;
 
@@ -65,6 +66,14 @@ public sealed class StateSyncSubscriptions
         // Sync relics when they change
         Relics.RelicManager.OnRelicAdded += (_) => SafeSync("RelicAdded", () => _sync.SyncRelics());
         Relics.RelicManager.OnRelicRemoved += (_) => SafeSync("RelicRemoved", () => _sync.SyncRelics());
+
+        // Sync map state on ANY scene change so the client follows the host
+        // through PostMainMenu → ForestMap → Battle → etc.
+        SceneManager.sceneLoaded += (scene, loadMode) =>
+        {
+            if (loadMode == LoadSceneMode.Single)
+                SafeSync("SceneLoaded:" + scene.name, () => _sync.SyncMap());
+        };
 
         _log.LogInfo("StateSyncSubscriptions registered");
     }

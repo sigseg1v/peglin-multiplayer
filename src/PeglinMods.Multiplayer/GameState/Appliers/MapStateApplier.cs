@@ -4,6 +4,7 @@ using BepInEx.Logging;
 using Loading;
 using Peglin.ClassSystem;
 using PeglinMods.Multiplayer.GameState.Snapshots;
+using PeglinMods.Multiplayer.Patches;
 using PeglinUtils;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -13,6 +14,12 @@ namespace PeglinMods.Multiplayer.GameState.Appliers;
 public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
 {
     private readonly ManualLogSource _log;
+
+    /// <summary>
+    /// Message to display on the mirror client when waiting for the host.
+    /// Null when no waiting state is active (client should render the game).
+    /// </summary>
+    public static string ClientWaitingMessage { get; private set; }
 
     // Maps scene names (from SceneManager) back to PeglinSceneLoader.Scene enum values.
     private static readonly Dictionary<string, PeglinSceneLoader.Scene> SceneNameToEnum =
@@ -45,12 +52,23 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             // Apply static game data fields so the game's systems see the host's run state
             ApplyStaticGameData(snapshot);
 
-            // Don't load PostMainMenu on client - host is selecting initial relic, just wait
+            // Scenes where the client can't follow — show waiting message instead
             if (snapshot.ActiveScene == "PostMainMenu")
             {
-                _log.LogInfo("[MapApplier] Host is selecting initial relic - waiting...");
+                ClientWaitingMessage = "Host is selecting starting relic...";
+                _log.LogInfo("[MapApplier] Host is on PostMainMenu — showing waiting message");
                 return;
             }
+
+            if (snapshot.ActiveScene == "MainMenu")
+            {
+                ClientWaitingMessage = "Waiting for host to start game...";
+                _log.LogInfo("[MapApplier] Host is on MainMenu — showing waiting message");
+                return;
+            }
+
+            // Clear waiting state — we're loading a real game scene
+            ClientWaitingMessage = null;
 
             // Check if we need to follow the host to a different scene
             var currentScene = SceneManager.GetActiveScene().name;
@@ -97,11 +115,13 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         if (sceneLoader != null && SceneNameToEnum.TryGetValue(targetSceneName, out var sceneEnum))
         {
             _log.LogInfo($"[MapApplier] Using PeglinSceneLoader.LoadScene({sceneEnum})");
+            // Set bypass flag so our Harmony patch allows this scene load through
+            MultiplayerClientPatches.AllowNextSceneLoad = true;
             sceneLoader.LoadScene(sceneEnum);
             return;
         }
 
-        // Fallback: use Unity SceneManager directly
+        // Fallback: use Unity SceneManager directly (not patched, always works)
         _log.LogWarning($"[MapApplier] PeglinSceneLoader unavailable or unknown scene '{targetSceneName}', falling back to SceneManager");
         SceneManager.LoadScene(targetSceneName);
     }
