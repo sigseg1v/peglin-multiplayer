@@ -133,15 +133,56 @@ public class SceneWatcher : MonoBehaviour
         SceneManager.sceneLoaded += OnSceneLoaded;
         Log?.LogInfo("SceneWatcher: subscribed to SceneManager.sceneLoaded");
 
-        // Start a coroutine-based update loop as alternative to Update().
-        // Coroutines use Unity's coroutine scheduler, which is separate from
-        // the MonoBehaviour Update registration that fails during chainloader.
-        StartCoroutine(CoroutineUpdateLoop());
+        // MonoBehaviour Update() and coroutines don't work for objects created
+        // during BepInEx chainloader phase. Use Application.onBeforeRender instead -
+        // it's a static callback that fires every frame regardless of lifecycle.
+        Application.onBeforeRender += OnBeforeRender;
+        DiagWrite("Subscribed to Application.onBeforeRender");
     }
 
     private void OnDisable()
     {
         SceneManager.sceneLoaded -= OnSceneLoaded;
+        Application.onBeforeRender -= OnBeforeRender;
+    }
+
+    private void OnBeforeRender()
+    {
+        _frameCount++;
+        if (_frameCount == 1)
+            DiagWrite($"onBeforeRender first call! scene={SceneManager.GetActiveScene().name}");
+        if (_frameCount % 300 == 0)
+            DiagWrite($"onBeforeRender heartbeat frame={_frameCount} scene={SceneManager.GetActiveScene().name}");
+
+        try
+        {
+            var currentScene = SceneManager.GetActiveScene().name;
+            if (currentScene != _lastScene)
+            {
+                DiagWrite($"onBeforeRender scene change: '{_lastScene}' -> '{currentScene}'");
+                Log?.LogInfo($"SceneWatcher: scene change '{_lastScene}' -> '{currentScene}'");
+                _lastScene = currentScene;
+                MenuButtonInjector.Reset();
+
+                if (currentScene == "MainMenu")
+                    _injectTimer = 0.5f;
+            }
+
+            if (_injectTimer > 0f)
+            {
+                _injectTimer -= Time.deltaTime;
+                if (_injectTimer <= 0f)
+                {
+                    _injectTimer = -1f;
+                    DiagWrite("onBeforeRender: injecting menu button");
+                    MenuButtonInjector.InjectIfNeeded();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            DiagWrite($"onBeforeRender error: {ex.Message}");
+        }
     }
 
     private System.Collections.IEnumerator CoroutineUpdateLoop()
