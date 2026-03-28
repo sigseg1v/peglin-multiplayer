@@ -48,41 +48,60 @@ public static class MenuButtonInjector
             {
                 var parent = templateBtn.transform.parent;
 
-                _multiplayerButton = UnityEngine.Object.Instantiate(templateBtn.gameObject, parent);
-                _multiplayerButton.name = "MultiplayerButton";
+                // DON'T clone the Quit button - it has child objects, animations,
+                // and scripts that trigger Application.Quit() even after stripping.
+                // Create a fresh button from scratch and match the layout.
+                _multiplayerButton = new GameObject("MultiplayerButton");
+                _multiplayerButton.transform.SetParent(parent, false);
 
-                // Remove ALL components except Transform, RectTransform, Button,
-                // Image, and TMP text. The cloned Quit button may have components
-                // that trigger Application.Quit() or other unwanted behavior.
-                foreach (var comp in _multiplayerButton.GetComponents<Component>())
+                // Copy RectTransform sizing from template
+                var templateRect = templateBtn.GetComponent<RectTransform>();
+                var rect = _multiplayerButton.AddComponent<RectTransform>();
+                rect.sizeDelta = templateRect.sizeDelta;
+
+                // Copy visual style from template
+                var templateImg = templateBtn.GetComponent<Image>();
+                var img = _multiplayerButton.AddComponent<Image>();
+                if (templateImg != null)
                 {
-                    if (comp is Transform || comp is RectTransform ||
-                        comp is Button || comp is Image)
-                        continue;
-                    UnityEngine.Object.Destroy(comp);
+                    img.sprite = templateImg.sprite;
+                    img.type = templateImg.type;
+                    img.color = templateImg.color;
+                    img.material = templateImg.material;
                 }
+
+                // Add button with matching color block
+                var btn = _multiplayerButton.AddComponent<Button>();
+                btn.targetGraphic = img;
+                btn.colors = templateBtn.colors;
+                btn.onClick.AddListener(MultiplayerUI.ToggleOverlayStatic);
+
+                // Create text child matching the template's text style
+                var templateText = templateBtn.GetComponentInChildren<TextMeshProUGUI>(true);
+                var textObj = new GameObject("Text");
+                textObj.transform.SetParent(_multiplayerButton.transform, false);
+                var tmp = textObj.AddComponent<TextMeshProUGUI>();
+                tmp.text = "Multiplayer";
+                tmp.alignment = TextAlignmentOptions.Center;
+                if (templateText != null)
+                {
+                    tmp.font = templateText.font;
+                    tmp.fontSize = templateText.fontSize;
+                    tmp.fontStyle = templateText.fontStyle;
+                    tmp.color = templateText.color;
+                    tmp.material = templateText.material;
+                }
+                var textRect = textObj.GetComponent<RectTransform>();
+                textRect.anchorMin = Vector2.zero;
+                textRect.anchorMax = Vector2.one;
+                textRect.offsetMin = Vector2.zero;
+                textRect.offsetMax = Vector2.zero;
 
                 // Place above Encirclepedia if found, otherwise above Quit
                 var targetSibling = encirclepediaTransform ?? templateBtn.transform;
                 _multiplayerButton.transform.SetSiblingIndex(targetSibling.GetSiblingIndex());
 
-                Log?.LogInfo($"MenuButtonInjector: placed above '{targetSibling.gameObject.name}'");
-
-                var tmpText = _multiplayerButton.GetComponentInChildren<TextMeshProUGUI>(true);
-                if (tmpText != null)
-                    tmpText.text = "Multiplayer";
-
-                foreach (var comp in _multiplayerButton.GetComponentsInChildren<Component>(true))
-                {
-                    if (comp != null && comp.GetType().Name.Contains("Localize"))
-                        UnityEngine.Object.Destroy(comp);
-                }
-
-                var button = _multiplayerButton.GetComponent<Button>();
-                button.onClick.RemoveAllListeners();
-                button.onClick.AddListener(MultiplayerUI.ToggleOverlayStatic);
-
-                Log?.LogInfo("MenuButtonInjector: Multiplayer button injected!");
+                Log?.LogInfo($"MenuButtonInjector: created fresh button above '{targetSibling.gameObject.name}'");
                 return;
             }
         }
