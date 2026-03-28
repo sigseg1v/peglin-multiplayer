@@ -54,19 +54,28 @@ public class MultiplayerUI : MonoBehaviour
 
     private void Start()
     {
-        _instance = this;
-        _transport = SpectatorPlugin.Services.Resolve<INetworkTransport>();
-        _spectatorMode = SpectatorPlugin.Services.Resolve<ISpectatorMode>();
+        try
+        {
+            _instance = this;
+            _transport = SpectatorPlugin.Services.Resolve<INetworkTransport>();
+            _spectatorMode = SpectatorPlugin.Services.Resolve<ISpectatorMode>();
 
-        _transport.OnClientConnected += OnConnected;
-        _transport.OnDisconnected += OnDisconnected;
+            _transport.OnClientConnected += OnConnected;
+            _transport.OnDisconnected += OnDisconnected;
 
-        CreateCanvas();
-        CreateCornerIndicator();
-        CreateOverlay();
+            CreateCanvas();
+            CreateCornerIndicator();
+            CreateOverlay();
 
-        HideOverlay();
-        UpdateCornerIndicator();
+            HideOverlay();
+            UpdateCornerIndicator();
+
+            Log?.LogInfo("MultiplayerUI initialized");
+        }
+        catch (Exception ex)
+        {
+            Log?.LogError($"MultiplayerUI.Start() failed: {ex}");
+        }
     }
 
     private void OnDestroy()
@@ -342,8 +351,17 @@ public class MultiplayerUI : MonoBehaviour
 
     public static void ToggleOverlayStatic()
     {
-        if (_instance != null)
-            _instance.ToggleOverlay();
+        try
+        {
+            if (_instance != null)
+                _instance.ToggleOverlay();
+            else
+                SpectatorPlugin.Logger?.LogWarning("MultiplayerUI: instance is null, cannot toggle overlay");
+        }
+        catch (Exception ex)
+        {
+            SpectatorPlugin.Logger?.LogError($"MultiplayerUI.ToggleOverlay crashed: {ex}");
+        }
     }
 
     private void ShowJoinPanel()

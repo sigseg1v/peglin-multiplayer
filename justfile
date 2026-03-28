@@ -52,10 +52,7 @@ copy-plugins config="Debug":
     $bin = '{{src}}/PeglinMods.Spectator/bin/{{config}}/netstandard2.1'; \
     Copy-Item '{{src}}/PeglinMods.Core/bin/{{config}}/netstandard2.1/PeglinMods.Core.dll' '{{plugins}}/'; \
     Copy-Item "$bin/PeglinMods.Spectator.dll" '{{plugins}}/'; \
-    foreach ($dep in @('System.ValueTuple')) { \
-        $f = "$bin/$dep.dll"; \
-        if (Test-Path $f) { Copy-Item $f '{{plugins}}/' } \
-    }
+    Copy-Item "$bin/LiteNetLib.dll" '{{plugins}}/'
 
 # Build debug, deploy to game dir, launch game, tail logs
 dev: setup

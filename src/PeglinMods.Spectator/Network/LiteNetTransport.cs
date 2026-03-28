@@ -1,21 +1,16 @@
 using System;
 using System.Collections.Generic;
-using System.Net;
-using System.Net.Sockets;
+using LiteNetLib;
 
 namespace PeglinMods.Spectator.Network;
 
-/// <summary>
-/// Simple TCP transport. No external dependencies.
-/// </summary>
-public class LiteNetTransport : INetworkTransport
+public class LiteNetTransport : INetworkTransport, INetEventListener
 {
-    private TcpListener _listener;
-    private TcpClient _client;
-    private readonly List<TcpClient> _peers = new List<TcpClient>();
+    private NetManager _netManager;
+    private readonly List<NetPeer> _peers = new List<NetPeer>();
 
     public bool IsHost { get; private set; }
-    public bool IsConnected => _peers.Count > 0 || (_client?.Connected ?? false);
+    public bool IsConnected => _peers.Count > 0;
 
     public event Action<byte[]> OnDataReceived;
     public event Action OnClientConnected;
@@ -24,91 +19,59 @@ public class LiteNetTransport : INetworkTransport
     public void StartHost(int port)
     {
         IsHost = true;
-        _listener = new TcpListener(IPAddress.Any, port);
-        _listener.Start();
-        _listener.BeginAcceptTcpClient(OnAccept, null);
+        _netManager = new NetManager(this) { AutoRecycle = true };
+        _netManager.Start(port);
     }
 
     public void Connect(string address, int port)
     {
         IsHost = false;
-        _client = new TcpClient();
-        _client.BeginConnect(address, port, OnConnectedCallback, null);
+        _netManager = new NetManager(this) { AutoRecycle = true };
+        _netManager.Start();
+        _netManager.Connect(address, port, NetworkConfig.ConnectionKey);
     }
 
     public void Send(byte[] data) => Broadcast(data);
 
     public void Broadcast(byte[] data)
     {
-        var frame = new byte[4 + data.Length];
-        BitConverter.GetBytes(data.Length).CopyTo(frame, 0);
-        data.CopyTo(frame, 4);
-
         foreach (var peer in _peers)
-            try { peer.GetStream().Write(frame, 0, frame.Length); } catch { }
-
-        if (_client?.Connected == true)
-            try { _client.GetStream().Write(frame, 0, frame.Length); } catch { }
+            peer.Send(data, DeliveryMethod.ReliableOrdered);
     }
 
-    public void PollEvents()
-    {
-        if (_listener != null && _listener.Pending())
-            _listener.BeginAcceptTcpClient(OnAccept, null);
-
-        foreach (var peer in _peers.ToArray())
-            ReadFrom(peer);
-
-        if (_client?.Connected == true)
-            ReadFrom(_client);
-    }
+    public void PollEvents() => _netManager?.PollEvents();
 
     public void Stop()
     {
-        try { _listener?.Stop(); } catch { }
-        try { _client?.Close(); } catch { }
-        foreach (var p in _peers) try { p.Close(); } catch { }
+        _netManager?.Stop();
         _peers.Clear();
     }
 
-    private void ReadFrom(TcpClient tcp)
+    public void OnPeerConnected(NetPeer peer)
     {
-        try
-        {
-            var stream = tcp.GetStream();
-            while (stream.DataAvailable)
-            {
-                var lenBuf = new byte[4];
-                stream.Read(lenBuf, 0, 4);
-                var len = BitConverter.ToInt32(lenBuf, 0);
-                var data = new byte[len];
-                int read = 0;
-                while (read < len)
-                    read += stream.Read(data, read, len - read);
-                OnDataReceived?.Invoke(data);
-            }
-        }
-        catch { }
+        _peers.Add(peer);
+        OnClientConnected?.Invoke();
     }
 
-    private void OnAccept(IAsyncResult ar)
+    public void OnPeerDisconnected(NetPeer peer, DisconnectInfo disconnectInfo)
     {
-        try
-        {
-            var peer = _listener.EndAcceptTcpClient(ar);
-            _peers.Add(peer);
-            OnClientConnected?.Invoke();
-        }
-        catch { }
+        _peers.Remove(peer);
+        OnDisconnected?.Invoke();
     }
 
-    private void OnConnectedCallback(IAsyncResult ar)
+    public void OnNetworkReceive(NetPeer peer, NetPacketReader reader, byte channelNumber, DeliveryMethod deliveryMethod)
     {
-        try
-        {
-            _client.EndConnect(ar);
-            OnClientConnected?.Invoke();
-        }
-        catch { OnDisconnected?.Invoke(); }
+        var data = new byte[reader.AvailableBytes];
+        reader.GetBytes(data, data.Length);
+        OnDataReceived?.Invoke(data);
     }
+
+    public void OnConnectionRequest(ConnectionRequest request)
+    {
+        request.AcceptIfKey(NetworkConfig.ConnectionKey);
+    }
+
+    public void OnNetworkError(System.Net.IPEndPoint endPoint, System.Net.Sockets.SocketError socketError) { }
+    public void OnNetworkReceiveUnconnected(System.Net.IPEndPoint remoteEndPoint, NetPacketReader reader, UnconnectedMessageType messageType) { }
+    public void OnNetworkLatencyUpdate(NetPeer peer, int latency) { }
 }
