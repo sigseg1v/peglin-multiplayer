@@ -21,7 +21,6 @@ public class SpectatorPlugin : BaseUnityPlugin
     public new static ManualLogSource Logger { get; private set; }
 
     private Harmony _harmony;
-    private GameObject _networkObj;
     private FileLogger _fileLogger;
 
     private void Awake()
@@ -40,24 +39,17 @@ public class SpectatorPlugin : BaseUnityPlugin
             // DI container
             Services = ServiceRegistration.CreateAndConfigure(Logger);
 
-            // Persistent game object for MonoBehaviour components
-            _networkObj = new GameObject("PeglinMods_Spectator");
-            DontDestroyOnLoad(_networkObj);
-
-            // Network polling (calls transport.PollEvents() every frame)
-            var poller = _networkObj.AddComponent<NetworkPollBehaviour>();
+            // Add all MonoBehaviour components to THIS gameObject (the BepInEx manager).
+            // Creating a separate new GameObject during chainloader doesn't get Unity
+            // update loop registration. The BepInEx manager object IS in the loop.
+            var poller = gameObject.AddComponent<NetworkPollBehaviour>();
             poller.Initialize(Services.Resolve<INetworkTransport>());
 
-            // Main thread dispatcher for network callbacks
-            var dispatcher = _networkObj.AddComponent<MainThreadDispatcher>();
+            var dispatcher = gameObject.AddComponent<MainThreadDispatcher>();
             Services.RegisterSingleton<MainThreadDispatcher>(dispatcher);
 
-            // Multiplayer UI overlay (F7 hotkey, host/join panels)
-            _networkObj.AddComponent<MultiplayerUI>();
-
-            // Scene watcher - detects scene changes via SceneManager.sceneLoaded
-            // and injects the Multiplayer button into the main menu
-            _networkObj.AddComponent<SceneWatcher>();
+            gameObject.AddComponent<MultiplayerUI>();
+            gameObject.AddComponent<SceneWatcher>();
 
             // Harmony patches
             _harmony = new Harmony(SpectatorPluginInfo.GUID);
@@ -76,6 +68,5 @@ public class SpectatorPlugin : BaseUnityPlugin
         _harmony?.UnpatchSelf();
         try { Services?.Resolve<INetworkTransport>()?.Stop(); } catch { }
         _fileLogger?.Dispose();
-        if (_networkObj != null) Destroy(_networkObj);
     }
 }
