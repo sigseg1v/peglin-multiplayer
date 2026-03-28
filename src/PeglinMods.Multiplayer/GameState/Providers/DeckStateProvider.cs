@@ -1,6 +1,6 @@
 using System;
+using System.Collections.Generic;
 using BepInEx.Logging;
-using HarmonyLib;
 using Battle.Attacks;
 using PeglinMods.Multiplayer.GameState.Snapshots;
 using UnityEngine;
@@ -19,33 +19,28 @@ public class DeckStateProvider : IGameStateProvider<DeckStateSnapshot>
         {
             var snapshot = new DeckStateSnapshot();
 
-            // DeckManager is a ScriptableObject - find via scene references
-            var dm = UnityEngine.Object.FindObjectOfType<DeckManager>();
+            // DeckManager is a ScriptableObject - FindObjectOfType won't find it
+            var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
+            var dm = dms.Length > 0 ? dms[0] : null;
             if (dm == null) return snapshot;
 
-            // Complete deck
-            var completeDeckField = AccessTools.Field(typeof(DeckManager), "completeDeck")
-                ?? AccessTools.Field(typeof(DeckManager), "_completeDeck");
-            var completeDeck = completeDeckField?.GetValue(dm) as System.Collections.IList;
+            // completeDeck is a public static field
+            var completeDeck = DeckManager.completeDeck;
             if (completeDeck != null)
             {
-                foreach (var orbObj in completeDeck)
+                foreach (var go in completeDeck)
                 {
-                    var go = orbObj as GameObject;
                     if (go == null) continue;
                     snapshot.CompleteDeck.Add(CreateOrbEntry(go));
                 }
             }
 
-            // Battle deck (the shuffled draw pile)
-            var battleDeckField = AccessTools.Field(typeof(DeckManager), "battleDeck")
-                ?? AccessTools.Field(typeof(DeckManager), "_battleDeck");
-            var battleDeck = battleDeckField?.GetValue(dm) as System.Collections.IList;
+            // battleDeck is a public instance field
+            var battleDeck = dm.battleDeck;
             if (battleDeck != null)
             {
-                foreach (var orbObj in battleDeck)
+                foreach (var go in battleDeck)
                 {
-                    var go = orbObj as GameObject;
                     if (go == null) continue;
                     snapshot.BattleDeck.Add(CreateOrbEntry(go));
                 }

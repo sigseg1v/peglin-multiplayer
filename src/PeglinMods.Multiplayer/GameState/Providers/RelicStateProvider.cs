@@ -20,8 +20,9 @@ public class RelicStateProvider : IGameStateProvider<RelicStateSnapshot>
         {
             var snapshot = new RelicStateSnapshot();
 
-            // RelicManager is a ScriptableObject
-            var rm = UnityEngine.Object.FindObjectOfType<RelicManager>();
+            // RelicManager is a ScriptableObject - FindObjectOfType won't find it
+            var rms = Resources.FindObjectsOfTypeAll<RelicManager>();
+            var rm = rms.Length > 0 ? rms[0] : null;
             if (rm == null) return snapshot;
 
             // _ownedRelics is a Dictionary<RelicEffect, Relic>

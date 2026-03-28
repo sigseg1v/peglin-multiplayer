@@ -23,20 +23,15 @@ public class PlayerStateProvider : IGameStateProvider<PlayerStateSnapshot>
             var healthCtrl = UnityEngine.Object.FindObjectOfType<Battle.PlayerHealthController>();
             if (healthCtrl != null)
             {
-                var healthField = AccessTools.Field(typeof(Battle.PlayerHealthController), "playerHealth");
-                var maxHealthField = AccessTools.Field(typeof(Battle.PlayerHealthController), "maxPlayerHealth");
-                var healthVar = healthField?.GetValue(healthCtrl);
-                var maxHealthVar = maxHealthField?.GetValue(healthCtrl);
+                // CurrentHealth is a public property
+                snapshot.CurrentHealth = healthCtrl.CurrentHealth;
 
-                if (healthVar != null)
+                // _maxPlayerHealth is a private FloatVariable field
+                var maxHpVar = AccessTools.Field(typeof(Battle.PlayerHealthController), "_maxPlayerHealth")?.GetValue(healthCtrl);
+                if (maxHpVar != null)
                 {
-                    var valueProp = AccessTools.Property(healthVar.GetType(), "Value");
-                    snapshot.CurrentHealth = (float)(valueProp?.GetValue(healthVar) ?? 0f);
-                }
-                if (maxHealthVar != null)
-                {
-                    var valueProp = AccessTools.Property(maxHealthVar.GetType(), "Value");
-                    snapshot.MaxHealth = (float)(valueProp?.GetValue(maxHealthVar) ?? 0f);
+                    var valueProp = AccessTools.Property(maxHpVar.GetType(), "Value");
+                    snapshot.MaxHealth = (float)(valueProp?.GetValue(maxHpVar) ?? 0f);
                 }
             }
 

@@ -3,6 +3,7 @@ using BepInEx;
 using BepInEx.Logging;
 using HarmonyLib;
 using PeglinMods.Multiplayer.DI;
+using PeglinMods.Multiplayer.GameState;
 using PeglinMods.Multiplayer.Network;
 using PeglinMods.Multiplayer.Patches;
 using PeglinMods.Multiplayer.Multiplayer;
@@ -54,6 +55,7 @@ public class MultiplayerPlugin : BaseUnityPlugin
 
             _modObject.AddComponent<MultiplayerUI>();
             _modObject.AddComponent<SceneWatcher>();
+            _modObject.AddComponent<BallPositionSync>();
 
             _harmony = new Harmony(MultiplayerPluginInfo.GUID);
             _harmony.PatchAll();

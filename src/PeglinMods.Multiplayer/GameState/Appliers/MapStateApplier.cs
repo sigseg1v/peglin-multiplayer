@@ -4,6 +4,7 @@ using BepInEx.Logging;
 using Loading;
 using Peglin.ClassSystem;
 using PeglinMods.Multiplayer.GameState.Snapshots;
+using PeglinUtils;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -44,6 +45,13 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             // Apply static game data fields so the game's systems see the host's run state
             ApplyStaticGameData(snapshot);
 
+            // Don't load PostMainMenu on client - host is selecting initial relic, just wait
+            if (snapshot.ActiveScene == "PostMainMenu")
+            {
+                _log.LogInfo("[MapApplier] Host is selecting initial relic - waiting...");
+                return;
+            }
+
             // Check if we need to follow the host to a different scene
             var currentScene = SceneManager.GetActiveScene().name;
             var targetScene = snapshot.ActiveScene;
@@ -65,7 +73,9 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
 
     private void ApplyStaticGameData(MapStateSnapshot snapshot)
     {
-        StaticGameData.currentSeed = snapshot.CurrentSeed ?? "";
+        var seed = snapshot.CurrentSeed ?? "";
+        StaticGameData.currentSeed = seed;
+        StaticGameData.seedSet = true;
         StaticGameData.totalFloorCount = snapshot.TotalFloorCount;
         StaticGameData.chosenNextNodeIndex = snapshot.ChosenNextNodeIndex;
         StaticGameData.hasReachedBoss = snapshot.HasReachedBoss;
@@ -73,7 +83,11 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         if (Enum.IsDefined(typeof(Class), snapshot.ChosenClass))
             StaticGameData.chosenClass = (Class)snapshot.ChosenClass;
 
-        _log.LogInfo($"[MapApplier] StaticGameData: seed={snapshot.CurrentSeed}, floor={snapshot.TotalFloorCount}, class={StaticGameData.chosenClass}, node={snapshot.ChosenNextNodeIndex}");
+        // Initialize Unity RNG from the host's seed so generated content matches
+        if (!string.IsNullOrEmpty(seed) && SeedUtils.IsStringAValidSeed(seed))
+            UnityEngine.Random.InitState(SeedUtils.ConvertSeedFromSymbolsToInt(seed));
+
+        _log.LogInfo($"[MapApplier] StaticGameData: seed={seed}, seedSet=true, floor={snapshot.TotalFloorCount}, class={StaticGameData.chosenClass}, node={snapshot.ChosenNextNodeIndex}");
     }
 
     private void LoadTargetScene(string targetSceneName)
