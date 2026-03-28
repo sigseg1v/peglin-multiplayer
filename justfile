@@ -67,6 +67,35 @@ dev: setup
     Start-Sleep 1; \
     Get-Content '{{logfile}}' -Wait
 
+# Build, deploy, launch TWO windowed instances for multiplayer testing.
+# Tails the host log only; client log at BepInEx/logs/peglinmods_client.log
+dev-multi: setup
+    dotnet build '{{src}}/PeglinMods.sln' -c Debug --nologo -v quiet; \
+    just copy-plugins Debug; \
+    $logsDir = Split-Path '{{logfile}}'; \
+    New-Item -ItemType Directory -Path $logsDir -Force | Out-Null; \
+    $hostLog = Join-Path $logsDir 'peglinmods_host.log'; \
+    $clientLog = Join-Path $logsDir 'peglinmods_client.log'; \
+    [IO.File]::Create($hostLog).Close(); \
+    [IO.File]::Create($clientLog).Close(); \
+    $windowArgs = @('-screen-fullscreen','0','-screen-width','960','-screen-height','540'); \
+    $compatBase = "$HOME/.steam/steam/steamapps/compatdata"; \
+    Write-Host '==> Launching HOST (windowed)...'; \
+    $env:PEGLINMODS_INSTANCE = 'host'; \
+    $env:STEAM_COMPAT_DATA_PATH = "$compatBase/1296610"; \
+    Start-Process pwsh -ArgumentList (@('-NoProfile','-File','{{root}}/launch.ps1') + $windowArgs); \
+    Start-Sleep 2; \
+    Write-Host '==> Launching CLIENT (windowed)...'; \
+    $env:PEGLINMODS_INSTANCE = 'client'; \
+    $env:STEAM_COMPAT_DATA_PATH = "$compatBase/1296611"; \
+    Start-Process pwsh -ArgumentList (@('-NoProfile','-File','{{root}}/launch.ps1') + $windowArgs); \
+    Remove-Item Env:\PEGLINMODS_INSTANCE,Env:\STEAM_COMPAT_DATA_PATH -ErrorAction SilentlyContinue; \
+    Write-Host "==> Tailing HOST log (Ctrl+C to stop)"; \
+    Write-Host "    Host log:   $hostLog"; \
+    Write-Host "    Client log: $clientLog`n"; \
+    Start-Sleep 1; \
+    Get-Content $hostLog -Wait
+
 # Deploy plugin to game dir without launching
 deploy: setup
     dotnet build '{{src}}/PeglinMods.sln' -c Debug --nologo -v quiet; \

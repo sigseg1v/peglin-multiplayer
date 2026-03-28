@@ -64,7 +64,11 @@ if (-not (Test-Path $ProtonBin)) {
     exit 1
 }
 
-$CompatData = "$HOME/.steam/steam/steamapps/compatdata/1296610"
+# Use existing STEAM_COMPAT_DATA_PATH if set (for multi-instance), else default
+$CompatData = $env:STEAM_COMPAT_DATA_PATH
+if (-not $CompatData) {
+    $CompatData = "$HOME/.steam/steam/steamapps/compatdata/1296610"
+}
 New-Item -ItemType Directory -Path $CompatData -Force | Out-Null
 
 $env:STEAM_COMPAT_DATA_PATH = $CompatData

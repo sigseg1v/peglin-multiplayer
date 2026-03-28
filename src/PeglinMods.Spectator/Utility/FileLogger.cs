@@ -13,11 +13,16 @@ public sealed class FileLogger : IDisposable
     {
         Directory.CreateDirectory(logsDirectory);
 
+        // PEGLINMODS_INSTANCE env var allows multiple instances with separate logs
+        // (e.g. "host" → peglinmods_host.log, "client" → peglinmods_client.log)
+        var instance = Environment.GetEnvironmentVariable("PEGLINMODS_INSTANCE");
 #if DEBUG
-        _filePath = Path.Combine(logsDirectory, "peglinmods_dev.log");
+        var suffix = string.IsNullOrEmpty(instance) ? "dev" : instance;
+        _filePath = Path.Combine(logsDirectory, $"peglinmods_{suffix}.log");
 #else
         var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-        _filePath = Path.Combine(logsDirectory, $"peglinmods_{timestamp}.log");
+        var tag = string.IsNullOrEmpty(instance) ? "" : $"_{instance}";
+        _filePath = Path.Combine(logsDirectory, $"peglinmods_{timestamp}{tag}.log");
 #endif
         _writer = new StreamWriter(_filePath, append: false) { AutoFlush = true };
 
