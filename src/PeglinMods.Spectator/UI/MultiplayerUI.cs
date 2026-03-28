@@ -26,10 +26,6 @@ public class MultiplayerUI : MonoBehaviour
     private GameObject _canvasObj;
     private Canvas _canvas;
 
-    // Corner indicator (always visible)
-    private GameObject _cornerIndicator;
-    private TextMeshProUGUI _cornerText;
-
     // Overlay panels
     private GameObject _overlayPanel;
     private GameObject _mainPanel;
@@ -64,11 +60,8 @@ public class MultiplayerUI : MonoBehaviour
             _transport.OnDisconnected += OnDisconnected;
 
             CreateCanvas();
-            CreateCornerIndicator();
             CreateOverlay();
-
             HideOverlay();
-            UpdateCornerIndicator();
 
             Log?.LogInfo("MultiplayerUI initialized");
         }
@@ -88,17 +81,6 @@ public class MultiplayerUI : MonoBehaviour
         if (_canvasObj != null) Destroy(_canvasObj);
     }
 
-    private void Update()
-    {
-        if (UnityEngine.Input.GetKeyDown(KeyCode.F7))
-        {
-            if (_overlayVisible) HideOverlay();
-            else ShowOverlay();
-        }
-
-        UpdateCornerIndicator();
-    }
-
     // --- Canvas ---
 
     private void CreateCanvas()
@@ -115,66 +97,6 @@ public class MultiplayerUI : MonoBehaviour
         scaler.matchWidthOrHeight = 0.5f;
 
         _canvasObj.AddComponent<GraphicRaycaster>();
-    }
-
-    // --- Corner Indicator ---
-
-    private void CreateCornerIndicator()
-    {
-        _cornerIndicator = new GameObject("CornerIndicator");
-        _cornerIndicator.transform.SetParent(_canvasObj.transform, false);
-
-        var bg = _cornerIndicator.AddComponent<Image>();
-        bg.color = new Color(0.1f, 0.1f, 0.1f, 0.7f);
-
-        var rect = _cornerIndicator.GetComponent<RectTransform>();
-        rect.anchorMin = new Vector2(1, 0);
-        rect.anchorMax = new Vector2(1, 0);
-        rect.pivot = new Vector2(1, 0);
-        rect.anchoredPosition = new Vector2(-10, 10);
-        rect.sizeDelta = new Vector2(200, 40);
-
-        var btn = _cornerIndicator.AddComponent<Button>();
-        btn.onClick.AddListener(ToggleOverlay);
-
-        _cornerText = CreateText(_cornerIndicator.transform, "CornerText", "Multiplayer [F7]", 16);
-        StretchFill(_cornerText.rectTransform);
-    }
-
-    private void UpdateCornerIndicator()
-    {
-        if (_cornerText == null) return;
-
-        if (_spectatorMode.IsHosting)
-        {
-            _cornerText.text = _transport.IsConnected ? "Hosting (1)" : "Hosting";
-            _cornerIndicator.GetComponent<Image>().color = new Color(0.1f, 0.4f, 0.15f, 0.8f);
-            UpdateLobbyText();
-        }
-        else if (_spectatorMode.IsSpectating && _transport.IsConnected)
-        {
-            _cornerText.text = "Spectating";
-            _cornerIndicator.GetComponent<Image>().color = new Color(0.15f, 0.2f, 0.5f, 0.8f);
-
-            // Update join panel with host version after handshake
-            if (RemotePeerInfo.Received && _statusText != null && !_statusText.text.Contains("Host Version"))
-            {
-                var mismatch = RemotePeerInfo.GameVersion != (Application.version ?? "")
-                    ? " <color=#FF6666>(MISMATCH!)</color>" : "";
-                _statusText.text = $"Connected!\nClient Version: mod={SpectatorPluginInfo.VERSION} game={Application.version}\n" +
-                    $"Host Version: mod={RemotePeerInfo.ModVersion} game={RemotePeerInfo.GameVersion}{mismatch}";
-            }
-        }
-        else if (_spectatorMode.IsSpectating && !_transport.IsConnected)
-        {
-            _cornerText.text = "Connecting...";
-            _cornerIndicator.GetComponent<Image>().color = new Color(0.5f, 0.4f, 0.1f, 0.8f);
-        }
-        else
-        {
-            _cornerText.text = "Multiplayer [F7]";
-            _cornerIndicator.GetComponent<Image>().color = new Color(0.1f, 0.1f, 0.1f, 0.7f);
-        }
     }
 
     // --- Overlay ---

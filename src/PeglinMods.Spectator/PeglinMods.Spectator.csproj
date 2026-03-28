@@ -4,6 +4,7 @@
     <Product>PeglinMods</Product>
     <Version>0.1.0</Version>
     <Description>Multiplayer spectator mode for Peglin</Description>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
   <ItemGroup>
