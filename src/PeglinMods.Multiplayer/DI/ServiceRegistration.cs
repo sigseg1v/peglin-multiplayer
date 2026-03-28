@@ -10,7 +10,10 @@ using PeglinMods.Multiplayer.Events.Handlers.Health;
 using PeglinMods.Multiplayer.Events.Handlers.Map;
 using PeglinMods.Multiplayer.Events.Handlers.Peg;
 using PeglinMods.Multiplayer.Events.Handlers.Relic;
+using PeglinMods.Multiplayer.Events.Handlers.State;
 using PeglinMods.Multiplayer.Events.Handlers.StatusEffect;
+using PeglinMods.Multiplayer.GameState;
+using PeglinMods.Multiplayer.GameState.Snapshots;
 using PeglinMods.Multiplayer.Events.Network;
 using PeglinMods.Multiplayer.Events.Network.Ball;
 using PeglinMods.Multiplayer.Events.Network.Battle;
@@ -106,6 +109,10 @@ public static class ServiceRegistration
         container.RegisterSingleton(new EnemyIdentifier());
         container.RegisterSingleton(new OrbIdentifier());
 
+        // Game state sync service
+        var syncService = new GameStateSyncService(log, eventRegistry, container.Resolve<IMultiplayerMode>());
+        container.RegisterSingleton<IGameStateSyncService>(syncService);
+
         var versionChecker = new VersionChecker(log);
         versionChecker.Check();
         container.RegisterSingleton(versionChecker);
@@ -133,13 +140,16 @@ public static class ServiceRegistration
         var multiplayerMode = container.Resolve<IMultiplayerMode>();
         var enemyId = container.Resolve<EnemyIdentifier>();
         var orbId = container.Resolve<OrbIdentifier>();
-        SubscribeAll(eventRegistry, multiplayerMode, enemyId, orbId, log);
+        var syncService = container.Resolve<IGameStateSyncService>();
+        SubscribeAll(eventRegistry, multiplayerMode, enemyId, orbId, syncService, log);
     }
 
     private static void Phase6_Handshake(ServiceContainer container)
     {
         var transport = container.Resolve<INetworkTransport>();
         var eventRegistry = container.Resolve<GameEventRegistry>();
+
+        var syncService = container.Resolve<IGameStateSyncService>();
 
         transport.OnClientConnected += () =>
         {
@@ -152,6 +162,10 @@ public static class ServiceRegistration
                 IsHost = transport.IsHost,
                 RegisteredHandlerCount = eventRegistry.RegisteredTypeIds.Count
             });
+
+            // Send full game state to newly connected client
+            if (transport.IsHost)
+                syncService.SyncAll();
         };
     }
 
@@ -223,6 +237,15 @@ public static class ServiceRegistration
 
         // Map events
         registry.Register(new NodeSelectedServerHandler(), new NodeSelectedClientHandler());
+
+        // State sync snapshots
+        registry.Register(new FullGameStateServerHandler(), new FullGameStateClientHandler());
+        registry.Register(new MapStateSnapshotServerHandler(), new MapStateSnapshotClientHandler());
+        registry.Register(new PlayerStateSnapshotServerHandler(), new PlayerStateSnapshotClientHandler());
+        registry.Register(new EnemyStateSnapshotServerHandler(), new EnemyStateSnapshotClientHandler());
+        registry.Register(new PegboardStateSnapshotServerHandler(), new PegboardStateSnapshotClientHandler());
+        registry.Register(new DeckStateSnapshotServerHandler(), new DeckStateSnapshotClientHandler());
+        registry.Register(new RelicStateSnapshotServerHandler(), new RelicStateSnapshotClientHandler());
     }
 
     private static void SubscribeAll(
@@ -230,6 +253,7 @@ public static class ServiceRegistration
         IMultiplayerMode multiplayerMode,
         EnemyIdentifier enemyIdentifier,
         OrbIdentifier orbIdentifier,
+        IGameStateSyncService syncService,
         ManualLogSource log)
     {
         new BattleEventSubscriptions(registry, multiplayerMode).Subscribe();
@@ -242,5 +266,8 @@ public static class ServiceRegistration
         new BallSubscriptions(registry, log).Subscribe();
         new PegSubscriptions(registry, log).Subscribe();
         new MapSubscriptions(registry, log).Subscribe();
+
+        // State sync subscriptions - triggers full/partial state capture on key events
+        new StateSyncSubscriptions(syncService, multiplayerMode, log).Subscribe();
     }
 }
