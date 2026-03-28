@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
+using Newtonsoft.Json;
 using BepInEx.Logging;
 using PeglinMods.Spectator.Network;
 using PeglinMods.Spectator.Network.Protocol;
@@ -53,7 +53,7 @@ public class GameEventRegistry : IGameEventRegistry
 
         _clientDispatchers[typeId] = jsonPayload =>
         {
-            var networkEvent = JsonSerializer.Deserialize<TNetworkEvent>(jsonPayload);
+            var networkEvent = JsonConvert.DeserializeObject<TNetworkEvent>(jsonPayload);
             clientHandler.Handle(networkEvent);
         };
     }

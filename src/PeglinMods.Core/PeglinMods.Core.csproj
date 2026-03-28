@@ -1,17 +1,19 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <TargetFramework>net46</TargetFramework>
     <AssemblyName>PeglinMods.Core</AssemblyName>
-    <Product>PeglinMods</Product>
     <Version>0.1.0</Version>
-    <Description>Core mod loader for Peglin - disables crash reporting and bootstraps mod infrastructure</Description>
+    <Description>Core mod loader for Peglin</Description>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="BepInEx.Core" Version="5.4.21" />
-    <PackageReference Include="HarmonyX" Version="2.9.0" />
+    <PackageReference Include="BepInEx.Core" Version="5.4.19" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.2" PrivateAssets="all" />
   </ItemGroup>
 
-  <!-- Game assemblies (reference only, not copied to output) -->
+  <!-- Game assemblies - reference only, do not copy -->
   <ItemGroup>
     <Reference Include="Assembly-CSharp">
       <HintPath>$(GameManagedDir)/Assembly-CSharp.dll</HintPath>
@@ -23,6 +25,10 @@
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>$(GameManagedDir)/UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="netstandard">
+      <HintPath>$(GameManagedDir)/netstandard.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>
