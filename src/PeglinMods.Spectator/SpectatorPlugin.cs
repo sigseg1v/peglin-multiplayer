@@ -22,6 +22,7 @@ public class SpectatorPlugin : BaseUnityPlugin
 
     private Harmony _harmony;
     private FileLogger _fileLogger;
+    private static GameObject _modObject;
 
     private void Awake()
     {
@@ -30,32 +31,33 @@ public class SpectatorPlugin : BaseUnityPlugin
 
         try
         {
-            // File logging
             var logsDir = System.IO.Path.Combine(Paths.BepInExRootPath, "logs");
             _fileLogger = new FileLogger(logsDir);
             BepInEx.Logging.Logger.Listeners.Add(new FileLogListener(_fileLogger));
             Logger.LogInfo($"Log file: {_fileLogger.FilePath}");
 
-            // DI container
             Services = ServiceRegistration.CreateAndConfigure(Logger);
 
-            // Add all MonoBehaviour components to THIS gameObject (the BepInEx manager).
-            // Creating a separate new GameObject during chainloader doesn't get Unity
-            // update loop registration. The BepInEx manager object IS in the loop.
-            var poller = gameObject.AddComponent<NetworkPollBehaviour>();
+            // Create a SEPARATE persistent object - the BepInEx_Manager gets
+            // destroyed by the game during scene init (~2s after Awake).
+            // HideAndDontSave prevents the game from finding and destroying it.
+            // This is the same pattern ProLib and Promethium use.
+            _modObject = new GameObject("PeglinMods_Spectator");
+            _modObject.hideFlags = HideFlags.HideAndDontSave;
+            DontDestroyOnLoad(_modObject);
+
+            var poller = _modObject.AddComponent<NetworkPollBehaviour>();
             poller.Initialize(Services.Resolve<INetworkTransport>());
 
-            var dispatcher = gameObject.AddComponent<MainThreadDispatcher>();
+            var dispatcher = _modObject.AddComponent<MainThreadDispatcher>();
             Services.RegisterSingleton<MainThreadDispatcher>(dispatcher);
 
-            gameObject.AddComponent<MultiplayerUI>();
-            gameObject.AddComponent<SceneWatcher>();
+            _modObject.AddComponent<MultiplayerUI>();
+            _modObject.AddComponent<SceneWatcher>();
 
-            // Harmony patches
             _harmony = new Harmony(SpectatorPluginInfo.GUID);
             _harmony.PatchAll();
 
-            // Verify what Harmony actually patched
             int patchCount = 0;
             foreach (var method in _harmony.GetPatchedMethods())
             {
@@ -74,8 +76,9 @@ public class SpectatorPlugin : BaseUnityPlugin
 
     private void OnDestroy()
     {
+        // BepInEx_Manager gets destroyed - but our _modObject survives
+        // because of HideAndDontSave. Don't destroy it here.
         _harmony?.UnpatchSelf();
-        try { Services?.Resolve<INetworkTransport>()?.Stop(); } catch { }
         _fileLogger?.Dispose();
     }
 }
