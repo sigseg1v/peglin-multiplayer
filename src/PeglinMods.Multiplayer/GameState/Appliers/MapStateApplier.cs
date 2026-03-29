@@ -3,13 +3,17 @@ using System.Collections.Generic;
 using System.Linq;
 using BepInEx.Logging;
 using Data;
+using HarmonyLib;
 using Loading;
+using Map;
 using Peglin.ClassSystem;
 using PeglinMods.Multiplayer.GameState.Snapshots;
+using PeglinMods.Multiplayer.Multiplayer;
 using PeglinMods.Multiplayer.Patches;
 using PeglinUtils;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using Worldmap;
 
 namespace PeglinMods.Multiplayer.GameState.Appliers;
 
@@ -91,6 +95,12 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             if (string.Equals(currentScene, targetScene, StringComparison.OrdinalIgnoreCase))
             {
                 _log.LogInfo($"[MapApplier] Already on scene '{currentScene}', static data updated.");
+
+                // Verify map nodes match host when on a map scene
+                if (MapScenes.Contains(currentScene) && snapshot.Nodes != null && snapshot.Nodes.Count > 0)
+                {
+                    VerifyMapNodes(snapshot.Nodes);
+                }
                 return;
             }
 
@@ -163,6 +173,7 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         if (sceneLoader != null && SceneNameToEnum.TryGetValue(targetSceneName, out var sceneEnum))
         {
             _log.LogInfo($"[MapApplier] Using PeglinSceneLoader.LoadScene({sceneEnum})");
+            MultiplayerClientPatches.AllowNextSceneLoad = true;
             sceneLoader.LoadScene(sceneEnum);
             return;
         }
@@ -170,5 +181,78 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         // Fallback: use Unity SceneManager directly
         _log.LogWarning($"[MapApplier] PeglinSceneLoader unavailable or unknown scene '{targetSceneName}', falling back to SceneManager");
         SceneManager.LoadScene(targetSceneName);
+    }
+
+    /// <summary>
+    /// Compare host map nodes against client map nodes and log mismatches.
+    /// This helps diagnose when the client's map doesn't match the host's.
+    /// </summary>
+    private void VerifyMapNodes(List<MapNodeEntry> hostNodes)
+    {
+        try
+        {
+            var mc = UnityEngine.Object.FindObjectOfType<MapController>();
+            if (mc == null)
+            {
+                _log.LogWarning("[MapApplier] No MapController found for node verification");
+                return;
+            }
+
+            var nodesField = AccessTools.Field(typeof(MapController), "_nodes");
+            var clientNodes = nodesField?.GetValue(mc) as MapNode[];
+            if (clientNodes == null)
+            {
+                _log.LogWarning("[MapApplier] Could not access client map nodes");
+                return;
+            }
+
+            int matches = 0, mismatches = 0;
+            foreach (var hostNode in hostNodes)
+            {
+                if (hostNode.Index < 0 || hostNode.Index >= clientNodes.Length)
+                {
+                    _log.LogWarning($"[MapApplier] Host node index {hostNode.Index} out of range (client has {clientNodes.Length} nodes)");
+                    mismatches++;
+                    continue;
+                }
+
+                var clientNode = clientNodes[hostNode.Index];
+                if (clientNode == null)
+                {
+                    mismatches++;
+                    continue;
+                }
+
+                bool typeMatch = (int)clientNode.RoomType == hostNode.RoomType;
+                float dx = clientNode.transform.position.x - hostNode.PosX;
+                float dy = clientNode.transform.position.y - hostNode.PosY;
+                bool posMatch = (dx * dx + dy * dy) < 1f;
+
+                if (typeMatch && posMatch)
+                {
+                    matches++;
+                }
+                else
+                {
+                    _log.LogWarning($"[MapApplier] Node [{hostNode.Index}] MISMATCH: " +
+                        $"host={hostNode.RoomTypeName}@({hostNode.PosX:F1},{hostNode.PosY:F1}) data={hostNode.MapDataName}, " +
+                        $"client={clientNode.RoomType}@({clientNode.transform.position.x:F1},{clientNode.transform.position.y:F1}) data={clientNode.MapData?.name}");
+                    mismatches++;
+                }
+            }
+
+            _log.LogInfo($"[MapApplier] Map node verification: {matches} match, {mismatches} mismatch " +
+                $"(host={hostNodes.Count}, client={clientNodes.Length})");
+
+            if (mismatches > 0 && mismatches > matches / 2)
+            {
+                _log.LogError($"[MapApplier] SEVERE MAP MISMATCH — {mismatches}/{hostNodes.Count} nodes differ. " +
+                    "Map may need regeneration with host's RNG state.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[MapApplier] VerifyMapNodes failed: {ex.Message}");
+        }
     }
 }

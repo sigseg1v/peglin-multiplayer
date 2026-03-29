@@ -13,6 +13,7 @@ public class PegboardStateSnapshot
 
 public class PegEntry
 {
+    public string Guid { get; set; }
     public int PegType { get; set; }
     public string PegTypeName { get; set; }
     public float PosX { get; set; }

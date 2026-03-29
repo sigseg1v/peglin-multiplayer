@@ -2,6 +2,7 @@ using System;
 using Battle;
 using Data;
 using HarmonyLib;
+using Loading;
 using Map;
 using PeglinMods.Multiplayer.Events;
 using PeglinMods.Multiplayer.Events.Network.Map;
@@ -25,6 +26,13 @@ public static class MultiplayerClientPatches
     /// RNG state received from the host, to be restored before client map generation.
     /// </summary>
     internal static string PendingRngStateToRestore;
+
+    /// <summary>
+    /// Set to true by our sync handlers right before they call LoadScene.
+    /// The PeglinSceneLoader patch checks this flag and blocks all other scene loads.
+    /// Reset to false after the load is initiated.
+    /// </summary>
+    internal static bool AllowNextSceneLoad;
 
     /// <summary>
     /// Returns true when the client should NOT run its own game logic.
@@ -69,6 +77,59 @@ public static class MultiplayerClientPatches
     [HarmonyPatch(typeof(GameInit), "Start")]
     [HarmonyPrefix]
     public static bool GameInit_Start_Prefix() => !ShouldSuppressClientLogic;
+
+    // =========================================================================
+    // BLOCK CLIENT SCENE LOADS — only our sync handlers may load scenes
+    // =========================================================================
+
+    /// <summary>
+    /// Block ALL scene loads on the client except those explicitly initiated by our
+    /// sync system (NodeActivatedClientHandler, MapStateApplier). This prevents the
+    /// game's own MapController/node flow from triggering a second Battle load after
+    /// we've already loaded the correct scene.
+    /// </summary>
+    [HarmonyPatch(typeof(PeglinSceneLoader), nameof(PeglinSceneLoader.LoadScene),
+        new[] { typeof(PeglinSceneLoader.Scene), typeof(UnityEngine.SceneManagement.LoadSceneMode), typeof(bool), typeof(float) })]
+    [HarmonyPrefix]
+    public static bool PeglinSceneLoader_LoadScene_Prefix(PeglinSceneLoader.Scene scene)
+    {
+        if (!ShouldSuppressClientLogic) return true;
+
+        if (AllowNextSceneLoad)
+        {
+            AllowNextSceneLoad = false;
+            MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] ALLOWING scene load: {scene} (sync-initiated)");
+            return true;
+        }
+
+        MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] BLOCKED scene load: {scene} (not sync-initiated)");
+        return false;
+    }
+
+    // =========================================================================
+    // CLEAR PRE-INSTANCED PEGBOARD ON CLIENT — avoid pegs at (993, -10) offset
+    // =========================================================================
+
+    /// <summary>
+    /// Clear preInstancedPegboardData before BattleController.Awake on client.
+    /// Without this, BattleController tries to use a pre-instanced pegboard from
+    /// the map scene, but since we bypassed the normal node activation flow, it
+    /// was never finalized and pegs stay at the pre-instance offset (1000,0,0).
+    /// </summary>
+    [HarmonyPatch(typeof(BattleController), "Awake")]
+    [HarmonyPrefix]
+    public static void BattleController_Awake_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return;
+
+        if (StaticGameData.preInstancedPegboardData != null)
+        {
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Clearing preInstancedPegboardData on client " +
+                $"(was: pegboard={StaticGameData.preInstancedPegboardData.pegboardData?.name}, " +
+                $"root={StaticGameData.preInstancedPegboardData.rootGameObject?.name})");
+            StaticGameData.preInstancedPegboardData = null;
+        }
+    }
 
     // =========================================================================
     // BLOCK CLIENT AUTO-GENERATION — host controls all content

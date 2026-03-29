@@ -6,21 +6,28 @@ using BepInEx.Logging;
 using HarmonyLib;
 using Loading;
 using PeglinMods.Multiplayer.GameState.Snapshots;
+using PeglinMods.Multiplayer.Utility;
 using UnityEngine;
 
 namespace PeglinMods.Multiplayer.GameState.Appliers;
 
 /// <summary>
-/// Aggressively syncs enemy state from host to client.
-/// Destroys enemies that don't exist on the host.
-/// Creates enemies that exist on the host but not on the client.
-/// Force-updates health, position, and max health on matched enemies.
+/// Syncs enemy state from host to client using GUID-based tracking.
+/// 1. Match enemies by GUID (primary) or by locKey+position (fallback for first sync)
+/// 2. Create missing enemies from prefab cache
+/// 3. Destroy extra enemies not in host snapshot
+/// 4. Register all enemies with host GUIDs in EnemyIdentifier
 /// </summary>
 public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
 {
     private readonly ManualLogSource _log;
+    private readonly EnemyIdentifier _enemyId;
 
-    public EnemyStateApplier(ManualLogSource log) => _log = log;
+    public EnemyStateApplier(ManualLogSource log, EnemyIdentifier enemyId)
+    {
+        _log = log;
+        _enemyId = enemyId;
+    }
 
     public void Apply(EnemyStateSnapshot snapshot)
     {
@@ -44,10 +51,30 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             var matched = new HashSet<Enemy>();
             int updated = 0, created = 0, destroyed = 0;
 
-            // Pass 1: match host enemies to client enemies, update matched ones
+            _log.LogInfo($"[EnemyApplier] Applying {snapshot.Enemies.Count} host enemies to {liveEnemies.Count} client enemies");
+
+            // Pass 1: match host enemies to client enemies by GUID first, then by name+position
             foreach (var entry in snapshot.Enemies)
             {
-                var match = FindBestMatch(liveEnemies, entry, matched);
+                _log.LogInfo($"[EnemyApplier] Host enemy: guid={entry.Id} loc={entry.LocKey} name={entry.EnemyName} " +
+                    $"hp={entry.CurrentHealth}/{entry.MaxHealth} pos=({entry.PosX:F1},{entry.PosY:F1}) slot={entry.SlotIndex}");
+
+                // Try GUID match first
+                var match = FindByGuid(entry.Id);
+                if (match != null && !matched.Contains(match))
+                {
+                    _log.LogInfo($"[EnemyApplier] GUID match: {entry.Id} → '{match.locKey}'");
+                }
+                else
+                {
+                    // Fallback to locKey + position match
+                    match = FindBestMatch(liveEnemies, entry, matched);
+                    if (match != null)
+                    {
+                        _log.LogInfo($"[EnemyApplier] Position match: '{match.locKey}' at ({match.transform.position.x:F1},{match.transform.position.y:F1}) → guid={entry.Id}");
+                    }
+                }
+
                 if (match != null)
                 {
                     // Force-update all state
@@ -57,14 +84,24 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                         entry.PosX, entry.PosY, match.transform.position.z);
                     matched.Add(match);
                     updated++;
+
+                    // Register with host GUID
+                    _enemyId.Register(match, entry.Id);
                 }
                 else
                 {
                     // Try to create the enemy from the prefab cache
-                    if (TrySpawnEnemy(entry, em))
+                    var spawned = TrySpawnEnemy(entry, em);
+                    if (spawned != null)
+                    {
                         created++;
+                        // Register newly created enemy with host GUID
+                        _enemyId.Register(spawned, entry.Id);
+                    }
                     else
-                        _log.LogWarning($"[EnemyApplier] Cannot spawn '{entry.EnemyName ?? entry.LocKey}' — not in prefab cache");
+                    {
+                        _log.LogWarning($"[EnemyApplier] Cannot spawn '{entry.EnemyName ?? entry.LocKey}' (guid={entry.Id}) — not in prefab cache");
+                    }
                 }
             }
 
@@ -73,20 +110,32 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             {
                 if (!matched.Contains(enemy))
                 {
-                    _log.LogInfo($"[EnemyApplier] Destroying extra client enemy '{enemy.locKey}'");
+                    var guid = _enemyId.GetGuid(enemy) ?? "?";
+                    _log.LogInfo($"[EnemyApplier] Destroying extra client enemy '{enemy.locKey}' (guid={guid})");
+                    _enemyId.Unregister(enemy);
                     em.RemoveEnemy(enemy);
                     UnityEngine.Object.Destroy(enemy.gameObject);
                     destroyed++;
                 }
             }
 
-            _log.LogInfo($"[EnemyApplier] Updated={updated}, Created={created}, Destroyed={destroyed} " +
+            _log.LogInfo($"[EnemyApplier] RESULT: Updated={updated}, Created={created}, Destroyed={destroyed} " +
                 $"(host={snapshot.Enemies.Count}, client_before={liveEnemies.Count}, battle={snapshot.BattleStateName})");
+            _enemyId.DumpState("AfterApply");
         }
         catch (Exception ex)
         {
             _log.LogError($"[EnemyApplier] Apply failed: {ex.Message}\n{ex.StackTrace}");
         }
+    }
+
+    /// <summary>
+    /// Look up an enemy by GUID from the registry.
+    /// </summary>
+    private Enemy FindByGuid(string guid)
+    {
+        if (string.IsNullOrEmpty(guid)) return null;
+        return _enemyId.Find(guid);
     }
 
     /// <summary>
@@ -135,13 +184,14 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
 
     /// <summary>
     /// Try to instantiate an enemy from the game's asset cache.
+    /// Returns the Enemy component if successful, null otherwise.
     /// </summary>
-    private bool TrySpawnEnemy(EnemyEntry entry, EnemyManager em)
+    private Enemy TrySpawnEnemy(EnemyEntry entry, EnemyManager em)
     {
         try
         {
             var prefab = FindEnemyPrefab(entry.EnemyName ?? entry.LocKey);
-            if (prefab == null) return false;
+            if (prefab == null) return null;
 
             var pos = new Vector3(entry.PosX, entry.PosY, 0);
             var go = UnityEngine.Object.Instantiate(prefab, pos, Quaternion.identity, em.transform);
@@ -149,36 +199,37 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             if (enemy == null)
             {
                 UnityEngine.Object.Destroy(go);
-                return false;
+                return null;
             }
 
             enemy.CurrentHealth = entry.CurrentHealth;
             SetMaxHealth(enemy, entry.MaxHealth);
             em.AddEnemy(enemy, entry.SlotIndex, entry.IsFlying);
 
-            _log.LogInfo($"[EnemyApplier] Spawned '{entry.EnemyName}' at ({entry.PosX:F1},{entry.PosY:F1}) slot={entry.SlotIndex}");
-            return true;
+            _log.LogInfo($"[EnemyApplier] Spawned '{entry.EnemyName}' at ({entry.PosX:F1},{entry.PosY:F1}) slot={entry.SlotIndex} guid={entry.Id}");
+            return enemy;
         }
         catch (Exception ex)
         {
             _log.LogWarning($"[EnemyApplier] TrySpawnEnemy failed for '{entry.EnemyName}': {ex.Message}");
-            return false;
+            return null;
         }
     }
 
     /// <summary>
     /// Search for an enemy prefab by name. Tries multiple strategies:
     /// 1. AssetLoading.Instance.EnemyPrefabs cache (values matched by name)
-    /// 2. Resources.FindObjectsOfTypeAll as fallback
+    /// 2. Resources.FindObjectsOfTypeAll for prefab GameObjects with Enemy component
+    /// 3. Resources.FindObjectsOfTypeAll with partial name match
     /// </summary>
     private GameObject FindEnemyPrefab(string name)
     {
         if (string.IsNullOrEmpty(name)) return null;
         string cleanName = name.Replace("(Clone)", "").Trim();
 
-        // Strategy 1: AssetLoading cache
+        // Strategy 1: AssetLoading cache (keyed by RuntimeKey, so match by prefab name)
         var cache = AssetLoading.Instance?.EnemyPrefabs;
-        if (cache != null)
+        if (cache != null && cache.Count > 0)
         {
             _log.LogInfo($"[EnemyApplier] Prefab cache has {cache.Count} entries, searching for '{cleanName}'");
             foreach (var kvp in cache)
@@ -186,30 +237,44 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                 if (kvp.Value != null && kvp.Value.name == cleanName)
                     return kvp.Value;
             }
-            // Log what IS in the cache for debugging
-            if (cache.Count <= 20)
+            // Try partial match (enemy prefabs sometimes have variant names)
+            foreach (var kvp in cache)
             {
-                foreach (var kvp in cache)
-                    _log.LogInfo($"[EnemyApplier]   cache: key={kvp.Key}, name={kvp.Value?.name}");
+                if (kvp.Value != null && (kvp.Value.name.Contains(cleanName) || cleanName.Contains(kvp.Value.name)))
+                {
+                    _log.LogInfo($"[EnemyApplier] Partial cache match: '{kvp.Value.name}' for '{cleanName}'");
+                    return kvp.Value;
+                }
             }
         }
         else
         {
-            _log.LogWarning("[EnemyApplier] AssetLoading.Instance or EnemyPrefabs is null");
+            _log.LogWarning($"[EnemyApplier] Prefab cache {(cache == null ? "is null" : "has 0 entries")} — using Resources fallback");
         }
 
-        // Strategy 2: search all loaded GameObjects with Enemy component
+        // Strategy 2: search all loaded GameObjects with Enemy component (finds prefabs)
         var allEnemies = Resources.FindObjectsOfTypeAll<Battle.Enemies.Enemy>();
         foreach (var e in allEnemies)
         {
             if (e != null && e.gameObject.name == cleanName && e.gameObject.scene.name == null)
             {
-                // scene.name == null means it's a prefab (not instantiated in a scene)
                 _log.LogInfo($"[EnemyApplier] Found prefab via Resources: '{cleanName}'");
                 return e.gameObject;
             }
         }
 
+        // Strategy 3: partial name match on prefabs
+        foreach (var e in allEnemies)
+        {
+            if (e != null && e.gameObject.scene.name == null &&
+                (e.gameObject.name.Contains(cleanName) || cleanName.Contains(e.gameObject.name)))
+            {
+                _log.LogInfo($"[EnemyApplier] Found prefab via partial Resources match: '{e.gameObject.name}' for '{cleanName}'");
+                return e.gameObject;
+            }
+        }
+
+        _log.LogWarning($"[EnemyApplier] No prefab found for '{cleanName}' (cache={cache?.Count ?? -1}, resources={allEnemies.Length})");
         return null;
     }
 

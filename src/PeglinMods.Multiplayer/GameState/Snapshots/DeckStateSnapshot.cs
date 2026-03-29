@@ -13,6 +13,8 @@ public class DeckStateSnapshot
 
 public class OrbEntry
 {
+    public string Guid { get; set; }
+    public int DeckIndex { get; set; }
     public string Name { get; set; }
     public string LocName { get; set; }
     public int Level { get; set; }

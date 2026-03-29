@@ -4,6 +4,7 @@ using Data;
 using Loading;
 using PeglinMods.Multiplayer.Events.Network.Map;
 using PeglinMods.Multiplayer.Multiplayer;
+using PeglinMods.Multiplayer.Patches;
 using UnityEngine;
 
 namespace PeglinMods.Multiplayer.Events.Handlers.Map;
@@ -42,16 +43,17 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
             // Set the battle data directly — this is what BattleController.Awake reads
             StaticGameData.dataToLoad = match;
 
-            // Load Battle scene
+            // Load Battle scene — set flag so our PeglinSceneLoader patch allows it
             var sceneLoader = PeglinSceneLoader.Instance;
             if (sceneLoader != null)
             {
                 log?.LogInfo("[NodeActivated] Loading Battle scene with correct battle data");
+                MultiplayerClientPatches.AllowNextSceneLoad = true;
                 sceneLoader.LoadScene(PeglinSceneLoader.Scene.BATTLE);
             }
             else
             {
-                log?.LogWarning("[NodeActivated] PeglinSceneLoader.Instance is null");
+                log?.LogWarning("[NodeActivated] PeglinSceneLoader.Instance is null, using SceneManager fallback");
                 UnityEngine.SceneManagement.SceneManager.LoadScene("Battle");
             }
         }

@@ -22,14 +22,14 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             {
                 _log.LogInfo($"[DeckApplier] Complete deck ({snapshot.CompleteDeck.Count} orbs):");
                 foreach (var orb in snapshot.CompleteDeck)
-                    _log.LogInfo($"  - {orb.LocName ?? orb.Name} lv{orb.Level} (dmg={orb.BaseDamage}, crit={orb.CritDamage})");
+                    _log.LogInfo($"  - [{orb.DeckIndex}] guid={orb.Guid} {orb.LocName ?? orb.Name} lv{orb.Level} (dmg={orb.BaseDamage}, crit={orb.CritDamage})");
             }
 
             if (snapshot.BattleDeck != null && snapshot.BattleDeck.Count > 0)
             {
                 _log.LogInfo($"[DeckApplier] Battle deck ({snapshot.BattleDeck.Count} orbs):");
                 foreach (var orb in snapshot.BattleDeck)
-                    _log.LogInfo($"  - {orb.LocName ?? orb.Name} lv{orb.Level}");
+                    _log.LogInfo($"  - [{orb.DeckIndex}] guid={orb.Guid} {orb.LocName ?? orb.Name} lv{orb.Level}");
             }
         }
         catch (Exception ex)

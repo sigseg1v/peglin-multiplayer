@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using BepInEx.Logging;
 using HarmonyLib;
 using PeglinMods.Multiplayer.GameState.Snapshots;
+using PeglinMods.Multiplayer.Utility;
 using UnityEngine;
 
 namespace PeglinMods.Multiplayer.GameState.Providers;
@@ -10,8 +11,13 @@ namespace PeglinMods.Multiplayer.GameState.Providers;
 public class EnemyStateProvider : IGameStateProvider<EnemyStateSnapshot>
 {
     private readonly ManualLogSource _log;
+    private readonly EnemyIdentifier _enemyId;
 
-    public EnemyStateProvider(ManualLogSource log) => _log = log;
+    public EnemyStateProvider(ManualLogSource log, EnemyIdentifier enemyId)
+    {
+        _log = log;
+        _enemyId = enemyId;
+    }
 
     public EnemyStateSnapshot Capture()
     {
@@ -46,9 +52,12 @@ public class EnemyStateProvider : IGameStateProvider<EnemyStateSnapshot>
                         var enemy = enemiesList[i];
                         if (enemy == null) continue;
 
+                        // Use EnemyIdentifier for stable GUID assignment
+                        var guid = _enemyId.GetOrAssignGuid(enemy);
+
                         var entry = new EnemyEntry
                         {
-                            Id = $"{enemy.locKey}_{i}",
+                            Id = guid,
                             LocKey = enemy.locKey ?? enemy.gameObject.name,
                             EnemyName = enemy.gameObject.name,
                             CurrentHealth = enemy.CurrentHealth,
@@ -99,6 +108,8 @@ public class EnemyStateProvider : IGameStateProvider<EnemyStateSnapshot>
                         catch { }
 
                         snapshot.Enemies.Add(entry);
+                        _log.LogInfo($"[EnemyProvider] Captured enemy: guid={guid} loc={entry.LocKey} name={entry.EnemyName} " +
+                            $"hp={entry.CurrentHealth}/{entry.MaxHealth} pos=({entry.PosX:F1},{entry.PosY:F1}) slot={i}");
                     }
                 }
             }

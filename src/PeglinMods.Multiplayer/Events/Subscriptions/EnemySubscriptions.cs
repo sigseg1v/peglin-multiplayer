@@ -81,9 +81,24 @@ public sealed class EnemySubscriptions
     private void OnEnemyKilled(string locKey)
     {
         if (!IsHosting) return;
+
+        // OnEnemyKilled only provides locKey, not the Enemy object.
+        // Try to find the GUID by scanning enemies with this locKey that are dead/dying.
+        string guid = "";
+        var enemies = UnityEngine.Object.FindObjectsOfType<Enemy>();
+        foreach (var e in enemies)
+        {
+            if (e != null && e.locKey == locKey && e.CurrentHealth <= 0)
+            {
+                guid = _enemyIdentifier.GetOrAssignGuid(e);
+                break;
+            }
+        }
+
+        _log.LogInfo($"[EnemySub] EnemyKilled: loc={locKey} guid={guid}");
         _registry.Dispatch(new EnemyKilledEvent
         {
-            EnemyId = "",
+            EnemyId = guid,
             LocKey = locKey
         });
     }

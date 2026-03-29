@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using BepInEx.Logging;
+using Loading;
 using PeglinMods.Multiplayer.GameState.Appliers;
 using PeglinMods.Multiplayer.GameState.Snapshots;
 using PeglinMods.Multiplayer.Multiplayer;
@@ -24,6 +25,8 @@ public class GameStateApplyService
     private readonly PegboardStateApplier _pegboardApplier;
     private readonly DeckStateApplier _deckApplier;
     private readonly RelicStateApplier _relicApplier;
+    private readonly EnemyIdentifier _enemyId;
+    private readonly PegIdentifier _pegId;
 
     // Buffered latest snapshots — re-applied on scene load
     private FullGameStateSnapshot _latestFull;
@@ -31,15 +34,17 @@ public class GameStateApplyService
     private PegboardStateSnapshot _latestPegboard;
     private PlayerStateSnapshot _latestPlayer;
 
-    public GameStateApplyService(ManualLogSource log)
+    public GameStateApplyService(ManualLogSource log, EnemyIdentifier enemyId, PegIdentifier pegId)
     {
         _log = log;
         _mapApplier = new MapStateApplier(log);
         _playerApplier = new PlayerStateApplier(log);
-        _enemyApplier = new EnemyStateApplier(log);
-        _pegboardApplier = new PegboardStateApplier(log);
+        _enemyApplier = new EnemyStateApplier(log, enemyId);
+        _pegboardApplier = new PegboardStateApplier(log, pegId);
         _deckApplier = new DeckStateApplier(log);
         _relicApplier = new RelicStateApplier(log);
+        _enemyId = enemyId;
+        _pegId = pegId;
 
         SceneManager.sceneLoaded += OnSceneLoaded;
     }
@@ -47,6 +52,11 @@ public class GameStateApplyService
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
         if (mode != LoadSceneMode.Single) return;
+
+        // Clear GUID registries on scene transition so stale refs don't linger
+        _log.LogInfo($"[ApplyService] Scene loaded: '{scene.name}' — clearing GUID registries");
+        _enemyId.Clear();
+        _pegId.Clear();
 
         // Re-apply buffered state after scene initialization completes.
         // Delay 3 frames so BattleController.Awake/Start and MapController finish first.
@@ -65,12 +75,51 @@ public class GameStateApplyService
         yield return null;
         yield return new WaitForSeconds(0.5f);
 
+        // Verify we're still on the same scene (another load might have started)
+        var currentScene = SceneManager.GetActiveScene().name;
+        if (currentScene != sceneName)
+        {
+            _log.LogWarning($"[ApplyService] Scene changed during delay: expected '{sceneName}', now on '{currentScene}' — skipping re-apply");
+            yield break;
+        }
+
+        // If on Battle scene, wait for enemy prefab cache to be populated by BattleController.Awake → LoadEnemyAssets
+        if (currentScene == "Battle")
+        {
+            var cache = AssetLoading.Instance?.EnemyPrefabs;
+            int waitFrames = 0;
+            while ((cache == null || cache.Count == 0) && waitFrames < 30)
+            {
+                yield return null;
+                waitFrames++;
+                cache = AssetLoading.Instance?.EnemyPrefabs;
+            }
+            if (cache != null && cache.Count > 0)
+                _log.LogInfo($"[ApplyService] Enemy prefab cache ready: {cache.Count} entries (waited {waitFrames} frames)");
+            else
+                _log.LogWarning($"[ApplyService] Enemy prefab cache still empty after {waitFrames} frames — enemies may fail to spawn");
+        }
+
         _log.LogInfo($"[ApplyService] Re-applying buffered state after scene '{sceneName}' loaded");
         DiagnosticLogger.DumpBattleState($"CLIENT_BeforeReapply_{sceneName}");
 
         if (_latestFull != null)
         {
-            ApplyNonMapState(_latestFull);
+            // Check that the buffered snapshot's scene matches where we are now.
+            // Don't apply a MainMenu snapshot to Battle or vice versa.
+            var snapshotScene = _latestFull.Map?.ActiveScene;
+            if (!string.IsNullOrEmpty(snapshotScene) &&
+                !string.Equals(snapshotScene, currentScene, StringComparison.OrdinalIgnoreCase))
+            {
+                _log.LogWarning($"[ApplyService] Stale snapshot: snapshot scene='{snapshotScene}', current='{currentScene}' — skipping non-map state");
+                // Still apply player state (works on any scene)
+                if (_latestFull.Player != null)
+                    SafeApply("Player", () => _playerApplier.Apply(_latestFull.Player));
+            }
+            else
+            {
+                ApplyNonMapState(_latestFull);
+            }
         }
         else
         {
@@ -128,6 +177,58 @@ public class GameStateApplyService
         if (snapshot.Pegboard != null) SafeApply("Pegboard", () => _pegboardApplier.Apply(snapshot.Pegboard));
         if (snapshot.Deck != null) SafeApply("Deck", () => _deckApplier.Apply(snapshot.Deck));
         if (snapshot.Relics != null) SafeApply("Relics", () => _relicApplier.Apply(snapshot.Relics));
+
+        // Post-apply consistency check
+        VerifyConsistency(snapshot);
+    }
+
+    private void VerifyConsistency(FullGameStateSnapshot snapshot)
+    {
+        try
+        {
+            var currentScene = SceneManager.GetActiveScene().name;
+            if (currentScene != "Battle") return;
+
+            // Check enemy count
+            if (snapshot.Enemies?.Enemies != null)
+            {
+                var em = UnityEngine.Object.FindObjectOfType<EnemyManager>();
+                int clientEnemies = em?.Enemies?.Count ?? 0;
+                int hostEnemies = snapshot.Enemies.Enemies.Count;
+                if (clientEnemies != hostEnemies)
+                {
+                    _log.LogWarning($"[Consistency] ENEMY COUNT MISMATCH: host={hostEnemies}, client={clientEnemies}");
+                    _enemyId.DumpState("ConsistencyCheck");
+                }
+                else
+                {
+                    _log.LogInfo($"[Consistency] Enemies OK: {clientEnemies} match");
+                }
+            }
+
+            // Check peg count (active pegs)
+            if (snapshot.Pegboard?.Pegs != null)
+            {
+                var livePegs = UnityEngine.Object.FindObjectsOfType<Peg>(false); // active only
+                int clientPegs = livePegs?.Length ?? 0;
+                int hostActivePegs = 0;
+                foreach (var p in snapshot.Pegboard.Pegs)
+                    if (!p.IsDestroyed) hostActivePegs++;
+
+                if (System.Math.Abs(clientPegs - hostActivePegs) > 5) // allow small variance
+                {
+                    _log.LogWarning($"[Consistency] PEG COUNT MISMATCH: host_active={hostActivePegs}, client_active={clientPegs}");
+                }
+                else
+                {
+                    _log.LogInfo($"[Consistency] Pegs OK: host={hostActivePegs}, client={clientPegs}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[Consistency] Check failed: {ex.Message}");
+        }
     }
 
     // --- Individual snapshot appliers (called from per-type client handlers) ---

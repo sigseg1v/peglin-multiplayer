@@ -27,20 +27,24 @@ public sealed class StateSyncSubscriptions
 
     public void Subscribe()
     {
-        // Full sync on battle start (enemies spawned, pegs placed, deck ready)
+        // FULL SYNC on battle start — enemies spawned, pegs placed, deck ready
         BattleController.OnBattleStarted += () => SafeSync("BattleStarted", () => _sync.SyncAll());
 
-        // Sync enemies after they move/spawn
+        // FULL SYNC after each round — ensures client stays in sync even if individual events missed
+        BattleController.OnRoundCountIncremented += (_) => SafeSync("RoundIncremented", () => _sync.SyncAll());
+
+        // Sync enemies and player after turn complete (enemies may have moved/attacked)
         BattleController.OnTurnComplete += () => SafeSync("TurnComplete", () =>
         {
             _sync.SyncEnemies();
             _sync.SyncPlayer();
         });
 
-        // Sync pegboard after reload (pegs refresh)
+        // Sync pegboard after reload (pegs refresh) and enemies/player
         BattleController.OnReloadStarted += () => SafeSync("ReloadStarted", () =>
         {
             _sync.SyncPegboard();
+            _sync.SyncEnemies();
             _sync.SyncPlayer();
         });
 
@@ -51,11 +55,17 @@ public sealed class StateSyncSubscriptions
             _sync.SyncPlayer();
         });
 
-        // Full sync on victory (final state)
+        // Sync after shot completes (peg states changed from hits)
+        BattleController.OnShotComplete += () => SafeSync("ShotComplete", () =>
+        {
+            _sync.SyncPegboard();
+            _sync.SyncEnemies();
+        });
+
+        // FULL SYNC on victory (final state)
         BattleController.OnVictory += () => SafeSync("Victory", () => _sync.SyncAll());
 
-        // Sync map state on scene changes (via SceneWatcher calling this)
-        // Map sync happens via MapController.OnNodeSelectionEvent subscription
+        // Sync map state when a node is selected
         Map.MapController.OnNodeSelectionEvent += (name, floor, cb) =>
             SafeSync("NodeSelected", () => _sync.SyncMap());
 
@@ -67,15 +77,14 @@ public sealed class StateSyncSubscriptions
         Relics.RelicManager.OnRelicAdded += (_) => SafeSync("RelicAdded", () => _sync.SyncRelics());
         Relics.RelicManager.OnRelicRemoved += (_) => SafeSync("RelicRemoved", () => _sync.SyncRelics());
 
-        // Sync map state on ANY scene change so the client follows the host
-        // through PostMainMenu → ForestMap → Battle → etc.
+        // FULL SYNC on any scene change — ensures client has complete state on new scenes
         SceneManager.sceneLoaded += (scene, loadMode) =>
         {
             if (loadMode == LoadSceneMode.Single)
-                SafeSync("SceneLoaded:" + scene.name, () => _sync.SyncMap());
+                SafeSync("SceneLoaded:" + scene.name, () => _sync.SyncAll());
         };
 
-        _log.LogInfo("StateSyncSubscriptions registered");
+        _log.LogInfo("StateSyncSubscriptions registered (with aggressive sync)");
     }
 
     private void SafeSync(string trigger, Action action)

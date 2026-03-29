@@ -11,13 +11,16 @@ public sealed class EnemyDamagedClientHandler : IClientHandler<EnemyDamagedEvent
     {
         try
         {
-            MultiplayerPlugin.Logger.LogInfo($"Multiplayer: Enemy {networkEvent.EnemyId} took {networkEvent.Damage} damage (remaining: {networkEvent.RemainingHealth})");
+            MultiplayerPlugin.Logger.LogInfo($"[EnemyDamaged] guid={networkEvent.EnemyId} dmg={networkEvent.Damage} remaining={networkEvent.RemainingHealth}");
 
             var enemyIdentifier = MultiplayerPlugin.Services.Resolve<EnemyIdentifier>();
             var enemy = enemyIdentifier.Find(networkEvent.EnemyId);
             if (enemy != null)
             {
+                var oldHp = enemy.CurrentHealth;
                 enemy.CurrentHealth = networkEvent.RemainingHealth;
+                MultiplayerPlugin.Logger.LogInfo($"[EnemyDamaged] '{enemy.locKey}' hp: {oldHp} → {networkEvent.RemainingHealth}");
+
                 global::Battle.Enemies.Enemy.OnEnemyDamaged?.Invoke(
                     enemy,
                     networkEvent.Damage,
@@ -25,7 +28,8 @@ public sealed class EnemyDamagedClientHandler : IClientHandler<EnemyDamagedEvent
             }
             else
             {
-                MultiplayerPlugin.Logger.LogWarning($"Could not find enemy {networkEvent.EnemyId} for damage update");
+                MultiplayerPlugin.Logger.LogWarning($"[EnemyDamaged] Could not find enemy guid={networkEvent.EnemyId}");
+                enemyIdentifier.DumpState("EnemyDamaged_Miss");
             }
         }
         catch (Exception e)

@@ -3,20 +3,28 @@ using System.Collections.Generic;
 using System.Linq;
 using BepInEx.Logging;
 using PeglinMods.Multiplayer.GameState.Snapshots;
+using PeglinMods.Multiplayer.Utility;
 using UnityEngine;
 
 namespace PeglinMods.Multiplayer.GameState.Appliers;
 
 /// <summary>
-/// Aggressively syncs pegboard state from host to client.
-/// Force-converts peg types to match host. Deactivates destroyed pegs.
-/// Deactivates extra pegs not in host snapshot.
+/// Syncs pegboard state from host to client using GUID-based tracking.
+/// 1. Match pegs by GUID (primary) or position (fallback for first sync)
+/// 2. Force peg types to match host
+/// 3. Deactivate destroyed pegs / extra pegs
+/// 4. Register all matched pegs with host GUIDs
 /// </summary>
 public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 {
     private readonly ManualLogSource _log;
+    private readonly PegIdentifier _pegId;
 
-    public PegboardStateApplier(ManualLogSource log) => _log = log;
+    public PegboardStateApplier(ManualLogSource log, PegIdentifier pegId)
+    {
+        _log = log;
+        _pegId = pegId;
+    }
 
     public void Apply(PegboardStateSnapshot snapshot)
     {
@@ -28,7 +36,6 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 return;
             }
 
-            // Find ALL pegs including inactive ones (we might need to reactivate)
             var livePegs = UnityEngine.Object.FindObjectsOfType<Peg>(true);
             if (livePegs == null || livePegs.Length == 0)
             {
@@ -37,14 +44,40 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
 
             var matched = new HashSet<Peg>();
-            int typeChanged = 0, destroyed = 0, reactivated = 0;
+            int guidMatched = 0, posMatched = 0, typeChanged = 0, destroyed = 0, reactivated = 0;
 
-            // Pass 1: match host pegs to client pegs, update state
             foreach (var entry in snapshot.Pegs)
             {
-                var peg = FindClosestPeg(livePegs, entry.PosX, entry.PosY, matched);
+                Peg peg = null;
+
+                // Try GUID match first
+                if (!string.IsNullOrEmpty(entry.Guid))
+                {
+                    peg = _pegId.Find(entry.Guid);
+                    if (peg != null && !matched.Contains(peg))
+                    {
+                        guidMatched++;
+                    }
+                    else
+                    {
+                        peg = null;
+                    }
+                }
+
+                // Fallback to position match
+                if (peg == null)
+                {
+                    peg = FindClosestPeg(livePegs, entry.PosX, entry.PosY, matched);
+                    if (peg != null)
+                        posMatched++;
+                }
+
                 if (peg == null) continue;
                 matched.Add(peg);
+
+                // Register with host GUID
+                if (!string.IsNullOrEmpty(entry.Guid))
+                    _pegId.Register(peg, entry.Guid);
 
                 // Handle destroyed pegs
                 if (entry.IsDestroyed)
@@ -57,7 +90,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     continue;
                 }
 
-                // Reactivate if host says it's alive but client has it deactivated
+                // Reactivate if host says it's alive
                 if (!peg.gameObject.activeSelf)
                 {
                     peg.gameObject.SetActive(true);
@@ -73,11 +106,11 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         if (peg.SupportsPegType(targetType))
                             peg.ConvertPegToType(targetType);
                         else
-                            peg.pegType = targetType; // Fallback: direct field set
+                            peg.pegType = targetType;
                     }
                     catch
                     {
-                        peg.pegType = targetType; // Fallback on exception
+                        peg.pegType = targetType;
                     }
                     typeChanged++;
                 }
@@ -97,7 +130,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 }
             }
 
-            // Pass 2: deactivate client pegs not in host snapshot
+            // Deactivate client pegs not in host snapshot
             int extras = 0;
             foreach (var peg in livePegs)
             {
@@ -108,10 +141,11 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 }
             }
 
-            _log.LogInfo($"[PegboardApplier] Matched={matched.Count}, TypeChanged={typeChanged}, " +
-                $"Destroyed={destroyed}, Reactivated={reactivated}, ExtrasRemoved={extras} " +
+            _log.LogInfo($"[PegboardApplier] GUIDMatched={guidMatched}, PosMatched={posMatched}, " +
+                $"TypeChanged={typeChanged}, Destroyed={destroyed}, Reactivated={reactivated}, ExtrasRemoved={extras} " +
                 $"(host={snapshot.TotalPegCount}, client={livePegs.Length}, " +
-                $"crit={snapshot.CritPegCount}, bomb={snapshot.BombPegCount}, reset={snapshot.ResetPegCount})");
+                $"crit={snapshot.CritPegCount}, bomb={snapshot.BombPegCount}, reset={snapshot.ResetPegCount}, " +
+                $"registry={_pegId.Count})");
         }
         catch (Exception ex)
         {
@@ -119,10 +153,6 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         }
     }
 
-    /// <summary>
-    /// Find the closest peg to the given position that hasn't already been matched.
-    /// Uses 1.0 unit tolerance for position matching.
-    /// </summary>
     private static Peg FindClosestPeg(Peg[] livePegs, float posX, float posY, HashSet<Peg> alreadyMatched)
     {
         Peg closest = null;
@@ -142,7 +172,6 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
         }
 
-        // Accept within 1.0 units (squared = 1.0)
         return closestDist <= 1f ? closest : null;
     }
 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using BepInEx.Logging;
 using Battle.Attacks;
 using PeglinMods.Multiplayer.GameState.Snapshots;
+using PeglinMods.Multiplayer.Utility;
 using UnityEngine;
 
 namespace PeglinMods.Multiplayer.GameState.Providers;
@@ -10,8 +11,13 @@ namespace PeglinMods.Multiplayer.GameState.Providers;
 public class DeckStateProvider : IGameStateProvider<DeckStateSnapshot>
 {
     private readonly ManualLogSource _log;
+    private readonly OrbIdentifier _orbId;
 
-    public DeckStateProvider(ManualLogSource log) => _log = log;
+    public DeckStateProvider(ManualLogSource log, OrbIdentifier orbId)
+    {
+        _log = log;
+        _orbId = orbId;
+    }
 
     public DeckStateSnapshot Capture()
     {
@@ -19,34 +25,41 @@ public class DeckStateProvider : IGameStateProvider<DeckStateSnapshot>
         {
             var snapshot = new DeckStateSnapshot();
 
-            // DeckManager is a ScriptableObject - FindObjectOfType won't find it
             var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
             var dm = dms.Length > 0 ? dms[0] : null;
             if (dm == null) return snapshot;
 
-            // completeDeck is a public static field
             var completeDeck = DeckManager.completeDeck;
             if (completeDeck != null)
             {
-                foreach (var go in completeDeck)
+                for (int i = 0; i < completeDeck.Count; i++)
                 {
+                    var go = completeDeck[i];
                     if (go == null) continue;
-                    snapshot.CompleteDeck.Add(CreateOrbEntry(go));
+                    var entry = CreateOrbEntry(go);
+                    entry.Guid = _orbId.GetOrAssignGuid(go);
+                    entry.DeckIndex = i;
+                    snapshot.CompleteDeck.Add(entry);
                 }
             }
 
-            // battleDeck is a public instance field
             var battleDeck = dm.battleDeck;
             if (battleDeck != null)
             {
-                foreach (var go in battleDeck)
+                for (int i = 0; i < battleDeck.Count; i++)
                 {
+                    var go = battleDeck[i];
                     if (go == null) continue;
-                    snapshot.BattleDeck.Add(CreateOrbEntry(go));
+                    var entry = CreateOrbEntry(go);
+                    entry.Guid = _orbId.GetOrAssignGuid(go);
+                    entry.DeckIndex = i;
+                    snapshot.BattleDeck.Add(entry);
                 }
             }
 
             snapshot.DeckSize = snapshot.CompleteDeck.Count;
+
+            _log.LogInfo($"[DeckProvider] Captured {snapshot.CompleteDeck.Count} complete, {snapshot.BattleDeck.Count} battle orbs ({_orbId.Count} in registry)");
 
             return snapshot;
         }

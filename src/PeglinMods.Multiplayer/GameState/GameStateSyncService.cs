@@ -23,16 +23,19 @@ public class GameStateSyncService : IGameStateSyncService
     public GameStateSyncService(
         ManualLogSource log,
         IGameEventRegistry registry,
-        IMultiplayerMode mode)
+        IMultiplayerMode mode,
+        EnemyIdentifier enemyId,
+        PegIdentifier pegId,
+        OrbIdentifier orbId)
     {
         _log = log;
         _registry = registry;
         _mode = mode;
         _mapProvider = new MapStateProvider(log);
         _playerProvider = new PlayerStateProvider(log);
-        _enemyProvider = new EnemyStateProvider(log);
-        _pegboardProvider = new PegboardStateProvider(log);
-        _deckProvider = new DeckStateProvider(log);
+        _enemyProvider = new EnemyStateProvider(log, enemyId);
+        _pegboardProvider = new PegboardStateProvider(log, pegId);
+        _deckProvider = new DeckStateProvider(log, orbId);
         _relicProvider = new RelicStateProvider(log);
     }
 

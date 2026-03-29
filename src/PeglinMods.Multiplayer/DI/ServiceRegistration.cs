@@ -106,15 +106,19 @@ public static class ServiceRegistration
         var client = new NetworkClient(transport, eventRegistry, serializer);
         container.RegisterSingleton<IMessageReceiver>(client);
 
-        container.RegisterSingleton(new EnemyIdentifier());
-        container.RegisterSingleton(new OrbIdentifier());
+        var enemyId = new EnemyIdentifier();
+        container.RegisterSingleton(enemyId);
+        var pegId = new PegIdentifier();
+        container.RegisterSingleton(pegId);
+        var orbId = new OrbIdentifier();
+        container.RegisterSingleton(orbId);
 
         // Game state sync service (host -> captures state and sends)
-        var syncService = new GameStateSyncService(log, eventRegistry, container.Resolve<IMultiplayerMode>());
+        var syncService = new GameStateSyncService(log, eventRegistry, container.Resolve<IMultiplayerMode>(), enemyId, pegId, orbId);
         container.RegisterSingleton<IGameStateSyncService>(syncService);
 
         // Game state apply service (client -> receives state and applies)
-        var applyService = new GameStateApplyService(log);
+        var applyService = new GameStateApplyService(log, enemyId, pegId);
         container.RegisterSingleton(applyService);
 
         var versionChecker = new VersionChecker(log);

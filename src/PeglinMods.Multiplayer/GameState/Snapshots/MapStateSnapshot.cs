@@ -24,4 +24,22 @@ public class MapStateSnapshot
     /// Format: "s0,s1,s2,s3" (4 ints from the internal state fields).
     /// </summary>
     public string RandomStateJson { get; set; }
+
+    /// <summary>
+    /// Map nodes with their positions and room types — for client verification.
+    /// Only populated when on a map scene.
+    /// </summary>
+    public List<MapNodeEntry> Nodes { get; set; }
+}
+
+public class MapNodeEntry
+{
+    public int Index { get; set; }
+    public float PosX { get; set; }
+    public float PosY { get; set; }
+    public int RoomType { get; set; }
+    public string RoomTypeName { get; set; }
+    public string MapDataName { get; set; }
+    public int RoomState { get; set; }
+    public string RoomStateName { get; set; }
 }

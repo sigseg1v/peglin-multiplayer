@@ -1,6 +1,7 @@
 using System;
 using BepInEx.Logging;
 using PeglinMods.Multiplayer.GameState.Snapshots;
+using PeglinMods.Multiplayer.Utility;
 using UnityEngine;
 
 namespace PeglinMods.Multiplayer.GameState.Providers;
@@ -8,8 +9,13 @@ namespace PeglinMods.Multiplayer.GameState.Providers;
 public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
 {
     private readonly ManualLogSource _log;
+    private readonly PegIdentifier _pegId;
 
-    public PegboardStateProvider(ManualLogSource log) => _log = log;
+    public PegboardStateProvider(ManualLogSource log, PegIdentifier pegId)
+    {
+        _log = log;
+        _pegId = pegId;
+    }
 
     public PegboardStateSnapshot Capture()
     {
@@ -17,16 +23,17 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
         {
             var snapshot = new PegboardStateSnapshot();
 
-            // Find ALL pegs in the scene — includes RegularPeg, LongPeg, Bomb, BouncerPeg
-            // (Bomb and BouncerPeg extend Peg but are tracked in separate lists by PegManager)
             var allPegs = UnityEngine.Object.FindObjectsOfType<Peg>(true);
 
             foreach (var peg in allPegs)
             {
                 if (peg == null) continue;
 
+                var guid = _pegId.GetOrAssignGuid(peg);
+
                 snapshot.Pegs.Add(new PegEntry
                 {
+                    Guid = guid,
                     PegType = (int)peg.pegType,
                     PegTypeName = peg.pegType.ToString(),
                     PosX = peg.transform.position.x,
@@ -35,7 +42,6 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     IsDestroyed = !peg.gameObject.activeSelf || ((int)peg.pegType & 0x20) != 0,
                 });
 
-                // Count by type
                 var pt = (int)peg.pegType;
                 if (peg.gameObject.activeSelf)
                 {
@@ -45,6 +51,8 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                 }
             }
             snapshot.TotalPegCount = allPegs.Length;
+
+            _log.LogInfo($"[PegProvider] Captured {snapshot.TotalPegCount} pegs ({_pegId.Count} in registry)");
 
             return snapshot;
         }
