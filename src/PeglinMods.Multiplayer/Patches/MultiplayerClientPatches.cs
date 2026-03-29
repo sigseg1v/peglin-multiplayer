@@ -19,7 +19,7 @@ public static class MultiplayerClientPatches
 
     /// <summary>
     /// Returns true when the client should NOT run its own game logic.
-    /// This applies in spectating mode AND mirror mode (when not hosting).
+    /// Only true when actively connected as a spectating client.
     /// </summary>
     private static bool ShouldSuppressClientLogic
     {
@@ -27,7 +27,7 @@ public static class MultiplayerClientPatches
         {
             if (MultiplayerPlugin.Services == null) return false;
             if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode)) return false;
-            return mode.IsSpectating || (mode.ClientMode == ClientMode.Mirror && !mode.IsHosting);
+            return mode.IsSpectating;
         }
     }
 
