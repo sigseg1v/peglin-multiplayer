@@ -97,10 +97,50 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
             }
 
             _log.LogInfo($"[RelicApplier] Result: added={added}, alreadyOwned={alreadyOwned}, removed={toRemove.Count}, total={owned.Count}");
+
+            // Ensure relic UI is up to date — RelicUI subscribes to OnRelicAdded,
+            // but relics added before the battle scene loads won't have icons.
+            // Find the RelicUI and ensure all owned relics have icons.
+            RefreshRelicUI(owned);
         }
         catch (Exception ex)
         {
             _log.LogError($"[RelicApplier] Apply failed: {ex.Message}\n{ex.StackTrace}");
+        }
+    }
+
+    /// <summary>
+    /// Ensure all owned relics have UI icons. RelicUI only creates icons when
+    /// OnRelicAdded fires, but relics added before the scene loads miss this.
+    /// </summary>
+    private void RefreshRelicUI(Dictionary<RelicEffect, Relic> owned)
+    {
+        try
+        {
+            var relicUI = UnityEngine.Object.FindObjectOfType<RelicUI>();
+            if (relicUI == null) return;
+
+            var iconsField = AccessTools.Field(typeof(RelicUI), "icons");
+            var icons = iconsField?.GetValue(relicUI) as Dictionary<RelicEffect, RelicIcon>;
+            if (icons == null) return;
+
+            int refreshed = 0;
+            foreach (var kvp in owned)
+            {
+                if (!icons.ContainsKey(kvp.Key) && kvp.Value != null)
+                {
+                    // Invoke OnRelicAdded to create the icon
+                    RelicManager.OnRelicAdded?.Invoke(kvp.Value);
+                    refreshed++;
+                }
+            }
+
+            if (refreshed > 0)
+                _log.LogInfo($"[RelicApplier] Refreshed {refreshed} relic icons in UI");
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[RelicApplier] RefreshRelicUI failed: {ex.Message}");
         }
     }
 }

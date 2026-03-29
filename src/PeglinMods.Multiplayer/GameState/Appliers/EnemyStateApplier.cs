@@ -83,10 +83,12 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                 if (match != null)
                 {
                     // Force-update all state
-                    match.CurrentHealth = entry.CurrentHealth;
                     SetMaxHealth(match, entry.MaxHealth);
+                    match.CurrentHealth = entry.CurrentHealth;
                     match.transform.position = new Vector3(
                         entry.PosX, entry.PosY, match.transform.position.z);
+                    // Update HP bar visually
+                    ForceUpdateHealthBar(match);
                     matched.Add(match);
                     updated++;
 
@@ -316,8 +318,9 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             // Set HP AFTER AddEnemy/Initialize — Initialize resets HP to max
             SetMaxHealth(enemy, entry.MaxHealth);
             enemy.CurrentHealth = entry.CurrentHealth;
+            ForceUpdateHealthBar(enemy);
 
-            _log.LogInfo($"[EnemyApplier] Spawned '{entry.EnemyName}' at ({entry.PosX:F1},{entry.PosY:F1}) slot={entry.SlotIndex} guid={entry.Id}");
+            _log.LogInfo($"[EnemyApplier] Spawned '{entry.EnemyName}' at ({entry.PosX:F1},{entry.PosY:F1}) slot={entry.SlotIndex} guid={entry.Id} hp={enemy.CurrentHealth}/{entry.MaxHealth}");
             return enemy;
         }
         catch (Exception ex)
@@ -394,5 +397,19 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
         if (maxHealth <= 0) return;
         var field = AccessTools.Field(typeof(Enemy), "_maxHealth");
         field?.SetValue(enemy, maxHealth);
+    }
+
+    /// <summary>
+    /// Call the enemy's protected UpdateHealthBar method via reflection to refresh the HP bar UI.
+    /// Without this, setting CurrentHealth directly doesn't update the visual bar or text.
+    /// </summary>
+    private static void ForceUpdateHealthBar(Enemy enemy)
+    {
+        try
+        {
+            var method = AccessTools.Method(typeof(Enemy), "UpdateHealthBar");
+            method?.Invoke(enemy, null);
+        }
+        catch { }
     }
 }
