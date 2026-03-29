@@ -52,7 +52,8 @@ copy-plugins config="Debug":
     $bin = '{{src}}/PeglinMods.Multiplayer/bin/{{config}}/netstandard2.1'; \
     Copy-Item '{{src}}/PeglinMods.Core/bin/{{config}}/netstandard2.1/PeglinMods.Core.dll' '{{plugins}}/'; \
     Copy-Item "$bin/PeglinMods.Multiplayer.dll" '{{plugins}}/'; \
-    Copy-Item "$bin/LiteNetLib.dll" '{{plugins}}/'
+    Copy-Item "$bin/LiteNetLib.dll" '{{plugins}}/'; \
+    Copy-Item "$bin/NLog.dll" '{{plugins}}/'
 
 # Build debug, deploy to game dir, launch game, tail logs
 dev: setup
@@ -78,14 +79,16 @@ dev-multi: setup
     [IO.File]::Create($sharedLog).Close(); \
     $windowArgs = @('-screen-fullscreen','0','-screen-width','1280','-screen-height','720'); \
     $compatBase = "$HOME/.steam/steam/steamapps/compatdata"; \
-    Write-Host '==> Launching HOST (windowed)...'; \
+    Write-Host '==> Launching PEGLIN1 (windowed)...'; \
+    $env:PEGLINMODS_INSTANCE = 'PEGLIN1'; \
     $env:STEAM_COMPAT_DATA_PATH = "$compatBase/1296610"; \
     Start-Process pwsh -ArgumentList (@('-NoProfile','-File','{{root}}/launch.ps1') + $windowArgs); \
     Start-Sleep 2; \
-    Write-Host '==> Launching CLIENT (windowed)...'; \
+    Write-Host '==> Launching PEGLIN2 (windowed)...'; \
+    $env:PEGLINMODS_INSTANCE = 'PEGLIN2'; \
     $env:STEAM_COMPAT_DATA_PATH = "$compatBase/1296611"; \
     Start-Process pwsh -ArgumentList (@('-NoProfile','-File','{{root}}/launch.ps1') + $windowArgs); \
-    Remove-Item Env:\STEAM_COMPAT_DATA_PATH -ErrorAction SilentlyContinue; \
+    Remove-Item Env:\PEGLINMODS_INSTANCE,Env:\STEAM_COMPAT_DATA_PATH -ErrorAction SilentlyContinue; \
     Write-Host "==> Tailing shared log (Ctrl+C to stop)"; \
     Write-Host "    Log: $sharedLog`n"; \
     Start-Sleep 1; \

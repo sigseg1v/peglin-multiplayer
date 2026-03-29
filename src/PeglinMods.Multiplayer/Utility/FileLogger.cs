@@ -1,31 +1,49 @@
 using System;
 using System.IO;
 using BepInEx.Logging;
+using NLog;
+using NLog.Config;
+using NLog.Targets;
+using LogLevel = BepInEx.Logging.LogLevel;
 
 namespace PeglinMods.Multiplayer.Utility;
 
 public sealed class FileLogger : IDisposable
 {
-    private readonly StreamWriter _writer;
+    private readonly NLog.Logger _nlog;
     private readonly string _filePath;
 
     public FileLogger(string logsDirectory)
     {
         Directory.CreateDirectory(logsDirectory);
-
-        // Always use a shared log file. Both host and client append to the same file
-        // with FileShare.ReadWrite so concurrent writers work.
         _filePath = Path.Combine(logsDirectory, "peglinmods_shared.log");
-        var fs = new FileStream(_filePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
-        _writer = new StreamWriter(fs) { AutoFlush = true };
 
-        _writer.WriteLine($"--- PeglinMods log started at {DateTime.Now:O} ---");
+        // Set initial instance tag from env var (e.g. PEGLIN1, PEGLIN2)
+        var instance = Environment.GetEnvironmentVariable("PEGLINMODS_INSTANCE");
+        if (!string.IsNullOrEmpty(instance))
+            RoleTag = instance;
+
+        // Configure NLog with concurrent file writes
+        var config = new LoggingConfiguration();
+        var fileTarget = new FileTarget("sharedLog")
+        {
+            FileName = _filePath,
+            Layout = "${message}",        // We format lines ourselves
+            KeepFileOpen = false,         // Close after each write for multi-process safety
+            AutoFlush = true,
+        };
+        config.AddRule(NLog.LogLevel.Trace, NLog.LogLevel.Fatal, fileTarget);
+        LogManager.Configuration = config;
+
+        _nlog = LogManager.GetLogger("PeglinMods");
+        _nlog.Info($"--- PeglinMods [{RoleTag}] log started at {DateTime.Now:O} ---");
     }
 
     public string FilePath => _filePath;
 
     /// <summary>
-    /// Tag prepended to every log line once the role is known (HOST/CLIENT).
+    /// Tag prepended to every log line. Initially set from PEGLINMODS_INSTANCE
+    /// env var (e.g. "PEGLIN1"), then updated to "HOST" or "CLIENT" when role is chosen.
     /// </summary>
     public static string RoleTag { get; set; } = "";
 
@@ -33,12 +51,12 @@ public sealed class FileLogger : IDisposable
     {
         var tag = string.IsNullOrEmpty(RoleTag) ? "" : $"[{RoleTag}] ";
         var line = $"[{DateTime.Now:HH:mm:ss.fff}] [{level}] {tag}{message}";
-        try { _writer.WriteLine(line); } catch { }
+        _nlog.Info(line);
     }
 
     public void Dispose()
     {
-        _writer?.Dispose();
+        LogManager.Shutdown();
     }
 }
 

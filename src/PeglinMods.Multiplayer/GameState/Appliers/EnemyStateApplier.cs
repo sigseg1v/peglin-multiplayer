@@ -167,21 +167,49 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
     }
 
     /// <summary>
-    /// Search the game's pre-loaded enemy prefab cache by name.
+    /// Search for an enemy prefab by name. Tries multiple strategies:
+    /// 1. AssetLoading.Instance.EnemyPrefabs cache (values matched by name)
+    /// 2. Resources.FindObjectsOfTypeAll as fallback
     /// </summary>
-    private static GameObject FindEnemyPrefab(string name)
+    private GameObject FindEnemyPrefab(string name)
     {
         if (string.IsNullOrEmpty(name)) return null;
-
-        var cache = AssetLoading.Instance?.EnemyPrefabs;
-        if (cache == null) return null;
-
         string cleanName = name.Replace("(Clone)", "").Trim();
-        foreach (var kvp in cache)
+
+        // Strategy 1: AssetLoading cache
+        var cache = AssetLoading.Instance?.EnemyPrefabs;
+        if (cache != null)
         {
-            if (kvp.Value != null && kvp.Value.name == cleanName)
-                return kvp.Value;
+            _log.LogInfo($"[EnemyApplier] Prefab cache has {cache.Count} entries, searching for '{cleanName}'");
+            foreach (var kvp in cache)
+            {
+                if (kvp.Value != null && kvp.Value.name == cleanName)
+                    return kvp.Value;
+            }
+            // Log what IS in the cache for debugging
+            if (cache.Count <= 20)
+            {
+                foreach (var kvp in cache)
+                    _log.LogInfo($"[EnemyApplier]   cache: key={kvp.Key}, name={kvp.Value?.name}");
+            }
         }
+        else
+        {
+            _log.LogWarning("[EnemyApplier] AssetLoading.Instance or EnemyPrefabs is null");
+        }
+
+        // Strategy 2: search all loaded GameObjects with Enemy component
+        var allEnemies = Resources.FindObjectsOfTypeAll<Battle.Enemies.Enemy>();
+        foreach (var e in allEnemies)
+        {
+            if (e != null && e.gameObject.name == cleanName && e.gameObject.scene.name == null)
+            {
+                // scene.name == null means it's a prefab (not instantiated in a scene)
+                _log.LogInfo($"[EnemyApplier] Found prefab via Resources: '{cleanName}'");
+                return e.gameObject;
+            }
+        }
+
         return null;
     }
 
