@@ -47,20 +47,43 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             _log.LogInfo($"[DeckApplier] Deck sync complete: completeDeck={DeckManager.completeDeck?.Count ?? 0}, " +
                 $"battleDeck={dm.battleDeck?.Count ?? 0}, shuffledDeck={dm.shuffledDeck?.Count ?? 0}");
 
-            // Trigger visual deck display if in battle and we have battle orbs.
-            // Manually populate shuffledDeck and fire onDeckShuffled — this triggers
-            // DeckInfoManager to create the visual orb display (plunger, sprites, etc.)
-            // We DON'T call ShuffleCompleteDeck because it needs deckOrderRandomState
-            // which may not be initialized when GameInit.Start is blocked on client.
+            // Build shuffledDeck in the host's exact order and trigger visual display.
+            // ShuffleCompleteDeck is blocked on client, so we build it manually.
             if (SceneManager.GetActiveScene().name == "Battle" &&
                 dm.battleDeck != null && dm.battleDeck.Count > 0)
             {
                 try
                 {
-                    // Only populate if shuffledDeck is empty (first time)
-                    // or if the deck actually changed
-                    if (dm.shuffledDeck.Count == 0 || deckChanged)
+                    bool needsRebuild = dm.shuffledDeck.Count == 0 || deckChanged;
+
+                    // Use host's shuffled order if available
+                    if (needsRebuild && snapshot.ShuffledOrder != null && snapshot.ShuffledOrder.Count > 0)
                     {
+                        dm.shuffledDeck.Clear();
+                        // Push in reverse order — stack is LIFO, index 0 = top = first draw
+                        for (int i = snapshot.ShuffledOrder.Count - 1; i >= 0; i--)
+                        {
+                            var orbName = snapshot.ShuffledOrder[i];
+                            // Find matching orb in battleDeck by name
+                            GameObject match = null;
+                            for (int j = 0; j < dm.battleDeck.Count; j++)
+                            {
+                                if (dm.battleDeck[j] != null && dm.battleDeck[j].name == orbName)
+                                {
+                                    match = dm.battleDeck[j];
+                                    break;
+                                }
+                            }
+                            if (match != null)
+                                dm.shuffledDeck.Push(match);
+                        }
+
+                        DeckManager.onDeckShuffled(dm.shuffledDeck.Count);
+                        _log.LogInfo($"[DeckApplier] Built shuffledDeck in host order: {dm.shuffledDeck.Count} orbs");
+                    }
+                    else if (needsRebuild)
+                    {
+                        // Fallback: no shuffled order from host, use battleDeck order
                         dm.shuffledDeck.Clear();
                         for (int i = dm.battleDeck.Count - 1; i >= 0; i--)
                         {
@@ -69,7 +92,7 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                         }
 
                         DeckManager.onDeckShuffled(dm.shuffledDeck.Count);
-                        _log.LogInfo($"[DeckApplier] Triggered deck display: shuffledDeck={dm.shuffledDeck.Count}");
+                        _log.LogInfo($"[DeckApplier] Built shuffledDeck (fallback order): {dm.shuffledDeck.Count} orbs");
                     }
                 }
                 catch (Exception shuffleEx)

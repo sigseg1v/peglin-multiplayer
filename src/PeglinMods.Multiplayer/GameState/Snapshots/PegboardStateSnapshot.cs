@@ -24,4 +24,7 @@ public class PegEntry
     public float PosY { get; set; }
     public int SlimeType { get; set; }
     public bool IsDestroyed { get; set; }
+
+    /// <summary>Number of gold coins on this peg (0 = no gold).</summary>
+    public int CoinCount { get; set; }
 }

@@ -56,6 +56,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     PosY = peg.transform.position.y,
                     SlimeType = (int)peg.slimeType,
                     IsDestroyed = destroyed,
+                    CoinCount = peg.NumCoins(),
                 });
 
                 if (peg.gameObject.activeSelf)

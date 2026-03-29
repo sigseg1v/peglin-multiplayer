@@ -313,6 +313,64 @@ public static class MultiplayerClientPatches
     }
 
     // =========================================================================
+    // BLOCK CLIENT RANDOMIZATION — prevent game from overwriting synced state
+    // =========================================================================
+
+    /// <summary>
+    /// Block random map node type generation on client.
+    /// MapController.Start() → rootNode.SetActiveState(NEXT) → GenerateRoomType().
+    /// Without this, nodes get random types that fight with our synced types.
+    /// </summary>
+    [HarmonyPatch(typeof(MapNode), "GenerateRoomType")]
+    [HarmonyPrefix]
+    public static bool MapNode_GenerateRoomType_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// Skip icon generation for NONE type nodes on client.
+    /// When GenerateRoomType is blocked, nodes stay NONE. GenerateIcon with NONE
+    /// would crash on _icons[-1]. Let it through for valid types (our sync sets them).
+    /// </summary>
+    [HarmonyPatch(typeof(MapNode), "GenerateIcon")]
+    [HarmonyPrefix]
+    public static bool MapNode_GenerateIcon_Prefix(MapNode __instance)
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        return __instance.RoomType != RoomType.NONE;
+    }
+
+    /// <summary>
+    /// Block deck shuffle on client. BattleController.Start() calls ShuffleCompleteDeck()
+    /// which re-shuffles with the client's own RNG, producing wrong orb order.
+    /// Our DeckApplier syncs the correct shuffledDeck order from the host.
+    /// </summary>
+    [HarmonyPatch(typeof(DeckManager), "ShuffleCompleteDeck")]
+    [HarmonyPrefix]
+    public static bool DeckManager_ShuffleCompleteDeck_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked ShuffleCompleteDeck — host will send deck order");
+        return false;
+    }
+
+    /// <summary>
+    /// Block gold coin placement on client pegs. BattleController.Start() calls
+    /// AddInitialCoinsToBoard which shuffles _allPegs randomly and places gold.
+    /// Our PegApplier syncs gold state per-peg from the host.
+    /// </summary>
+    [HarmonyPatch(typeof(BattleController), "AddInitialCoinsToBoard")]
+    [HarmonyPrefix]
+    public static bool BattleController_AddInitialCoinsToBoard_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked AddInitialCoinsToBoard — host will send gold state");
+        return false;
+    }
+
+    // =========================================================================
     // RNG STATE CAPTURE — host saves state before map generation
     // =========================================================================
 

@@ -57,9 +57,19 @@ public class DeckStateProvider : IGameStateProvider<DeckStateSnapshot>
                 }
             }
 
+            // Capture shuffledDeck order (top of stack = first to draw)
+            if (dm.shuffledDeck != null && dm.shuffledDeck.Count > 0)
+            {
+                foreach (var orb in dm.shuffledDeck)
+                {
+                    if (orb != null)
+                        snapshot.ShuffledOrder.Add(orb.name);
+                }
+            }
+
             snapshot.DeckSize = snapshot.CompleteDeck.Count;
 
-            _log.LogInfo($"[DeckProvider] Captured {snapshot.CompleteDeck.Count} complete, {snapshot.BattleDeck.Count} battle orbs ({_orbId.Count} in registry)");
+            _log.LogInfo($"[DeckProvider] Captured {snapshot.CompleteDeck.Count} complete, {snapshot.BattleDeck.Count} battle, {snapshot.ShuffledOrder.Count} shuffled orbs ({_orbId.Count} in registry)");
 
             return snapshot;
         }

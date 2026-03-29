@@ -132,6 +132,16 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     }
                     catch { }
                 }
+
+                // Apply gold coins — host sends coin count per peg
+                if (entry.CoinCount > 0)
+                {
+                    int currentCoins = peg.NumCoins();
+                    for (int c = currentCoins; c < entry.CoinCount; c++)
+                    {
+                        try { peg.AddCoin(false); } catch { }
+                    }
+                }
             }
 
             _log.LogInfo($"[PegboardApplier] GUIDMatched={guidMatched}, IndexMatched={indexMatched}, " +
