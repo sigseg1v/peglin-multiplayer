@@ -13,23 +13,13 @@ public sealed class FileLogger : IDisposable
     {
         Directory.CreateDirectory(logsDirectory);
 
-#if DEBUG
-        // Debug: shared log file for both host and client.
-        // FileShare.ReadWrite allows both processes to write concurrently.
-        // AutoFlush ensures each line is written immediately.
+        // Always use a shared log file. Both host and client append to the same file
+        // with FileShare.ReadWrite so concurrent writers work.
         _filePath = Path.Combine(logsDirectory, "peglinmods_shared.log");
         var fs = new FileStream(_filePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
         _writer = new StreamWriter(fs) { AutoFlush = true };
-#else
-        var instance = Environment.GetEnvironmentVariable("PEGLINMODS_INSTANCE");
-        var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-        var tag = string.IsNullOrEmpty(instance) ? "" : $"_{instance}";
-        _filePath = Path.Combine(logsDirectory, $"peglinmods_{timestamp}{tag}.log");
-        _writer = new StreamWriter(_filePath, append: false) { AutoFlush = true };
-#endif
 
-        _writer.WriteLine($"PeglinMods log started at {DateTime.Now:O}");
-        _writer.WriteLine(new string('-', 60));
+        _writer.WriteLine($"--- PeglinMods log started at {DateTime.Now:O} ---");
     }
 
     public string FilePath => _filePath;
