@@ -12,9 +12,14 @@ using UnityEngine.SceneManagement;
 namespace PeglinMods.Multiplayer.GameState;
 
 /// <summary>
-/// Receives state snapshots from the network and routes them to the correct applier.
-/// Buffers snapshots and re-applies after scene loads (with delay for initialization).
-/// This ensures state is applied even if it arrives before the target scene loads.
+/// Scene-aware state manager with message queuing.
+///
+/// Core principle: Client state converges to host state.
+/// - Tracks the authoritative host scene (_hostScene)
+/// - Queues snapshots that arrive for scenes the client isn't on yet
+/// - ApplyBufferedAfterDelay NEVER triggers scene changes (prevents stale bounces)
+/// - Scene changes only from fresh ApplyAll or NodeActivatedClientHandler
+/// - Pending snapshots are applied as soon as the client reaches the right scene
 /// </summary>
 public class GameStateApplyService
 {
@@ -28,10 +33,15 @@ public class GameStateApplyService
     private readonly EnemyIdentifier _enemyId;
     private readonly PegIdentifier _pegId;
 
-    // Buffered latest snapshots — re-applied on scene load
-    private FullGameStateSnapshot _latestFull;
-    private EnemyStateSnapshot _latestEnemies;
-    private PegboardStateSnapshot _latestPegboard;
+    // --- Authoritative host state ---
+    private string _hostScene = "";
+    private long _hostSceneTimestamp;
+
+    // --- Pending snapshot for a scene the client is transitioning to ---
+    private FullGameStateSnapshot _pendingSnapshot;
+    private string _pendingSnapshotScene = "";
+
+    // --- Individual buffered snapshots (for partial updates) ---
     private PlayerStateSnapshot _latestPlayer;
 
     public GameStateApplyService(ManualLogSource log, EnemyIdentifier enemyId, PegIdentifier pegId)
@@ -49,112 +59,81 @@ public class GameStateApplyService
         SceneManager.sceneLoaded += OnSceneLoaded;
     }
 
+    // =========================================================================
+    // SCENE LOADED — apply pending state, start post-load coroutine
+    // =========================================================================
+
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
         if (mode != LoadSceneMode.Single) return;
 
-        // Clear GUID registries on scene transition so stale refs don't linger
-        _log.LogInfo($"[ApplyService] Scene loaded: '{scene.name}' — clearing GUID registries");
+        _log.LogInfo($"[ApplyService] Scene loaded: '{scene.name}' — clearing GUID registries, hostScene='{_hostScene}'");
         _enemyId.Clear();
         _pegId.Clear();
 
-        // Re-apply buffered state after scene initialization completes.
-        // Delay 3 frames so BattleController.Awake/Start and MapController finish first.
-        var dispatcher = MultiplayerPlugin.Services?.TryResolve<MainThreadDispatcher>(out var d) == true ? d : null;
-        if (dispatcher != null)
+        // Check if we have a pending snapshot for this scene
+        if (_pendingSnapshot != null &&
+            string.Equals(_pendingSnapshotScene, scene.name, StringComparison.OrdinalIgnoreCase))
         {
-            dispatcher.StartCoroutine(ApplyBufferedAfterDelay(scene.name));
-        }
-    }
+            _log.LogInfo($"[ApplyService] Applying PENDING snapshot for '{scene.name}' (queued while transitioning)");
+            var pending = _pendingSnapshot;
+            _pendingSnapshot = null;
+            _pendingSnapshotScene = "";
 
-    private IEnumerator ApplyBufferedAfterDelay(string sceneName)
-    {
-        // Wait for scene initialization (BattleController.Awake, EnemyManager.Initialize, etc.)
-        yield return null;
-        yield return null;
-        yield return null;
-        yield return new WaitForSeconds(0.5f);
-
-        // Verify we're still on the same scene (another load might have started)
-        var currentScene = SceneManager.GetActiveScene().name;
-        if (currentScene != sceneName)
-        {
-            _log.LogWarning($"[ApplyService] Scene changed during delay: expected '{sceneName}', now on '{currentScene}' — skipping re-apply");
-            yield break;
-        }
-
-        // If on Battle scene, wait for enemy prefab cache to be populated by BattleController.Awake → LoadEnemyAssets
-        if (currentScene == "Battle")
-        {
-            var cache = AssetLoading.Instance?.EnemyPrefabs;
-            int waitFrames = 0;
-            while ((cache == null || cache.Count == 0) && waitFrames < 30)
-            {
-                yield return null;
-                waitFrames++;
-                cache = AssetLoading.Instance?.EnemyPrefabs;
-            }
-            if (cache != null && cache.Count > 0)
-                _log.LogInfo($"[ApplyService] Enemy prefab cache ready: {cache.Count} entries (waited {waitFrames} frames)");
-            else
-                _log.LogWarning($"[ApplyService] Enemy prefab cache still empty after {waitFrames} frames — enemies may fail to spawn");
-        }
-
-        _log.LogInfo($"[ApplyService] Re-applying buffered state after scene '{sceneName}' loaded");
-        DiagnosticLogger.DumpBattleState($"CLIENT_BeforeReapply_{sceneName}");
-
-        if (_latestFull != null)
-        {
-            // Always re-apply map state (node types, static data) — even if snapshot
-            // scene doesn't match, the map data is still useful for applying node types
-            if (_latestFull.Map != null)
-                SafeApply("Map(reapply)", () => _mapApplier.Apply(_latestFull.Map));
-
-            // Check that the buffered snapshot's scene matches where we are now.
-            // Don't apply Battle data (enemies/pegs) to a non-Battle scene.
-            var snapshotScene = _latestFull.Map?.ActiveScene;
-            if (!string.IsNullOrEmpty(snapshotScene) &&
-                !string.Equals(snapshotScene, currentScene, StringComparison.OrdinalIgnoreCase))
-            {
-                _log.LogWarning($"[ApplyService] Stale snapshot: snapshot scene='{snapshotScene}', current='{currentScene}' — skipping battle state");
-                if (_latestFull.Player != null)
-                    SafeApply("Player", () => _playerApplier.Apply(_latestFull.Player));
-            }
-            else
-            {
-                ApplyNonMapState(_latestFull);
-            }
+            // Apply after a short delay for scene init
+            var dispatcher = MultiplayerPlugin.Services?.TryResolve<MainThreadDispatcher>(out var d) == true ? d : null;
+            dispatcher?.StartCoroutine(ApplyPendingAfterDelay(scene.name, pending));
         }
         else
         {
-            // Apply individual buffered snapshots
-            if (_latestPlayer != null) SafeApply("Player", () => _playerApplier.Apply(_latestPlayer));
-            if (_latestEnemies != null) SafeApply("Enemies", () => _enemyApplier.Apply(_latestEnemies));
-            if (_latestPegboard != null) SafeApply("Pegboard", () => _pegboardApplier.Apply(_latestPegboard));
+            // Normal post-scene-load: wait for init then apply what we can
+            var dispatcher = MultiplayerPlugin.Services?.TryResolve<MainThreadDispatcher>(out var d) == true ? d : null;
+            dispatcher?.StartCoroutine(ApplyAfterSceneLoad(scene.name));
         }
-
-        DiagnosticLogger.DumpBattleState($"CLIENT_AfterReapply_{sceneName}");
     }
+
+    // =========================================================================
+    // APPLY ALL — fresh snapshot from host (main entry point)
+    // =========================================================================
 
     public void ApplyAll(FullGameStateSnapshot snapshot)
     {
-        var scene = SceneManager.GetActiveScene().name;
-        _log.LogInfo($"[ApplyService] Applying full game state... (current scene={scene}, " +
-            $"host scene={snapshot.Map?.ActiveScene}, enemies={snapshot.Enemies?.Enemies?.Count ?? 0}, pegs={snapshot.Pegboard?.TotalPegCount ?? 0})");
-        _latestFull = snapshot;
+        var clientScene = SceneManager.GetActiveScene().name;
+        var hostScene = snapshot.Map?.ActiveScene ?? "";
+
+        // Update authoritative host scene
+        _hostScene = hostScene;
+        _hostSceneTimestamp = snapshot.TimestampMs;
+
+        _log.LogInfo($"[ApplyService] ApplyAll: clientScene='{clientScene}', hostScene='{hostScene}', " +
+            $"enemies={snapshot.Enemies?.Enemies?.Count ?? 0}, pegs={snapshot.Pegboard?.TotalPegCount ?? 0}");
 
         try
         {
-            // Map applier handles scene transitions — always apply immediately
-            if (snapshot.Map != null)
+            // CASE 1: Client is on the same scene as host — apply everything
+            if (string.Equals(clientScene, hostScene, StringComparison.OrdinalIgnoreCase))
             {
-                _mapApplier.Apply(snapshot.Map);
+                // Apply map data (node types, static data) without scene transition
+                if (snapshot.Map != null)
+                    _mapApplier.Apply(snapshot.Map);
+
+                ApplyNonMapState(snapshot);
+                _log.LogInfo("[ApplyService] Applied full state (same scene).");
+                return;
             }
 
-            // Apply non-map state only if we're on the right scene
-            ApplyNonMapState(snapshot);
+            // CASE 2: Client is on a DIFFERENT scene — queue snapshot and let MapApplier handle transition
+            _pendingSnapshot = snapshot;
+            _pendingSnapshotScene = hostScene;
+            _log.LogInfo($"[ApplyService] Queued snapshot for '{hostScene}' (client on '{clientScene}')");
 
-            _log.LogInfo("[ApplyService] Full game state applied.");
+            // Let MapApplier trigger the scene transition (any direction is OK for FRESH data)
+            if (snapshot.Map != null)
+                _mapApplier.Apply(snapshot.Map);
+
+            // Apply player state (works on any scene)
+            if (snapshot.Player != null)
+                SafeApply("Player", () => _playerApplier.Apply(snapshot.Player));
         }
         catch (Exception ex)
         {
@@ -162,83 +141,150 @@ public class GameStateApplyService
         }
     }
 
+    // =========================================================================
+    // POST-SCENE-LOAD COROUTINES
+    // =========================================================================
+
+    /// <summary>
+    /// Apply a pending snapshot that was queued while transitioning.
+    /// Shorter delay since we know exactly what to apply.
+    /// </summary>
+    private IEnumerator ApplyPendingAfterDelay(string sceneName, FullGameStateSnapshot snapshot)
+    {
+        yield return null;
+        yield return null;
+        yield return null;
+
+        // Wait for enemy cache on Battle
+        if (sceneName == "Battle")
+        {
+            yield return WaitForEnemyCache();
+        }
+
+        yield return new WaitForSeconds(0.3f);
+
+        var currentScene = SceneManager.GetActiveScene().name;
+        if (currentScene != sceneName)
+        {
+            _log.LogWarning($"[ApplyService] Scene changed during pending apply delay: {sceneName} → {currentScene}");
+            yield break;
+        }
+
+        _log.LogInfo($"[ApplyService] Applying pending snapshot for '{sceneName}'");
+        DiagnosticLogger.DumpBattleState($"CLIENT_BeforePending_{sceneName}");
+
+        // Apply map data (node types, static data) — no scene change since we're already here
+        if (snapshot.Map != null)
+            SafeApply("Map(pending)", () => _mapApplier.Apply(snapshot.Map));
+
+        // Apply all non-map state
+        ApplyNonMapState(snapshot);
+
+        DiagnosticLogger.DumpBattleState($"CLIENT_AfterPending_{sceneName}");
+    }
+
+    /// <summary>
+    /// Normal post-scene-load apply. No pending snapshot exists.
+    /// Applies player state only. Does NOT trigger scene changes.
+    /// </summary>
+    private IEnumerator ApplyAfterSceneLoad(string sceneName)
+    {
+        yield return null;
+        yield return null;
+        yield return null;
+
+        if (sceneName == "Battle")
+        {
+            yield return WaitForEnemyCache();
+        }
+
+        yield return new WaitForSeconds(0.5f);
+
+        var currentScene = SceneManager.GetActiveScene().name;
+        if (currentScene != sceneName)
+        {
+            _log.LogWarning($"[ApplyService] Scene changed during delay: {sceneName} → {currentScene}");
+            yield break;
+        }
+
+        _log.LogInfo($"[ApplyService] Post-scene-load apply for '{sceneName}' (no pending snapshot)");
+
+        // Apply player state if available
+        if (_latestPlayer != null)
+            SafeApply("Player", () => _playerApplier.Apply(_latestPlayer));
+
+        // Check if a pending snapshot arrived while we were waiting
+        if (_pendingSnapshot != null &&
+            string.Equals(_pendingSnapshotScene, currentScene, StringComparison.OrdinalIgnoreCase))
+        {
+            _log.LogInfo($"[ApplyService] Pending snapshot arrived during wait — applying now");
+            var pending = _pendingSnapshot;
+            _pendingSnapshot = null;
+            _pendingSnapshotScene = "";
+
+            if (pending.Map != null)
+                SafeApply("Map(late-pending)", () => _mapApplier.Apply(pending.Map));
+
+            ApplyNonMapState(pending);
+        }
+    }
+
+    private IEnumerator WaitForEnemyCache()
+    {
+        var cache = AssetLoading.Instance?.EnemyPrefabs;
+        int waitFrames = 0;
+        while ((cache == null || cache.Count == 0) && waitFrames < 30)
+        {
+            yield return null;
+            waitFrames++;
+            cache = AssetLoading.Instance?.EnemyPrefabs;
+        }
+        if (cache != null && cache.Count > 0)
+            _log.LogInfo($"[ApplyService] Enemy prefab cache ready: {cache.Count} entries (waited {waitFrames} frames)");
+        else
+            _log.LogWarning($"[ApplyService] Enemy prefab cache still empty after {waitFrames} frames");
+    }
+
+    // =========================================================================
+    // APPLY NON-MAP STATE — enemies, pegs, deck, relics
+    // =========================================================================
+
     private void ApplyNonMapState(FullGameStateSnapshot snapshot)
     {
         var currentScene = SceneManager.GetActiveScene().name;
 
-        // Player state works on any scene
         if (snapshot.Player != null)
             SafeApply("Player", () => _playerApplier.Apply(snapshot.Player));
 
-        // Enemy/pegboard/deck/relic state only makes sense in Battle
-        if (currentScene != "Battle")
+        // Battle-specific state
+        if (currentScene == "Battle")
         {
-            _log.LogInfo($"[ApplyService] Not on Battle scene (on '{currentScene}'), enemy/peg state buffered for later.");
-            return;
+            if (snapshot.Enemies != null) SafeApply("Enemies", () => _enemyApplier.Apply(snapshot.Enemies));
+            if (snapshot.Pegboard != null) SafeApply("Pegboard", () => _pegboardApplier.Apply(snapshot.Pegboard));
+            if (snapshot.Deck != null) SafeApply("Deck", () => _deckApplier.Apply(snapshot.Deck));
+            if (snapshot.Relics != null) SafeApply("Relics", () => _relicApplier.Apply(snapshot.Relics));
+            VerifyConsistency(snapshot);
         }
-
-        if (snapshot.Enemies != null) SafeApply("Enemies", () => _enemyApplier.Apply(snapshot.Enemies));
-        if (snapshot.Pegboard != null) SafeApply("Pegboard", () => _pegboardApplier.Apply(snapshot.Pegboard));
-        if (snapshot.Deck != null) SafeApply("Deck", () => _deckApplier.Apply(snapshot.Deck));
-        if (snapshot.Relics != null) SafeApply("Relics", () => _relicApplier.Apply(snapshot.Relics));
-
-        // Post-apply consistency check
-        VerifyConsistency(snapshot);
-    }
-
-    private void VerifyConsistency(FullGameStateSnapshot snapshot)
-    {
-        try
+        else
         {
-            var currentScene = SceneManager.GetActiveScene().name;
-            if (currentScene != "Battle") return;
-
-            // Check enemy count
-            if (snapshot.Enemies?.Enemies != null)
-            {
-                var em = UnityEngine.Object.FindObjectOfType<EnemyManager>();
-                int clientEnemies = em?.Enemies?.Count ?? 0;
-                int hostEnemies = snapshot.Enemies.Enemies.Count;
-                if (clientEnemies != hostEnemies)
-                {
-                    _log.LogWarning($"[Consistency] ENEMY COUNT MISMATCH: host={hostEnemies}, client={clientEnemies}");
-                    _enemyId.DumpState("ConsistencyCheck");
-                }
-                else
-                {
-                    _log.LogInfo($"[Consistency] Enemies OK: {clientEnemies} match");
-                }
-            }
-
-            // Check peg count (active pegs)
-            if (snapshot.Pegboard?.Pegs != null)
-            {
-                var livePegs = UnityEngine.Object.FindObjectsOfType<Peg>(false); // active only
-                int clientPegs = livePegs?.Length ?? 0;
-                int hostActivePegs = 0;
-                foreach (var p in snapshot.Pegboard.Pegs)
-                    if (!p.IsDestroyed) hostActivePegs++;
-
-                if (System.Math.Abs(clientPegs - hostActivePegs) > 5) // allow small variance
-                {
-                    _log.LogWarning($"[Consistency] PEG COUNT MISMATCH: host_active={hostActivePegs}, client_active={clientPegs}");
-                }
-                else
-                {
-                    _log.LogInfo($"[Consistency] Pegs OK: host={hostActivePegs}, client={clientPegs}");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning($"[Consistency] Check failed: {ex.Message}");
+            // Non-battle scenes: still sync deck and relics (they're global)
+            if (snapshot.Deck != null) SafeApply("Deck", () => _deckApplier.Apply(snapshot.Deck));
+            if (snapshot.Relics != null) SafeApply("Relics", () => _relicApplier.Apply(snapshot.Relics));
+            _log.LogInfo($"[ApplyService] Non-battle scene '{currentScene}': applied player/deck/relics, skipped enemies/pegs");
         }
     }
 
-    // --- Individual snapshot appliers (called from per-type client handlers) ---
+    // =========================================================================
+    // INDIVIDUAL SNAPSHOT APPLIERS — from per-type client handlers
+    // =========================================================================
 
     public void ApplyMapState(MapStateSnapshot snapshot)
     {
+        // Update host scene tracking
+        if (!string.IsNullOrEmpty(snapshot.ActiveScene))
+        {
+            _hostScene = snapshot.ActiveScene;
+        }
         SafeApply("Map", () => _mapApplier.Apply(snapshot));
     }
 
@@ -250,7 +296,6 @@ public class GameStateApplyService
 
     public void ApplyEnemyState(EnemyStateSnapshot snapshot)
     {
-        _latestEnemies = snapshot;
         if (SceneManager.GetActiveScene().name != "Battle")
         {
             _log.LogInfo("[ApplyService] Buffered enemy state (not on Battle scene)");
@@ -261,7 +306,6 @@ public class GameStateApplyService
 
     public void ApplyPegboardState(PegboardStateSnapshot snapshot)
     {
-        _latestPegboard = snapshot;
         if (SceneManager.GetActiveScene().name != "Battle")
         {
             _log.LogInfo("[ApplyService] Buffered pegboard state (not on Battle scene)");
@@ -278,6 +322,52 @@ public class GameStateApplyService
     public void ApplyRelicState(RelicStateSnapshot snapshot)
     {
         SafeApply("Relics", () => _relicApplier.Apply(snapshot));
+    }
+
+    // =========================================================================
+    // CONSISTENCY CHECK
+    // =========================================================================
+
+    private void VerifyConsistency(FullGameStateSnapshot snapshot)
+    {
+        try
+        {
+            if (SceneManager.GetActiveScene().name != "Battle") return;
+
+            if (snapshot.Enemies?.Enemies != null)
+            {
+                var em = UnityEngine.Object.FindObjectOfType<EnemyManager>();
+                int clientEnemies = em?.Enemies?.Count ?? 0;
+                int hostEnemies = snapshot.Enemies.Enemies.Count;
+                if (clientEnemies != hostEnemies)
+                {
+                    _log.LogWarning($"[Consistency] ENEMY COUNT MISMATCH: host={hostEnemies}, client={clientEnemies}");
+                    _enemyId.DumpState("ConsistencyCheck");
+                }
+                else
+                {
+                    _log.LogInfo($"[Consistency] Enemies OK: {clientEnemies} match");
+                }
+            }
+
+            if (snapshot.Pegboard?.Pegs != null)
+            {
+                var livePegs = UnityEngine.Object.FindObjectsOfType<Peg>(false);
+                int clientPegs = livePegs?.Length ?? 0;
+                int hostActivePegs = 0;
+                foreach (var p in snapshot.Pegboard.Pegs)
+                    if (!p.IsDestroyed) hostActivePegs++;
+
+                if (System.Math.Abs(clientPegs - hostActivePegs) > 5)
+                    _log.LogWarning($"[Consistency] PEG COUNT MISMATCH: host_active={hostActivePegs}, client_active={clientPegs}");
+                else
+                    _log.LogInfo($"[Consistency] Pegs OK: host={hostActivePegs}, client={clientPegs}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[Consistency] Check failed: {ex.Message}");
+        }
     }
 
     private void SafeApply(string name, Action action)

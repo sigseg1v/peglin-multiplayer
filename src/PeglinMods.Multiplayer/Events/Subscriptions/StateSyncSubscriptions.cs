@@ -1,8 +1,11 @@
 using System;
+using System.Collections;
 using Battle;
 using BepInEx.Logging;
 using PeglinMods.Multiplayer.GameState;
 using PeglinMods.Multiplayer.Multiplayer;
+using PeglinMods.Multiplayer.Utility;
+using UnityEngine;
 using UnityEngine.SceneManagement;
 
 namespace PeglinMods.Multiplayer.Events.Subscriptions;
@@ -84,7 +87,27 @@ public sealed class StateSyncSubscriptions
                 SafeSync("SceneLoaded:" + scene.name, () => _sync.SyncAll());
         };
 
-        _log.LogInfo("StateSyncSubscriptions registered (with aggressive sync)");
+        // Periodic heartbeat: host sends SyncMap every 2 seconds so client can converge
+        var dispatcher = MultiplayerPlugin.Services?.TryResolve<MainThreadDispatcher>(out var d) == true ? d : null;
+        if (dispatcher != null)
+        {
+            dispatcher.StartCoroutine(HostHeartbeat());
+        }
+
+        _log.LogInfo("StateSyncSubscriptions registered (with aggressive sync + 2s heartbeat)");
+    }
+
+    private IEnumerator HostHeartbeat()
+    {
+        while (true)
+        {
+            yield return new WaitForSeconds(2f);
+            if (_mode.IsHosting)
+            {
+                try { _sync.SyncMap(); }
+                catch { }
+            }
+        }
     }
 
     private void SafeSync(string trigger, Action action)
