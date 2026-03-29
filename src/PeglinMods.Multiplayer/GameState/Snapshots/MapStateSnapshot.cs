@@ -42,4 +42,7 @@ public class MapNodeEntry
     public string MapDataName { get; set; }
     public int RoomState { get; set; }
     public string RoomStateName { get; set; }
+
+    /// <summary>For BOSS nodes: which boss variant was selected from potentialMapData.</summary>
+    public int SelectedBossIndex { get; set; } = -1;
 }

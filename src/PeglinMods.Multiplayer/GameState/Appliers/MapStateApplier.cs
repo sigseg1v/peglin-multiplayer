@@ -184,9 +184,9 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
     }
 
     /// <summary>
-    /// Apply host's map node types to client nodes. Sets RoomType and generates
-    /// the correct icon for each node. This is the primary way the client's map
-    /// is synced since CreateMapDataLists is blocked on client.
+    /// Apply host's map node types to client nodes. Sets RoomType, boss index,
+    /// and room state with icon generation. This is the primary way the client's
+    /// map is synced since CreateMapDataLists is blocked on client.
     /// </summary>
     private void ApplyMapNodes(List<MapNodeEntry> hostNodes)
     {
@@ -207,6 +207,8 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 return;
             }
 
+            var bossIndexField = AccessTools.Field(typeof(MapNode), "_selectedBossIndex");
+
             int applied = 0, skipped = 0;
             foreach (var hostNode in hostNodes)
             {
@@ -223,23 +225,31 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                     continue;
                 }
 
-                // Apply room type from host
+                // Set room type from host
                 var hostRoomType = (RoomType)hostNode.RoomType;
-                if (clientNode.RoomType != hostRoomType)
+                clientNode.RoomType = hostRoomType;
+
+                // Set boss index BEFORE icon generation (GenerateIcon reads it for boss sprite)
+                if (hostNode.SelectedBossIndex >= 0 && bossIndexField != null)
                 {
-                    clientNode.RoomType = hostRoomType;
-                    try { clientNode.GenerateIcon(); } catch { }
+                    bossIndexField.SetValue(clientNode, hostNode.SelectedBossIndex);
                 }
 
-                // Apply room state from host
-                if (hostNode.RoomState >= 0)
+                // Apply room state WITH icon generation — SetActiveState(setIcon: true) handles:
+                //   1. Frame color based on state
+                //   2. GenerateIcon() based on RoomType (skips GenerateRoomType since RoomType != NONE)
+                //   3. Line drawing to children
+                // This replaces the old separate GenerateIcon + SetActiveState(setIcon: false) approach
+                // which could leave icons stale if GenerateIcon threw silently.
+                var hostState = hostNode.RoomState >= 0 ? (RoomState)hostNode.RoomState : RoomState.UPCOMING;
+                try
                 {
-                    var hostState = (RoomState)hostNode.RoomState;
-                    try
-                    {
-                        clientNode.SetActiveState(hostState, recursive: false, setIcon: false);
-                    }
-                    catch { }
+                    clientNode.SetActiveState(hostState, recursive: false, setIcon: true);
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning($"[MapApplier] SetActiveState failed for node {hostNode.Index} " +
+                        $"(type={hostRoomType}, state={hostState}): {ex.Message}");
                 }
 
                 applied++;

@@ -77,6 +77,8 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
 
                 var roomStatusField = AccessTools.Field(typeof(MapNode), "_roomStatus");
                 var roomState = roomStatusField?.GetValue(node);
+                var bossIndexField = AccessTools.Field(typeof(MapNode), "_selectedBossIndex");
+                var bossIndex = bossIndexField?.GetValue(node);
 
                 nodes.Add(new MapNodeEntry
                 {
@@ -88,6 +90,7 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
                     MapDataName = node.MapData?.name,
                     RoomState = roomState != null ? (int)roomState : -1,
                     RoomStateName = roomState?.ToString() ?? "?",
+                    SelectedBossIndex = bossIndex != null ? (int)bossIndex : -1,
                 });
             }
 

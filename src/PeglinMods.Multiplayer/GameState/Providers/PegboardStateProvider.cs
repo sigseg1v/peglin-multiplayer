@@ -1,6 +1,7 @@
 using System;
-using System.Collections.Generic;
+using Battle;
 using BepInEx.Logging;
+using HarmonyLib;
 using PeglinMods.Multiplayer.GameState.Snapshots;
 using PeglinMods.Multiplayer.Utility;
 using UnityEngine;
@@ -24,40 +25,39 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
         {
             var snapshot = new PegboardStateSnapshot();
 
-            var allPegs = UnityEngine.Object.FindObjectsOfType<Peg>(true);
-
-            // De-duplicate pegs at the same position (host can have pre-instanced + real pegboard)
-            var seenPositions = new HashSet<string>();
-            var uniquePegs = new System.Collections.Generic.List<Peg>();
-            foreach (var peg in allPegs)
+            // Get pegs from PegManager._allPegs — the authoritative list.
+            // FindObjectsOfType<Peg> finds orphaned pre-instanced duplicates.
+            // PegManager is a plain C# class (not MonoBehaviour), accessed via BattleController.
+            var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
+            var pm = bc?.pegManager;
+            if (pm == null || pm.allPegs == null)
             {
-                if (peg == null) continue;
-                var posKey = $"{peg.transform.position.x:F3},{peg.transform.position.y:F3}";
-                if (seenPositions.Add(posKey))
-                    uniquePegs.Add(peg);
+                _log.LogInfo("[PegProvider] No PegManager or allPegs list found");
+                return snapshot;
             }
 
-            if (uniquePegs.Count != allPegs.Length)
-                _log.LogInfo($"[PegProvider] De-duped {allPegs.Length} → {uniquePegs.Count} pegs (removed {allPegs.Length - uniquePegs.Count} duplicates)");
-
-            foreach (var peg in uniquePegs)
+            var pegs = pm.allPegs;
+            for (int i = 0; i < pegs.Count; i++)
             {
+                var peg = pegs[i];
                 if (peg == null) continue;
 
                 var guid = _pegId.GetOrAssignGuid(peg);
+                var pt = (int)peg.pegType;
+                bool destroyed = !peg.gameObject.activeSelf || (pt & 0x20) != 0; // DESTROYED flag
 
                 snapshot.Pegs.Add(new PegEntry
                 {
                     Guid = guid,
-                    PegType = (int)peg.pegType,
+                    Index = i,
+                    PegType = pt,
                     PegTypeName = peg.pegType.ToString(),
                     PosX = peg.transform.position.x,
                     PosY = peg.transform.position.y,
                     SlimeType = (int)peg.slimeType,
-                    IsDestroyed = !peg.gameObject.activeSelf || ((int)peg.pegType & 0x20) != 0,
+                    IsDestroyed = destroyed,
                 });
 
-                var pt = (int)peg.pegType;
                 if (peg.gameObject.activeSelf)
                 {
                     if ((pt & 0x2) != 0) snapshot.CritPegCount++;
@@ -65,9 +65,10 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     if ((pt & 0x8) != 0) snapshot.ResetPegCount++;
                 }
             }
-            snapshot.TotalPegCount = uniquePegs.Count;
+            snapshot.TotalPegCount = pegs.Count;
 
-            _log.LogInfo($"[PegProvider] Captured {snapshot.TotalPegCount} pegs ({_pegId.Count} in registry)");
+            _log.LogInfo($"[PegProvider] Captured {snapshot.TotalPegCount} pegs from PegManager.allPegs " +
+                $"(crit={snapshot.CritPegCount}, bomb={snapshot.BombPegCount}, reset={snapshot.ResetPegCount}, registry={_pegId.Count})");
 
             return snapshot;
         }

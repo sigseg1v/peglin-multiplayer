@@ -14,6 +14,10 @@ public class PegboardStateSnapshot
 public class PegEntry
 {
     public string Guid { get; set; }
+
+    /// <summary>Index in PegManager.allPegs — used for GUID assignment on first sync.</summary>
+    public int Index { get; set; }
+
     public int PegType { get; set; }
     public string PegTypeName { get; set; }
     public float PosX { get; set; }

@@ -5,6 +5,7 @@ using BepInEx.Logging;
 using Loading;
 using PeglinMods.Multiplayer.GameState.Snapshots;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace PeglinMods.Multiplayer.GameState.Appliers;
 
@@ -29,19 +30,56 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                 return;
             }
 
+            bool deckChanged = false;
+
             // Sync complete deck
             if (snapshot.CompleteDeck != null && snapshot.CompleteDeck.Count > 0)
             {
-                SyncCompleteDeck(dm, snapshot.CompleteDeck);
+                deckChanged |= SyncCompleteDeck(dm, snapshot.CompleteDeck);
             }
 
             // Sync battle deck
             if (snapshot.BattleDeck != null && snapshot.BattleDeck.Count > 0)
             {
-                SyncBattleDeck(dm, snapshot.BattleDeck);
+                deckChanged |= SyncBattleDeck(dm, snapshot.BattleDeck);
             }
 
-            _log.LogInfo($"[DeckApplier] Deck sync complete: completeDeck={DeckManager.completeDeck?.Count ?? 0}, battleDeck={dm.battleDeck?.Count ?? 0}");
+            _log.LogInfo($"[DeckApplier] Deck sync complete: completeDeck={DeckManager.completeDeck?.Count ?? 0}, " +
+                $"battleDeck={dm.battleDeck?.Count ?? 0}, shuffledDeck={dm.shuffledDeck?.Count ?? 0}");
+
+            // Trigger visual deck display if in battle and we have battle orbs.
+            // Manually populate shuffledDeck and fire onDeckShuffled — this triggers
+            // DeckInfoManager to create the visual orb display (plunger, sprites, etc.)
+            // We DON'T call ShuffleCompleteDeck because it needs deckOrderRandomState
+            // which may not be initialized when GameInit.Start is blocked on client.
+            if (SceneManager.GetActiveScene().name == "Battle" &&
+                dm.battleDeck != null && dm.battleDeck.Count > 0)
+            {
+                try
+                {
+                    // Only populate if shuffledDeck is empty (first time)
+                    // or if the deck actually changed
+                    if (dm.shuffledDeck.Count == 0 || deckChanged)
+                    {
+                        dm.shuffledDeck.Clear();
+                        for (int i = dm.battleDeck.Count - 1; i >= 0; i--)
+                        {
+                            if (dm.battleDeck[i] != null)
+                                dm.shuffledDeck.Push(dm.battleDeck[i]);
+                        }
+
+                        DeckManager.onDeckShuffled(dm.shuffledDeck.Count);
+                        _log.LogInfo($"[DeckApplier] Triggered deck display: shuffledDeck={dm.shuffledDeck.Count}");
+                    }
+                }
+                catch (Exception shuffleEx)
+                {
+                    _log.LogWarning($"[DeckApplier] Deck display trigger failed: {shuffleEx.Message}\n{shuffleEx.StackTrace}");
+                }
+            }
+
+            // Diagnostic: log what the game actually sees
+            LogActualDeckState(dm);
         }
         catch (Exception ex)
         {
@@ -49,7 +87,8 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
         }
     }
 
-    private void SyncCompleteDeck(DeckManager dm, List<OrbEntry> hostDeck)
+    /// <returns>true if deck changed</returns>
+    private bool SyncCompleteDeck(DeckManager dm, List<OrbEntry> hostDeck)
     {
         var completeDeck = DeckManager.completeDeck;
         if (completeDeck == null)
@@ -71,7 +110,7 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             if (match)
             {
                 _log.LogInfo("[DeckApplier] Complete deck already matches host");
-                return;
+                return false;
             }
         }
 
@@ -104,7 +143,6 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
         }
 
         // Replace the deck
-        // Destroy old orb instances
         foreach (var go in completeDeck)
         {
             if (go != null) UnityEngine.Object.Destroy(go);
@@ -113,9 +151,11 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
         completeDeck.AddRange(newDeck);
 
         _log.LogInfo($"[DeckApplier] Rebuilt complete deck: {loaded}/{hostDeck.Count} orbs loaded");
+        return true;
     }
 
-    private void SyncBattleDeck(DeckManager dm, List<OrbEntry> hostBattleDeck)
+    /// <returns>true if deck changed</returns>
+    private bool SyncBattleDeck(DeckManager dm, List<OrbEntry> hostBattleDeck)
     {
         if (dm.battleDeck == null)
         {
@@ -123,7 +163,7 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
         }
 
         // Only rebuild if counts differ
-        if (dm.battleDeck.Count == hostBattleDeck.Count) return;
+        if (dm.battleDeck.Count == hostBattleDeck.Count) return false;
 
         int loaded = 0;
         var newBattleDeck = new List<GameObject>();
@@ -152,5 +192,38 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
         dm.battleDeck.AddRange(newBattleDeck);
 
         _log.LogInfo($"[DeckApplier] Rebuilt battle deck: {loaded}/{hostBattleDeck.Count} orbs");
+        return true;
+    }
+
+    /// <summary>Log what the game actually has in its deck state.</summary>
+    private void LogActualDeckState(DeckManager dm)
+    {
+        try
+        {
+            var completeDeck = DeckManager.completeDeck;
+            var battleDeck = dm.battleDeck;
+            var shuffledDeck = dm.shuffledDeck;
+
+            _log.LogInfo($"[DeckApplier] CLIENT ACTUAL: complete={completeDeck?.Count ?? 0}, " +
+                $"battle={battleDeck?.Count ?? 0}, shuffled={shuffledDeck?.Count ?? 0}");
+
+            if (completeDeck != null)
+            {
+                for (int i = 0; i < completeDeck.Count; i++)
+                {
+                    var go = completeDeck[i];
+                    var atk = go?.GetComponent<Attack>();
+                    _log.LogInfo($"[DeckApplier]   complete[{i}]: {go?.name ?? "NULL"} loc={atk?.locNameString ?? "?"}");
+                }
+            }
+
+            if (shuffledDeck != null && shuffledDeck.Count > 0)
+            {
+                var peek = shuffledDeck.Peek();
+                var atk = peek?.GetComponent<Attack>();
+                _log.LogInfo($"[DeckApplier]   next draw: {peek?.name ?? "NULL"} loc={atk?.locNameString ?? "?"}");
+            }
+        }
+        catch { }
     }
 }

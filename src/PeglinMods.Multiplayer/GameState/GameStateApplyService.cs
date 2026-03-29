@@ -352,8 +352,14 @@ public class GameStateApplyService
 
             if (snapshot.Pegboard?.Pegs != null)
             {
-                var livePegs = UnityEngine.Object.FindObjectsOfType<Peg>(false);
-                int clientPegs = livePegs?.Length ?? 0;
+                var bc2 = UnityEngine.Object.FindObjectOfType<Battle.BattleController>();
+                var pm = bc2?.pegManager;
+                int clientPegs = 0;
+                if (pm?.allPegs != null)
+                {
+                    foreach (var p in pm.allPegs)
+                        if (p != null && p.gameObject.activeSelf) clientPegs++;
+                }
                 int hostActivePegs = 0;
                 foreach (var p in snapshot.Pegboard.Pegs)
                     if (!p.IsDestroyed) hostActivePegs++;

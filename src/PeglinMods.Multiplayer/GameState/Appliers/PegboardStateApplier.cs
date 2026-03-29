@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using Battle;
 using BepInEx.Logging;
 using PeglinMods.Multiplayer.GameState.Snapshots;
 using PeglinMods.Multiplayer.Utility;
@@ -10,10 +10,10 @@ namespace PeglinMods.Multiplayer.GameState.Appliers;
 
 /// <summary>
 /// Syncs pegboard state from host to client using GUID-based tracking.
-/// 1. Match pegs by GUID (primary) or position (fallback for first sync)
-/// 2. Force peg types to match host
-/// 3. Deactivate destroyed pegs / extra pegs
-/// 4. Register all matched pegs with host GUIDs
+/// 1. On first sync: match by index in PegManager.allPegs, assign host GUIDs
+/// 2. On subsequent syncs: match by GUID only
+/// 3. Force peg types to match host
+/// 4. Deactivate destroyed pegs
 /// </summary>
 public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 {
@@ -36,44 +36,48 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 return;
             }
 
-            var livePegs = UnityEngine.Object.FindObjectsOfType<Peg>(true);
-            if (livePegs == null || livePegs.Length == 0)
+            // Get pegs from PegManager — same authoritative list as the provider.
+            // PegManager is a plain C# class, accessed via BattleController.
+            var bc = UnityEngine.Object.FindObjectOfType<Battle.BattleController>();
+            var pm = bc?.pegManager;
+            if (pm == null || pm.allPegs == null)
             {
-                _log.LogInfo($"[PegboardApplier] No pegs in scene. Snapshot has {snapshot.TotalPegCount} pegs.");
+                _log.LogInfo($"[PegboardApplier] No PegManager in scene. Snapshot has {snapshot.TotalPegCount} pegs.");
                 return;
             }
 
-            var matched = new HashSet<Peg>();
-            int guidMatched = 0, posMatched = 0, typeChanged = 0, destroyed = 0, reactivated = 0;
+            var clientPegs = pm.allPegs;
+            int guidMatched = 0, indexMatched = 0, typeChanged = 0, destroyed = 0, reactivated = 0, missed = 0;
 
             foreach (var entry in snapshot.Pegs)
             {
                 Peg peg = null;
 
-                // Try GUID match first
+                // Try GUID match first (works on subsequent syncs)
                 if (!string.IsNullOrEmpty(entry.Guid))
                 {
                     peg = _pegId.Find(entry.Guid);
-                    if (peg != null && !matched.Contains(peg))
+                    if (peg != null)
                     {
                         guidMatched++;
                     }
-                    else
+                }
+
+                // Fallback to index match (first sync — both sides loaded same layout)
+                if (peg == null && entry.Index >= 0 && entry.Index < clientPegs.Count)
+                {
+                    peg = clientPegs[entry.Index];
+                    if (peg != null)
                     {
-                        peg = null;
+                        indexMatched++;
                     }
                 }
 
-                // Fallback to position match
                 if (peg == null)
                 {
-                    peg = FindClosestPeg(livePegs, entry.PosX, entry.PosY, matched);
-                    if (peg != null)
-                        posMatched++;
+                    missed++;
+                    continue;
                 }
-
-                if (peg == null) continue;
-                matched.Add(peg);
 
                 // Register with host GUID
                 if (!string.IsNullOrEmpty(entry.Guid))
@@ -130,22 +134,14 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 }
             }
 
-            // Deactivate client pegs not in host snapshot
-            int extras = 0;
-            foreach (var peg in livePegs)
-            {
-                if (peg != null && !matched.Contains(peg) && peg.gameObject.activeSelf)
-                {
-                    peg.gameObject.SetActive(false);
-                    extras++;
-                }
-            }
-
-            _log.LogInfo($"[PegboardApplier] GUIDMatched={guidMatched}, PosMatched={posMatched}, " +
-                $"TypeChanged={typeChanged}, Destroyed={destroyed}, Reactivated={reactivated}, ExtrasRemoved={extras} " +
-                $"(host={snapshot.TotalPegCount}, client={livePegs.Length}, " +
+            _log.LogInfo($"[PegboardApplier] GUIDMatched={guidMatched}, IndexMatched={indexMatched}, " +
+                $"TypeChanged={typeChanged}, Destroyed={destroyed}, Reactivated={reactivated}, Missed={missed} " +
+                $"(host={snapshot.TotalPegCount}, client={clientPegs.Count}, " +
                 $"crit={snapshot.CritPegCount}, bomb={snapshot.BombPegCount}, reset={snapshot.ResetPegCount}, " +
                 $"registry={_pegId.Count})");
+
+            // Diagnostic: log what the client actually has after apply
+            LogActualPegState(clientPegs);
         }
         catch (Exception ex)
         {
@@ -153,25 +149,21 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         }
     }
 
-    private static Peg FindClosestPeg(Peg[] livePegs, float posX, float posY, HashSet<Peg> alreadyMatched)
+    /// <summary>Log actual peg state on client for verification.</summary>
+    private void LogActualPegState(List<Peg> pegs)
     {
-        Peg closest = null;
-        float closestDist = float.MaxValue;
-
-        foreach (var peg in livePegs)
+        int active = 0, crits = 0, bombs = 0, resets = 0, regular = 0;
+        foreach (var peg in pegs)
         {
-            if (peg == null || alreadyMatched.Contains(peg)) continue;
-            var pos = peg.transform.position;
-            float dx = pos.x - posX;
-            float dy = pos.y - posY;
-            float dist = dx * dx + dy * dy;
-            if (dist < closestDist)
-            {
-                closestDist = dist;
-                closest = peg;
-            }
+            if (peg == null || !peg.gameObject.activeSelf) continue;
+            active++;
+            var pt = (int)peg.pegType;
+            if ((pt & 0x2) != 0) crits++;
+            else if ((pt & 0x4) != 0) bombs++;
+            else if ((pt & 0x8) != 0) resets++;
+            else if ((pt & 0x1) != 0) regular++;
         }
-
-        return closestDist <= 1f ? closest : null;
+        _log.LogInfo($"[PegboardApplier] CLIENT ACTUAL: {active} active pegs " +
+            $"(regular={regular}, crit={crits}, bomb={bombs}, reset={resets})");
     }
 }
