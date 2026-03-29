@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using BepInEx.Logging;
 using PeglinMods.Multiplayer.GameState.Snapshots;
 using PeglinMods.Multiplayer.Utility;
@@ -25,7 +26,21 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
 
             var allPegs = UnityEngine.Object.FindObjectsOfType<Peg>(true);
 
+            // De-duplicate pegs at the same position (host can have pre-instanced + real pegboard)
+            var seenPositions = new HashSet<string>();
+            var uniquePegs = new System.Collections.Generic.List<Peg>();
             foreach (var peg in allPegs)
+            {
+                if (peg == null) continue;
+                var posKey = $"{peg.transform.position.x:F3},{peg.transform.position.y:F3}";
+                if (seenPositions.Add(posKey))
+                    uniquePegs.Add(peg);
+            }
+
+            if (uniquePegs.Count != allPegs.Length)
+                _log.LogInfo($"[PegProvider] De-duped {allPegs.Length} → {uniquePegs.Count} pegs (removed {allPegs.Length - uniquePegs.Count} duplicates)");
+
+            foreach (var peg in uniquePegs)
             {
                 if (peg == null) continue;
 
@@ -50,7 +65,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     if ((pt & 0x8) != 0) snapshot.ResetPegCount++;
                 }
             }
-            snapshot.TotalPegCount = allPegs.Length;
+            snapshot.TotalPegCount = uniquePegs.Count;
 
             _log.LogInfo($"[PegProvider] Captured {snapshot.TotalPegCount} pegs ({_pegId.Count} in registry)");
 

@@ -289,9 +289,6 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                 return null;
             }
 
-            enemy.CurrentHealth = entry.CurrentHealth;
-            SetMaxHealth(enemy, entry.MaxHealth);
-
             // Try AddEnemy but don't crash if EnemyManager isn't initialized (slots null)
             try
             {
@@ -300,8 +297,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             catch (Exception addEx)
             {
                 _log.LogWarning($"[EnemyApplier] AddEnemy failed (EnemyManager may not be initialized): {addEx.Message}");
-                // Still return the enemy — it's instantiated and positioned correctly
-                // Just add it to the Enemies list directly if possible
+                // Add to Enemies list directly via reflection
                 try
                 {
                     var enemiesList = HarmonyLib.AccessTools.Field(typeof(EnemyManager), "Enemies")
@@ -316,6 +312,10 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                 }
                 catch { }
             }
+
+            // Set HP AFTER AddEnemy/Initialize — Initialize resets HP to max
+            SetMaxHealth(enemy, entry.MaxHealth);
+            enemy.CurrentHealth = entry.CurrentHealth;
 
             _log.LogInfo($"[EnemyApplier] Spawned '{entry.EnemyName}' at ({entry.PosX:F1},{entry.PosY:F1}) slot={entry.SlotIndex} guid={entry.Id}");
             return enemy;
