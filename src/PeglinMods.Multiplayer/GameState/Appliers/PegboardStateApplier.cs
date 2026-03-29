@@ -83,12 +83,13 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 if (!string.IsNullOrEmpty(entry.Guid))
                     _pegId.Register(peg, entry.Guid);
 
-                // Handle destroyed pegs
+                // Handle destroyed pegs — use DestroyPeg for proper visual/collider cleanup
                 if (entry.IsDestroyed)
                 {
-                    if (peg.gameObject.activeSelf)
+                    if (peg.gameObject.activeSelf && peg.pegType != Peg.PegType.DESTROYED)
                     {
-                        peg.gameObject.SetActive(false);
+                        try { peg.DestroyPeg(peg.pegType); }
+                        catch { peg.gameObject.SetActive(false); }
                         destroyed++;
                     }
                     continue;

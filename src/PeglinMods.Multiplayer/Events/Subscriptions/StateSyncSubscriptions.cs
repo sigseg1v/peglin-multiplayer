@@ -5,6 +5,7 @@ using BepInEx.Logging;
 using PeglinMods.Multiplayer.GameState;
 using PeglinMods.Multiplayer.Multiplayer;
 using PeglinMods.Multiplayer.Utility;
+using Tutorial;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -63,7 +64,14 @@ public sealed class StateSyncSubscriptions
         {
             _sync.SyncPegboard();
             _sync.SyncEnemies();
+            _sync.SyncDeck();
         });
+
+        // Sync pegs when they're destroyed (real-time during ball physics)
+        Peg.OnPegDestroyed += (_, _) => SafeSync("PegDestroyed", () => _sync.SyncPegboard());
+
+        // Sync deck when an orb is used (so client sees current/upcoming orb updates)
+        DeckManager.onBallUsed += (_) => SafeSync("BallUsed", () => _sync.SyncDeck());
 
         // FULL SYNC on victory (final state)
         BattleController.OnVictory += () => SafeSync("Victory", () => _sync.SyncAll());
@@ -87,24 +95,24 @@ public sealed class StateSyncSubscriptions
                 SafeSync("SceneLoaded:" + scene.name, () => _sync.SyncAll());
         };
 
-        // Periodic heartbeat: host sends SyncMap every 2 seconds so client can converge
+        // Periodic heartbeat: full resync every 10 seconds to ensure convergence
         var dispatcher = MultiplayerPlugin.Services?.TryResolve<MainThreadDispatcher>(out var d) == true ? d : null;
         if (dispatcher != null)
         {
             dispatcher.StartCoroutine(HostHeartbeat());
         }
 
-        _log.LogInfo("StateSyncSubscriptions registered (with aggressive sync + 2s heartbeat)");
+        _log.LogInfo("StateSyncSubscriptions registered (with real-time peg/deck sync + 10s heartbeat)");
     }
 
     private IEnumerator HostHeartbeat()
     {
         while (true)
         {
-            yield return new WaitForSeconds(2f);
+            yield return new WaitForSeconds(10f);
             if (_mode.IsHosting)
             {
-                try { _sync.SyncMap(); }
+                try { _sync.SyncAll(); }
                 catch { }
             }
         }
