@@ -3,6 +3,7 @@ using System.Collections;
 using BepInEx.Logging;
 using PeglinMods.Multiplayer.GameState.Appliers;
 using PeglinMods.Multiplayer.GameState.Snapshots;
+using PeglinMods.Multiplayer.Multiplayer;
 using PeglinMods.Multiplayer.Utility;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -65,6 +66,7 @@ public class GameStateApplyService
         yield return new WaitForSeconds(0.5f);
 
         _log.LogInfo($"[ApplyService] Re-applying buffered state after scene '{sceneName}' loaded");
+        DiagnosticLogger.DumpBattleState($"CLIENT_BeforeReapply_{sceneName}");
 
         if (_latestFull != null)
         {
@@ -77,11 +79,15 @@ public class GameStateApplyService
             if (_latestEnemies != null) SafeApply("Enemies", () => _enemyApplier.Apply(_latestEnemies));
             if (_latestPegboard != null) SafeApply("Pegboard", () => _pegboardApplier.Apply(_latestPegboard));
         }
+
+        DiagnosticLogger.DumpBattleState($"CLIENT_AfterReapply_{sceneName}");
     }
 
     public void ApplyAll(FullGameStateSnapshot snapshot)
     {
-        _log.LogInfo("[ApplyService] Applying full game state...");
+        var scene = SceneManager.GetActiveScene().name;
+        _log.LogInfo($"[ApplyService] Applying full game state... (current scene={scene}, " +
+            $"host scene={snapshot.Map?.ActiveScene}, enemies={snapshot.Enemies?.Enemies?.Count ?? 0}, pegs={snapshot.Pegboard?.TotalPegCount ?? 0})");
         _latestFull = snapshot;
 
         try

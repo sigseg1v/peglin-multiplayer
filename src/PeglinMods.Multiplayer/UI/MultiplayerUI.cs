@@ -594,6 +594,7 @@ public class MultiplayerUI : MonoBehaviour
         {
             _multiplayerMode.EnableHosting();
             _transport.StartHost(NetworkConfig.DefaultPort);
+            Utility.FileLogger.RoleTag = "HOST";
             Log.LogInfo($"Started hosting on port {NetworkConfig.DefaultPort}");
             ShowLobby();
         }
@@ -630,6 +631,7 @@ public class MultiplayerUI : MonoBehaviour
         {
             _statusText.text = $"Connecting to {ip}:{port}...";
             _multiplayerMode.EnableSpectating();
+            Utility.FileLogger.RoleTag = "CLIENT";
             if (_multiplayerMode is MultiplayerMode mode)
                 mode.ClientMode = _diagToggle != null && _diagToggle.isOn ? ClientMode.Diagnostics : ClientMode.Mirror;
             _transport.Connect(ip, port);

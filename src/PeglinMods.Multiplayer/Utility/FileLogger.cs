@@ -32,9 +32,15 @@ public sealed class FileLogger : IDisposable
 
     public string FilePath => _filePath;
 
+    /// <summary>
+    /// Tag prepended to every log line once the role is known (HOST/CLIENT).
+    /// </summary>
+    public static string RoleTag { get; set; } = "";
+
     public void Log(LogLevel level, string message)
     {
-        var line = $"[{DateTime.Now:HH:mm:ss.fff}] [{level}] {message}";
+        var tag = string.IsNullOrEmpty(RoleTag) ? "" : $"[{RoleTag}] ";
+        var line = $"[{DateTime.Now:HH:mm:ss.fff}] [{level}] {tag}{message}";
         _writer.WriteLine(line);
     }
 

@@ -4,6 +4,7 @@ using PeglinMods.Multiplayer.Events;
 using PeglinMods.Multiplayer.GameState.Providers;
 using PeglinMods.Multiplayer.GameState.Snapshots;
 using PeglinMods.Multiplayer.Multiplayer;
+using PeglinMods.Multiplayer.Utility;
 
 namespace PeglinMods.Multiplayer.GameState;
 
@@ -54,6 +55,7 @@ public class GameStateSyncService : IGameStateSyncService
 
             _registry.Dispatch(snapshot);
             _log.LogInfo($"SyncAll: sent full state (map={snapshot.Map?.ActiveScene}, enemies={snapshot.Enemies?.Enemies?.Count ?? 0}, pegs={snapshot.Pegboard?.TotalPegCount ?? 0})");
+            DiagnosticLogger.DumpBattleState("HOST_SyncAll");
         }
         catch (Exception ex)
         {
