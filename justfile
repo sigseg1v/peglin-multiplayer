@@ -75,7 +75,7 @@ dev-multi: setup
     $logsDir = Split-Path '{{logfile}}'; \
     New-Item -ItemType Directory -Path $logsDir -Force | Out-Null; \
     $sharedLog = Join-Path $logsDir 'peglinmods_shared.log'; \
-    if (Test-Path $sharedLog) { Remove-Item $sharedLog -Force }; \
+    [IO.File]::Create($sharedLog).Close(); \
     $windowArgs = @('-screen-fullscreen','0','-screen-width','1280','-screen-height','720'); \
     $compatBase = "$HOME/.steam/steam/steamapps/compatdata"; \
     Write-Host '==> Launching HOST (windowed)...'; \
