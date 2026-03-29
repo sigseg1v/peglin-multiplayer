@@ -1,4 +1,6 @@
+using System;
 using Battle;
+using Data;
 using HarmonyLib;
 using Map;
 using PeglinMods.Multiplayer.Events;
@@ -6,6 +8,7 @@ using PeglinMods.Multiplayer.Events.Network.Map;
 using PeglinMods.Multiplayer.Multiplayer;
 using UnityEngine;
 using Worldmap;
+using Random = UnityEngine.Random;
 
 namespace PeglinMods.Multiplayer.Patches;
 
@@ -47,7 +50,9 @@ public static class MultiplayerClientPatches
         }
     }
 
-    // --- Battle & save suppression (client doesn't run game logic) ---
+    // =========================================================================
+    // BLOCK CLIENT GAME LOGIC — client is a dumb renderer
+    // =========================================================================
 
     [HarmonyPatch(typeof(BattleController), "Update")]
     [HarmonyPrefix]
@@ -61,13 +66,58 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool SaveManager_SaveBase_Prefix() => !ShouldSuppressClientLogic;
 
-    // --- Block GameInit.Start on client (skip PostMainMenu entirely) ---
-
     [HarmonyPatch(typeof(GameInit), "Start")]
     [HarmonyPrefix]
     public static bool GameInit_Start_Prefix() => !ShouldSuppressClientLogic;
 
-    // --- RNG state capture: host saves state BEFORE map generation ---
+    // =========================================================================
+    // BLOCK CLIENT AUTO-GENERATION — host controls all content
+    // =========================================================================
+
+    /// <summary>
+    /// Block enemy spawning on client. BattleController.Awake still calls
+    /// EnemyManager.Initialize (which sets up slots) but AddStarterEnemies
+    /// is blocked. The host sends enemy data and the applier creates them.
+    /// LoadEnemyAssets still runs so the prefab cache is populated.
+    /// </summary>
+    [HarmonyPatch(typeof(EnemyManager), "AddStarterEnemies")]
+    [HarmonyPrefix]
+    public static bool EnemyManager_AddStarterEnemies_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked AddStarterEnemies — host will send enemies");
+        return false;
+    }
+
+    /// <summary>
+    /// Block special peg type shuffling on client. The pegboard layout loads
+    /// with all pegs as REGULAR. The host sends the correct peg types and
+    /// the applier sets them.
+    /// </summary>
+    [HarmonyPatch(typeof(PegManager), "ShuffleSpecialPegs")]
+    [HarmonyPrefix]
+    public static bool PegManager_ShuffleSpecialPegs_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked ShuffleSpecialPegs — host will send peg types");
+        return false;
+    }
+
+    /// <summary>
+    /// Block individual special peg creation on client.
+    /// Covers ShuffleCritPegs, CreateRefreshPegs, and direct CreateSpecialPegs calls.
+    /// </summary>
+    [HarmonyPatch(typeof(PegManager), "CreateSpecialPegs")]
+    [HarmonyPrefix]
+    public static bool PegManager_CreateSpecialPegs_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        return false;
+    }
+
+    // =========================================================================
+    // RNG STATE CAPTURE — host saves state before map generation
+    // =========================================================================
 
     [HarmonyPatch(typeof(MapController), "Awake")]
     [HarmonyPrefix]
@@ -76,22 +126,23 @@ public static class MultiplayerClientPatches
         if (IsHosting)
         {
             CapturedPreMapGenRngState = SerializeRandomState(Random.state);
-            MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Captured pre-map-gen RNG state");
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Captured pre-map-gen RNG state");
         }
         else if (ShouldSuppressClientLogic && !string.IsNullOrEmpty(PendingRngStateToRestore))
         {
-            // Client: restore the host's RNG state before map generation
             var restored = DeserializeRandomState(PendingRngStateToRestore);
             if (restored.HasValue)
             {
                 Random.state = restored.Value;
-                MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Restored host RNG state before map generation");
+                MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Restored host RNG state before map generation");
             }
             PendingRngStateToRestore = null;
         }
     }
 
-    // --- Node activation sync: host sends node position when activated ---
+    // =========================================================================
+    // NODE ACTIVATION SYNC — host sends battle name when activating a node
+    // =========================================================================
 
     [HarmonyPatch(typeof(MapNode), "ActivateNode")]
     [HarmonyPostfix]
@@ -102,7 +153,7 @@ public static class MultiplayerClientPatches
         if (!MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out var registry)) return;
 
         var pos = __instance.transform.position;
-        string battleName = (__instance.MapData as Data.MapDataBattle)?.name;
+        string battleName = (__instance.MapData as MapDataBattle)?.name;
         registry.Dispatch(new NodeActivatedEvent
         {
             PosX = pos.x,
@@ -112,7 +163,9 @@ public static class MultiplayerClientPatches
         MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Host activated node at ({pos.x:F1}, {pos.y:F1}), battle={battleName}");
     }
 
-    // --- RNG state serialization helpers ---
+    // =========================================================================
+    // RNG SERIALIZATION HELPERS
+    // =========================================================================
 
     internal static string SerializeRandomState(Random.State state)
     {
@@ -127,10 +180,7 @@ public static class MultiplayerClientPatches
             int s3 = (int)t.GetField("s3", flags).GetValue(boxed);
             return $"{s0},{s1},{s2},{s3}";
         }
-        catch
-        {
-            return null;
-        }
+        catch { return null; }
     }
 
     internal static Random.State? DeserializeRandomState(string s)
@@ -140,8 +190,6 @@ public static class MultiplayerClientPatches
             if (string.IsNullOrEmpty(s)) return null;
             var parts = s.Split(',');
             if (parts.Length != 4) return null;
-
-            // Create state via InitState then overwrite fields
             Random.InitState(0);
             var state = Random.state;
             var t = typeof(Random.State);
@@ -153,9 +201,6 @@ public static class MultiplayerClientPatches
             t.GetField("s3", flags).SetValue(boxed, int.Parse(parts[3]));
             return (Random.State)boxed;
         }
-        catch
-        {
-            return null;
-        }
+        catch { return null; }
     }
 }

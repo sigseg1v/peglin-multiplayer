@@ -13,18 +13,20 @@ public sealed class FileLogger : IDisposable
     {
         Directory.CreateDirectory(logsDirectory);
 
-        // PEGLINMODS_INSTANCE env var allows multiple instances with separate logs
-        // (e.g. "host" → peglinmods_host.log, "client" → peglinmods_client.log)
-        var instance = Environment.GetEnvironmentVariable("PEGLINMODS_INSTANCE");
 #if DEBUG
-        var suffix = string.IsNullOrEmpty(instance) ? "dev" : instance;
-        _filePath = Path.Combine(logsDirectory, $"peglinmods_{suffix}.log");
+        // Debug: shared log file for both host and client.
+        // FileShare.ReadWrite allows both processes to write concurrently.
+        // AutoFlush ensures each line is written immediately.
+        _filePath = Path.Combine(logsDirectory, "peglinmods_shared.log");
+        var fs = new FileStream(_filePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+        _writer = new StreamWriter(fs) { AutoFlush = true };
 #else
+        var instance = Environment.GetEnvironmentVariable("PEGLINMODS_INSTANCE");
         var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
         var tag = string.IsNullOrEmpty(instance) ? "" : $"_{instance}";
         _filePath = Path.Combine(logsDirectory, $"peglinmods_{timestamp}{tag}.log");
-#endif
         _writer = new StreamWriter(_filePath, append: false) { AutoFlush = true };
+#endif
 
         _writer.WriteLine($"PeglinMods log started at {DateTime.Now:O}");
         _writer.WriteLine(new string('-', 60));
@@ -41,7 +43,7 @@ public sealed class FileLogger : IDisposable
     {
         var tag = string.IsNullOrEmpty(RoleTag) ? "" : $"[{RoleTag}] ";
         var line = $"[{DateTime.Now:HH:mm:ss.fff}] [{level}] {tag}{message}";
-        _writer.WriteLine(line);
+        try { _writer.WriteLine(line); } catch { }
     }
 
     public void Dispose()
