@@ -14,6 +14,7 @@ public class EnemyEntry
 {
     public string Id { get; set; }
     public string LocKey { get; set; }
+    public string EnemyName { get; set; }
     public float CurrentHealth { get; set; }
     public float MaxHealth { get; set; }
     public float MeleeDamage { get; set; }

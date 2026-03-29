@@ -1,12 +1,21 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Battle.Enemies;
 using BepInEx.Logging;
+using HarmonyLib;
+using Loading;
 using PeglinMods.Multiplayer.GameState.Snapshots;
 using UnityEngine;
 
 namespace PeglinMods.Multiplayer.GameState.Appliers;
 
+/// <summary>
+/// Aggressively syncs enemy state from host to client.
+/// Destroys enemies that don't exist on the host.
+/// Creates enemies that exist on the host but not on the client.
+/// Force-updates health, position, and max health on matched enemies.
+/// </summary>
 public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
 {
     private readonly ManualLogSource _log;
@@ -17,44 +26,62 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
     {
         try
         {
-            var enemyManager = UnityEngine.Object.FindObjectOfType<EnemyManager>();
-            if (enemyManager == null)
+            if (snapshot.Enemies == null || snapshot.Enemies.Count == 0)
             {
-                _log.LogInfo($"[EnemyApplier] No EnemyManager in scene. Battle state: {snapshot.BattleStateName}, enemies: {snapshot.Enemies?.Count ?? 0}");
+                _log.LogInfo("[EnemyApplier] No enemies in snapshot.");
                 return;
             }
 
-            var liveEnemies = enemyManager.Enemies;
-            if (liveEnemies == null)
+            var em = UnityEngine.Object.FindObjectOfType<EnemyManager>();
+            if (em == null)
             {
-                _log.LogWarning("[EnemyApplier] EnemyManager.Enemies list is null.");
+                _log.LogInfo($"[EnemyApplier] No EnemyManager in scene (battle={snapshot.BattleStateName})");
                 return;
             }
 
-            int matched = 0;
-            int unmatched = 0;
+            var liveEnemies = em.Enemies?.Where(e => e != null).ToList()
+                ?? new List<Enemy>();
+            var matched = new HashSet<Enemy>();
+            int updated = 0, created = 0, destroyed = 0;
 
+            // Pass 1: match host enemies to client enemies, update matched ones
             foreach (var entry in snapshot.Enemies)
             {
-                var liveEnemy = FindMatchingEnemy(liveEnemies, entry);
-                if (liveEnemy == null)
+                var match = FindBestMatch(liveEnemies, entry, matched);
+                if (match != null)
                 {
-                    _log.LogWarning($"[EnemyApplier] No match for enemy '{entry.LocKey}' slot={entry.SlotIndex}");
-                    unmatched++;
-                    continue;
+                    // Force-update all state
+                    match.CurrentHealth = entry.CurrentHealth;
+                    SetMaxHealth(match, entry.MaxHealth);
+                    match.transform.position = new Vector3(
+                        entry.PosX, entry.PosY, match.transform.position.z);
+                    matched.Add(match);
+                    updated++;
                 }
-
-                liveEnemy.CurrentHealth = entry.CurrentHealth;
-                liveEnemy.transform.position = new Vector3(entry.PosX, entry.PosY, liveEnemy.transform.position.z);
-                matched++;
-
-                if (entry.StatusEffects != null && entry.StatusEffects.Count > 0)
+                else
                 {
-                    _log.LogInfo($"[EnemyApplier] Enemy '{entry.LocKey}' has {entry.StatusEffects.Count} status effects (log only)");
+                    // Try to create the enemy from the prefab cache
+                    if (TrySpawnEnemy(entry, em))
+                        created++;
+                    else
+                        _log.LogWarning($"[EnemyApplier] Cannot spawn '{entry.EnemyName ?? entry.LocKey}' — not in prefab cache");
                 }
             }
 
-            _log.LogInfo($"[EnemyApplier] Applied: {matched} matched, {unmatched} unmatched, round={snapshot.RoundCount}, battleState={snapshot.BattleStateName}");
+            // Pass 2: destroy client enemies NOT in host snapshot
+            foreach (var enemy in liveEnemies)
+            {
+                if (!matched.Contains(enemy))
+                {
+                    _log.LogInfo($"[EnemyApplier] Destroying extra client enemy '{enemy.locKey}'");
+                    em.RemoveEnemy(enemy);
+                    UnityEngine.Object.Destroy(enemy.gameObject);
+                    destroyed++;
+                }
+            }
+
+            _log.LogInfo($"[EnemyApplier] Updated={updated}, Created={created}, Destroyed={destroyed} " +
+                $"(host={snapshot.Enemies.Count}, client_before={liveEnemies.Count}, battle={snapshot.BattleStateName})");
         }
         catch (Exception ex)
         {
@@ -62,48 +89,106 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
         }
     }
 
-    private static Enemy FindMatchingEnemy(System.Collections.Generic.List<Enemy> liveEnemies, EnemyEntry entry)
+    /// <summary>
+    /// Find the best matching client enemy for a host enemy entry.
+    /// Matches by locKey first, then by closest position. Avoids double-matching.
+    /// </summary>
+    private static Enemy FindBestMatch(List<Enemy> liveEnemies, EnemyEntry entry, HashSet<Enemy> alreadyMatched)
     {
-        // Try to match by locKey first, then narrow by slot index if multiple
-        var candidates = liveEnemies.Where(e => e != null && e.locKey == entry.LocKey).ToList();
+        // Prefer locKey match, then closest position
+        Enemy best = null;
+        float bestDist = float.MaxValue;
 
-        if (candidates.Count == 1)
-            return candidates[0];
-
-        if (candidates.Count > 1)
+        foreach (var e in liveEnemies)
         {
-            // Multiple enemies with same locKey - pick closest by position
-            return candidates.OrderBy(e =>
-            {
-                var pos = e.transform.position;
-                float dx = pos.x - entry.PosX;
-                float dy = pos.y - entry.PosY;
-                return dx * dx + dy * dy;
-            }).First();
-        }
+            if (e == null || alreadyMatched.Contains(e)) continue;
+            if (e.locKey != entry.LocKey) continue;
 
-        // No locKey match - try closest by position as last resort
-        if (liveEnemies.Count > 0)
-        {
-            var closest = liveEnemies
-                .Where(e => e != null)
-                .OrderBy(e =>
-                {
-                    var pos = e.transform.position;
-                    float dx = pos.x - entry.PosX;
-                    float dy = pos.y - entry.PosY;
-                    return dx * dx + dy * dy;
-                }).FirstOrDefault();
-
-            if (closest != null)
+            float dx = e.transform.position.x - entry.PosX;
+            float dy = e.transform.position.y - entry.PosY;
+            float dist = dx * dx + dy * dy;
+            if (dist < bestDist)
             {
-                var pos = closest.transform.position;
-                float dist = Mathf.Sqrt((pos.x - entry.PosX) * (pos.x - entry.PosX) + (pos.y - entry.PosY) * (pos.y - entry.PosY));
-                if (dist < 2f) // Only accept if reasonably close
-                    return closest;
+                bestDist = dist;
+                best = e;
             }
         }
 
+        if (best != null) return best;
+
+        // Fallback: any enemy within 3 units (regardless of locKey)
+        foreach (var e in liveEnemies)
+        {
+            if (e == null || alreadyMatched.Contains(e)) continue;
+            float dx = e.transform.position.x - entry.PosX;
+            float dy = e.transform.position.y - entry.PosY;
+            float dist = dx * dx + dy * dy;
+            if (dist < 9f && dist < bestDist) // 3 units
+            {
+                bestDist = dist;
+                best = e;
+            }
+        }
+
+        return best;
+    }
+
+    /// <summary>
+    /// Try to instantiate an enemy from the game's asset cache.
+    /// </summary>
+    private bool TrySpawnEnemy(EnemyEntry entry, EnemyManager em)
+    {
+        try
+        {
+            var prefab = FindEnemyPrefab(entry.EnemyName ?? entry.LocKey);
+            if (prefab == null) return false;
+
+            var pos = new Vector3(entry.PosX, entry.PosY, 0);
+            var go = UnityEngine.Object.Instantiate(prefab, pos, Quaternion.identity, em.transform);
+            var enemy = go.GetComponentInChildren<Enemy>();
+            if (enemy == null)
+            {
+                UnityEngine.Object.Destroy(go);
+                return false;
+            }
+
+            enemy.CurrentHealth = entry.CurrentHealth;
+            SetMaxHealth(enemy, entry.MaxHealth);
+            em.AddEnemy(enemy, entry.SlotIndex, entry.IsFlying);
+
+            _log.LogInfo($"[EnemyApplier] Spawned '{entry.EnemyName}' at ({entry.PosX:F1},{entry.PosY:F1}) slot={entry.SlotIndex}");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[EnemyApplier] TrySpawnEnemy failed for '{entry.EnemyName}': {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Search the game's pre-loaded enemy prefab cache by name.
+    /// </summary>
+    private static GameObject FindEnemyPrefab(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return null;
+
+        var cache = AssetLoading.Instance?.EnemyPrefabs;
+        if (cache == null) return null;
+
+        string cleanName = name.Replace("(Clone)", "").Trim();
+        foreach (var kvp in cache)
+        {
+            if (kvp.Value != null && kvp.Value.name == cleanName)
+                return kvp.Value;
+        }
         return null;
+    }
+
+    private static void SetMaxHealth(Enemy enemy, float maxHealth)
+    {
+        if (maxHealth <= 0) return;
+        var field = AccessTools.Field(typeof(Enemy), "_maxHealth");
+        field?.SetValue(enemy, maxHealth);
     }
 }

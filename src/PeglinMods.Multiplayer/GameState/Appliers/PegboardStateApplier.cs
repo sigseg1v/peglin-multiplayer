@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using BepInEx.Logging;
 using PeglinMods.Multiplayer.GameState.Snapshots;
@@ -6,6 +7,11 @@ using UnityEngine;
 
 namespace PeglinMods.Multiplayer.GameState.Appliers;
 
+/// <summary>
+/// Aggressively syncs pegboard state from host to client.
+/// Force-converts peg types to match host. Deactivates destroyed pegs.
+/// Deactivates extra pegs not in host snapshot.
+/// </summary>
 public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 {
     private readonly ManualLogSource _log;
@@ -16,39 +22,96 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     {
         try
         {
-            var livePegs = UnityEngine.Object.FindObjectsOfType<Peg>();
+            if (snapshot.Pegs == null || snapshot.Pegs.Count == 0)
+            {
+                _log.LogInfo("[PegboardApplier] No pegs in snapshot.");
+                return;
+            }
+
+            // Find ALL pegs including inactive ones (we might need to reactivate)
+            var livePegs = UnityEngine.Object.FindObjectsOfType<Peg>(true);
             if (livePegs == null || livePegs.Length == 0)
             {
                 _log.LogInfo($"[PegboardApplier] No pegs in scene. Snapshot has {snapshot.TotalPegCount} pegs.");
                 return;
             }
 
-            int updated = 0;
-            int destroyed = 0;
+            var matched = new HashSet<Peg>();
+            int typeChanged = 0, destroyed = 0, reactivated = 0;
 
+            // Pass 1: match host pegs to client pegs, update state
             foreach (var entry in snapshot.Pegs)
             {
-                var closestPeg = FindClosestPeg(livePegs, entry.PosX, entry.PosY);
-                if (closestPeg == null)
-                    continue;
+                var peg = FindClosestPeg(livePegs, entry.PosX, entry.PosY, matched);
+                if (peg == null) continue;
+                matched.Add(peg);
 
-                if (entry.IsDestroyed && closestPeg.gameObject.activeSelf)
+                // Handle destroyed pegs
+                if (entry.IsDestroyed)
                 {
-                    closestPeg.gameObject.SetActive(false);
-                    destroyed++;
+                    if (peg.gameObject.activeSelf)
+                    {
+                        peg.gameObject.SetActive(false);
+                        destroyed++;
+                    }
                     continue;
                 }
 
-                var snapshotPegType = (Peg.PegType)entry.PegType;
-                if (closestPeg.pegType != snapshotPegType)
+                // Reactivate if host says it's alive but client has it deactivated
+                if (!peg.gameObject.activeSelf)
                 {
-                    _log.LogInfo($"[PegboardApplier] Peg at ({entry.PosX:F1},{entry.PosY:F1}) type changed: {closestPeg.pegType} -> {snapshotPegType}");
-                    closestPeg.pegType = snapshotPegType;
-                    updated++;
+                    peg.gameObject.SetActive(true);
+                    reactivated++;
+                }
+
+                // Force peg type to match host
+                var targetType = (Peg.PegType)entry.PegType;
+                if (peg.pegType != targetType)
+                {
+                    try
+                    {
+                        if (peg.SupportsPegType(targetType))
+                            peg.ConvertPegToType(targetType);
+                        else
+                            peg.pegType = targetType; // Fallback: direct field set
+                    }
+                    catch
+                    {
+                        peg.pegType = targetType; // Fallback on exception
+                    }
+                    typeChanged++;
+                }
+
+                // Apply slime type
+                var targetSlime = (Peg.SlimeType)entry.SlimeType;
+                if (peg.slimeType != targetSlime)
+                {
+                    try
+                    {
+                        if (targetSlime == Peg.SlimeType.None)
+                            peg.RemoveSlime(true);
+                        else
+                            peg.ApplySlimeToPeg(targetSlime);
+                    }
+                    catch { }
                 }
             }
 
-            _log.LogInfo($"[PegboardApplier] Applied: {livePegs.Length} live pegs, {updated} type-updated, {destroyed} destroyed. Snapshot: {snapshot.TotalPegCount} total ({snapshot.CritPegCount} crit, {snapshot.BombPegCount} bomb, {snapshot.ResetPegCount} reset)");
+            // Pass 2: deactivate client pegs not in host snapshot
+            int extras = 0;
+            foreach (var peg in livePegs)
+            {
+                if (peg != null && !matched.Contains(peg) && peg.gameObject.activeSelf)
+                {
+                    peg.gameObject.SetActive(false);
+                    extras++;
+                }
+            }
+
+            _log.LogInfo($"[PegboardApplier] Matched={matched.Count}, TypeChanged={typeChanged}, " +
+                $"Destroyed={destroyed}, Reactivated={reactivated}, ExtrasRemoved={extras} " +
+                $"(host={snapshot.TotalPegCount}, client={livePegs.Length}, " +
+                $"crit={snapshot.CritPegCount}, bomb={snapshot.BombPegCount}, reset={snapshot.ResetPegCount})");
         }
         catch (Exception ex)
         {
@@ -56,14 +119,18 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         }
     }
 
-    private static Peg FindClosestPeg(Peg[] livePegs, float posX, float posY)
+    /// <summary>
+    /// Find the closest peg to the given position that hasn't already been matched.
+    /// Uses 1.0 unit tolerance for position matching.
+    /// </summary>
+    private static Peg FindClosestPeg(Peg[] livePegs, float posX, float posY, HashSet<Peg> alreadyMatched)
     {
         Peg closest = null;
         float closestDist = float.MaxValue;
 
         foreach (var peg in livePegs)
         {
-            if (peg == null) continue;
+            if (peg == null || alreadyMatched.Contains(peg)) continue;
             var pos = peg.transform.position;
             float dx = pos.x - posX;
             float dy = pos.y - posY;
@@ -75,7 +142,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
         }
 
-        // Only match if within reasonable distance (0.5 units)
-        return closestDist < 0.25f ? closest : null;
+        // Accept within 1.0 units (squared = 1.0)
+        return closestDist <= 1f ? closest : null;
     }
 }

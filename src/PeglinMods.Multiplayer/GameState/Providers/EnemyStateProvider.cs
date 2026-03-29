@@ -50,12 +50,14 @@ public class EnemyStateProvider : IGameStateProvider<EnemyStateSnapshot>
                         {
                             Id = $"{enemy.locKey}_{i}",
                             LocKey = enemy.locKey ?? enemy.gameObject.name,
+                            EnemyName = enemy.gameObject.name,
                             CurrentHealth = enemy.CurrentHealth,
                             MeleeDamage = enemy.DamagePerMeleeAttack,
                             RangedDamage = enemy.DamagePerRangedAttack,
                             SlotIndex = i,
                             PosX = enemy.transform.position.x,
                             PosY = enemy.transform.position.y,
+                            IsFlying = enemy.IsFlying,
                         };
 
                         // Max health (protected field)

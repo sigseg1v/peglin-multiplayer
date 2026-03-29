@@ -87,7 +87,8 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
             PegTypeName = peg.pegType.ToString(),
             PosX = peg.transform.position.x,
             PosY = peg.transform.position.y,
-            IsDestroyed = ((int)peg.pegType & 0x20) != 0, // DESTROYED = 0x20
+            SlimeType = (int)peg.slimeType,
+            IsDestroyed = !peg.gameObject.activeSelf || ((int)peg.pegType & 0x20) != 0,
         };
     }
 }
