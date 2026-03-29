@@ -68,33 +68,28 @@ dev: setup
     Get-Content '{{logfile}}' -Wait
 
 # Build, deploy, launch TWO windowed instances for multiplayer testing.
-# Tails the host log only; client log at BepInEx/logs/peglinmods_client.log
+# Both host and client write to peglinmods_shared.log with [HOST]/[CLIENT] tags.
 dev-multi: setup
     dotnet build '{{src}}/PeglinMods.sln' -c Debug --nologo -v quiet; \
     just copy-plugins Debug; \
     $logsDir = Split-Path '{{logfile}}'; \
     New-Item -ItemType Directory -Path $logsDir -Force | Out-Null; \
-    $hostLog = Join-Path $logsDir 'peglinmods_host.log'; \
-    $clientLog = Join-Path $logsDir 'peglinmods_client.log'; \
-    [IO.File]::Create($hostLog).Close(); \
-    [IO.File]::Create($clientLog).Close(); \
+    $sharedLog = Join-Path $logsDir 'peglinmods_shared.log'; \
+    if (Test-Path $sharedLog) { Remove-Item $sharedLog -Force }; \
     $windowArgs = @('-screen-fullscreen','0','-screen-width','1280','-screen-height','720'); \
     $compatBase = "$HOME/.steam/steam/steamapps/compatdata"; \
     Write-Host '==> Launching HOST (windowed)...'; \
-    $env:PEGLINMODS_INSTANCE = 'host'; \
     $env:STEAM_COMPAT_DATA_PATH = "$compatBase/1296610"; \
     Start-Process pwsh -ArgumentList (@('-NoProfile','-File','{{root}}/launch.ps1') + $windowArgs); \
     Start-Sleep 2; \
     Write-Host '==> Launching CLIENT (windowed)...'; \
-    $env:PEGLINMODS_INSTANCE = 'client'; \
     $env:STEAM_COMPAT_DATA_PATH = "$compatBase/1296611"; \
     Start-Process pwsh -ArgumentList (@('-NoProfile','-File','{{root}}/launch.ps1') + $windowArgs); \
-    Remove-Item Env:\PEGLINMODS_INSTANCE,Env:\STEAM_COMPAT_DATA_PATH -ErrorAction SilentlyContinue; \
-    Write-Host "==> Tailing HOST log (Ctrl+C to stop)"; \
-    Write-Host "    Host log:   $hostLog"; \
-    Write-Host "    Client log: $clientLog`n"; \
+    Remove-Item Env:\STEAM_COMPAT_DATA_PATH -ErrorAction SilentlyContinue; \
+    Write-Host "==> Tailing shared log (Ctrl+C to stop)"; \
+    Write-Host "    Log: $sharedLog`n"; \
     Start-Sleep 1; \
-    Get-Content $hostLog -Wait
+    Get-Content $sharedLog -Wait
 
 # Deploy plugin to game dir without launching
 deploy: setup
