@@ -2,11 +2,13 @@ namespace PeglinMods.Multiplayer.Events.Network.Map;
 
 /// <summary>
 /// Sent by the host when a map node is activated (clicked).
-/// The client finds the matching node by position and activates it,
-/// which sets up StaticGameData.dataToLoad for the correct battle.
+/// Includes the battle asset name so the client can load the exact same encounter
+/// regardless of its own map generation state.
 /// </summary>
 public class NodeActivatedEvent
 {
     public float PosX { get; set; }
     public float PosY { get; set; }
+    /// <summary>MapDataBattle.name from the host (e.g. "SlimeEncounter2")</summary>
+    public string BattleName { get; set; }
 }

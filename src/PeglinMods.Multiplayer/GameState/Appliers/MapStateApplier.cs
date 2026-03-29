@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using BepInEx.Logging;
+using Data;
 using Loading;
 using Peglin.ClassSystem;
 using PeglinMods.Multiplayer.GameState.Snapshots;
@@ -121,7 +123,28 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         if (Enum.IsDefined(typeof(Class), snapshot.ChosenClass))
             StaticGameData.chosenClass = (Class)snapshot.ChosenClass;
 
-        _log.LogInfo($"[MapApplier] StaticGameData: seed={seed}, floor={snapshot.TotalFloorCount}, class={StaticGameData.chosenClass}, node={snapshot.ChosenNextNodeIndex}");
+        // If the host sent a battle name, find and set the correct MapDataBattle
+        // so BattleController.Awake loads the right encounter
+        if (!string.IsNullOrEmpty(snapshot.BattleDataName))
+        {
+            var current = StaticGameData.dataToLoad as MapDataBattle;
+            if (current == null || current.name != snapshot.BattleDataName)
+            {
+                var allBattles = Resources.FindObjectsOfTypeAll<MapDataBattle>();
+                var match = allBattles.FirstOrDefault(b => b.name == snapshot.BattleDataName);
+                if (match != null)
+                {
+                    StaticGameData.dataToLoad = match;
+                    _log.LogInfo($"[MapApplier] Set dataToLoad to '{match.name}' (pegLayout={match.pegLayout?.name})");
+                }
+                else
+                {
+                    _log.LogWarning($"[MapApplier] MapDataBattle '{snapshot.BattleDataName}' not found in {allBattles.Length} loaded assets");
+                }
+            }
+        }
+
+        _log.LogInfo($"[MapApplier] StaticGameData: seed={seed}, floor={snapshot.TotalFloorCount}, class={StaticGameData.chosenClass}, node={snapshot.ChosenNextNodeIndex}, battle={snapshot.BattleDataName}");
     }
 
     private void LoadTargetScene(string targetSceneName)

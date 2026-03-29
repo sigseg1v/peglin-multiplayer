@@ -26,6 +26,8 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
                 ChosenNextNodeIndex = StaticGameData.chosenNextNodeIndex,
                 HasReachedBoss = StaticGameData.hasReachedBoss,
                 RandomStateJson = MultiplayerClientPatches.CapturedPreMapGenRngState,
+                BattleDataName = (StaticGameData.dataToLoad as Data.MapDataBattle)?.name,
+                PegLayoutName = (StaticGameData.dataToLoad as Data.MapDataBattle)?.pegLayout?.name,
             };
         }
         catch (Exception ex)

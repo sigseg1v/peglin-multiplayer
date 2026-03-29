@@ -102,12 +102,14 @@ public static class MultiplayerClientPatches
         if (!MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out var registry)) return;
 
         var pos = __instance.transform.position;
+        string battleName = (__instance.MapData as Data.MapDataBattle)?.name;
         registry.Dispatch(new NodeActivatedEvent
         {
             PosX = pos.x,
             PosY = pos.y,
+            BattleName = battleName,
         });
-        MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Host activated node at ({pos.x:F1}, {pos.y:F1})");
+        MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Host activated node at ({pos.x:F1}, {pos.y:F1}), battle={battleName}");
     }
 
     // --- RNG state serialization helpers ---

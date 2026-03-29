@@ -13,6 +13,11 @@ public class MapStateSnapshot
     public int ChosenNextNodeIndex { get; set; }
     public bool HasReachedBoss { get; set; }
 
+    /// <summary>Name of the MapDataBattle asset the host loaded (e.g. "SlimeEncounter2").</summary>
+    public string BattleDataName { get; set; }
+    /// <summary>Name of the PegLayout asset (e.g. "Waves").</summary>
+    public string PegLayoutName { get; set; }
+
     /// <summary>
     /// Serialized UnityEngine.Random.State captured BEFORE map generation.
     /// Restoring this on the client ensures identical procedural content.
