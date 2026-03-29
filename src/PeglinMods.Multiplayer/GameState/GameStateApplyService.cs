@@ -1,13 +1,18 @@
 using System;
+using System.Collections;
 using BepInEx.Logging;
 using PeglinMods.Multiplayer.GameState.Appliers;
 using PeglinMods.Multiplayer.GameState.Snapshots;
+using PeglinMods.Multiplayer.Utility;
+using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace PeglinMods.Multiplayer.GameState;
 
 /// <summary>
 /// Receives state snapshots from the network and routes them to the correct applier.
-/// Inverse of GameStateSyncService.
+/// Buffers snapshots and re-applies after scene loads (with delay for initialization).
+/// This ensures state is applied even if it arrives before the target scene loads.
 /// </summary>
 public class GameStateApplyService
 {
@@ -19,6 +24,12 @@ public class GameStateApplyService
     private readonly DeckStateApplier _deckApplier;
     private readonly RelicStateApplier _relicApplier;
 
+    // Buffered latest snapshots — re-applied on scene load
+    private FullGameStateSnapshot _latestFull;
+    private EnemyStateSnapshot _latestEnemies;
+    private PegboardStateSnapshot _latestPegboard;
+    private PlayerStateSnapshot _latestPlayer;
+
     public GameStateApplyService(ManualLogSource log)
     {
         _log = log;
@@ -28,20 +39,63 @@ public class GameStateApplyService
         _pegboardApplier = new PegboardStateApplier(log);
         _deckApplier = new DeckStateApplier(log);
         _relicApplier = new RelicStateApplier(log);
+
+        SceneManager.sceneLoaded += OnSceneLoaded;
+    }
+
+    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        if (mode != LoadSceneMode.Single) return;
+
+        // Re-apply buffered state after scene initialization completes.
+        // Delay 3 frames so BattleController.Awake/Start and MapController finish first.
+        var dispatcher = MultiplayerPlugin.Services?.TryResolve<MainThreadDispatcher>(out var d) == true ? d : null;
+        if (dispatcher != null)
+        {
+            dispatcher.StartCoroutine(ApplyBufferedAfterDelay(scene.name));
+        }
+    }
+
+    private IEnumerator ApplyBufferedAfterDelay(string sceneName)
+    {
+        // Wait for scene initialization (BattleController.Awake, EnemyManager.Initialize, etc.)
+        yield return null;
+        yield return null;
+        yield return null;
+        yield return new WaitForSeconds(0.5f);
+
+        _log.LogInfo($"[ApplyService] Re-applying buffered state after scene '{sceneName}' loaded");
+
+        if (_latestFull != null)
+        {
+            ApplyNonMapState(_latestFull);
+        }
+        else
+        {
+            // Apply individual buffered snapshots
+            if (_latestPlayer != null) SafeApply("Player", () => _playerApplier.Apply(_latestPlayer));
+            if (_latestEnemies != null) SafeApply("Enemies", () => _enemyApplier.Apply(_latestEnemies));
+            if (_latestPegboard != null) SafeApply("Pegboard", () => _pegboardApplier.Apply(_latestPegboard));
+        }
     }
 
     public void ApplyAll(FullGameStateSnapshot snapshot)
     {
         _log.LogInfo("[ApplyService] Applying full game state...");
+        _latestFull = snapshot;
+
         try
         {
-            if (snapshot.Map != null) _mapApplier.Apply(snapshot.Map);
-            if (snapshot.Player != null) _playerApplier.Apply(snapshot.Player);
-            if (snapshot.Enemies != null) _enemyApplier.Apply(snapshot.Enemies);
-            if (snapshot.Pegboard != null) _pegboardApplier.Apply(snapshot.Pegboard);
-            if (snapshot.Deck != null) _deckApplier.Apply(snapshot.Deck);
-            if (snapshot.Relics != null) _relicApplier.Apply(snapshot.Relics);
-            _log.LogInfo("[ApplyService] Full game state applied successfully.");
+            // Map applier handles scene transitions — always apply immediately
+            if (snapshot.Map != null)
+            {
+                _mapApplier.Apply(snapshot.Map);
+            }
+
+            // Apply non-map state only if we're on the right scene
+            ApplyNonMapState(snapshot);
+
+            _log.LogInfo("[ApplyService] Full game state applied.");
         }
         catch (Exception ex)
         {
@@ -49,39 +103,75 @@ public class GameStateApplyService
         }
     }
 
+    private void ApplyNonMapState(FullGameStateSnapshot snapshot)
+    {
+        var currentScene = SceneManager.GetActiveScene().name;
+
+        // Player state works on any scene
+        if (snapshot.Player != null)
+            SafeApply("Player", () => _playerApplier.Apply(snapshot.Player));
+
+        // Enemy/pegboard/deck/relic state only makes sense in Battle
+        if (currentScene != "Battle")
+        {
+            _log.LogInfo($"[ApplyService] Not on Battle scene (on '{currentScene}'), enemy/peg state buffered for later.");
+            return;
+        }
+
+        if (snapshot.Enemies != null) SafeApply("Enemies", () => _enemyApplier.Apply(snapshot.Enemies));
+        if (snapshot.Pegboard != null) SafeApply("Pegboard", () => _pegboardApplier.Apply(snapshot.Pegboard));
+        if (snapshot.Deck != null) SafeApply("Deck", () => _deckApplier.Apply(snapshot.Deck));
+        if (snapshot.Relics != null) SafeApply("Relics", () => _relicApplier.Apply(snapshot.Relics));
+    }
+
+    // --- Individual snapshot appliers (called from per-type client handlers) ---
+
     public void ApplyMapState(MapStateSnapshot snapshot)
     {
-        try { _mapApplier.Apply(snapshot); }
-        catch (Exception ex) { _log.LogError($"[ApplyService] ApplyMapState failed: {ex.Message}"); }
+        SafeApply("Map", () => _mapApplier.Apply(snapshot));
     }
 
     public void ApplyPlayerState(PlayerStateSnapshot snapshot)
     {
-        try { _playerApplier.Apply(snapshot); }
-        catch (Exception ex) { _log.LogError($"[ApplyService] ApplyPlayerState failed: {ex.Message}"); }
+        _latestPlayer = snapshot;
+        SafeApply("Player", () => _playerApplier.Apply(snapshot));
     }
 
     public void ApplyEnemyState(EnemyStateSnapshot snapshot)
     {
-        try { _enemyApplier.Apply(snapshot); }
-        catch (Exception ex) { _log.LogError($"[ApplyService] ApplyEnemyState failed: {ex.Message}"); }
+        _latestEnemies = snapshot;
+        if (SceneManager.GetActiveScene().name != "Battle")
+        {
+            _log.LogInfo("[ApplyService] Buffered enemy state (not on Battle scene)");
+            return;
+        }
+        SafeApply("Enemies", () => _enemyApplier.Apply(snapshot));
     }
 
     public void ApplyPegboardState(PegboardStateSnapshot snapshot)
     {
-        try { _pegboardApplier.Apply(snapshot); }
-        catch (Exception ex) { _log.LogError($"[ApplyService] ApplyPegboardState failed: {ex.Message}"); }
+        _latestPegboard = snapshot;
+        if (SceneManager.GetActiveScene().name != "Battle")
+        {
+            _log.LogInfo("[ApplyService] Buffered pegboard state (not on Battle scene)");
+            return;
+        }
+        SafeApply("Pegboard", () => _pegboardApplier.Apply(snapshot));
     }
 
     public void ApplyDeckState(DeckStateSnapshot snapshot)
     {
-        try { _deckApplier.Apply(snapshot); }
-        catch (Exception ex) { _log.LogError($"[ApplyService] ApplyDeckState failed: {ex.Message}"); }
+        SafeApply("Deck", () => _deckApplier.Apply(snapshot));
     }
 
     public void ApplyRelicState(RelicStateSnapshot snapshot)
     {
-        try { _relicApplier.Apply(snapshot); }
-        catch (Exception ex) { _log.LogError($"[ApplyService] ApplyRelicState failed: {ex.Message}"); }
+        SafeApply("Relics", () => _relicApplier.Apply(snapshot));
+    }
+
+    private void SafeApply(string name, Action action)
+    {
+        try { action(); }
+        catch (Exception ex) { _log.LogError($"[ApplyService] {name} failed: {ex.Message}"); }
     }
 }

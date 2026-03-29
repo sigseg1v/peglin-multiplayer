@@ -48,6 +48,10 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             { "RunSummary", PeglinSceneLoader.Scene.RUN_SUMMARY },
         };
 
+    // Debounce: prevent loading the same scene multiple times from queued events
+    private static string _lastRequestedScene;
+    private static float _lastRequestTime;
+
     public MapStateApplier(ManualLogSource log) => _log = log;
 
     public void Apply(MapStateSnapshot snapshot)
@@ -122,6 +126,15 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
 
     private void LoadTargetScene(string targetSceneName)
     {
+        // Debounce: don't reload the same scene if we just requested it
+        if (targetSceneName == _lastRequestedScene && Time.time - _lastRequestTime < 5f)
+        {
+            _log.LogInfo($"[MapApplier] Debounced duplicate load: {targetSceneName}");
+            return;
+        }
+        _lastRequestedScene = targetSceneName;
+        _lastRequestTime = Time.time;
+
         // Try to use PeglinSceneLoader.Instance for proper fade/loading screen
         var sceneLoader = PeglinSceneLoader.Instance;
         if (sceneLoader != null && SceneNameToEnum.TryGetValue(targetSceneName, out var sceneEnum))
