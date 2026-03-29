@@ -105,14 +105,18 @@ public class GameStateApplyService
 
         if (_latestFull != null)
         {
+            // Always re-apply map state (node types, static data) — even if snapshot
+            // scene doesn't match, the map data is still useful for applying node types
+            if (_latestFull.Map != null)
+                SafeApply("Map(reapply)", () => _mapApplier.Apply(_latestFull.Map));
+
             // Check that the buffered snapshot's scene matches where we are now.
-            // Don't apply a MainMenu snapshot to Battle or vice versa.
+            // Don't apply Battle data (enemies/pegs) to a non-Battle scene.
             var snapshotScene = _latestFull.Map?.ActiveScene;
             if (!string.IsNullOrEmpty(snapshotScene) &&
                 !string.Equals(snapshotScene, currentScene, StringComparison.OrdinalIgnoreCase))
             {
-                _log.LogWarning($"[ApplyService] Stale snapshot: snapshot scene='{snapshotScene}', current='{currentScene}' — skipping non-map state");
-                // Still apply player state (works on any scene)
+                _log.LogWarning($"[ApplyService] Stale snapshot: snapshot scene='{snapshotScene}', current='{currentScene}' — skipping battle state");
                 if (_latestFull.Player != null)
                     SafeApply("Player", () => _playerApplier.Apply(_latestFull.Player));
             }

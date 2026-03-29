@@ -291,6 +291,21 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                 return null;
             }
 
+            // Initialize the enemy — this sets up HP bar, health text, animations.
+            // Without this, HealthBarBarSprite is null and HP display doesn't work.
+            try
+            {
+                var statusData = UnityEngine.Object.FindObjectOfType<Battle.StatusEffects.StatusEffectData>();
+                var relicMgrs = UnityEngine.Resources.FindObjectsOfTypeAll<Relics.RelicManager>();
+                var relicMgr = relicMgrs.Length > 0 ? relicMgrs[0] : null;
+                enemy.Initialize(statusData, em, relicMgr, prefab.name);
+                _log.LogInfo($"[EnemyApplier] Initialized enemy '{prefab.name}' (HP bar setup)");
+            }
+            catch (Exception initEx)
+            {
+                _log.LogWarning($"[EnemyApplier] Enemy.Initialize failed: {initEx.Message}");
+            }
+
             // Try AddEnemy but don't crash if EnemyManager isn't initialized (slots null)
             try
             {
