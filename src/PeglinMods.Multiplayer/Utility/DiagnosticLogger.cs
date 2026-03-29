@@ -41,6 +41,36 @@ public static class DiagnosticLogger
                     $"slots={mdb.NumberOfSlots}, starterSpawns={mdb.starterSpawns?.Count ?? -1}, waves={mdb.waveGroups?.Length ?? -1}");
             }
 
+            // Relics
+            try
+            {
+                var rms = UnityEngine.Resources.FindObjectsOfTypeAll<Relics.RelicManager>();
+                var rm = rms.Length > 0 ? rms[0] : null;
+                if (rm != null)
+                {
+                    var relicCount = HarmonyLib.AccessTools.Field(typeof(Relics.RelicManager), "_ownedRelics")
+                        ?.GetValue(rm) as System.Collections.IList;
+                    Log?.LogInfo($"  Relics: {relicCount?.Count ?? 0} owned");
+                }
+            }
+            catch { }
+
+            // Deck
+            try
+            {
+                var completeDeck = DeckManager.completeDeck;
+                Log?.LogInfo($"  CompleteDeck: {completeDeck?.Count ?? 0} orbs");
+            }
+            catch { }
+
+            // Asset loading cache
+            try
+            {
+                var cache = Loading.AssetLoading.Instance?.EnemyPrefabs;
+                Log?.LogInfo($"  EnemyPrefabCache: {cache?.Count ?? -1} entries");
+            }
+            catch { }
+
             if (scene != "Battle")
             {
                 Log?.LogInfo($"=== END DIAG [{trigger}] (not Battle) ===");

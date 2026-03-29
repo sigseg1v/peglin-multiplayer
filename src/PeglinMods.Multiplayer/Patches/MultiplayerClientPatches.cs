@@ -107,14 +107,16 @@ public static class MultiplayerClientPatches
     }
 
     // =========================================================================
-    // CLEAR PRE-INSTANCED PEGBOARD ON CLIENT — destroy stale pegs
+    // CLIENT BATTLE INIT — fix assets + catch crashes in BattleController.Awake
     // =========================================================================
 
     /// <summary>
-    /// DESTROY pre-instanced pegboard GameObjects AND clear the reference.
-    /// Without this, the pre-instanced pegs from the map scene stay at offset
-    /// (1000,0,0) as invisible zombie objects. Just nulling the reference leaves
-    /// the GameObjects alive. We must destroy the root to remove them.
+    /// Prefix: Destroy pre-instanced pegboard AND ensure MapDataBattle's
+    /// pegboardFrame is non-null. The client finds the SO via Resources but
+    /// the prefab references (pegboardFrame, background) may not be loaded
+    /// because the game's normal asset preloading was skipped. Without a
+    /// valid pegboardFrame, Awake crashes on Instantiate and kills the entire
+    /// init chain (LoadEnemyAssets, EnemyManager.Initialize, pegboard loading).
     /// </summary>
     [HarmonyPatch(typeof(BattleController), "Awake")]
     [HarmonyPrefix]
@@ -122,21 +124,91 @@ public static class MultiplayerClientPatches
     {
         if (!ShouldSuppressClientLogic) return;
 
+        // 1. Destroy pre-instanced pegs
         var preData = StaticGameData.preInstancedPegboardData;
         if (preData != null)
         {
             MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Destroying preInstancedPegboardData on client " +
                 $"(pegboard={preData.pegboardData?.name}, root={preData.rootGameObject?.name})");
-
-            // DESTROY the actual GameObjects — nulling the reference alone leaves them alive at (1000,0,0)
             if (preData.rootGameObject != null)
-            {
                 UnityEngine.Object.DestroyImmediate(preData.rootGameObject);
-                MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Destroyed pre-instanced root GameObject");
-            }
-
             StaticGameData.preInstancedPegboardData = null;
         }
+
+        // 2. Ensure pegboardFrame is not null — create a dummy if needed.
+        //    The actual pegs come from TryLoadPegLayout, not from the frame.
+        //    The frame is just the visual border which is cosmetic.
+        var battle = StaticGameData.dataToLoad as Data.MapDataBattle;
+        if (battle != null)
+        {
+            if (battle.pegboardFrame == null)
+            {
+                MultiplayerPlugin.Logger?.LogWarning("[ClientPatches] pegboardFrame is null — creating dummy to prevent Awake crash");
+                battle.pegboardFrame = new GameObject("ClientDummyPegboardFrame");
+            }
+
+            MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Battle init: name={battle.name}, " +
+                $"pegLayout={battle.pegLayout?.name}, pegboardFrame={battle.pegboardFrame?.name}, " +
+                $"starterSpawns={battle.starterSpawns?.Count ?? -1}, waves={battle.waveGroups?.Length ?? -1}, " +
+                $"slots={battle.NumberOfSlots}, background={battle.background?.name ?? "NULL"}");
+        }
+        else
+        {
+            MultiplayerPlugin.Logger?.LogWarning("[ClientPatches] dataToLoad is not MapDataBattle — BattleController.Awake may fail");
+        }
+    }
+
+    /// <summary>
+    /// Finalizer: Catch ANY exception from BattleController.Awake on client.
+    /// Logs the full stack trace and swallows the exception so the game continues.
+    /// After a crash, our sync system will still apply state from the host.
+    /// </summary>
+    [HarmonyPatch(typeof(BattleController), "Awake")]
+    [HarmonyFinalizer]
+    public static Exception BattleController_Awake_Finalizer(Exception __exception)
+    {
+        if (__exception == null) return null;
+        if (!ShouldSuppressClientLogic) return __exception;
+
+        MultiplayerPlugin.Logger?.LogError($"[ClientPatches] BattleController.Awake CRASHED on client (swallowed):\n" +
+            $"  {__exception.GetType().Name}: {__exception.Message}\n{__exception.StackTrace}");
+
+        // Try to do minimal recovery — load enemy prefabs and set BattleActive
+        try
+        {
+            BattleController.BattleActive = true;
+
+            var battle = StaticGameData.dataToLoad as Data.MapDataBattle;
+            if (battle?.starterSpawns != null)
+            {
+                var cache = Loading.AssetLoading.Instance?.EnemyPrefabs;
+                if (cache != null)
+                {
+                    int loaded = 0;
+                    foreach (var spawn in battle.starterSpawns)
+                    {
+                        try
+                        {
+                            if (spawn?.spawnData?.enemyAssetReference == null) continue;
+                            var key = spawn.spawnData.enemyAssetReference.RuntimeKey.ToString();
+                            if (!cache.ContainsKey(key))
+                            {
+                                var go = spawn.spawnData.enemyAssetReference.LoadAssetAsync<GameObject>().WaitForCompletion();
+                                if (go != null) { cache[key] = go; loaded++; }
+                            }
+                        }
+                        catch { }
+                    }
+                    MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Recovery: loaded {loaded} enemy prefabs (cache={cache.Count})");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogError($"[ClientPatches] Recovery failed: {ex.Message}");
+        }
+
+        return null; // Swallow — sync system will handle state
     }
 
     // =========================================================================

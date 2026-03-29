@@ -271,6 +271,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
     /// <summary>
     /// Try to instantiate an enemy from the game's asset cache.
     /// Returns the Enemy component if successful, null otherwise.
+    /// Handles the case where EnemyManager isn't fully initialized (slots may be null).
     /// </summary>
     private Enemy TrySpawnEnemy(EnemyEntry entry, EnemyManager em)
     {
@@ -290,14 +291,38 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
 
             enemy.CurrentHealth = entry.CurrentHealth;
             SetMaxHealth(enemy, entry.MaxHealth);
-            em.AddEnemy(enemy, entry.SlotIndex, entry.IsFlying);
+
+            // Try AddEnemy but don't crash if EnemyManager isn't initialized (slots null)
+            try
+            {
+                em.AddEnemy(enemy, entry.SlotIndex, entry.IsFlying);
+            }
+            catch (Exception addEx)
+            {
+                _log.LogWarning($"[EnemyApplier] AddEnemy failed (EnemyManager may not be initialized): {addEx.Message}");
+                // Still return the enemy — it's instantiated and positioned correctly
+                // Just add it to the Enemies list directly if possible
+                try
+                {
+                    var enemiesList = HarmonyLib.AccessTools.Field(typeof(EnemyManager), "Enemies")
+                        ?.GetValue(em) as List<Enemy>;
+                    if (enemiesList == null)
+                    {
+                        enemiesList = new List<Enemy>();
+                        HarmonyLib.AccessTools.Field(typeof(EnemyManager), "Enemies")?.SetValue(em, enemiesList);
+                    }
+                    if (!enemiesList.Contains(enemy))
+                        enemiesList.Add(enemy);
+                }
+                catch { }
+            }
 
             _log.LogInfo($"[EnemyApplier] Spawned '{entry.EnemyName}' at ({entry.PosX:F1},{entry.PosY:F1}) slot={entry.SlotIndex} guid={entry.Id}");
             return enemy;
         }
         catch (Exception ex)
         {
-            _log.LogWarning($"[EnemyApplier] TrySpawnEnemy failed for '{entry.EnemyName}': {ex.Message}");
+            _log.LogWarning($"[EnemyApplier] TrySpawnEnemy failed for '{entry.EnemyName}': {ex.Message}\n{ex.StackTrace}");
             return null;
         }
     }
