@@ -1,6 +1,7 @@
 using System;
 using BepInEx.Logging;
 using PeglinMods.Multiplayer.GameState.Snapshots;
+using PeglinMods.Multiplayer.Patches;
 using UnityEngine.SceneManagement;
 
 namespace PeglinMods.Multiplayer.GameState.Providers;
@@ -24,6 +25,7 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
                 ActiveScene = SceneManager.GetActiveScene().name,
                 ChosenNextNodeIndex = StaticGameData.chosenNextNodeIndex,
                 HasReachedBoss = StaticGameData.hasReachedBoss,
+                RandomStateJson = MultiplayerClientPatches.CapturedPreMapGenRngState,
             };
         }
         catch (Exception ex)

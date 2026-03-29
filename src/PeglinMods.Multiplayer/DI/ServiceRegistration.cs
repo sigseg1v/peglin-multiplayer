@@ -242,6 +242,7 @@ public static class ServiceRegistration
 
         // Map events
         registry.Register(new NodeSelectedServerHandler(), new NodeSelectedClientHandler());
+        registry.Register(new NodeActivatedServerHandler(), new NodeActivatedClientHandler());
 
         // State sync snapshots
         registry.Register(new FullGameStateServerHandler(), new FullGameStateClientHandler());

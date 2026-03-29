@@ -21,6 +21,11 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
     /// </summary>
     public static string ClientWaitingMessage { get; private set; }
 
+    private static readonly HashSet<string> MapScenes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "ForestMap", "CastleMap", "MinesMap", "CoreMap"
+    };
+
     // Maps scene names (from SceneManager) back to PeglinSceneLoader.Scene enum values.
     private static readonly Dictionary<string, PeglinSceneLoader.Scene> SceneNameToEnum =
         new Dictionary<string, PeglinSceneLoader.Scene>(StringComparer.OrdinalIgnoreCase)
@@ -52,6 +57,10 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             // Apply static game data fields so the game's systems see the host's run state
             ApplyStaticGameData(snapshot);
 
+            // Store the host's pre-map-generation RNG state for later restoration
+            if (!string.IsNullOrEmpty(snapshot.RandomStateJson))
+                MultiplayerClientPatches.PendingRngStateToRestore = snapshot.RandomStateJson;
+
             // Scenes where the client can't follow — show waiting message instead
             if (snapshot.ActiveScene == "PostMainMenu")
             {
@@ -70,13 +79,20 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             // Clear waiting state — we're loading a real game scene
             ClientWaitingMessage = null;
 
-            // Check if we need to follow the host to a different scene
             var currentScene = SceneManager.GetActiveScene().name;
             var targetScene = snapshot.ActiveScene;
 
             if (string.Equals(currentScene, targetScene, StringComparison.OrdinalIgnoreCase))
             {
                 _log.LogInfo($"[MapApplier] Already on scene '{currentScene}', static data updated.");
+                return;
+            }
+
+            // If the client is on a map scene, don't load — node activation handles
+            // transitions FROM maps (map → battle, map → treasure, etc.)
+            if (MapScenes.Contains(currentScene))
+            {
+                _log.LogInfo($"[MapApplier] On map '{currentScene}', node activation will handle transition to '{targetScene}'");
                 return;
             }
 
@@ -101,11 +117,7 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         if (Enum.IsDefined(typeof(Class), snapshot.ChosenClass))
             StaticGameData.chosenClass = (Class)snapshot.ChosenClass;
 
-        // Initialize Unity RNG from the host's seed so generated content matches
-        if (!string.IsNullOrEmpty(seed) && SeedUtils.IsStringAValidSeed(seed))
-            UnityEngine.Random.InitState(SeedUtils.ConvertSeedFromSymbolsToInt(seed));
-
-        _log.LogInfo($"[MapApplier] StaticGameData: seed={seed}, seedSet=true, floor={snapshot.TotalFloorCount}, class={StaticGameData.chosenClass}, node={snapshot.ChosenNextNodeIndex}");
+        _log.LogInfo($"[MapApplier] StaticGameData: seed={seed}, floor={snapshot.TotalFloorCount}, class={StaticGameData.chosenClass}, node={snapshot.ChosenNextNodeIndex}");
     }
 
     private void LoadTargetScene(string targetSceneName)
@@ -115,13 +127,11 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         if (sceneLoader != null && SceneNameToEnum.TryGetValue(targetSceneName, out var sceneEnum))
         {
             _log.LogInfo($"[MapApplier] Using PeglinSceneLoader.LoadScene({sceneEnum})");
-            // Set bypass flag so our Harmony patch allows this scene load through
-            MultiplayerClientPatches.AllowNextSceneLoad = true;
             sceneLoader.LoadScene(sceneEnum);
             return;
         }
 
-        // Fallback: use Unity SceneManager directly (not patched, always works)
+        // Fallback: use Unity SceneManager directly
         _log.LogWarning($"[MapApplier] PeglinSceneLoader unavailable or unknown scene '{targetSceneName}', falling back to SceneManager");
         SceneManager.LoadScene(targetSceneName);
     }

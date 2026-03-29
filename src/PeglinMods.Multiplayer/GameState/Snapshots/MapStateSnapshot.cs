@@ -12,4 +12,11 @@ public class MapStateSnapshot
     public string ActiveScene { get; set; }
     public int ChosenNextNodeIndex { get; set; }
     public bool HasReachedBoss { get; set; }
+
+    /// <summary>
+    /// Serialized UnityEngine.Random.State captured BEFORE map generation.
+    /// Restoring this on the client ensures identical procedural content.
+    /// Format: "s0,s1,s2,s3" (4 ints from the internal state fields).
+    /// </summary>
+    public string RandomStateJson { get; set; }
 }
