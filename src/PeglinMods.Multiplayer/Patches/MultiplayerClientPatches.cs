@@ -107,14 +107,14 @@ public static class MultiplayerClientPatches
     }
 
     // =========================================================================
-    // CLEAR PRE-INSTANCED PEGBOARD ON CLIENT — avoid pegs at (993, -10) offset
+    // CLEAR PRE-INSTANCED PEGBOARD ON CLIENT — destroy stale pegs
     // =========================================================================
 
     /// <summary>
-    /// Clear preInstancedPegboardData before BattleController.Awake on client.
-    /// Without this, BattleController tries to use a pre-instanced pegboard from
-    /// the map scene, but since we bypassed the normal node activation flow, it
-    /// was never finalized and pegs stay at the pre-instance offset (1000,0,0).
+    /// DESTROY pre-instanced pegboard GameObjects AND clear the reference.
+    /// Without this, the pre-instanced pegs from the map scene stay at offset
+    /// (1000,0,0) as invisible zombie objects. Just nulling the reference leaves
+    /// the GameObjects alive. We must destroy the root to remove them.
     /// </summary>
     [HarmonyPatch(typeof(BattleController), "Awake")]
     [HarmonyPrefix]
@@ -122,13 +122,77 @@ public static class MultiplayerClientPatches
     {
         if (!ShouldSuppressClientLogic) return;
 
-        if (StaticGameData.preInstancedPegboardData != null)
+        var preData = StaticGameData.preInstancedPegboardData;
+        if (preData != null)
         {
-            MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Clearing preInstancedPegboardData on client " +
-                $"(was: pegboard={StaticGameData.preInstancedPegboardData.pegboardData?.name}, " +
-                $"root={StaticGameData.preInstancedPegboardData.rootGameObject?.name})");
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Destroying preInstancedPegboardData on client " +
+                $"(pegboard={preData.pegboardData?.name}, root={preData.rootGameObject?.name})");
+
+            // DESTROY the actual GameObjects — nulling the reference alone leaves them alive at (1000,0,0)
+            if (preData.rootGameObject != null)
+            {
+                UnityEngine.Object.DestroyImmediate(preData.rootGameObject);
+                MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Destroyed pre-instanced root GameObject");
+            }
+
             StaticGameData.preInstancedPegboardData = null;
         }
+    }
+
+    // =========================================================================
+    // BLOCK CLIENT MAP GENERATION — host controls map layout
+    // =========================================================================
+
+    /// <summary>
+    /// Block map node type generation on client. MapController.Start calls
+    /// CreateMapDataLists which assigns random room types to nodes. On the
+    /// client, the host sends the correct node types via MapStateSnapshot.
+    /// Without this block, the client generates its own map with wrong types.
+    /// </summary>
+    [HarmonyPatch(typeof(Map.MapController), "CreateMapDataLists")]
+    [HarmonyPrefix]
+    public static bool MapController_CreateMapDataLists_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked CreateMapDataLists — host will send node types");
+        return false;
+    }
+
+    /// <summary>Block post-processing of map on client (relic-based node changes).</summary>
+    [HarmonyPatch(typeof(Map.MapController), "PostProcessMap")]
+    [HarmonyPrefix]
+    public static bool MapController_PostProcessMap_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        return false;
+    }
+
+    /// <summary>Block seeding map contents on client.</summary>
+    [HarmonyPatch(typeof(Map.MapController), "SeedMapContents")]
+    [HarmonyPrefix]
+    public static bool MapController_SeedMapContents_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        return false;
+    }
+
+    /// <summary>Block save requests on client.</summary>
+    [HarmonyPatch(typeof(SaveManager), "RequestSave")]
+    [HarmonyPrefix]
+    public static bool SaveManager_RequestSave_Prefix() => !ShouldSuppressClientLogic;
+
+    /// <summary>
+    /// Block map-initiated scene loading on client. The map controller's own
+    /// LoadSceneFromMapData would load scenes from the client's (wrong) map data.
+    /// Our NodeActivatedClientHandler handles scene transitions with the correct data.
+    /// </summary>
+    [HarmonyPatch(typeof(Map.MapController), "LoadSceneFromMapData")]
+    [HarmonyPrefix]
+    public static bool MapController_LoadSceneFromMapData_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked LoadSceneFromMapData — host will send transitions");
+        return false;
     }
 
     // =========================================================================

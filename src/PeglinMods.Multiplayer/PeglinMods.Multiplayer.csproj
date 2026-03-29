@@ -35,6 +35,14 @@
       <HintPath>$(GameManagedDir)/Unity.TextMeshPro.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="Unity.Addressables">
+      <HintPath>$(GameManagedDir)/Unity.Addressables.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Unity.ResourceManager">
+      <HintPath>$(GameManagedDir)/Unity.ResourceManager.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="Newtonsoft.Json">
       <HintPath>$(GameManagedDir)/Newtonsoft.Json.dll</HintPath>
       <Private>false</Private>

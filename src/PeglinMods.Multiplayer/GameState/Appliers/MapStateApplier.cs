@@ -96,10 +96,10 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             {
                 _log.LogInfo($"[MapApplier] Already on scene '{currentScene}', static data updated.");
 
-                // Verify map nodes match host when on a map scene
+                // Apply host's map node types to client
                 if (MapScenes.Contains(currentScene) && snapshot.Nodes != null && snapshot.Nodes.Count > 0)
                 {
-                    VerifyMapNodes(snapshot.Nodes);
+                    ApplyMapNodes(snapshot.Nodes);
                 }
                 return;
             }
@@ -184,17 +184,18 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
     }
 
     /// <summary>
-    /// Compare host map nodes against client map nodes and log mismatches.
-    /// This helps diagnose when the client's map doesn't match the host's.
+    /// Apply host's map node types to client nodes. Sets RoomType and generates
+    /// the correct icon for each node. This is the primary way the client's map
+    /// is synced since CreateMapDataLists is blocked on client.
     /// </summary>
-    private void VerifyMapNodes(List<MapNodeEntry> hostNodes)
+    private void ApplyMapNodes(List<MapNodeEntry> hostNodes)
     {
         try
         {
             var mc = UnityEngine.Object.FindObjectOfType<MapController>();
             if (mc == null)
             {
-                _log.LogWarning("[MapApplier] No MapController found for node verification");
+                _log.LogWarning("[MapApplier] No MapController found for node sync");
                 return;
             }
 
@@ -206,53 +207,50 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 return;
             }
 
-            int matches = 0, mismatches = 0;
+            int applied = 0, skipped = 0;
             foreach (var hostNode in hostNodes)
             {
                 if (hostNode.Index < 0 || hostNode.Index >= clientNodes.Length)
                 {
-                    _log.LogWarning($"[MapApplier] Host node index {hostNode.Index} out of range (client has {clientNodes.Length} nodes)");
-                    mismatches++;
+                    skipped++;
                     continue;
                 }
 
                 var clientNode = clientNodes[hostNode.Index];
                 if (clientNode == null)
                 {
-                    mismatches++;
+                    skipped++;
                     continue;
                 }
 
-                bool typeMatch = (int)clientNode.RoomType == hostNode.RoomType;
-                float dx = clientNode.transform.position.x - hostNode.PosX;
-                float dy = clientNode.transform.position.y - hostNode.PosY;
-                bool posMatch = (dx * dx + dy * dy) < 1f;
+                // Apply room type from host
+                var hostRoomType = (RoomType)hostNode.RoomType;
+                if (clientNode.RoomType != hostRoomType)
+                {
+                    clientNode.RoomType = hostRoomType;
+                    try { clientNode.GenerateIcon(); } catch { }
+                }
 
-                if (typeMatch && posMatch)
+                // Apply room state from host
+                if (hostNode.RoomState >= 0)
                 {
-                    matches++;
+                    var hostState = (RoomState)hostNode.RoomState;
+                    try
+                    {
+                        clientNode.SetActiveState(hostState, recursive: false, setIcon: false);
+                    }
+                    catch { }
                 }
-                else
-                {
-                    _log.LogWarning($"[MapApplier] Node [{hostNode.Index}] MISMATCH: " +
-                        $"host={hostNode.RoomTypeName}@({hostNode.PosX:F1},{hostNode.PosY:F1}) data={hostNode.MapDataName}, " +
-                        $"client={clientNode.RoomType}@({clientNode.transform.position.x:F1},{clientNode.transform.position.y:F1}) data={clientNode.MapData?.name}");
-                    mismatches++;
-                }
+
+                applied++;
             }
 
-            _log.LogInfo($"[MapApplier] Map node verification: {matches} match, {mismatches} mismatch " +
+            _log.LogInfo($"[MapApplier] Applied {applied} node types from host, {skipped} skipped " +
                 $"(host={hostNodes.Count}, client={clientNodes.Length})");
-
-            if (mismatches > 0 && mismatches > matches / 2)
-            {
-                _log.LogError($"[MapApplier] SEVERE MAP MISMATCH — {mismatches}/{hostNodes.Count} nodes differ. " +
-                    "Map may need regeneration with host's RNG state.");
-            }
         }
         catch (Exception ex)
         {
-            _log.LogWarning($"[MapApplier] VerifyMapNodes failed: {ex.Message}");
+            _log.LogWarning($"[MapApplier] ApplyMapNodes failed: {ex.Message}");
         }
     }
 }

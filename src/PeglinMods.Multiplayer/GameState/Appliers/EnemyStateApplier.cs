@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Battle.Enemies;
 using BepInEx.Logging;
+using Data;
 using HarmonyLib;
 using Loading;
 using PeglinMods.Multiplayer.GameState.Snapshots;
@@ -38,6 +39,10 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                 _log.LogInfo("[EnemyApplier] No enemies in snapshot.");
                 return;
             }
+
+            // Ensure enemy prefab cache is populated — BattleController.Awake may have
+            // crashed or not loaded assets on the client
+            EnsureEnemyPrefabsLoaded();
 
             var em = UnityEngine.Object.FindObjectOfType<EnemyManager>();
             if (em == null)
@@ -127,6 +132,87 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
         {
             _log.LogError($"[EnemyApplier] Apply failed: {ex.Message}\n{ex.StackTrace}");
         }
+    }
+
+    /// <summary>
+    /// Ensure the enemy prefab cache is populated. If BattleController.Awake didn't
+    /// load them (e.g. it crashed during pegboard setup), load them ourselves from
+    /// the current MapDataBattle's starterSpawns and waveGroups.
+    /// </summary>
+    private void EnsureEnemyPrefabsLoaded()
+    {
+        var cache = AssetLoading.Instance?.EnemyPrefabs;
+        if (cache != null && cache.Count > 0) return;
+
+        var battle = StaticGameData.dataToLoad as MapDataBattle;
+        if (battle == null)
+        {
+            _log.LogWarning("[EnemyApplier] Cannot load enemy prefabs — no MapDataBattle in dataToLoad");
+            return;
+        }
+
+        int loaded = 0;
+        if (cache == null)
+        {
+            _log.LogWarning("[EnemyApplier] AssetLoading.Instance.EnemyPrefabs is null!");
+            return;
+        }
+
+        // Load from starterSpawns
+        if (battle.starterSpawns != null)
+        {
+            foreach (var spawn in battle.starterSpawns)
+            {
+                try
+                {
+                    if (spawn?.spawnData?.enemyAssetReference == null) continue;
+                    var key = spawn.spawnData.enemyAssetReference.RuntimeKey.ToString();
+                    if (cache.ContainsKey(key)) continue;
+                    var go = spawn.spawnData.enemyAssetReference.LoadAssetAsync<GameObject>().WaitForCompletion();
+                    if (go != null)
+                    {
+                        cache[key] = go;
+                        loaded++;
+                        _log.LogInfo($"[EnemyApplier] Loaded enemy prefab: key={key} name={go.name}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning($"[EnemyApplier] Failed to load starter spawn prefab: {ex.Message}");
+                }
+            }
+        }
+
+        // Load from wave groups
+        if (battle.waveGroups != null)
+        {
+            foreach (var wg in battle.waveGroups)
+            {
+                if (wg?.waveData == null) continue;
+                foreach (var wd in wg.waveData)
+                {
+                    try
+                    {
+                        if (wd?.spawnData?.enemyAssetReference == null) continue;
+                        var key = wd.spawnData.enemyAssetReference.RuntimeKey.ToString();
+                        if (cache.ContainsKey(key)) continue;
+                        var go = wd.spawnData.enemyAssetReference.LoadAssetAsync<GameObject>().WaitForCompletion();
+                        if (go != null)
+                        {
+                            cache[key] = go;
+                            loaded++;
+                            _log.LogInfo($"[EnemyApplier] Loaded wave enemy prefab: key={key} name={go.name}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _log.LogWarning($"[EnemyApplier] Failed to load wave prefab: {ex.Message}");
+                    }
+                }
+            }
+        }
+
+        _log.LogInfo($"[EnemyApplier] Loaded {loaded} enemy prefabs from MapDataBattle (cache now has {cache.Count} entries)");
     }
 
     /// <summary>
