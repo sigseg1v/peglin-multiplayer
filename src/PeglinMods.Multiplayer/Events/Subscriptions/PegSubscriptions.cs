@@ -1,6 +1,7 @@
 using BepInEx.Logging;
 using PeglinMods.Multiplayer.Events.Network.Peg;
 using PeglinMods.Multiplayer.Multiplayer;
+using PeglinMods.Multiplayer.Utility;
 
 namespace PeglinMods.Multiplayer.Events.Subscriptions;
 
@@ -49,11 +50,13 @@ public sealed class PegSubscriptions
     {
         if (!IsHosting) return;
         var pos = peg != null ? peg.transform.position : UnityEngine.Vector3.zero;
+        var pegId = MultiplayerPlugin.Services?.TryResolve<PegIdentifier>(out var p) == true ? p : null;
         _registry.Dispatch(new PegActivatedEvent
         {
             PegType = (int)pegType,
             PosX = pos.x,
-            PosY = pos.y
+            PosY = pos.y,
+            PegGuid = pegId?.GetGuid(peg),
         });
     }
 
@@ -61,11 +64,13 @@ public sealed class PegSubscriptions
     {
         if (!IsHosting) return;
         var pos = peg != null ? peg.transform.position : UnityEngine.Vector3.zero;
+        var pegId = MultiplayerPlugin.Services?.TryResolve<PegIdentifier>(out var p) == true ? p : null;
         _registry.Dispatch(new PegDestroyedEvent
         {
             PegType = (int)pegType,
             PosX = pos.x,
-            PosY = pos.y
+            PosY = pos.y,
+            PegGuid = pegId?.GetGuid(peg),
         });
     }
 }

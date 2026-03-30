@@ -1,4 +1,5 @@
 using Battle;
+using HarmonyLib;
 using PeglinMods.Multiplayer.Events;
 using PeglinMods.Multiplayer.Events.Network.Ball;
 using PeglinMods.Multiplayer.Multiplayer;
@@ -14,6 +15,8 @@ public class BallPositionSync : MonoBehaviour
     private INetworkTransport _transport;
     private float _sendInterval = 0.05f; // 20 Hz
     private float _lastSendTime;
+    private float _lastAimSendTime;
+    private float _aimSendInterval = 0.1f; // 10 Hz
 
     private void Start()
     {
@@ -29,13 +32,30 @@ public class BallPositionSync : MonoBehaviour
         if (_registry == null || _mode == null || _transport == null) return;
         if (!_mode.IsHosting || !_transport.IsConnected) return;
 
-        // Only sync during active ball physics
-        if (BattleController.CurrentBattleState != BattleController.BattleState.AWAITING_SHOT_COMPLETION)
-            return;
+        var state = BattleController.CurrentBattleState;
 
-        if (Time.time - _lastSendTime < _sendInterval) return;
-        _lastSendTime = Time.time;
+        // Stream ball position during active ball physics (20 Hz)
+        if (state == BattleController.BattleState.AWAITING_SHOT_COMPLETION)
+        {
+            if (Time.time - _lastSendTime >= _sendInterval)
+            {
+                _lastSendTime = Time.time;
+                SendBallPosition();
+            }
+        }
+        // Stream aim direction while player is aiming (10 Hz)
+        else if (state == BattleController.BattleState.AWAITING_SHOT)
+        {
+            if (Time.time - _lastAimSendTime >= _aimSendInterval)
+            {
+                _lastAimSendTime = Time.time;
+                SendAimUpdate();
+            }
+        }
+    }
 
+    private void SendBallPosition()
+    {
         var ball = FindActiveBall();
         if (ball == null) return;
 
@@ -49,13 +69,35 @@ public class BallPositionSync : MonoBehaviour
             PosY = pos.y,
             VelX = vel.x,
             VelY = vel.y,
+            Timestamp = Time.time,
         });
     }
 
-    /// <summary>
-    /// Find the real battle ball, not a menu background dummy ball.
-    /// PachinkoBall.IsDummy is true for decorative balls in the menu.
-    /// </summary>
+    private void SendAimUpdate()
+    {
+        // Get the aim vector from BattleController
+        var bc = Object.FindObjectOfType<BattleController>();
+        if (bc == null) return;
+
+        var aimField = AccessTools.Field(typeof(BattleController), "_previousAimVector");
+        if (aimField == null) return;
+        var aimVec = (Vector2)aimField.GetValue(bc);
+        if (aimVec == Vector2.zero) return; // No aim data yet
+
+        var playerField = AccessTools.Field(typeof(BattleController), "_playerTransform");
+        var playerTransform = playerField?.GetValue(bc) as Transform;
+        if (playerTransform == null) return;
+
+        var pos = playerTransform.position;
+        _registry.Dispatch(new AimUpdateEvent
+        {
+            AimX = aimVec.x,
+            AimY = aimVec.y,
+            SpawnX = pos.x,
+            SpawnY = pos.y,
+        });
+    }
+
     private static PachinkoBall FindActiveBall()
     {
         foreach (var ball in FindObjectsOfType<PachinkoBall>())

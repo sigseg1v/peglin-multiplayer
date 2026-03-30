@@ -335,6 +335,14 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             enemy.CurrentHealth = entry.CurrentHealth;
             ForceUpdateHealthBar(enemy);
 
+            // Pop from upcoming enemy preview so the UI updates
+            try
+            {
+                var eim = UnityEngine.Object.FindObjectOfType<Battle.EnemyInfoManager>();
+                eim?.PopSpawn();
+            }
+            catch { }
+
             _log.LogInfo($"[EnemyApplier] Spawned '{entry.EnemyName}' at ({entry.PosX:F1},{entry.PosY:F1}) slot={entry.SlotIndex} guid={entry.Id} hp={enemy.CurrentHealth}/{entry.MaxHealth}");
             return enemy;
         }

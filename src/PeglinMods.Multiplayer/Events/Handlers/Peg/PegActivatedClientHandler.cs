@@ -2,6 +2,8 @@ namespace PeglinMods.Multiplayer.Events.Handlers.Peg;
 
 using System;
 using PeglinMods.Multiplayer.Events.Network.Peg;
+using PeglinMods.Multiplayer.Multiplayer;
+using PeglinMods.Multiplayer.Utility;
 
 public sealed class PegActivatedClientHandler : IClientHandler<PegActivatedEvent>
 {
@@ -9,9 +11,25 @@ public sealed class PegActivatedClientHandler : IClientHandler<PegActivatedEvent
     {
         try
         {
-            MultiplayerPlugin.Logger.LogInfo($"Multiplayer: Peg activated (type {networkEvent.PegType}) at ({networkEvent.PosX:F2}, {networkEvent.PosY:F2})");
-            // Peg.OnPegActivated is a public static PegHitEvent(PegType, Peg) delegate
-            global::Peg.OnPegActivated?.Invoke((global::Peg.PegType)networkEvent.PegType, null);
+            var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
+            if (mode == null || !mode.IsSpectating) return;
+
+            // Find the actual peg on the client by GUID and trigger visual activation
+            global::Peg peg = null;
+            if (!string.IsNullOrEmpty(networkEvent.PegGuid))
+            {
+                var pegId = MultiplayerPlugin.Services?.TryResolve<PegIdentifier>(out var p) == true ? p : null;
+                peg = pegId?.Find(networkEvent.PegGuid);
+            }
+
+            if (peg != null && peg.gameObject.activeSelf)
+            {
+                try { peg.PegActivated(playAudio: true, forcePop: false); }
+                catch { }
+            }
+
+            // Also fire the global delegate for any UI/sound subscribers
+            global::Peg.OnPegActivated?.Invoke((global::Peg.PegType)networkEvent.PegType, peg);
         }
         catch (Exception e)
         {

@@ -2,19 +2,32 @@ namespace PeglinMods.Multiplayer.Events.Handlers.Deck;
 
 using System;
 using PeglinMods.Multiplayer.Events.Network.Deck;
+using PeglinMods.Multiplayer.Multiplayer;
+using UnityEngine;
 
 public sealed class BallDrawnClientHandler : IClientHandler<BallDrawnEvent>
 {
-    public void Handle(BallDrawnEvent networkEvent)
+    public void Handle(BallDrawnEvent e)
     {
         try
         {
-            MultiplayerPlugin.Logger.LogInfo($"Multiplayer: Drew orb {networkEvent.OrbName} (level {networkEvent.Level})");
-            // DeckManager.onBallDrawn requires a GameObject reference we don't have on the client - log only
+            var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
+            if (mode == null || !mode.IsSpectating) return;
+
+            MultiplayerPlugin.Logger.LogInfo($"Multiplayer: Drew orb {e.OrbName} (level {e.Level})");
+
+            // Fire onBallDrawn with the next orb so DeckInfoManager can update
+            var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
+            var dm = dms.Length > 0 ? dms[0] : null;
+            if (dm?.shuffledDeck != null && dm.shuffledDeck.Count > 0)
+            {
+                var nextOrb = dm.shuffledDeck.Peek();
+                DeckManager.onBallDrawn?.Invoke(nextOrb);
+            }
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            MultiplayerPlugin.Logger.LogWarning($"BallDrawn handler failed: {e.Message}");
+            MultiplayerPlugin.Logger.LogWarning($"BallDrawn handler failed: {ex.Message}");
         }
     }
 }

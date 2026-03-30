@@ -44,7 +44,8 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
 
                 var guid = _pegId.GetOrAssignGuid(peg);
                 var pt = (int)peg.pegType;
-                bool destroyed = !peg.gameObject.activeSelf || (pt & 0x20) != 0; // DESTROYED flag
+                // A peg is "destroyed" if: inactive, has DESTROYED type flag, OR was cleared (hit during ball physics)
+                bool destroyed = !peg.gameObject.activeSelf || (pt & 0x20) != 0 || peg.Cleared;
 
                 snapshot.Pegs.Add(new PegEntry
                 {

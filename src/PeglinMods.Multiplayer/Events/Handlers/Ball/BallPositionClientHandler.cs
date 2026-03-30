@@ -2,19 +2,19 @@ namespace PeglinMods.Multiplayer.Events.Handlers.Ball;
 
 using System;
 using PeglinMods.Multiplayer.Events.Network.Ball;
+using PeglinMods.Multiplayer.GameState;
 
 public sealed class BallPositionClientHandler : IClientHandler<BallPositionEvent>
 {
-    public void Handle(BallPositionEvent networkEvent)
+    public void Handle(BallPositionEvent e)
     {
         try
         {
-            MultiplayerPlugin.Logger.LogInfo(
-                $"BallPosition: pos=({networkEvent.PosX:F2}, {networkEvent.PosY:F2}) vel=({networkEvent.VelX:F2}, {networkEvent.VelY:F2})");
+            ClientBallRenderer.Instance?.UpdateBallPosition(e.PosX, e.PosY, e.VelX, e.VelY, e.Timestamp);
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            MultiplayerPlugin.Logger.LogWarning($"BallPosition handler failed: {e.Message}");
+            MultiplayerPlugin.Logger.LogWarning($"BallPosition handler failed: {ex.Message}");
         }
     }
 }

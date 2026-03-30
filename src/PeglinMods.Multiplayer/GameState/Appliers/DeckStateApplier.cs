@@ -95,18 +95,13 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                         _log.LogInfo($"[DeckApplier] Built shuffledDeck (fallback order): {dm.shuffledDeck.Count} orbs");
                     }
 
-                    // If host's shuffled deck is smaller than client's, the host drew orbs.
-                    // Pop from client's shuffledDeck and fire onBallUsed so DeckInfoManager updates.
+                    // Silently adjust shuffledDeck count to match host (no onBallUsed here —
+                    // real-time BallUsedClientHandler drives the visual updates via onBallUsed)
                     if (snapshot.ShuffledOrder != null)
                     {
                         int hostCount = snapshot.ShuffledOrder.Count;
                         while (dm.shuffledDeck.Count > hostCount && dm.shuffledDeck.Count > 0)
-                        {
-                            var popped = dm.shuffledDeck.Pop();
-                            try { DeckManager.onBallUsed?.Invoke(popped); }
-                            catch { }
-                            _log.LogInfo($"[DeckApplier] Popped orb '{popped?.name}' to match host ({dm.shuffledDeck.Count} remaining)");
-                        }
+                            dm.shuffledDeck.Pop();
                     }
                 }
                 catch (Exception shuffleEx)

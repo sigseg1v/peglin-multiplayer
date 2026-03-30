@@ -2,20 +2,21 @@ namespace PeglinMods.Multiplayer.Events.Handlers.Ball;
 
 using System;
 using PeglinMods.Multiplayer.Events.Network.Ball;
+using PeglinMods.Multiplayer.GameState;
 
 public sealed class BallDestroyedClientHandler : IClientHandler<BallDestroyedEvent>
 {
-    public void Handle(BallDestroyedEvent networkEvent)
+    public void Handle(BallDestroyedEvent e)
     {
         try
         {
             MultiplayerPlugin.Logger.LogInfo("Multiplayer: Ball destroyed");
-            // PachinkoBall.OnPachinkoBallDestroyed is a public static PachinkoBallDestroyed(PachinkoBall) delegate
+            ClientBallRenderer.Instance?.OnBallDestroyed();
             PachinkoBall.OnPachinkoBallDestroyed?.Invoke(null);
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            MultiplayerPlugin.Logger.LogWarning($"BallDestroyed handler failed: {e.Message}");
+            MultiplayerPlugin.Logger.LogWarning($"BallDestroyed handler failed: {ex.Message}");
         }
     }
 }

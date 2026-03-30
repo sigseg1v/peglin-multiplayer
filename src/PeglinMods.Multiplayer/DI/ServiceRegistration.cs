@@ -238,6 +238,7 @@ public static class ServiceRegistration
         registry.Register(new BallWallBounceServerHandler(), new BallWallBounceClientHandler());
         registry.Register(new BallDestroyedServerHandler(), new BallDestroyedClientHandler());
         registry.Register(new BallPositionServerHandler(), new BallPositionClientHandler());
+        registry.Register(new AimUpdateServerHandler(), new AimUpdateClientHandler());
 
         // Peg events
         registry.Register(new PegHitServerHandler(), new PegHitClientHandler());
