@@ -28,13 +28,13 @@ public class ClientBallRenderer : MonoBehaviour
         if (Instance == this) Instance = null;
     }
 
-    public void OnShotFired(float aimX, float aimY)
+    public void OnShotFired(float aimX, float aimY, string orbName = null)
     {
         if (_ballObject == null)
             CreateBall();
 
-        // Update the ball sprite to match the current orb being fired
-        UpdateBallSprite();
+        // Update the ball sprite to match the orb being fired (from host's ShotFiredEvent)
+        UpdateBallSprite(orbName);
 
         // Find spawn position from BattleController's player transform
         var bc = Object.FindObjectOfType<Battle.BattleController>();
@@ -55,22 +55,48 @@ public class ClientBallRenderer : MonoBehaviour
         _ballObject.SetActive(true);
     }
 
-    private void UpdateBallSprite()
+    private void UpdateBallSprite(string orbName)
     {
         if (_ballRenderer == null) return;
         try
         {
-            var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
-            var dm = dms.Length > 0 ? dms[0] : null;
-            if (dm?.shuffledDeck != null && dm.shuffledDeck.Count > 0)
+            // Find the orb prefab by name from the host's ShotFiredEvent
+            GameObject orbGo = null;
+            string cleanName = orbName?.Replace("(Clone)", "").Trim();
+
+            if (!string.IsNullOrEmpty(cleanName))
             {
-                // The top of shuffledDeck is the orb being fired (BallUsed hasn't popped it yet)
-                var orb = dm.shuffledDeck.Peek();
-                var orbRenderer = orb?.GetComponentInChildren<SpriteRenderer>();
-                if (orbRenderer != null && orbRenderer.sprite != null)
+                var loader = Loading.AssetLoading.Instance;
+                if (loader != null)
+                    orbGo = loader.GetOrbPrefab(cleanName);
+            }
+
+            // Fallback: try battleDeck
+            if (orbGo == null)
+            {
+                var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
+                var dm = dms.Length > 0 ? dms[0] : null;
+                if (dm?.battleDeck != null)
+                {
+                    foreach (var orb in dm.battleDeck)
+                    {
+                        if (orb != null && orb.name.Replace("(Clone)", "").Trim() == cleanName)
+                        {
+                            orbGo = orb;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (orbGo != null)
+            {
+                var orbRenderer = orbGo.GetComponentInChildren<SpriteRenderer>();
+                if (orbRenderer?.sprite != null)
                 {
                     _ballRenderer.sprite = orbRenderer.sprite;
-                    _ballObject.transform.localScale = orb.transform.localScale;
+                    _ballObject.transform.localScale = orbGo.transform.localScale * 0.8f;
+                    return;
                 }
             }
         }

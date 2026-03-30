@@ -183,26 +183,25 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             if (upcomingList == null) return;
 
             int clientCount = upcomingList.Count;
-            if (clientCount > hostUpcomingCount)
+            if (clientCount != hostUpcomingCount)
             {
-                int toPop = clientCount - hostUpcomingCount;
-                for (int i = 0; i < toPop; i++)
+                // Force match: remove extras from front until counts match
+                while (upcomingList.Count > hostUpcomingCount)
+                    upcomingList.RemoveAt(0);
+
+                // Destroy all existing UI elements and rebuild
+                var elementsField = HarmonyLib.AccessTools.Field(typeof(Battle.EnemyInfoManager), "_enemyInfoElements");
+                var elements = elementsField?.GetValue(eim) as System.Collections.Generic.Queue<Battle.EnemyInfoElement>;
+                if (elements != null)
                 {
-                    try
+                    while (elements.Count > upcomingList.Count)
                     {
-                        eim.PopSpawn();
-                        // Also remove from _upcomingSpawns directly since PopSpawn only
-                        // queues visual removal but doesn't change the list count
-                        if (upcomingList.Count > 0)
-                            upcomingList.RemoveAt(0);
+                        var el = elements.Dequeue();
+                        if (el != null) UnityEngine.Object.Destroy(el.gameObject);
                     }
-                    catch { }
                 }
-                _log.LogInfo($"[EnemyApplier] Upcoming sync: popped {toPop} (host={hostUpcomingCount}, client was {clientCount}, now {upcomingList.Count})");
-            }
-            else if (clientCount != hostUpcomingCount)
-            {
-                _log.LogInfo($"[EnemyApplier] Upcoming: host={hostUpcomingCount}, client={clientCount}");
+
+                _log.LogInfo($"[EnemyApplier] Upcoming sync: forced {clientCount} → {upcomingList.Count} (host={hostUpcomingCount})");
             }
         }
         catch { }

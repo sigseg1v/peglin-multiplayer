@@ -17,8 +17,8 @@ public sealed class ShotFiredClientHandler : IClientHandler<ShotFiredEvent>
 
             MultiplayerPlugin.Logger?.LogInfo($"[ShotFired] orb={e.OrbName}, aim=({e.AimX:F2},{e.AimY:F2}), spawn=({e.SpawnX:F1},{e.SpawnY:F1})");
 
-            // Spawn visual ball on client with correct orb sprite
-            ClientBallRenderer.Instance?.OnShotFired(e.AimX, e.AimY);
+            // Spawn visual ball on client with correct orb sprite from host
+            ClientBallRenderer.Instance?.OnShotFired(e.AimX, e.AimY, e.OrbName);
 
             // Hide aim line
             ClientAimRenderer.Instance?.HideAim();
