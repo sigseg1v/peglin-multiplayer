@@ -52,6 +52,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             var clientBombs = bombsField?.GetValue(pm) as System.Collections.Generic.List<Bomb>;
 
             int guidMatched = 0, indexMatched = 0, typeChanged = 0, destroyed = 0, reactivated = 0, missed = 0;
+            var matchedPegs = new HashSet<Peg>();
 
             foreach (var entry in snapshot.Pegs)
             {
@@ -92,6 +93,8 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     missed++;
                     continue;
                 }
+
+                matchedPegs.Add(peg);
 
                 // Register with host GUID
                 if (!string.IsNullOrEmpty(entry.Guid))
@@ -188,6 +191,28 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                             animator?.SetInteger("Hits", entry.HitCount);
                         }
                         catch { }
+                    }
+                }
+            }
+
+            // Deactivate client pegs not in host snapshot (extras from different layout)
+            int extrasRemoved = 0;
+            foreach (var peg in clientPegs)
+            {
+                if (peg != null && peg.gameObject.activeSelf && !matchedPegs.Contains(peg))
+                {
+                    peg.gameObject.SetActive(false);
+                    extrasRemoved++;
+                }
+            }
+            if (clientBombs != null)
+            {
+                foreach (var bomb in clientBombs)
+                {
+                    if (bomb != null && bomb.gameObject.activeSelf && !matchedPegs.Contains(bomb))
+                    {
+                        bomb.gameObject.SetActive(false);
+                        extrasRemoved++;
                     }
                 }
             }
