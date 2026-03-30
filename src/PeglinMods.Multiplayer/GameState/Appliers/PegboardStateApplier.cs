@@ -115,8 +115,13 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 if (!string.IsNullOrEmpty(entry.Guid))
                     _pegId.Register(peg, entry.Guid);
 
-                // Handle cleared pegs — popped visually but will come back on refresh (shows dot)
-                if (entry.IsCleared && !peg.Cleared)
+                // Check if the client peg is functionally popped (collider disabled).
+                // peg.Cleared is unreliable — _cleared stays true after Reset().
+                bool clientPopped = false;
+                try { clientPopped = peg.IsDisabled(); } catch { }
+
+                // Handle cleared/popped pegs — host says popped, make client match
+                if (entry.IsCleared && !clientPopped)
                 {
                     try { peg.PegActivated(playAudio: false, forcePop: true); }
                     catch { }
@@ -134,20 +139,17 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     continue;
                 }
 
-                // Reactivate ONLY if host says peg is alive AND client has it dead/cleared
-                // Don't reactivate if host also says it's cleared — the host will send cleared=false
-                // when the board actually refreshes
+                // Reactivate if host says peg is alive but client has it disabled/popped.
+                // Must clear _cleared flag before Reset() so sprite shows _regularSprite
+                // instead of _previouslyClearedSprite (Reset never clears _cleared itself).
                 if (!entry.IsCleared && !entry.IsDestroyed)
                 {
-                    if (!peg.gameObject.activeSelf || peg.pegType == Peg.PegType.DESTROYED)
+                    if (!peg.gameObject.activeSelf || peg.pegType == Peg.PegType.DESTROYED || clientPopped)
                     {
+                        var clearedField = HarmonyLib.AccessTools.Field(typeof(Peg), "_cleared");
+                        clearedField?.SetValue(peg, false);
+
                         peg.gameObject.SetActive(true);
-                        try { peg.Reset(false); } catch { }
-                        reactivated++;
-                    }
-                    else if (peg.Cleared)
-                    {
-                        // Host says peg is active but client has it cleared — reset it
                         try { peg.Reset(false); } catch { }
                         reactivated++;
                     }
@@ -270,7 +272,10 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         int active = 0, crits = 0, bombCount = 0, resets = 0, regular = 0;
         foreach (var peg in pegs)
         {
-            if (peg == null || !peg.gameObject.activeSelf || peg.pegType == Peg.PegType.DESTROYED || peg.Cleared) continue;
+            if (peg == null || !peg.gameObject.activeSelf || peg.pegType == Peg.PegType.DESTROYED) continue;
+            bool disabled = false;
+            try { disabled = peg.IsDisabled(); } catch { }
+            if (disabled) continue;
             active++;
             var pt = (int)peg.pegType;
             if ((pt & 0x2) != 0) crits++;
@@ -281,7 +286,10 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         {
             foreach (var bomb in bombs)
             {
-                if (bomb == null || !bomb.gameObject.activeSelf || bomb.pegType == Peg.PegType.DESTROYED || bomb.Cleared) continue;
+                if (bomb == null || !bomb.gameObject.activeSelf || bomb.pegType == Peg.PegType.DESTROYED) continue;
+                bool disabled = false;
+                try { disabled = bomb.IsDisabled(); } catch { }
+                if (disabled) continue;
                 active++;
                 bombCount++;
             }

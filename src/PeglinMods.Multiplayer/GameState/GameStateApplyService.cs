@@ -360,11 +360,26 @@ public class GameStateApplyService
                 if (pm?.allPegs != null)
                 {
                     foreach (var p in pm.allPegs)
-                        if (p != null && p.gameObject.activeSelf && p.pegType != Peg.PegType.DESTROYED && !p.Cleared) clientPegs++;
+                    {
+                        if (p == null || !p.gameObject.activeSelf || p.pegType == Peg.PegType.DESTROYED) continue;
+                        try { if (!p.IsDisabled()) clientPegs++; } catch { }
+                    }
                 }
+                // Include bombs in client count
+                var bombsF = HarmonyLib.AccessTools.Field(typeof(Battle.PegManager), "_bombs");
+                var cbombs = bombsF?.GetValue(pm) as System.Collections.Generic.List<Bomb>;
+                if (cbombs != null)
+                {
+                    foreach (var b in cbombs)
+                    {
+                        if (b == null || !b.gameObject.activeSelf || b.pegType == Peg.PegType.DESTROYED) continue;
+                        try { if (!b.IsDisabled()) clientPegs++; } catch { }
+                    }
+                }
+                // Host count: not destroyed AND not popped (same criteria as client)
                 int hostActivePegs = 0;
                 foreach (var p in snapshot.Pegboard.Pegs)
-                    if (!p.IsDestroyed) hostActivePegs++;
+                    if (!p.IsDestroyed && !p.IsCleared) hostActivePegs++;
 
                 if (System.Math.Abs(clientPegs - hostActivePegs) > 5)
                     _log.LogWarning($"[Consistency] PEG COUNT MISMATCH: host_active={hostActivePegs}, client_active={clientPegs}");

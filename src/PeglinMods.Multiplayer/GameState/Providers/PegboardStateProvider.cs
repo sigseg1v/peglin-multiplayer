@@ -45,8 +45,15 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
 
                 var guid = _pegId.GetOrAssignGuid(peg);
                 var pt = (int)peg.pegType;
-                bool cleared = peg.Cleared;
                 bool destroyed = !peg.gameObject.activeSelf || (pt & 0x20) != 0;
+                // Use IsDisabled() to check if peg is actually popped (collider disabled).
+                // After Reset(), _cleared stays true but colliders are re-enabled —
+                // so peg.Cleared is NOT reliable for "is this peg functionally popped."
+                bool cleared = false;
+                if (!destroyed)
+                {
+                    try { cleared = peg.IsDisabled(); } catch { }
+                }
 
                 snapshot.Pegs.Add(new PegEntry
                 {
@@ -81,8 +88,12 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
 
                     var guid = _pegId.GetOrAssignGuid(bomb);
                     var pt = (int)bomb.pegType;
-                    bool cleared = bomb.Cleared;
                     bool destroyed = !bomb.gameObject.activeSelf || (pt & 0x20) != 0;
+                    bool cleared = false;
+                    if (!destroyed)
+                    {
+                        try { cleared = bomb.IsDisabled(); } catch { }
+                    }
 
                     snapshot.Pegs.Add(new PegEntry
                     {

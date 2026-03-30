@@ -388,10 +388,13 @@ public static class MultiplayerClientPatches
     }
 
     /// <summary>
-    /// Block MapController.Start on client. Start() calls rootNode.SetActiveState(NEXT)
-    /// which sets all nodes to NEXT state with NONE type (GenerateRoomType is blocked).
-    /// This causes blank nodes until our pending apply fires 2 frames later.
-    /// By blocking Start entirely, nodes stay uninitialized until our apply sets them.
+    /// Block MapController.Start on client. Start() generates map data, resets
+    /// gold/health, saves game state — none of which should happen on client.
+    /// Our sub-patches (CreateMapDataLists, PostProcessMap, SeedMapContents,
+    /// GenerateRoomType) block the randomization parts, but Start also does
+    /// game initialization (reset gold, health, floor count) that would
+    /// overwrite host-synced state. Block entirely, then run visual setup
+    /// in the Postfix.
     /// </summary>
     [HarmonyPatch(typeof(Map.MapController), "Start")]
     [HarmonyPrefix]
@@ -400,6 +403,56 @@ public static class MultiplayerClientPatches
         if (!ShouldSuppressClientLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked MapController.Start — host will send node states");
         return false;
+    }
+
+    /// <summary>
+    /// After Start is blocked, run the visual setup that the client needs:
+    /// - rootNode.SetActiveState(NEXT) to show node frames and connection lines
+    /// - SetUpPreviousAndNextNodes() to mark PREVIOUS/NEXT states
+    /// - IntroFade() to fade in the screen from black
+    /// Without this, the map screen stays blank/black for ~10 seconds.
+    /// HarmonyX Postfixes run even when Prefix returns false.
+    /// </summary>
+    [HarmonyPatch(typeof(Map.MapController), "Start")]
+    [HarmonyPostfix]
+    public static void MapController_Start_Postfix(Map.MapController __instance)
+    {
+        if (!ShouldSuppressClientLogic) return;
+
+        try
+        {
+            // 1. Camera follow point (needed for camera to track player)
+            var cfpField = HarmonyLib.AccessTools.Field(typeof(Map.MapController), "_cameraFollowPoint");
+            if (cfpField != null)
+            {
+                var cfp = __instance.GetComponent<CameraFollowPoint>();
+                cfpField.SetValue(__instance, cfp);
+            }
+
+            // 2. Set root node to NEXT state — shows frames, draws lines to children.
+            //    GenerateRoomType is blocked so types stay NONE (no icons yet).
+            //    Our MapApplier will set correct types from host snapshot.
+            var rootField = HarmonyLib.AccessTools.Field(typeof(Map.MapController), "rootNode");
+            var root = rootField?.GetValue(__instance) as MapNode;
+            if (root != null)
+            {
+                root.SetActiveState(RoomState.NEXT, recursive: true, setIcon: false);
+            }
+
+            // 3. Set up previous/next node visual states and line drawing
+            var setupMethod = HarmonyLib.AccessTools.Method(typeof(Map.MapController), "SetUpPreviousAndNextNodes");
+            setupMethod?.Invoke(__instance, null);
+
+            // 4. Fade in screen from black curtain
+            var fadeMethod = HarmonyLib.AccessTools.Method(typeof(Map.MapController), "IntroFade");
+            fadeMethod?.Invoke(__instance, null);
+
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] MapController visual setup complete (Start was blocked)");
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] MapController visual setup failed: {ex.Message}");
+        }
     }
 
     // =========================================================================
