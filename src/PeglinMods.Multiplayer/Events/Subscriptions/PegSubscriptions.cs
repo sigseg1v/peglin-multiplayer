@@ -38,11 +38,13 @@ public sealed class PegSubscriptions
     {
         if (!IsHosting) return;
         var pos = peg != null ? peg.transform.position : UnityEngine.Vector3.zero;
+        var pegId = MultiplayerPlugin.Services?.TryResolve<PegIdentifier>(out var p) == true ? p : null;
         _registry.Dispatch(new PegHitEvent
         {
             PegType = (int)pegType,
             PosX = pos.x,
-            PosY = pos.y
+            PosY = pos.y,
+            PegGuid = pegId?.GetGuid(peg),
         });
     }
 

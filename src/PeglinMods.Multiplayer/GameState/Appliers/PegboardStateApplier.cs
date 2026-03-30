@@ -109,9 +109,23 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     try
                     {
                         if (peg.SupportsPegType(targetType))
-                            peg.ConvertPegToType(targetType);
+                        {
+                            var result = peg.ConvertPegToType(targetType);
+                            // When converting to BOMB, a new Bomb GameObject is created as a child.
+                            // Re-register the GUID with the new Bomb component so future lookups work.
+                            if (targetType == Peg.PegType.BOMB && result != null && result != peg.gameObject)
+                            {
+                                var newBomb = result.GetComponent<Peg>();
+                                if (newBomb != null && !string.IsNullOrEmpty(entry.Guid))
+                                {
+                                    _pegId.Register(newBomb, entry.Guid);
+                                }
+                            }
+                        }
                         else
+                        {
                             peg.pegType = targetType;
+                        }
                     }
                     catch
                     {

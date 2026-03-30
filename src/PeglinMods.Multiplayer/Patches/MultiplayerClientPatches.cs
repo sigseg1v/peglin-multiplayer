@@ -391,6 +391,29 @@ public static class MultiplayerClientPatches
         return false;
     }
 
+    /// <summary>
+    /// When a RegularPeg is converted to a Bomb, a NEW Bomb GameObject is created
+    /// and the old peg is destroyed. Transfer the GUID from the old peg to the new
+    /// Bomb so the client can still find it by GUID.
+    /// </summary>
+    [HarmonyPatch(typeof(RegularPeg), "ConvertPegToType")]
+    [HarmonyPostfix]
+    public static void RegularPeg_ConvertPegToType_Postfix(RegularPeg __instance, Peg.PegType type, GameObject __result)
+    {
+        if (type != Peg.PegType.BOMB || __result == null || __result == __instance.gameObject) return;
+        if (MultiplayerPlugin.Services == null) return;
+        if (!MultiplayerPlugin.Services.TryResolve<PeglinMods.Multiplayer.Utility.PegIdentifier>(out var pegId)) return;
+
+        var oldGuid = pegId.GetGuid(__instance);
+        if (string.IsNullOrEmpty(oldGuid)) return;
+
+        var newBomb = __result.GetComponent<Peg>();
+        if (newBomb != null)
+        {
+            pegId.Register(newBomb, oldGuid);
+        }
+    }
+
     // =========================================================================
     // RNG STATE CAPTURE — host saves state before map generation
     // =========================================================================
