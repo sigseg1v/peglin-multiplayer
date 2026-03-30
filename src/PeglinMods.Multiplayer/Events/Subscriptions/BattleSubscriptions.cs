@@ -59,7 +59,15 @@ public sealed class BattleEventSubscriptions
     private void OnBattleStarted() { if (_multiplayerMode.IsHosting) _registry.Dispatch(new BattleStartedEvent()); }
     private void OnBattleEnded() { if (_multiplayerMode.IsHosting) _registry.Dispatch(new BattleEndedEvent()); }
     private void OnVictory() { if (_multiplayerMode.IsHosting) _registry.Dispatch(new VictoryEvent()); }
-    private void OnAttackStarted() { if (_multiplayerMode.IsHosting) _registry.Dispatch(new AttackStartedEvent()); }
+    private void OnAttackStarted()
+    {
+        if (!_multiplayerMode.IsHosting) return;
+        _registry.Dispatch(new AttackStartedEvent
+        {
+            AnimTrigger = Patches.MultiplayerClientPatches.LastAttackAnimTrigger ?? "attack",
+            TargetEnemyGuid = Patches.MultiplayerClientPatches.LastAttackTargetGuid,
+        });
+    }
     private void OnTurnComplete() { if (_multiplayerMode.IsHosting) _registry.Dispatch(new TurnCompleteEvent()); }
     private void OnShotComplete() { if (_multiplayerMode.IsHosting) _registry.Dispatch(new ShotCompleteEvent()); }
     private void OnRoundIncremented(int roundCount) { if (_multiplayerMode.IsHosting) _registry.Dispatch(new RoundIncrementedEvent { RoundCount = roundCount }); }

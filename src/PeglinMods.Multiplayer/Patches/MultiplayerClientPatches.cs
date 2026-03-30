@@ -504,6 +504,35 @@ public static class MultiplayerClientPatches
     }
 
     // =========================================================================
+    // ATTACK ANIMATION DATA — capture attack trigger and target for sync
+    // =========================================================================
+
+    /// <summary>Stores the last attack animation trigger for the AttackStartedEvent.</summary>
+    internal static string LastAttackAnimTrigger;
+    internal static string LastAttackTargetGuid;
+
+    /// <summary>Capture attack trigger and target enemy when attack starts.</summary>
+    [HarmonyPatch(typeof(Battle.Attacks.AttackManager), "Attack")]
+    [HarmonyPostfix]
+    public static void AttackManager_Attack_Postfix(Battle.Attacks.AttackManager __instance, Battle.Enemies.Enemy target)
+    {
+        if (!IsHosting) return;
+        try
+        {
+            var attackField = HarmonyLib.AccessTools.Field(typeof(Battle.Attacks.AttackManager), "_attack");
+            var attack = attackField?.GetValue(__instance) as Battle.Attacks.Attack;
+            LastAttackAnimTrigger = attack?.PeglinAttackAnimationTrigger ?? "attack";
+
+            if (target != null)
+            {
+                var enemyId = MultiplayerPlugin.Services?.TryResolve<Utility.EnemyIdentifier>(out var eid) == true ? eid : null;
+                LastAttackTargetGuid = enemyId?.GetGuid(target);
+            }
+        }
+        catch { }
+    }
+
+    // =========================================================================
     // ANIMATION SYNC — capture enemy animator changes on host
     // =========================================================================
 
