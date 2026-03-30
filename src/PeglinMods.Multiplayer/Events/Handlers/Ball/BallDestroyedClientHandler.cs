@@ -10,9 +10,8 @@ public sealed class BallDestroyedClientHandler : IClientHandler<BallDestroyedEve
     {
         try
         {
-            MultiplayerPlugin.Logger.LogInfo("Multiplayer: Ball destroyed");
             ClientBallRenderer.Instance?.OnBallDestroyed();
-            PachinkoBall.OnPachinkoBallDestroyed?.Invoke(null);
+            // Don't invoke OnPachinkoBallDestroyed with null — subscribers dereference it
         }
         catch (Exception ex)
         {
