@@ -14,18 +14,8 @@ src/**/obj/
 # Root-level decomp solution (generated, not needed for builds)
 /Peglin.sln
 
-# BepInEx installed into game dir (added by install.sh / just deploy)
-release/winhttp.dll
-release/doorstop_config.ini
-release/.doorstop_version
-release/BepInEx/
-
-# Game files created/modified at runtime
-release/changelog.txt
-release/UnityCrashHandler64.exe
-
-# Crash handler disabled by launch.sh
-release/*.disabled
+# Game release (unmodified game files)
+release/
 
 # Logs
 *.log
