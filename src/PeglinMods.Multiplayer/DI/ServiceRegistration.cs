@@ -199,6 +199,7 @@ public static class ServiceRegistration
         registry.Register(new OrbDiscardedServerHandler(), new OrbDiscardedClientHandler());
         registry.Register(new AwaitingShotServerHandler(), new AwaitingShotClientHandler());
         registry.Register(new ShotTimeoutServerHandler(), new ShotTimeoutClientHandler());
+        registry.Register(new DamageTextServerHandler(), new DamageTextClientHandler());
 
         // Health events
         registry.Register(new PlayerDamagedServerHandler(), new PlayerDamagedClientHandler());
