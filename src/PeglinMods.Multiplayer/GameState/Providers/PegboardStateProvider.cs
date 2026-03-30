@@ -45,7 +45,8 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
 
                 var guid = _pegId.GetOrAssignGuid(peg);
                 var pt = (int)peg.pegType;
-                bool destroyed = !peg.gameObject.activeSelf || (pt & 0x20) != 0 || peg.Cleared;
+                bool cleared = peg.Cleared;
+                bool destroyed = !peg.gameObject.activeSelf || (pt & 0x20) != 0;
 
                 snapshot.Pegs.Add(new PegEntry
                 {
@@ -57,6 +58,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     PosY = peg.transform.position.y,
                     SlimeType = (int)peg.slimeType,
                     IsDestroyed = destroyed,
+                    IsCleared = cleared,
                     CoinCount = peg.NumCoins(),
                 });
 
@@ -79,18 +81,20 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
 
                     var guid = _pegId.GetOrAssignGuid(bomb);
                     var pt = (int)bomb.pegType;
-                    bool destroyed = !bomb.gameObject.activeSelf || (pt & 0x20) != 0 || bomb.Cleared;
+                    bool cleared = bomb.Cleared;
+                    bool destroyed = !bomb.gameObject.activeSelf || (pt & 0x20) != 0;
 
                     snapshot.Pegs.Add(new PegEntry
                     {
                         Guid = guid,
-                        Index = pegs.Count + i, // offset past allPegs
+                        Index = pegs.Count + i,
                         PegType = pt,
                         PegTypeName = bomb.pegType.ToString(),
                         PosX = bomb.transform.position.x,
                         PosY = bomb.transform.position.y,
                         SlimeType = (int)bomb.slimeType,
                         IsDestroyed = destroyed,
+                        IsCleared = cleared,
                         CoinCount = bomb.NumCoins(),
                         HitCount = bomb.HitCount,
                         IsBomb = true,

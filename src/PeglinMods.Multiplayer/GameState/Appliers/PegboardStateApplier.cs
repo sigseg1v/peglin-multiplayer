@@ -100,6 +100,13 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 if (!string.IsNullOrEmpty(entry.Guid))
                     _pegId.Register(peg, entry.Guid);
 
+                // Handle cleared pegs — popped visually but will come back on refresh (shows dot)
+                if (entry.IsCleared && !peg.Cleared)
+                {
+                    try { peg.PegActivated(playAudio: false, forcePop: true); }
+                    catch { }
+                }
+
                 // Handle destroyed pegs — use DestroyPeg for proper visual/collider cleanup
                 if (entry.IsDestroyed)
                 {

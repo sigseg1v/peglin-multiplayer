@@ -2,19 +2,39 @@ namespace PeglinMods.Multiplayer.Events.Handlers.Health;
 
 using System;
 using global::Battle;
+using HarmonyLib;
 using PeglinMods.Multiplayer.Events.Network.Health;
+using PeglinMods.Multiplayer.Multiplayer;
+using UnityEngine;
 
 public sealed class PlayerDamagedClientHandler : IClientHandler<PlayerDamagedEvent>
 {
-    public void Handle(PlayerDamagedEvent networkEvent)
+    public void Handle(PlayerDamagedEvent e)
     {
         try
         {
-            PlayerHealthController.OnPlayerDamaged?.Invoke(networkEvent.Damage);
+            var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
+            if (mode == null || !mode.IsSpectating) return;
+
+            // Set health directly from host data
+            var ctrl = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
+            if (ctrl != null)
+            {
+                var healthField = AccessTools.Field(typeof(PlayerHealthController), "_playerHealth");
+                var maxHealthField = AccessTools.Field(typeof(PlayerHealthController), "_maxPlayerHealth");
+                var healthVar = healthField?.GetValue(ctrl) as FloatVariable;
+                var maxHealthVar = maxHealthField?.GetValue(ctrl) as FloatVariable;
+
+                if (maxHealthVar != null) maxHealthVar.Set(e.MaxHealth);
+                if (healthVar != null) healthVar.Set(e.RemainingHealth);
+            }
+
+            // Fire the event for UI animations (health bar shake, flash, etc.)
+            PlayerHealthController.OnPlayerDamaged?.Invoke(e.Damage);
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            MultiplayerPlugin.Logger.LogWarning($"PlayerDamaged handler failed: {e.Message}");
+            MultiplayerPlugin.Logger.LogWarning($"PlayerDamaged handler failed: {ex.Message}");
         }
     }
 }
