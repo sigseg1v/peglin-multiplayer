@@ -109,7 +109,10 @@ public sealed class StateSyncSubscriptions
     {
         while (true)
         {
-            yield return new WaitForSeconds(10f);
+            // Map scenes need fast convergence (2s), battle scenes less frequent (5s)
+            var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+            bool isMap = scene == "ForestMap" || scene == "CastleMap" || scene == "MinesMap" || scene == "CoreMap";
+            yield return new WaitForSeconds(isMap ? 2f : 5f);
             if (_mode.IsHosting)
             {
                 try { _sync.SyncAll(); }

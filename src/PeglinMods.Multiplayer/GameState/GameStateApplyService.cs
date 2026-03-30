@@ -152,16 +152,19 @@ public class GameStateApplyService
     private IEnumerator ApplyPendingAfterDelay(string sceneName, FullGameStateSnapshot snapshot)
     {
         yield return null;
-        yield return null;
-        yield return null;
 
-        // Wait for enemy cache on Battle
         if (sceneName == "Battle")
         {
+            yield return null;
+            yield return null;
             yield return WaitForEnemyCache();
+            yield return new WaitForSeconds(0.3f);
         }
-
-        yield return new WaitForSeconds(0.3f);
+        else
+        {
+            // Map scenes: apply immediately — nodes exist right after Awake
+            yield return null;
+        }
 
         var currentScene = SceneManager.GetActiveScene().name;
         if (currentScene != sceneName)
@@ -358,7 +361,7 @@ public class GameStateApplyService
                 if (pm?.allPegs != null)
                 {
                     foreach (var p in pm.allPegs)
-                        if (p != null && p.gameObject.activeSelf) clientPegs++;
+                        if (p != null && p.gameObject.activeSelf && p.pegType != Peg.PegType.DESTROYED && !p.Cleared) clientPegs++;
                 }
                 int hostActivePegs = 0;
                 foreach (var p in snapshot.Pegboard.Pegs)

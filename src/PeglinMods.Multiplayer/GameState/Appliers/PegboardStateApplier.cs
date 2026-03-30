@@ -166,7 +166,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         int active = 0, crits = 0, bombs = 0, resets = 0, regular = 0;
         foreach (var peg in pegs)
         {
-            if (peg == null || !peg.gameObject.activeSelf) continue;
+            if (peg == null || !peg.gameObject.activeSelf || peg.pegType == Peg.PegType.DESTROYED || peg.Cleared) continue;
             active++;
             var pt = (int)peg.pegType;
             if ((pt & 0x2) != 0) crits++;
