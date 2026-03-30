@@ -75,20 +75,16 @@ public class BallPositionSync : MonoBehaviour
 
     private void SendAimUpdate()
     {
-        // Get the aim vector from BattleController
-        var bc = Object.FindObjectOfType<BattleController>();
-        if (bc == null) return;
+        // Get the aim vector from the active PachinkoBall (the ball being aimed).
+        // PachinkoBall.aimVector updates in real-time as the player moves the mouse.
+        // BattleController._previousAimVector is only set AFTER the shot fires.
+        var ball = FindActiveBall();
+        if (ball == null) return;
 
-        var aimField = AccessTools.Field(typeof(BattleController), "_previousAimVector");
-        if (aimField == null) return;
-        var aimVec = (Vector2)aimField.GetValue(bc);
-        if (aimVec == Vector2.zero) return; // No aim data yet
+        var aimVec = ball.aimVector;
+        if (aimVec == Vector2.zero) return;
 
-        var playerField = AccessTools.Field(typeof(BattleController), "_playerTransform");
-        var playerTransform = playerField?.GetValue(bc) as Transform;
-        if (playerTransform == null) return;
-
-        var pos = playerTransform.position;
+        var pos = ball.transform.position;
         _registry.Dispatch(new AimUpdateEvent
         {
             AimX = aimVec.x,

@@ -104,11 +104,12 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 return;
             }
 
-            // If the client is on a map scene, don't load — node activation handles
-            // transitions FROM maps (map → battle, map → treasure, etc.)
-            if (MapScenes.Contains(currentScene))
+            // If client is on a map and host goes to Battle, NodeActivatedClientHandler handles it.
+            // For non-battle scenes (Treasure, PegMinigame, TextScenario, ShopScenario),
+            // NodeActivatedClientHandler can't handle them (no BattleName), so load directly.
+            if (MapScenes.Contains(currentScene) && targetScene == "Battle")
             {
-                _log.LogInfo($"[MapApplier] On map '{currentScene}', node activation will handle transition to '{targetScene}'");
+                _log.LogInfo($"[MapApplier] On map '{currentScene}', NodeActivated will handle transition to Battle");
                 return;
             }
 

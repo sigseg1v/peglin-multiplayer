@@ -23,9 +23,12 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
 
             log?.LogInfo($"[NodeActivated] Host battle={e.BattleName} at ({e.PosX:F1},{e.PosY:F1})");
 
+            // For non-battle nodes (treasure, shop, peg minigame, scenario),
+            // BattleName is empty. Let the MapStateApplier handle scene transition
+            // via the next SyncAll which carries the correct ActiveScene.
             if (string.IsNullOrEmpty(e.BattleName))
             {
-                log?.LogWarning("[NodeActivated] No battle name received, cannot load correct battle");
+                log?.LogInfo("[NodeActivated] Non-battle node — MapStateApplier will handle scene transition");
                 return;
             }
 

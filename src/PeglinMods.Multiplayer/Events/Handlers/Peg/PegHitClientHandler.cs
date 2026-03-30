@@ -2,6 +2,7 @@ namespace PeglinMods.Multiplayer.Events.Handlers.Peg;
 
 using System;
 using PeglinMods.Multiplayer.Events.Network.Peg;
+using PeglinMods.Multiplayer.Multiplayer;
 
 public sealed class PegHitClientHandler : IClientHandler<PegHitEvent>
 {
@@ -9,9 +10,11 @@ public sealed class PegHitClientHandler : IClientHandler<PegHitEvent>
     {
         try
         {
-            MultiplayerPlugin.Logger.LogInfo($"Multiplayer: Peg hit (type {networkEvent.PegType}) at ({networkEvent.PosX:F2}, {networkEvent.PosY:F2})");
-            // Peg.OnPegHit is a public static PegHitEvent(PegType, Peg) delegate
-            global::Peg.OnPegHit?.Invoke((global::Peg.PegType)networkEvent.PegType, null);
+            var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
+            if (mode == null || !mode.IsSpectating) return;
+
+            // Don't invoke OnPegHit with null peg — subscribers dereference it and NRE.
+            // The visual peg effects are handled by PegActivatedClientHandler instead.
         }
         catch (Exception e)
         {
