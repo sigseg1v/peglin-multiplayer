@@ -25,7 +25,7 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
     /// Message to display on the mirror client when waiting for the host.
     /// Null when no waiting state is active (client should render the game).
     /// </summary>
-    public static string ClientWaitingMessage { get; private set; }
+    public static string ClientWaitingMessage { get; set; }
 
     private static readonly HashSet<string> MapScenes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {

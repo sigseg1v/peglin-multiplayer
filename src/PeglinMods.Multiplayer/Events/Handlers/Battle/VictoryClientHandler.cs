@@ -3,6 +3,8 @@ namespace PeglinMods.Multiplayer.Events.Handlers.Battle;
 using System;
 using global::Battle;
 using PeglinMods.Multiplayer.Events.Network.Battle;
+using PeglinMods.Multiplayer.GameState.Appliers;
+using PeglinMods.Multiplayer.Multiplayer;
 
 public sealed class VictoryClientHandler : IClientHandler<VictoryEvent>
 {
@@ -10,6 +12,12 @@ public sealed class VictoryClientHandler : IClientHandler<VictoryEvent>
     {
         try
         {
+            var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
+            if (mode != null && mode.IsSpectating)
+            {
+                MapStateApplier.ClientWaitingMessage = "Host is selecting rewards...";
+            }
+
             BattleController.OnVictory?.Invoke();
         }
         catch (Exception e)
