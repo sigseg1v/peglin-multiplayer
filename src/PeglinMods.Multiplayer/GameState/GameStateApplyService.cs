@@ -162,8 +162,7 @@ public class GameStateApplyService
         }
         else
         {
-            // Map scenes: apply immediately — nodes exist right after Awake
-            yield return null;
+            // Map scenes: apply on next frame — Awake already ran, nodes exist
         }
 
         var currentScene = SceneManager.GetActiveScene().name;

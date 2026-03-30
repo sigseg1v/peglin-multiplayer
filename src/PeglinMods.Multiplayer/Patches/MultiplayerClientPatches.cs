@@ -387,6 +387,21 @@ public static class MultiplayerClientPatches
         return false;
     }
 
+    /// <summary>
+    /// Block MapController.Start on client. Start() calls rootNode.SetActiveState(NEXT)
+    /// which sets all nodes to NEXT state with NONE type (GenerateRoomType is blocked).
+    /// This causes blank nodes until our pending apply fires 2 frames later.
+    /// By blocking Start entirely, nodes stay uninitialized until our apply sets them.
+    /// </summary>
+    [HarmonyPatch(typeof(Map.MapController), "Start")]
+    [HarmonyPrefix]
+    public static bool MapController_Start_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked MapController.Start — host will send node states");
+        return false;
+    }
+
     // =========================================================================
     // BLOCK CLIENT RANDOMIZATION — prevent game from overwriting synced state
     // =========================================================================
