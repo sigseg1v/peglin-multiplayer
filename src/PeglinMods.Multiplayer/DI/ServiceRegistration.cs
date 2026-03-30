@@ -200,6 +200,7 @@ public static class ServiceRegistration
         registry.Register(new AwaitingShotServerHandler(), new AwaitingShotClientHandler());
         registry.Register(new ShotTimeoutServerHandler(), new ShotTimeoutClientHandler());
         registry.Register(new DamageTextServerHandler(), new DamageTextClientHandler());
+        registry.Register(new AnimationSyncServerHandler(), new AnimationSyncClientHandler());
 
         // Health events
         registry.Register(new PlayerDamagedServerHandler(), new PlayerDamagedClientHandler());

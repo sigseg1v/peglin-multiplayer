@@ -12,9 +12,8 @@ public sealed class EnemySpawnedClientHandler : IClientHandler<EnemySpawnedEvent
         {
             MultiplayerPlugin.Logger.LogInfo($"Multiplayer: Enemy spawned {networkEvent.LocKey} at slot {networkEvent.SlotIndex} (HP: {networkEvent.CurrentHealth}/{networkEvent.MaxHealth})");
 
-            // Enemy spawning on client is complex - the host's scene transition should trigger
-            // local spawning. Just invoke the delegate with null for logging/UI purposes.
-            global::Battle.Enemies.Enemy.OnEnemySpawned?.Invoke(null);
+            // Enemy spawning is handled by EnemyStateApplier during periodic sync.
+            // Don't invoke OnEnemySpawned with null — subscribers dereference it.
         }
         catch (Exception e)
         {

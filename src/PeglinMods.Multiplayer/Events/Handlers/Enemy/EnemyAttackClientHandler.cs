@@ -2,30 +2,29 @@ namespace PeglinMods.Multiplayer.Events.Handlers.Enemy;
 
 using System;
 using PeglinMods.Multiplayer.Events.Network.Enemy;
+using PeglinMods.Multiplayer.Multiplayer;
 using PeglinMods.Multiplayer.Utility;
 
 public sealed class EnemyAttackClientHandler : IClientHandler<EnemyAttackEvent>
 {
-    public void Handle(EnemyAttackEvent networkEvent)
+    public void Handle(EnemyAttackEvent e)
     {
         try
         {
-            MultiplayerPlugin.Logger.LogInfo($"[EnemyAttack] guid={networkEvent.EnemyId} dmg={networkEvent.Damage} melee={networkEvent.IsMelee}");
+            var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
+            if (mode == null || !mode.IsSpectating) return;
 
-            var enemyIdentifier = MultiplayerPlugin.Services.Resolve<EnemyIdentifier>();
-            var enemy = enemyIdentifier.Find(networkEvent.EnemyId);
+            var enemyId = MultiplayerPlugin.Services.Resolve<EnemyIdentifier>();
+            var enemy = enemyId.Find(e.EnemyId);
             if (enemy != null)
             {
-                MultiplayerPlugin.Logger.LogInfo($"[EnemyAttack] '{enemy.locKey}' attacking for {networkEvent.Damage}");
-            }
-            else
-            {
-                MultiplayerPlugin.Logger.LogWarning($"[EnemyAttack] Could not find enemy guid={networkEvent.EnemyId}");
+                // Invoke the attack delegate — triggers attack animation, damage, health bar
+                global::Battle.Enemies.Enemy.OnEnemyAttack?.Invoke(e.Damage, e.IsMelee, enemy);
             }
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            MultiplayerPlugin.Logger.LogWarning($"EnemyAttack handler failed: {e.Message}");
+            MultiplayerPlugin.Logger?.LogWarning($"EnemyAttack handler failed: {ex.Message}");
         }
     }
 }
