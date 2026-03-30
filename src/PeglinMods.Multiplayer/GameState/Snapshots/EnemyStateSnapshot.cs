@@ -8,6 +8,9 @@ public class EnemyStateSnapshot
     public int BattleState { get; set; }
     public string BattleStateName { get; set; }
     public int RoundCount { get; set; }
+
+    /// <summary>Number of upcoming wave enemies remaining (from EnemyInfoManager).</summary>
+    public int UpcomingEnemyCount { get; set; }
 }
 
 public class EnemyEntry

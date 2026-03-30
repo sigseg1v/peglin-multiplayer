@@ -129,11 +129,47 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             _log.LogInfo($"[EnemyApplier] RESULT: Updated={updated}, Created={created}, Destroyed={destroyed} " +
                 $"(host={snapshot.Enemies.Count}, client_before={liveEnemies.Count}, battle={snapshot.BattleStateName})");
             _enemyId.DumpState("AfterApply");
+
+            // Sync upcoming enemy preview — pop until client matches host count
+            SyncUpcomingEnemies(snapshot.UpcomingEnemyCount);
         }
         catch (Exception ex)
         {
             _log.LogError($"[EnemyApplier] Apply failed: {ex.Message}\n{ex.StackTrace}");
         }
+    }
+
+    /// <summary>
+    /// Force-sync the upcoming enemy preview count to match the host.
+    /// Pop from EnemyInfoManager until the client's upcoming count matches.
+    /// </summary>
+    private void SyncUpcomingEnemies(int hostUpcomingCount)
+    {
+        try
+        {
+            var eim = UnityEngine.Object.FindObjectOfType<Battle.EnemyInfoManager>();
+            if (eim == null) return;
+
+            var upcomingField = HarmonyLib.AccessTools.Field(typeof(Battle.EnemyInfoManager), "_upcomingSpawns");
+            var upcomingList = upcomingField?.GetValue(eim) as System.Collections.IList;
+            if (upcomingList == null) return;
+
+            int clientCount = upcomingList.Count;
+            if (clientCount > hostUpcomingCount)
+            {
+                int toPop = clientCount - hostUpcomingCount;
+                for (int i = 0; i < toPop; i++)
+                {
+                    try { eim.PopSpawn(); } catch { }
+                }
+                _log.LogInfo($"[EnemyApplier] Upcoming sync: popped {toPop} (host={hostUpcomingCount}, client was {clientCount})");
+            }
+            else if (clientCount != hostUpcomingCount)
+            {
+                _log.LogInfo($"[EnemyApplier] Upcoming: host={hostUpcomingCount}, client={clientCount}");
+            }
+        }
+        catch { }
     }
 
     /// <summary>
@@ -334,14 +370,6 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             SetMaxHealth(enemy, entry.MaxHealth);
             enemy.CurrentHealth = entry.CurrentHealth;
             ForceUpdateHealthBar(enemy);
-
-            // Pop from upcoming enemy preview so the UI updates
-            try
-            {
-                var eim = UnityEngine.Object.FindObjectOfType<Battle.EnemyInfoManager>();
-                eim?.PopSpawn();
-            }
-            catch { }
 
             _log.LogInfo($"[EnemyApplier] Spawned '{entry.EnemyName}' at ({entry.PosX:F1},{entry.PosY:F1}) slot={entry.SlotIndex} guid={entry.Id} hp={enemy.CurrentHealth}/{entry.MaxHealth}");
             return enemy;

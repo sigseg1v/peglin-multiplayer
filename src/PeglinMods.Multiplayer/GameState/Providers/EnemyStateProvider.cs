@@ -114,6 +114,15 @@ public class EnemyStateProvider : IGameStateProvider<EnemyStateSnapshot>
                 }
             }
 
+            // Capture upcoming enemy count from EnemyInfoManager
+            var eim = UnityEngine.Object.FindObjectOfType<Battle.EnemyInfoManager>();
+            if (eim != null)
+            {
+                var upcomingField = AccessTools.Field(typeof(Battle.EnemyInfoManager), "_upcomingSpawns");
+                var upcomingList = upcomingField?.GetValue(eim) as System.Collections.IList;
+                snapshot.UpcomingEnemyCount = upcomingList?.Count ?? 0;
+            }
+
             return snapshot;
         }
         catch (Exception ex)
