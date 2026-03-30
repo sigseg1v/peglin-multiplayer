@@ -68,23 +68,38 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     }
                 }
 
-                // Fallback to index match
+                // Fallback: match by closest position (handles random layouts where index order differs)
                 if (peg == null)
                 {
-                    if (entry.IsBomb && clientBombs != null)
+                    Peg closest = null;
+                    float closestDist = float.MaxValue;
+
+                    // Search allPegs
+                    foreach (var p in clientPegs)
                     {
-                        // Bomb index is offset past allPegs
-                        int bombIdx = entry.Index - clientPegs.Count;
-                        if (bombIdx >= 0 && bombIdx < clientBombs.Count)
+                        if (p == null || matchedPegs.Contains(p)) continue;
+                        float dx = p.transform.position.x - entry.PosX;
+                        float dy = p.transform.position.y - entry.PosY;
+                        float dist = dx * dx + dy * dy;
+                        if (dist < closestDist) { closestDist = dist; closest = p; }
+                    }
+                    // Also search bombs
+                    if (clientBombs != null)
+                    {
+                        foreach (var b in clientBombs)
                         {
-                            peg = clientBombs[bombIdx];
-                            if (peg != null) indexMatched++;
+                            if (b == null || matchedPegs.Contains(b)) continue;
+                            float dx = b.transform.position.x - entry.PosX;
+                            float dy = b.transform.position.y - entry.PosY;
+                            float dist = dx * dx + dy * dy;
+                            if (dist < closestDist) { closestDist = dist; closest = b; }
                         }
                     }
-                    else if (entry.Index >= 0 && entry.Index < clientPegs.Count)
+
+                    if (closest != null && closestDist < 1f) // within 1 unit
                     {
-                        peg = clientPegs[entry.Index];
-                        if (peg != null) indexMatched++;
+                        peg = closest;
+                        indexMatched++; // reusing counter for position matches
                     }
                 }
 
