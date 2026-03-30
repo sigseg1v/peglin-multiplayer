@@ -333,6 +333,51 @@ public static class MultiplayerClientPatches
         return false;
     }
 
+    /// <summary>Block crit peg shuffling on client.</summary>
+    [HarmonyPatch(typeof(PegManager), "ShuffleCritPegs")]
+    [HarmonyPrefix]
+    public static bool PegManager_ShuffleCritPegs_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        return false;
+    }
+
+    /// <summary>Block refresh peg creation on client.</summary>
+    [HarmonyPatch(typeof(PegManager), "CreateRefreshPegs")]
+    [HarmonyPrefix]
+    public static bool PegManager_CreateRefreshPegs_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        return false;
+    }
+
+    /// <summary>Block failsafe refresh peg creation on client.</summary>
+    [HarmonyPatch(typeof(PegManager), "FailSafeCreateRefreshPegs")]
+    [HarmonyPrefix]
+    public static bool PegManager_FailSafeCreateRefreshPegs_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        return false;
+    }
+
+    /// <summary>Block peg reset on client — host sync handles peg state.</summary>
+    [HarmonyPatch(typeof(PegManager), "ResetPegs")]
+    [HarmonyPrefix]
+    public static bool PegManager_ResetPegs_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        return false;
+    }
+
+    /// <summary>Block board field reset on client — prevents re-shuffling pegs.</summary>
+    [HarmonyPatch(typeof(BattleController), "ResetField")]
+    [HarmonyPrefix]
+    public static bool BattleController_ResetField_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        return false;
+    }
+
     // =========================================================================
     // BLOCK CLIENT RANDOMIZATION — prevent game from overwriting synced state
     // =========================================================================
