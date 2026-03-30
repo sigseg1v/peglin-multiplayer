@@ -4,6 +4,7 @@ using System;
 using global::Battle;
 using global::Battle.Attacks;
 using PeglinMods.Multiplayer.Events.Network.Battle;
+using PeglinMods.Multiplayer.GameState;
 using PeglinMods.Multiplayer.Multiplayer;
 
 public sealed class AttackStartedClientHandler : IClientHandler<AttackStartedEvent>
@@ -19,11 +20,13 @@ public sealed class AttackStartedClientHandler : IClientHandler<AttackStartedEve
 
             if (mode != null && mode.IsSpectating && !string.IsNullOrEmpty(e.AnimTrigger))
             {
-                // Trigger the peglin attack animation via AttackManager.OnAttackPerformed
-                // This makes PeglinBattleAnimationController play the throw animation
+                // Trigger the peglin attack animation
                 AttackManager.OnAttackPerformed?.Invoke(e.AnimTrigger);
 
-                MultiplayerPlugin.Logger?.LogInfo($"[AttackStarted] Playing attack anim '{e.AnimTrigger}', target={e.TargetEnemyGuid}");
+                // Set up the projectile to launch when the animation fires OnFirePoint
+                ClientAttackProjectile.Instance?.SetupAttack(e.TargetEnemyGuid);
+
+                MultiplayerPlugin.Logger?.LogInfo($"[AttackStarted] anim='{e.AnimTrigger}', target={e.TargetEnemyGuid}");
             }
         }
         catch (Exception ex)

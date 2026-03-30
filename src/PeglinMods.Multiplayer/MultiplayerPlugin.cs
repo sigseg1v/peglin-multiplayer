@@ -58,6 +58,7 @@ public class MultiplayerPlugin : BaseUnityPlugin
             _modObject.AddComponent<BallPositionSync>();
             _modObject.AddComponent<ClientBallRenderer>();
             _modObject.AddComponent<ClientAimRenderer>();
+            _modObject.AddComponent<ClientAttackProjectile>();
 
             _harmony = new Harmony(MultiplayerPluginInfo.GUID);
             _harmony.PatchAll();
