@@ -82,18 +82,39 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
 
                 if (match != null)
                 {
-                    // Force-update all state
-                    SetMaxHealth(match, entry.MaxHealth);
-                    match.CurrentHealth = entry.CurrentHealth;
-                    match.transform.position = new Vector3(
-                        entry.PosX, entry.PosY, match.transform.position.z);
-                    // Update HP bar visually
-                    ForceUpdateHealthBar(match);
-                    matched.Add(match);
-                    updated++;
+                    // Check if the enemy type changed (e.g. Stump → StumpDead)
+                    // If the name doesn't match, destroy the old and spawn the new
+                    string matchName = match.gameObject.name.Replace("(Clone)", "").Trim();
+                    string hostName = (entry.EnemyName ?? "").Replace("(Clone)", "").Trim();
+                    if (!string.IsNullOrEmpty(hostName) && matchName != hostName)
+                    {
+                        _log.LogInfo($"[EnemyApplier] Enemy type changed: '{matchName}' → '{hostName}', replacing");
+                        _enemyId.Unregister(match);
+                        em.RemoveEnemy(match);
+                        UnityEngine.Object.Destroy(match.gameObject);
+                        matched.Add(match); // mark old as handled
+                        destroyed++;
 
-                    // Register with host GUID
-                    _enemyId.Register(match, entry.Id);
+                        // Spawn the new enemy type
+                        var spawned = TrySpawnEnemy(entry, em);
+                        if (spawned != null)
+                        {
+                            created++;
+                            _enemyId.Register(spawned, entry.Id);
+                        }
+                    }
+                    else
+                    {
+                        // Same type — update state
+                        SetMaxHealth(match, entry.MaxHealth);
+                        match.CurrentHealth = entry.CurrentHealth;
+                        match.transform.position = new Vector3(
+                            entry.PosX, entry.PosY, match.transform.position.z);
+                        ForceUpdateHealthBar(match);
+                        matched.Add(match);
+                        updated++;
+                        _enemyId.Register(match, entry.Id);
+                    }
                 }
                 else
                 {
