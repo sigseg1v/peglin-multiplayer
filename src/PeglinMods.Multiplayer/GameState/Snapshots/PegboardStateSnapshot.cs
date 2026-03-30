@@ -27,4 +27,10 @@ public class PegEntry
 
     /// <summary>Number of gold coins on this peg (0 = no gold).</summary>
     public int CoinCount { get; set; }
+
+    /// <summary>Hit count for bombs (0=untouched, 1=fuse lit, 2+=detonated).</summary>
+    public int HitCount { get; set; }
+
+    /// <summary>True if this peg is a bomb (from _bombs list, not _allPegs).</summary>
+    public bool IsBomb { get; set; }
 }

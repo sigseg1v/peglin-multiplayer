@@ -36,6 +36,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                 return snapshot;
             }
 
+            // Capture regular pegs from allPegs
             var pegs = pm.allPegs;
             for (int i = 0; i < pegs.Count; i++)
             {
@@ -44,7 +45,6 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
 
                 var guid = _pegId.GetOrAssignGuid(peg);
                 var pt = (int)peg.pegType;
-                // A peg is "destroyed" if: inactive, has DESTROYED type flag, OR was cleared (hit during ball physics)
                 bool destroyed = !peg.gameObject.activeSelf || (pt & 0x20) != 0 || peg.Cleared;
 
                 snapshot.Pegs.Add(new PegEntry
@@ -60,14 +60,48 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     CoinCount = peg.NumCoins(),
                 });
 
-                if (peg.gameObject.activeSelf)
+                if (peg.gameObject.activeSelf && !destroyed)
                 {
                     if ((pt & 0x2) != 0) snapshot.CritPegCount++;
-                    if ((pt & 0x4) != 0) snapshot.BombPegCount++;
                     if ((pt & 0x8) != 0) snapshot.ResetPegCount++;
                 }
             }
-            snapshot.TotalPegCount = pegs.Count;
+
+            // Capture bombs from _bombs list (bombs are NOT in allPegs — they're separate)
+            var bombsField = HarmonyLib.AccessTools.Field(typeof(Battle.PegManager), "_bombs");
+            var bombs = bombsField?.GetValue(pm) as System.Collections.Generic.List<Bomb>;
+            if (bombs != null)
+            {
+                for (int i = 0; i < bombs.Count; i++)
+                {
+                    var bomb = bombs[i];
+                    if (bomb == null) continue;
+
+                    var guid = _pegId.GetOrAssignGuid(bomb);
+                    var pt = (int)bomb.pegType;
+                    bool destroyed = !bomb.gameObject.activeSelf || (pt & 0x20) != 0 || bomb.Cleared;
+
+                    snapshot.Pegs.Add(new PegEntry
+                    {
+                        Guid = guid,
+                        Index = pegs.Count + i, // offset past allPegs
+                        PegType = pt,
+                        PegTypeName = bomb.pegType.ToString(),
+                        PosX = bomb.transform.position.x,
+                        PosY = bomb.transform.position.y,
+                        SlimeType = (int)bomb.slimeType,
+                        IsDestroyed = destroyed,
+                        CoinCount = bomb.NumCoins(),
+                        HitCount = bomb.HitCount,
+                        IsBomb = true,
+                    });
+
+                    if (bomb.gameObject.activeSelf && !destroyed)
+                        snapshot.BombPegCount++;
+                }
+            }
+
+            snapshot.TotalPegCount = snapshot.Pegs.Count;
 
             _log.LogInfo($"[PegProvider] Captured {snapshot.TotalPegCount} pegs from PegManager.allPegs " +
                 $"(crit={snapshot.CritPegCount}, bomb={snapshot.BombPegCount}, reset={snapshot.ResetPegCount}, registry={_pegId.Count})");

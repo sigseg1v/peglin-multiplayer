@@ -47,6 +47,10 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
 
             var clientPegs = pm.allPegs;
+            // Also get bombs list (bombs are separate from allPegs)
+            var bombsField = HarmonyLib.AccessTools.Field(typeof(Battle.PegManager), "_bombs");
+            var clientBombs = bombsField?.GetValue(pm) as System.Collections.Generic.List<Bomb>;
+
             int guidMatched = 0, indexMatched = 0, typeChanged = 0, destroyed = 0, reactivated = 0, missed = 0;
 
             foreach (var entry in snapshot.Pegs)
@@ -63,13 +67,23 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     }
                 }
 
-                // Fallback to index match (first sync — both sides loaded same layout)
-                if (peg == null && entry.Index >= 0 && entry.Index < clientPegs.Count)
+                // Fallback to index match
+                if (peg == null)
                 {
-                    peg = clientPegs[entry.Index];
-                    if (peg != null)
+                    if (entry.IsBomb && clientBombs != null)
                     {
-                        indexMatched++;
+                        // Bomb index is offset past allPegs
+                        int bombIdx = entry.Index - clientPegs.Count;
+                        if (bombIdx >= 0 && bombIdx < clientBombs.Count)
+                        {
+                            peg = clientBombs[bombIdx];
+                            if (peg != null) indexMatched++;
+                        }
+                    }
+                    else if (entry.Index >= 0 && entry.Index < clientPegs.Count)
+                    {
+                        peg = clientPegs[entry.Index];
+                        if (peg != null) indexMatched++;
                     }
                 }
 
@@ -160,16 +174,33 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         try { peg.AddCoin(false); } catch { }
                     }
                 }
+
+                // Sync bomb hit count — controls fuse lit state and detonation
+                if (entry.IsBomb && peg is Bomb bomb)
+                {
+                    if (bomb.HitCount != entry.HitCount)
+                    {
+                        bomb.HitCount = entry.HitCount;
+                        // Update the animator to show the correct visual state (fuse lit, detonated)
+                        try
+                        {
+                            var animator = bomb.GetComponent<UnityEngine.Animator>();
+                            animator?.SetInteger("Hits", entry.HitCount);
+                        }
+                        catch { }
+                    }
+                }
             }
 
+            int totalClient = clientPegs.Count + (clientBombs?.Count ?? 0);
             _log.LogInfo($"[PegboardApplier] GUIDMatched={guidMatched}, IndexMatched={indexMatched}, " +
                 $"TypeChanged={typeChanged}, Destroyed={destroyed}, Reactivated={reactivated}, Missed={missed} " +
-                $"(host={snapshot.TotalPegCount}, client={clientPegs.Count}, " +
+                $"(host={snapshot.TotalPegCount}, client={totalClient}, " +
                 $"crit={snapshot.CritPegCount}, bomb={snapshot.BombPegCount}, reset={snapshot.ResetPegCount}, " +
                 $"registry={_pegId.Count})");
 
             // Diagnostic: log what the client actually has after apply
-            LogActualPegState(clientPegs);
+            LogActualPegState(clientPegs, clientBombs);
         }
         catch (Exception ex)
         {
@@ -178,20 +209,28 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     }
 
     /// <summary>Log actual peg state on client for verification.</summary>
-    private void LogActualPegState(List<Peg> pegs)
+    private void LogActualPegState(List<Peg> pegs, System.Collections.Generic.List<Bomb> bombs)
     {
-        int active = 0, crits = 0, bombs = 0, resets = 0, regular = 0;
+        int active = 0, crits = 0, bombCount = 0, resets = 0, regular = 0;
         foreach (var peg in pegs)
         {
             if (peg == null || !peg.gameObject.activeSelf || peg.pegType == Peg.PegType.DESTROYED || peg.Cleared) continue;
             active++;
             var pt = (int)peg.pegType;
             if ((pt & 0x2) != 0) crits++;
-            else if ((pt & 0x4) != 0) bombs++;
             else if ((pt & 0x8) != 0) resets++;
             else if ((pt & 0x1) != 0) regular++;
         }
+        if (bombs != null)
+        {
+            foreach (var bomb in bombs)
+            {
+                if (bomb == null || !bomb.gameObject.activeSelf || bomb.pegType == Peg.PegType.DESTROYED || bomb.Cleared) continue;
+                active++;
+                bombCount++;
+            }
+        }
         _log.LogInfo($"[PegboardApplier] CLIENT ACTUAL: {active} active pegs " +
-            $"(regular={regular}, crit={crits}, bomb={bombs}, reset={resets})");
+            $"(regular={regular}, crit={crits}, bomb={bombCount}, reset={resets})");
     }
 }
