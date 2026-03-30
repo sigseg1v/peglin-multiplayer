@@ -121,6 +121,8 @@ public class EnemyStateProvider : IGameStateProvider<EnemyStateSnapshot>
                 var upcomingField = AccessTools.Field(typeof(Battle.EnemyInfoManager), "_upcomingSpawns");
                 var upcomingList = upcomingField?.GetValue(eim) as System.Collections.IList;
                 snapshot.UpcomingEnemyCount = upcomingList?.Count ?? 0;
+                if (snapshot.UpcomingEnemyCount > 0)
+                    _log.LogInfo($"[EnemyProvider] Upcoming enemies: {snapshot.UpcomingEnemyCount}");
             }
 
             return snapshot;

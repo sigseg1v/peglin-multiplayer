@@ -188,9 +188,17 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                 int toPop = clientCount - hostUpcomingCount;
                 for (int i = 0; i < toPop; i++)
                 {
-                    try { eim.PopSpawn(); } catch { }
+                    try
+                    {
+                        eim.PopSpawn();
+                        // Also remove from _upcomingSpawns directly since PopSpawn only
+                        // queues visual removal but doesn't change the list count
+                        if (upcomingList.Count > 0)
+                            upcomingList.RemoveAt(0);
+                    }
+                    catch { }
                 }
-                _log.LogInfo($"[EnemyApplier] Upcoming sync: popped {toPop} (host={hostUpcomingCount}, client was {clientCount})");
+                _log.LogInfo($"[EnemyApplier] Upcoming sync: popped {toPop} (host={hostUpcomingCount}, client was {clientCount}, now {upcomingList.Count})");
             }
             else if (clientCount != hostUpcomingCount)
             {
