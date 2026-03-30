@@ -37,10 +37,35 @@ public sealed class BallSubscriptions
     private void OnShotFired(Vector2 aimVector)
     {
         if (!IsHosting) return;
+
+        // Get the current orb name and spawn position
+        string orbName = null;
+        float spawnX = 0, spawnY = 0;
+        try
+        {
+            var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
+            var dm = dms.Length > 0 ? dms[0] : null;
+            if (dm?.shuffledDeck != null && dm.shuffledDeck.Count > 0)
+                orbName = dm.shuffledDeck.Peek()?.name;
+
+            var bc = Object.FindObjectOfType<Battle.BattleController>();
+            if (bc != null)
+            {
+                var playerField = HarmonyLib.AccessTools.Field(typeof(Battle.BattleController), "_playerTransform");
+                var pt = playerField?.GetValue(bc) as Transform;
+                if (pt != null) { spawnX = pt.position.x; spawnY = pt.position.y; }
+            }
+        }
+        catch { }
+
+        _log.LogInfo($"[BallSub] ShotFired: aim=({aimVector.x:F2},{aimVector.y:F2}), orb={orbName}, spawn=({spawnX:F1},{spawnY:F1})");
         _registry.Dispatch(new ShotFiredEvent
         {
             AimX = aimVector.x,
-            AimY = aimVector.y
+            AimY = aimVector.y,
+            OrbName = orbName,
+            SpawnX = spawnX,
+            SpawnY = spawnY,
         });
     }
 

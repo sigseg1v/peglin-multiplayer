@@ -2,34 +2,39 @@ namespace PeglinMods.Multiplayer.Events.Handlers.Enemy;
 
 using System;
 using PeglinMods.Multiplayer.Events.Network.Enemy;
+using PeglinMods.Multiplayer.Multiplayer;
 using PeglinMods.Multiplayer.Utility;
 
 public sealed class EnemyKilledClientHandler : IClientHandler<EnemyKilledEvent>
 {
-    public void Handle(EnemyKilledEvent networkEvent)
+    public void Handle(EnemyKilledEvent e)
     {
         try
         {
-            MultiplayerPlugin.Logger.LogInfo($"[EnemyKilled] guid={networkEvent.EnemyId} loc={networkEvent.LocKey}");
+            var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
+            if (mode == null || !mode.IsSpectating) return;
 
-            var enemyIdentifier = MultiplayerPlugin.Services.Resolve<EnemyIdentifier>();
-            var enemy = enemyIdentifier.Find(networkEvent.EnemyId);
+            var enemyId = MultiplayerPlugin.Services.Resolve<EnemyIdentifier>();
+            var enemy = enemyId.Find(e.EnemyId);
             if (enemy != null)
             {
-                MultiplayerPlugin.Logger.LogInfo($"[EnemyKilled] Found enemy '{enemy.locKey}' by GUID, setting hp=0");
+                MultiplayerPlugin.Logger?.LogInfo($"[EnemyKilled] '{enemy.locKey}' (guid={e.EnemyId}) hp → 0");
                 enemy.CurrentHealth = 0;
-                enemyIdentifier.Unregister(networkEvent.EnemyId);
+                // Trigger death animation by invoking UpdateHealthBar
+                try
+                {
+                    var method = HarmonyLib.AccessTools.Method(typeof(global::Battle.Enemies.Enemy), "UpdateHealthBar");
+                    method?.Invoke(enemy, null);
+                }
+                catch { }
+                // Don't unregister GUID here — let the state sync handle cleanup
+                // Don't invoke OnEnemyKilled — it has side effects that kill wrong enemies
+                // when multiple enemies share the same locKey
             }
-            else
-            {
-                MultiplayerPlugin.Logger.LogWarning($"[EnemyKilled] Could not find enemy guid={networkEvent.EnemyId}");
-            }
-
-            global::Battle.Enemies.Enemy.OnEnemyKilled?.Invoke(networkEvent.LocKey);
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            MultiplayerPlugin.Logger.LogWarning($"EnemyKilled handler failed: {e.Message}");
+            MultiplayerPlugin.Logger?.LogWarning($"EnemyKilled handler failed: {ex.Message}");
         }
     }
 }

@@ -33,6 +33,9 @@ public class ClientBallRenderer : MonoBehaviour
         if (_ballObject == null)
             CreateBall();
 
+        // Update the ball sprite to match the current orb being fired
+        UpdateBallSprite();
+
         // Find spawn position from BattleController's player transform
         var bc = Object.FindObjectOfType<Battle.BattleController>();
         if (bc != null)
@@ -50,6 +53,28 @@ public class ClientBallRenderer : MonoBehaviour
         _lastUpdateTime = Time.time;
         _isActive = true;
         _ballObject.SetActive(true);
+    }
+
+    private void UpdateBallSprite()
+    {
+        if (_ballRenderer == null) return;
+        try
+        {
+            var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
+            var dm = dms.Length > 0 ? dms[0] : null;
+            if (dm?.shuffledDeck != null && dm.shuffledDeck.Count > 0)
+            {
+                // The top of shuffledDeck is the orb being fired (BallUsed hasn't popped it yet)
+                var orb = dm.shuffledDeck.Peek();
+                var orbRenderer = orb?.GetComponentInChildren<SpriteRenderer>();
+                if (orbRenderer != null && orbRenderer.sprite != null)
+                {
+                    _ballRenderer.sprite = orbRenderer.sprite;
+                    _ballObject.transform.localScale = orb.transform.localScale;
+                }
+            }
+        }
+        catch { }
     }
 
     public void UpdateBallPosition(float posX, float posY, float velX, float velY, float timestamp)

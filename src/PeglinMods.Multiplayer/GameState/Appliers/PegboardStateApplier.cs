@@ -195,7 +195,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         try
                         {
                             var animator = bomb.GetComponent<UnityEngine.Animator>();
-                            animator?.SetInteger("Hits", entry.HitCount);
+                            animator?.SetInteger("NumHits", entry.HitCount);
                         }
                         catch { }
                     }
