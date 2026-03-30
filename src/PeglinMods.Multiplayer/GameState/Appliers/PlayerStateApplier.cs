@@ -37,7 +37,6 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
             return;
         }
 
-        // Access private FloatVariable fields via Harmony AccessTools
         var healthField = AccessTools.Field(typeof(PlayerHealthController), "_playerHealth");
         var maxHealthField = AccessTools.Field(typeof(PlayerHealthController), "_maxPlayerHealth");
 
@@ -50,11 +49,25 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
         var healthVar = healthField.GetValue(ctrl) as FloatVariable;
         var maxHealthVar = maxHealthField.GetValue(ctrl) as FloatVariable;
 
+        float prevHealth = healthVar?.Value ?? 0;
+
         if (maxHealthVar != null)
             maxHealthVar.Set(snapshot.MaxHealth);
 
         if (healthVar != null)
             healthVar.Set(snapshot.CurrentHealth);
+
+        // Force update the health bar UI if health changed
+        if (System.Math.Abs(prevHealth - snapshot.CurrentHealth) > 0.1f)
+        {
+            try
+            {
+                // Call UpdateHealthBar to refresh the visual bar
+                var updateMethod = AccessTools.Method(typeof(PlayerHealthController), "UpdateHealthBar");
+                updateMethod?.Invoke(ctrl, null);
+            }
+            catch { }
+        }
 
         _log.LogInfo($"[PlayerApplier] Health set to {snapshot.CurrentHealth}/{snapshot.MaxHealth}");
     }
