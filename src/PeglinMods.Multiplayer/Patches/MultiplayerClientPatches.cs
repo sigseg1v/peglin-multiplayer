@@ -369,6 +369,15 @@ public static class MultiplayerClientPatches
         return false;
     }
 
+    /// <summary>Block orb drawing on client — host sends draw events via BallUsed.</summary>
+    [HarmonyPatch(typeof(DeckManager), "DrawBall")]
+    [HarmonyPrefix]
+    public static bool DeckManager_DrawBall_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        return false;
+    }
+
     /// <summary>Block board field reset on client — prevents re-shuffling pegs.</summary>
     [HarmonyPatch(typeof(BattleController), "ResetField")]
     [HarmonyPrefix]

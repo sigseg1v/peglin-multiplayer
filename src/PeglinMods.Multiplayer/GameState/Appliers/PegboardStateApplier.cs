@@ -119,14 +119,23 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     continue;
                 }
 
-                // Reactivate if host says it's alive but client has it destroyed/cleared
-                if (!peg.gameObject.activeSelf || peg.pegType == Peg.PegType.DESTROYED || peg.Cleared)
+                // Reactivate ONLY if host says peg is alive AND client has it dead/cleared
+                // Don't reactivate if host also says it's cleared — the host will send cleared=false
+                // when the board actually refreshes
+                if (!entry.IsCleared && !entry.IsDestroyed)
                 {
-                    if (!peg.gameObject.activeSelf)
+                    if (!peg.gameObject.activeSelf || peg.pegType == Peg.PegType.DESTROYED)
+                    {
                         peg.gameObject.SetActive(true);
-                    // Call Reset to restore sprite, colliders, and visual state (important after board refresh)
-                    try { peg.Reset(false); } catch { }
-                    reactivated++;
+                        try { peg.Reset(false); } catch { }
+                        reactivated++;
+                    }
+                    else if (peg.Cleared)
+                    {
+                        // Host says peg is active but client has it cleared — reset it
+                        try { peg.Reset(false); } catch { }
+                        reactivated++;
+                    }
                 }
 
                 // Force peg type to match host
