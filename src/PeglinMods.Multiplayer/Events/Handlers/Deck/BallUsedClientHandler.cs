@@ -14,15 +14,17 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
             if (mode == null || !mode.IsSpectating) return;
 
-            MultiplayerPlugin.Logger.LogInfo($"Multiplayer: Used orb {e.OrbName}");
-
-            // Pop from shuffledDeck and fire onBallUsed so DeckInfoManager updates the visual display
             var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
             var dm = dms.Length > 0 ? dms[0] : null;
             if (dm?.shuffledDeck != null && dm.shuffledDeck.Count > 0)
             {
                 var popped = dm.shuffledDeck.Pop();
+                MultiplayerPlugin.Logger?.LogInfo($"[BallUsed] Popped '{popped?.name}' from shuffledDeck ({dm.shuffledDeck.Count} remaining), firing onBallUsed");
                 DeckManager.onBallUsed?.Invoke(popped);
+            }
+            else
+            {
+                MultiplayerPlugin.Logger?.LogWarning($"[BallUsed] shuffledDeck empty, cannot pop for '{e.OrbName}'");
             }
         }
         catch (Exception ex)
