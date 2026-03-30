@@ -24,6 +24,13 @@ public sealed class PegActivatedClientHandler : IClientHandler<PegActivatedEvent
 
             if (peg != null && peg.gameObject.activeSelf)
             {
+                // For bombs, ensure _inited is true (it's set in Bomb.Start which may not have run)
+                if (peg is Bomb bomb)
+                {
+                    var initField = HarmonyLib.AccessTools.Field(typeof(Bomb), "_inited");
+                    if (initField != null && !(bool)initField.GetValue(bomb))
+                        initField.SetValue(bomb, true);
+                }
                 try { peg.PegActivated(playAudio: true, forcePop: false); }
                 catch { }
             }

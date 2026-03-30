@@ -114,6 +114,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                         // Same type — update state
                         SetMaxHealth(match, entry.MaxHealth);
                         match.CurrentHealth = entry.CurrentHealth;
+                        // Set position directly — enemy animations handle the visual movement
                         match.transform.position = new Vector3(
                             entry.PosX, entry.PosY, match.transform.position.z);
                         ForceUpdateHealthBar(match);
