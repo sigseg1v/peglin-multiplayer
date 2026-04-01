@@ -247,7 +247,6 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 {
                     clientNode.SetActiveState(hostState, recursive: false, setIcon: true);
                     // Explicit GenerateIcon in case SetActiveState's internal call was blocked
-                    // or the RoomType was temporarily NONE during the call
                     if (clientNode.RoomType != RoomType.NONE)
                         clientNode.GenerateIcon();
                 }
@@ -255,6 +254,12 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 {
                     _log.LogWarning($"[MapApplier] SetActiveState failed for node {hostNode.Index} " +
                         $"(type={hostRoomType}, state={hostState}): {ex.Message}");
+                }
+
+                // Verify the type stuck
+                if (applied < 3 || clientNode.RoomType != hostRoomType)
+                {
+                    _log.LogInfo($"[MapApplier] Node {hostNode.Index}: set={hostRoomType}, actual={clientNode.RoomType}, state={hostState}");
                 }
 
                 applied++;
