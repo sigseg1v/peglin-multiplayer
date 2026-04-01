@@ -218,11 +218,27 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         try { clientPopped = peg.IsDisabled(); } catch { }
 
         // Handle cleared/popped pegs — pop and fade out, matching the host flow.
+        // After PegActivated, force the dot sprite before RemoveIfCleared starts
+        // the fade. On the host the destruction animation has time to set this,
+        // but on the client PegActivated+RemoveIfCleared run back-to-back so
+        // special pegs (crit/reset) may still show their type sprite during fade.
         if (entry.IsCleared && !clientPopped)
         {
             try
             {
                 peg.PegActivated(playAudio: false, forcePop: true);
+
+                // Force dot sprite so the fade-out shows the small dot indicator
+                if (peg is RegularPeg)
+                {
+                    var renderer = HarmonyLib.AccessTools.Field(typeof(RegularPeg), "_renderer")
+                        ?.GetValue(peg) as UnityEngine.SpriteRenderer;
+                    var sprite = HarmonyLib.AccessTools.Field(typeof(RegularPeg), "_previouslyClearedSprite")
+                        ?.GetValue(peg) as UnityEngine.Sprite;
+                    if (renderer != null && sprite != null)
+                        renderer.sprite = sprite;
+                }
+
                 peg.RemoveIfCleared();
             }
             catch { }
