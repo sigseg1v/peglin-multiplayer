@@ -83,6 +83,8 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 if (peg != null)
                 {
                     matchedPegs.Add(peg);
+                    // Always snap to exact host position (client RNG diverges on random layouts)
+                    peg.transform.position = new Vector3(entry.PosX, entry.PosY, peg.transform.position.z);
                     ApplyPegState(peg, entry, ref typeChanged, ref destroyed, ref reactivated);
                 }
                 else
