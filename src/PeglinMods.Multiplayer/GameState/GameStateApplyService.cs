@@ -309,6 +309,7 @@ public class GameStateApplyService
 
     public void ApplyMapState(MapStateSnapshot snapshot)
     {
+        _latestMap = snapshot;
         // Update host scene tracking
         if (!string.IsNullOrEmpty(snapshot.ActiveScene))
         {
