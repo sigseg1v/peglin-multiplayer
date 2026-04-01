@@ -71,6 +71,7 @@ public class GameStateApplyService
         _log.LogInfo($"[ApplyService] Scene loaded: '{scene.name}' — clearing GUID registries, hostScene='{_hostScene}'");
         _enemyId.Clear();
         _pegId.Clear();
+        Patches.MultiplayerClientPatches.MapControllerStartCompleted = false;
 
         // Check if we have a pending snapshot for this scene
         if (_pendingSnapshot != null &&
@@ -180,13 +181,12 @@ public class GameStateApplyService
         }
         else
         {
-            // Map scenes: wait a few extra frames so MapController.Start completes
-            // (Start sets all nodes to NONE via blocked GenerateRoomType, then our
-            // apply overwrites them with host types). Start runs on the first few
-            // frames after scene load.
-            yield return null;
-            yield return null;
-            yield return null;
+            // Map scenes: wait for MapController.Start to complete before applying
+            // node types. Start resets all nodes to NONE (via blocked GenerateRoomType),
+            // so we must apply AFTER it finishes. The postfix sets the flag.
+            float timeout = Time.time + 5f;
+            while (!Patches.MultiplayerClientPatches.MapControllerStartCompleted && Time.time < timeout)
+                yield return null;
         }
 
         var currentScene = SceneManager.GetActiveScene().name;

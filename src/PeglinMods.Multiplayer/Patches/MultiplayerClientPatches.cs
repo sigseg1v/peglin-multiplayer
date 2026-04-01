@@ -35,6 +35,12 @@ public static class MultiplayerClientPatches
     internal static string PendingBattleRngState;
 
     /// <summary>
+    /// Set to true when MapController.Start completes on the client.
+    /// The pending snapshot coroutine waits for this before applying node types.
+    /// </summary>
+    internal static bool MapControllerStartCompleted;
+
+    /// <summary>
     /// Set to true by our sync handlers right before they call LoadScene.
     /// The PeglinSceneLoader patch checks this flag and blocks all other scene loads.
     /// Reset to false after the load is initiated.
@@ -436,11 +442,12 @@ public static class MultiplayerClientPatches
     public static void MapController_Start_Postfix(Map.MapController __instance)
     {
         if (!ShouldSuppressClientLogic) return;
-        MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] MapController.Start ran on client (sub-methods blocked, visual setup preserved)");
 
-        // Re-apply host node types — Start just wiped them to NONE via blocked GenerateRoomType.
-        // The GameStateApplyService stores the latest snapshot's map applier result.
-        // Trigger a re-apply by asking the apply service to replay the last map state.
+        // Signal that Start has completed — the pending snapshot coroutine waits for this
+        MapControllerStartCompleted = true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] MapController.Start completed on client");
+
+        // Re-apply host node types — Start just wiped them to NONE via blocked GenerateRoomType
         try
         {
             if (MultiplayerPlugin.Services?.TryResolve<GameState.GameStateApplyService>(out var applySvc) == true)
