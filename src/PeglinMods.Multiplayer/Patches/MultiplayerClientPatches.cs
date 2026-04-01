@@ -444,6 +444,27 @@ public static class MultiplayerClientPatches
     }
 
     /// <summary>
+    /// On HOST: after Start generates node types, immediately sync the map.
+    /// The initial SyncAll fires on scene load BEFORE Start runs, so it captures
+    /// NONE types. This postfix sends the real types as soon as they're ready.
+    /// </summary>
+    [HarmonyPatch(typeof(Map.MapController), "Start")]
+    [HarmonyPostfix]
+    public static void MapController_Start_Postfix_Host()
+    {
+        if (!IsHosting) return;
+        try
+        {
+            if (MultiplayerPlugin.Services?.TryResolve<GameState.IGameStateSyncService>(out var sync) == true)
+            {
+                sync.SyncMap();
+                MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Host MapController.Start done — sent immediate map sync with node types");
+            }
+        }
+        catch { }
+    }
+
+    /// <summary>
     /// After blocking Start, do aggressive visual setup: clear curtain, position
     /// camera, apply host node types. Finalizer runs even when Prefix returns false.
     /// </summary>
