@@ -43,6 +43,7 @@ public class GameStateApplyService
 
     // --- Individual buffered snapshots (for partial updates) ---
     private PlayerStateSnapshot _latestPlayer;
+    private MapStateSnapshot _latestMap;
 
     public GameStateApplyService(ManualLogSource log, EnemyIdentifier enemyId, PegIdentifier pegId)
     {
@@ -115,7 +116,10 @@ public class GameStateApplyService
             {
                 // Apply map data (node types, static data) without scene transition
                 if (snapshot.Map != null)
+                {
+                    _latestMap = snapshot.Map;
                     _mapApplier.Apply(snapshot.Map);
+                }
 
                 ApplyNonMapState(snapshot);
                 _log.LogInfo("[ApplyService] Applied full state (same scene).");
@@ -129,7 +133,10 @@ public class GameStateApplyService
 
             // Let MapApplier trigger the scene transition (any direction is OK for FRESH data)
             if (snapshot.Map != null)
+            {
+                _latestMap = snapshot.Map;
                 _mapApplier.Apply(snapshot.Map);
+            }
 
             // Apply player state (works on any scene)
             if (snapshot.Player != null)
@@ -139,6 +146,17 @@ public class GameStateApplyService
         {
             _log.LogError($"[ApplyService] ApplyAll failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Re-apply the latest map node types from host. Called after MapController.Start
+    /// which resets nodes to NONE via blocked GenerateRoomType.
+    /// </summary>
+    public void ReapplyLastMapState()
+    {
+        if (_latestMap?.Nodes == null || _latestMap.Nodes.Count == 0) return;
+        _log.LogInfo($"[ApplyService] Re-applying {_latestMap.Nodes.Count} map nodes after MapController.Start");
+        _mapApplier.Apply(_latestMap);
     }
 
     // =========================================================================
@@ -177,7 +195,10 @@ public class GameStateApplyService
 
         // Apply map data (node types, static data) — no scene change since we're already here
         if (snapshot.Map != null)
+        {
+            _latestMap = snapshot.Map;
             SafeApply("Map(pending)", () => _mapApplier.Apply(snapshot.Map));
+        }
 
         // Apply all non-map state
         ApplyNonMapState(snapshot);
