@@ -217,13 +217,24 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         bool clientPopped = false;
         try { clientPopped = peg.IsDisabled(); } catch { }
 
-        // Handle cleared/popped pegs
+        // Handle cleared/popped pegs — show the "previously cleared" dot visual.
+        // On the host, PopPeg() disables colliders and shows a dot sprite, but
+        // RemoveIfCleared() doesn't run until end-of-shot (fades the dot out).
+        // We replicate just the PopPeg visual here. When the host fully removes the
+        // peg (gameObject.SetActive(false)), it arrives as IsDestroyed=true later.
         if (entry.IsCleared && !clientPopped)
         {
             try
             {
-                peg.PegActivated(playAudio: false, forcePop: true);
-                peg.RemoveIfCleared();
+                var clearedF = HarmonyLib.AccessTools.Field(typeof(Peg), "_cleared");
+                clearedF?.SetValue(peg, true);
+
+                // Disable colliders (same as PopPeg → DisableRegularColliders)
+                var collider = peg.GetComponent<UnityEngine.Collider2D>();
+                if (collider != null) collider.enabled = false;
+
+                // Show the cleared dot visual (sprite for RegularPeg, color for LongPeg)
+                ShowClearedVisual(peg);
             }
             catch { }
         }
@@ -327,6 +338,52 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     animator?.SetInteger("NumHits", entry.HitCount);
                 }
                 catch { }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Show the "previously cleared" dot visual on a popped peg.
+    /// RegularPeg: set sprite to _previouslyClearedSprite (small dot).
+    /// LongPeg: set material color to _colors.Cleared.
+    /// Also ensures renderer alpha is 1 (a prior RemoveIfCleared fade may have lowered it).
+    /// </summary>
+    private void ShowClearedVisual(Peg peg)
+    {
+        if (peg is RegularPeg)
+        {
+            var rendererField = HarmonyLib.AccessTools.Field(typeof(RegularPeg), "_renderer");
+            var spriteField = HarmonyLib.AccessTools.Field(typeof(RegularPeg), "_previouslyClearedSprite");
+            var renderer = rendererField?.GetValue(peg) as UnityEngine.SpriteRenderer;
+            var sprite = spriteField?.GetValue(peg) as UnityEngine.Sprite;
+            if (renderer != null)
+            {
+                // Reset alpha to 1 in case a prior fade was in progress
+                var c = renderer.color;
+                if (c.a < 1f) renderer.color = new UnityEngine.Color(c.r, c.g, c.b, 1f);
+
+                if (sprite != null)
+                    renderer.sprite = sprite;
+            }
+        }
+        else if (peg is LongPeg)
+        {
+            var colorsField = HarmonyLib.AccessTools.Field(typeof(LongPeg), "_colors");
+            var rendererField = HarmonyLib.AccessTools.Field(typeof(LongPeg), "_renderer");
+            if (colorsField != null && rendererField != null)
+            {
+                var renderer = rendererField.GetValue(peg) as UnityEngine.MeshRenderer;
+                if (renderer != null)
+                {
+                    // LongPeg._colors is a struct (LongPegColors) with a Cleared field
+                    var colorsObj = colorsField.GetValue(peg);
+                    var clearedColorField = colorsObj?.GetType().GetField("Cleared");
+                    if (clearedColorField != null)
+                    {
+                        var clearedColor = (UnityEngine.Color)clearedColorField.GetValue(colorsObj);
+                        renderer.material.color = clearedColor;
+                    }
+                }
             }
         }
     }
