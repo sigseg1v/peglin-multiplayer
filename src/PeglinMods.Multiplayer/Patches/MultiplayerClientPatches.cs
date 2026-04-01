@@ -437,17 +437,26 @@ public static class MultiplayerClientPatches
     /// and GenerateIcon (NONE → empty icons). Our postfix re-applies the correct
     /// types from the latest host snapshot so nodes show immediately.
     /// </summary>
+    /// <summary>
+    /// Finalizer runs even when Start throws (which it does when CreateMapDataLists
+    /// is blocked and subsequent code references missing data). Sets the completion
+    /// flag and re-applies host node types regardless of success/failure.
+    /// </summary>
     [HarmonyPatch(typeof(Map.MapController), "Start")]
-    [HarmonyPostfix]
-    public static void MapController_Start_Postfix(Map.MapController __instance)
+    [HarmonyFinalizer]
+    public static Exception MapController_Start_Finalizer(Exception __exception)
     {
-        if (!ShouldSuppressClientLogic) return;
+        if (!ShouldSuppressClientLogic) return __exception;
 
-        // Signal that Start has completed — the pending snapshot coroutine waits for this
+        // Signal completion — pending snapshot coroutine waits for this
         MapControllerStartCompleted = true;
-        MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] MapController.Start completed on client");
 
-        // Re-apply host node types — Start just wiped them to NONE via blocked GenerateRoomType
+        if (__exception != null)
+            MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] MapController.Start threw (swallowed): {__exception.Message}");
+        else
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] MapController.Start completed on client");
+
+        // Re-apply host node types — Start wiped them to NONE via blocked GenerateRoomType
         try
         {
             if (MultiplayerPlugin.Services?.TryResolve<GameState.GameStateApplyService>(out var applySvc) == true)
@@ -459,6 +468,8 @@ public static class MultiplayerClientPatches
         {
             MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] Post-Start node re-apply failed: {ex.Message}");
         }
+
+        return null; // Swallow any exception — sync handles state
     }
 
     // =========================================================================
