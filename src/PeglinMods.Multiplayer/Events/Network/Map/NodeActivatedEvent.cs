@@ -11,4 +11,8 @@ public class NodeActivatedEvent
     public float PosY { get; set; }
     /// <summary>MapDataBattle.name from the host (e.g. "SlimeEncounter2")</summary>
     public string BattleName { get; set; }
+    /// <summary>Serialized UnityEngine.Random.state at the moment of node activation,
+    /// before the battle scene loads. Client restores this so RandomPegField
+    /// generates identical positions.</summary>
+    public string RngState { get; set; }
 }

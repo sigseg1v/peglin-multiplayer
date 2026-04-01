@@ -23,6 +23,13 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
 
             log?.LogInfo($"[NodeActivated] Host battle={e.BattleName} at ({e.PosX:F1},{e.PosY:F1})");
 
+            // Store host's RNG state for pegboard generation sync
+            if (!string.IsNullOrEmpty(e.RngState))
+            {
+                MultiplayerClientPatches.PendingBattleRngState = e.RngState;
+                log?.LogInfo("[NodeActivated] Stored host RNG state for pegboard sync");
+            }
+
             // For non-battle nodes (treasure, shop, peg minigame, scenario),
             // BattleName is empty. Let the MapStateApplier handle scene transition
             // via the next SyncAll which carries the correct ActiveScene.

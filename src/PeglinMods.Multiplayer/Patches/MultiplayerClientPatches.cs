@@ -29,6 +29,12 @@ public static class MultiplayerClientPatches
     internal static string PendingRngStateToRestore;
 
     /// <summary>
+    /// RNG state received from host at node activation, restored before pegboard
+    /// generation so RandomPegField produces identical positions on client.
+    /// </summary>
+    internal static string PendingBattleRngState;
+
+    /// <summary>
     /// Set to true by our sync handlers right before they call LoadScene.
     /// The PeglinSceneLoader patch checks this flag and blocks all other scene loads.
     /// Reset to false after the load is initiated.
@@ -176,6 +182,19 @@ public static class MultiplayerClientPatches
         else
         {
             MultiplayerPlugin.Logger?.LogWarning("[ClientPatches] dataToLoad is not MapDataBattle — BattleController.Awake may fail");
+        }
+
+        // 3. Restore host's RNG state so RandomPegField generates identical positions.
+        //    This was captured at node activation and sent via NodeActivatedEvent.
+        if (!string.IsNullOrEmpty(PendingBattleRngState))
+        {
+            var restored = DeserializeRandomState(PendingBattleRngState);
+            if (restored.HasValue)
+            {
+                Random.state = restored.Value;
+                MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Restored host RNG state for pegboard generation");
+            }
+            PendingBattleRngState = null;
         }
     }
 
@@ -734,6 +753,7 @@ public static class MultiplayerClientPatches
             PosX = pos.x,
             PosY = pos.y,
             BattleName = battleName,
+            RngState = SerializeRandomState(Random.state),
         });
         MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Host activated node at ({pos.x:F1}, {pos.y:F1}), battle={battleName}");
     }
