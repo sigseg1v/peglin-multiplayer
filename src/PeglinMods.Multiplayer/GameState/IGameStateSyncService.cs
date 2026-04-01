@@ -6,7 +6,7 @@ namespace PeglinMods.Multiplayer.GameState;
 /// </summary>
 public interface IGameStateSyncService
 {
-    void SyncAll();
+    void SyncAll(string trigger = null);
     void SyncMap();
     void SyncPegboard();
     void SyncEnemies();

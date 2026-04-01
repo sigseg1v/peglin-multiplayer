@@ -173,7 +173,7 @@ public static class ServiceRegistration
 
             // Send full game state to newly connected client
             if (transport.IsHost)
-                syncService.SyncAll();
+                syncService.SyncAll("ClientHandshake");
         };
     }
 

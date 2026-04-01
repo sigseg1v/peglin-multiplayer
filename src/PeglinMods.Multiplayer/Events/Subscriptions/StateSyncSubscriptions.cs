@@ -32,10 +32,10 @@ public sealed class StateSyncSubscriptions
     public void Subscribe()
     {
         // FULL SYNC on battle start — enemies spawned, pegs placed, deck ready
-        BattleController.OnBattleStarted += () => SafeSync("BattleStarted", () => _sync.SyncAll());
+        BattleController.OnBattleStarted += () => SafeSync("BattleStarted", () => _sync.SyncAll("BattleStarted"));
 
         // FULL SYNC after each round — ensures client stays in sync even if individual events missed
-        BattleController.OnRoundCountIncremented += (_) => SafeSync("RoundIncremented", () => _sync.SyncAll());
+        BattleController.OnRoundCountIncremented += (_) => SafeSync("RoundIncremented", () => _sync.SyncAll("RoundIncremented"));
 
         // Sync enemies and player after turn complete (enemies may have moved/attacked)
         BattleController.OnTurnComplete += () => SafeSync("TurnComplete", () =>
@@ -80,7 +80,7 @@ public sealed class StateSyncSubscriptions
         DeckManager.onBallUsed += (_) => SafeSync("BallUsed", () => _sync.SyncDeck());
 
         // FULL SYNC on victory (final state)
-        BattleController.OnVictory += () => SafeSync("Victory", () => _sync.SyncAll());
+        BattleController.OnVictory += () => SafeSync("Victory", () => _sync.SyncAll("Victory"));
 
         // Sync map state when a node is selected
         Map.MapController.OnNodeSelectionEvent += (name, floor, cb) =>
@@ -98,29 +98,41 @@ public sealed class StateSyncSubscriptions
         SceneManager.sceneLoaded += (scene, loadMode) =>
         {
             if (loadMode == LoadSceneMode.Single)
-                SafeSync("SceneLoaded:" + scene.name, () => _sync.SyncAll());
+                SafeSync("SceneLoaded:" + scene.name, () => _sync.SyncAll("SceneLoaded:" + scene.name));
         };
 
-        // Periodic heartbeat: full resync every 10 seconds to ensure convergence
+        // Periodic heartbeat: full resync every 2 seconds to ensure convergence
         var dispatcher = MultiplayerPlugin.Services?.TryResolve<MainThreadDispatcher>(out var d) == true ? d : null;
         if (dispatcher != null)
         {
             dispatcher.StartCoroutine(HostHeartbeat());
+            _log.LogInfo("StateSyncSubscriptions: heartbeat coroutine started (2s interval)");
+        }
+        else
+        {
+            _log.LogWarning("StateSyncSubscriptions: NO MainThreadDispatcher — heartbeat NOT started!");
         }
 
-        _log.LogInfo("StateSyncSubscriptions registered (with real-time peg/deck sync + 10s heartbeat)");
+        _log.LogInfo("StateSyncSubscriptions registered (with real-time peg/deck sync + 2s heartbeat)");
     }
+
+    private int _heartbeatCount;
 
     private IEnumerator HostHeartbeat()
     {
         while (true)
         {
-            // Full sync every 2 seconds on all scenes for fast convergence
             yield return new WaitForSeconds(2f);
-            if (_mode.IsHosting)
+            if (!_mode.IsHosting) continue;
+
+            _heartbeatCount++;
+            try
             {
-                try { _sync.SyncAll(); }
-                catch { }
+                _sync.SyncAll($"HEARTBEAT#{_heartbeatCount}");
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning($"[HEARTBEAT#{_heartbeatCount}] SyncAll failed: {ex.Message}");
             }
         }
     }

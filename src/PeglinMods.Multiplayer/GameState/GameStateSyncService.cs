@@ -39,9 +39,11 @@ public class GameStateSyncService : IGameStateSyncService
         _relicProvider = new RelicStateProvider(log);
     }
 
-    public void SyncAll()
+    public void SyncAll(string trigger = null)
     {
         if (!_mode.IsHosting) return;
+
+        var tag = string.IsNullOrEmpty(trigger) ? "" : $"[{trigger}] ";
 
         try
         {
@@ -57,12 +59,15 @@ public class GameStateSyncService : IGameStateSyncService
             };
 
             _registry.Dispatch(snapshot);
-            _log.LogInfo($"SyncAll: sent full state (map={snapshot.Map?.ActiveScene}, enemies={snapshot.Enemies?.Enemies?.Count ?? 0}, pegs={snapshot.Pegboard?.TotalPegCount ?? 0})");
-            DiagnosticLogger.DumpBattleState("HOST_SyncAll");
+            _log.LogInfo($"{tag}SyncAll: sent full state (map={snapshot.Map?.ActiveScene}, enemies={snapshot.Enemies?.Enemies?.Count ?? 0}, pegs={snapshot.Pegboard?.TotalPegCount ?? 0})");
+
+            // Only dump verbose diagnostics for non-heartbeat syncs to reduce log noise
+            if (trigger == null || !trigger.StartsWith("HEARTBEAT"))
+                DiagnosticLogger.DumpBattleState("HOST_SyncAll");
         }
         catch (Exception ex)
         {
-            _log.LogError($"SyncAll failed: {ex.Message}");
+            _log.LogError($"{tag}SyncAll failed: {ex.Message}");
         }
     }
 
