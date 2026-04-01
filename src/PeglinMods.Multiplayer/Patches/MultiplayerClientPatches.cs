@@ -267,13 +267,18 @@ public static class MultiplayerClientPatches
     /// client, the host sends the correct node types via MapStateSnapshot.
     /// Without this block, the client generates its own map with wrong types.
     /// </summary>
+    /// <summary>
+    /// Let CreateMapDataLists run on client — it just initializes empty lists/queues
+    /// for battle and scenario selection. Blocking it causes Start to crash with NRE
+    /// when subsequent code references the missing lists. The lists aren't used for
+    /// anything on the client since node types come from the host.
+    /// </summary>
     [HarmonyPatch(typeof(Map.MapController), "CreateMapDataLists")]
-    [HarmonyPrefix]
-    public static bool MapController_CreateMapDataLists_Prefix()
+    [HarmonyPostfix]
+    public static void MapController_CreateMapDataLists_Postfix()
     {
-        if (!ShouldSuppressClientLogic) return true;
-        MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked CreateMapDataLists — host will send node types");
-        return false;
+        if (!ShouldSuppressClientLogic) return;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] CreateMapDataLists ran on client (lists unused, prevents NRE)");
     }
 
     /// <summary>Block post-processing of map on client (relic-based node changes).</summary>

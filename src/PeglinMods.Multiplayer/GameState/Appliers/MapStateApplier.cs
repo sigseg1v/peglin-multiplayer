@@ -246,6 +246,10 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 try
                 {
                     clientNode.SetActiveState(hostState, recursive: false, setIcon: true);
+                    // Explicit GenerateIcon in case SetActiveState's internal call was blocked
+                    // or the RoomType was temporarily NONE during the call
+                    if (clientNode.RoomType != RoomType.NONE)
+                        clientNode.GenerateIcon();
                 }
                 catch (Exception ex)
                 {
