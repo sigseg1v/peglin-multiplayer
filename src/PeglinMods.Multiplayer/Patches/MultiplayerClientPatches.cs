@@ -469,6 +469,23 @@ public static class MultiplayerClientPatches
             MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] Post-Start node re-apply failed: {ex.Message}");
         }
 
+        // Clear the black curtain — Start may have crashed before IntroFade() ran
+        try
+        {
+            var curtainGo = GameObject.FindGameObjectWithTag("Curtain");
+            if (curtainGo != null)
+            {
+                var image = curtainGo.GetComponent<UnityEngine.UI.Image>();
+                if (image != null)
+                {
+                    var c = image.color;
+                    c.a = 0f;
+                    image.color = c;
+                }
+            }
+        }
+        catch { }
+
         return null; // Swallow any exception — sync handles state
     }
 
