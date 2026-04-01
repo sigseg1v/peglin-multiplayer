@@ -412,6 +412,20 @@ public static class MultiplayerClientPatches
         return false;
     }
 
+    /// <summary>
+    /// Block RandomPegField's per-turn peg repositioning on client.
+    /// When moveEveryTurn is true, RandomPegField.TurnComplete re-randomizes all
+    /// peg positions using client-side RNG — causing layout divergence every turn.
+    /// The host's periodic sync will send correct positions.
+    /// </summary>
+    [HarmonyPatch(typeof(Battle.PegBehaviour.RandomPegField), "TurnComplete")]
+    [HarmonyPrefix]
+    public static bool RandomPegField_TurnComplete_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        return false;
+    }
+
     /// <summary>Block orb drawing on client — host sends draw events via BallUsed.</summary>
     [HarmonyPatch(typeof(DeckManager), "DrawBall")]
     [HarmonyPrefix]

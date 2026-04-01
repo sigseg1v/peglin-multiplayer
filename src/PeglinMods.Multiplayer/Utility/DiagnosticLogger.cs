@@ -99,19 +99,33 @@ public static class DiagnosticLogger
                 Log?.LogInfo("  EnemyManager: NOT FOUND");
             }
 
-            // Pegs
-            var pegs = UnityEngine.Object.FindObjectsOfType<Peg>(true);
-            var activePegs = pegs.Where(p => p != null && p.gameObject.activeSelf).ToArray();
-            var pegTypes = activePegs.GroupBy(p => p.pegType).OrderByDescending(g => g.Count());
-            Log?.LogInfo($"  Pegs: {activePegs.Length} active / {pegs.Length} total");
-            foreach (var g in pegTypes)
-                Log?.LogInfo($"    {g.Key}: {g.Count()}");
+            // Pegs — use PegManager lists (not FindObjectsOfType which finds pre-instanced duplicates)
+            var bc2 = UnityEngine.Object.FindObjectOfType<BattleController>();
+            var pm = bc2?.pegManager;
+            if (pm != null && pm.allPegs != null)
+            {
+                var bombsF = AccessTools.Field(typeof(BattleController).Assembly.GetType("Battle.PegManager"), "_bombs");
+                var bombs = bombsF?.GetValue(pm) as System.Collections.Generic.List<Bomb>;
 
-            // First 5 peg positions for comparison
-            var sorted = activePegs.OrderBy(p => p.transform.position.y).ThenBy(p => p.transform.position.x).Take(10);
-            Log?.LogInfo($"  First 10 pegs by pos:");
-            foreach (var p in sorted)
-                Log?.LogInfo($"    ({p.transform.position.x:F3},{p.transform.position.y:F3}) type={p.pegType}");
+                var allPegObjects = new List<Peg>(pm.allPegs);
+                if (bombs != null)
+                    foreach (var b in bombs) allPegObjects.Add(b);
+
+                var activePegs = allPegObjects.Where(p => p != null && p.gameObject.activeSelf).ToArray();
+                var pegTypes = activePegs.GroupBy(p => p.pegType).OrderByDescending(g => g.Count());
+                Log?.LogInfo($"  Pegs: {activePegs.Length} active / {allPegObjects.Count} total (allPegs={pm.allPegs.Count}, bombs={bombs?.Count ?? 0})");
+                foreach (var g in pegTypes)
+                    Log?.LogInfo($"    {g.Key}: {g.Count()}");
+
+                var sorted = activePegs.OrderBy(p => p.transform.position.y).ThenBy(p => p.transform.position.x).Take(10);
+                Log?.LogInfo($"  First 10 pegs by pos:");
+                foreach (var p in sorted)
+                    Log?.LogInfo($"    ({p.transform.position.x:F3},{p.transform.position.y:F3}) type={p.pegType}");
+            }
+            else
+            {
+                Log?.LogInfo("  PegManager: NOT FOUND");
+            }
 
             // BattleController state
             Log?.LogInfo($"  BattleState: {BattleController.CurrentBattleState}");
