@@ -431,21 +431,21 @@ public static class MultiplayerClientPatches
     }
 
     /// <summary>
-    /// Let MapController.Start run on client — our sub-method blocks
-    /// (CreateMapDataLists, PostProcessMap, SeedMapContents, GenerateRoomType)
-    /// prevent unwanted state generation while allowing essential visual setup
-    /// (camera positioning, intro fade, node frames) to work naturally.
-    /// Gold/health resets from Start are overwritten by the next host sync.
-    ///
-    /// After Start completes, immediately re-apply host node types. Start calls
-    /// SetActiveState(NEXT) which runs GenerateRoomType (blocked → types stay NONE)
-    /// and GenerateIcon (NONE → empty icons). Our postfix re-applies the correct
-    /// types from the latest host snapshot so nodes show immediately.
+    /// Block MapController.Start entirely on client. Start generates map data,
+    /// assigns random room types, resets gold/health — all wrong for client.
+    /// We do our own visual setup in the Finalizer instead.
     /// </summary>
+    [HarmonyPatch(typeof(Map.MapController), "Start")]
+    [HarmonyPrefix]
+    public static bool MapController_Start_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        return false;
+    }
+
     /// <summary>
-    /// Finalizer runs even when Start throws (which it does when CreateMapDataLists
-    /// is blocked and subsequent code references missing data). Sets the completion
-    /// flag and re-applies host node types regardless of success/failure.
+    /// After blocking Start, do aggressive visual setup: clear curtain, position
+    /// camera, apply host node types. Finalizer runs even when Prefix returns false.
     /// </summary>
     [HarmonyPatch(typeof(Map.MapController), "Start")]
     [HarmonyFinalizer]
@@ -453,45 +453,50 @@ public static class MultiplayerClientPatches
     {
         if (!ShouldSuppressClientLogic) return __exception;
 
-        // Signal completion — pending snapshot coroutine waits for this
         MapControllerStartCompleted = true;
 
-        if (__exception != null)
-            MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] MapController.Start threw (swallowed): {__exception.Message}");
-        else
-            MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] MapController.Start completed on client");
-
-        // Re-apply host node types — Start wiped them to NONE via blocked GenerateRoomType
         try
         {
-            if (MultiplayerPlugin.Services?.TryResolve<GameState.GameStateApplyService>(out var applySvc) == true)
+            var instanceField = HarmonyLib.AccessTools.Field(typeof(Map.MapController), "instance");
+            var mc = instanceField?.GetValue(null) as Map.MapController;
+            if (mc == null) mc = UnityEngine.Object.FindObjectOfType<Map.MapController>();
+            if (mc == null) { MultiplayerPlugin.Logger?.LogWarning("[ClientPatches] No MapController instance"); return null; }
+
+            // Camera follow point
+            var cfp = mc.GetComponent<CameraFollowPoint>();
+            if (cfp != null)
             {
-                applySvc.ReapplyLastMapState();
+                var cfpField = HarmonyLib.AccessTools.Field(typeof(Map.MapController), "_cameraFollowPoint");
+                cfpField?.SetValue(mc, cfp);
+                cfp.enabled = true;
             }
+
+            // Set root to NEXT without icons (our applier handles icons)
+            var rootField = HarmonyLib.AccessTools.Field(typeof(Map.MapController), "rootNode");
+            var root = rootField?.GetValue(mc) as MapNode;
+            root?.SetActiveState(RoomState.NEXT, recursive: true, setIcon: false);
+
+            // Clear curtain
+            try
+            {
+                var curtainGo = GameObject.FindGameObjectWithTag("Curtain");
+                var img = curtainGo?.GetComponent<UnityEngine.UI.Image>();
+                if (img != null) { var c = img.color; c.a = 0f; img.color = c; }
+            }
+            catch { }
+
+            // Apply host node types immediately
+            if (MultiplayerPlugin.Services?.TryResolve<GameState.GameStateApplyService>(out var applySvc) == true)
+                applySvc.ReapplyLastMapState();
+
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] MapController.Start blocked — manual visual setup done");
         }
         catch (Exception ex)
         {
-            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] Post-Start node re-apply failed: {ex.Message}");
+            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] MapController visual setup failed: {ex.Message}");
         }
 
-        // Clear the black curtain — Start may have crashed before IntroFade() ran
-        try
-        {
-            var curtainGo = GameObject.FindGameObjectWithTag("Curtain");
-            if (curtainGo != null)
-            {
-                var image = curtainGo.GetComponent<UnityEngine.UI.Image>();
-                if (image != null)
-                {
-                    var c = image.color;
-                    c.a = 0f;
-                    image.color = c;
-                }
-            }
-        }
-        catch { }
-
-        return null; // Swallow any exception — sync handles state
+        return null;
     }
 
     // =========================================================================
