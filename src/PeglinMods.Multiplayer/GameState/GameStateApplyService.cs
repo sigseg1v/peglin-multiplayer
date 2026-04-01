@@ -180,7 +180,13 @@ public class GameStateApplyService
         }
         else
         {
-            // Map scenes: apply on next frame — Awake already ran, nodes exist
+            // Map scenes: wait a few extra frames so MapController.Start completes
+            // (Start sets all nodes to NONE via blocked GenerateRoomType, then our
+            // apply overwrites them with host types). Start runs on the first few
+            // frames after scene load.
+            yield return null;
+            yield return null;
+            yield return null;
         }
 
         var currentScene = SceneManager.GetActiveScene().name;
