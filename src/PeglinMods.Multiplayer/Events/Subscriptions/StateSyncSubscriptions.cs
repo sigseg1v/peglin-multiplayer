@@ -76,6 +76,27 @@ public sealed class StateSyncSubscriptions
         // Sync pegs when they're destroyed (real-time during ball physics)
         Peg.OnPegDestroyed += (_, _) => SafeSync("PegDestroyed", () => _sync.SyncPegboard());
 
+        // Sync pegs when a peg is activated/popped (real-time during ball physics)
+        Peg.OnPegActivated += (_, _) => SafeSync("PegActivated", () => _sync.SyncPegboard());
+
+        // Sync pegs when a peg type changes (e.g. regular → bomb from relic)
+        Peg.OnPegTypeConverted += (_, _, _) => SafeSync("PegTypeConverted", () => _sync.SyncPegboard());
+
+        // Sync pegboard when bomb detonates (destroys nearby pegs)
+        BattleController.OnBombDetonated += () => SafeSync("BombDetonated", () => _sync.SyncPegboard());
+
+        // Sync pegboard when bomb is thrown (bomb state changes)
+        BattleController.OnBombThrown += () => SafeSync("BombThrown", () => _sync.SyncPegboard());
+
+        // Sync pegboard on crit activation (crit pegs change visual state)
+        BattleController.onCriticalHitActivated += () => SafeSync("CritActivated", () => _sync.SyncPegboard());
+
+        // Sync pegboard on crit deactivation
+        BattleController.onCriticalHitDeactivated += () => SafeSync("CritDeactivated", () => _sync.SyncPegboard());
+
+        // Sync pegboard when refresh potion activates (refreshes cleared pegs)
+        BattleController.onRefreshPotionActivated += () => SafeSync("RefreshPotion", () => _sync.SyncPegboard());
+
         // Sync deck when an orb is used (so client sees current/upcoming orb updates)
         DeckManager.onBallUsed += (_) => SafeSync("BallUsed", () => _sync.SyncDeck());
 
