@@ -51,5 +51,9 @@
       <HintPath>$(GameManagedDir)/../../BepInEx/core/0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="DOTween">
+      <HintPath>$(GameManagedDir)/DOTween.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 </Project>
