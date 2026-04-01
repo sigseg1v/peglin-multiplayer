@@ -301,6 +301,23 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             typeChanged++;
         }
 
+        // After type conversion, if the peg is in "previously cleared" state,
+        // re-apply the dot sprite. ConvertPegToType overwrites the sprite to the
+        // type-specific one (e.g., crit bonus sprite), hiding the dot.
+        if (entry.WasPreviouslyCleared && !entry.IsCleared && !entry.IsDestroyed)
+        {
+            if (peg is RegularPeg)
+            {
+                var rendererField = HarmonyLib.AccessTools.Field(typeof(RegularPeg), "_renderer");
+                var spriteField = HarmonyLib.AccessTools.Field(typeof(RegularPeg), "_previouslyClearedSprite");
+                var renderer = rendererField?.GetValue(peg) as UnityEngine.SpriteRenderer;
+                var sprite = spriteField?.GetValue(peg) as UnityEngine.Sprite;
+                if (renderer != null && sprite != null)
+                    renderer.sprite = sprite;
+            }
+            // LongPeg: color is handled by Reset() and not overwritten by ConvertPegToType
+        }
+
         // Apply slime type
         var targetSlime = (Peg.SlimeType)entry.SlimeType;
         if (peg.slimeType != targetSlime)

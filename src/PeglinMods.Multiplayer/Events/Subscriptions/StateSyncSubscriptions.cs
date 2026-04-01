@@ -76,12 +76,6 @@ public sealed class StateSyncSubscriptions
         // Sync pegs when they're destroyed (real-time during ball physics)
         Peg.OnPegDestroyed += (_, _) => SafeSync("PegDestroyed", () => _sync.SyncPegboard());
 
-        // Sync pegs when a peg is activated/popped (real-time during ball physics)
-        Peg.OnPegActivated += (_, _) => SafeSync("PegActivated", () => _sync.SyncPegboard());
-
-        // Sync pegs when a peg type changes (e.g. regular → bomb from relic)
-        Peg.OnPegTypeConverted += (_, _, _) => SafeSync("PegTypeConverted", () => _sync.SyncPegboard());
-
         // Sync pegboard when bomb detonates (destroys nearby pegs)
         BattleController.OnBombDetonated += () => SafeSync("BombDetonated", () => _sync.SyncPegboard());
 
