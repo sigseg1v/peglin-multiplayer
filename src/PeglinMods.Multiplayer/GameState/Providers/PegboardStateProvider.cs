@@ -50,9 +50,18 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                 // After Reset(), _cleared stays true but colliders are re-enabled —
                 // so peg.Cleared is NOT reliable for "is this peg functionally popped."
                 bool cleared = false;
+                bool wasPreviouslyCleared = false;
                 if (!destroyed)
                 {
                     try { cleared = peg.IsDisabled(); } catch { }
+                    // _cleared flag tracks "was this peg ever cleared this battle" — controls
+                    // the previously-cleared background visual (dot/different color after refresh).
+                    try
+                    {
+                        var clearedField = HarmonyLib.AccessTools.Field(typeof(Peg), "_cleared");
+                        wasPreviouslyCleared = (bool)(clearedField?.GetValue(peg) ?? false);
+                    }
+                    catch { }
                 }
 
                 snapshot.Pegs.Add(new PegEntry
@@ -66,6 +75,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     SlimeType = (int)peg.slimeType,
                     IsDestroyed = destroyed,
                     IsCleared = cleared,
+                    WasPreviouslyCleared = wasPreviouslyCleared,
                     CoinCount = peg.NumCoins(),
                 });
 

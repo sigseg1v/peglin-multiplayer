@@ -28,8 +28,11 @@ public class PegEntry
     /// <summary>Number of gold coins on this peg (0 = no gold).</summary>
     public int CoinCount { get; set; }
 
-    /// <summary>True if the peg was cleared (popped) but will come back on refresh.</summary>
+    /// <summary>True if the peg is currently popped (collider disabled).</summary>
     public bool IsCleared { get; set; }
+
+    /// <summary>True if the peg was previously cleared (shows different background after refresh).</summary>
+    public bool WasPreviouslyCleared { get; set; }
 
     /// <summary>Hit count for bombs (0=untouched, 1=fuse lit, 2+=detonated).</summary>
     public int HitCount { get; set; }

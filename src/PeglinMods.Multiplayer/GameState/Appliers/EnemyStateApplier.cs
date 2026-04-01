@@ -158,8 +158,8 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                 $"(host={snapshot.Enemies.Count}, client_before={liveEnemies.Count}, battle={snapshot.BattleStateName})");
             _enemyId.DumpState("AfterApply");
 
-            // Sync upcoming enemy preview — pop until client matches host count
-            SyncUpcomingEnemies(snapshot.UpcomingEnemyCount);
+            // Sync upcoming enemy preview from host's actual list
+            SyncUpcomingEnemies(snapshot.UpcomingEnemyNames);
         }
         catch (Exception ex)
         {
@@ -168,41 +168,126 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
     }
 
     /// <summary>
-    /// Force-sync the upcoming enemy preview count to match the host.
-    /// Pop from EnemyInfoManager until the client's upcoming count matches.
+    /// Rebuild the upcoming enemy preview UI from host data.
+    /// Destroys all existing UI elements and recreates from host's enemy name list
+    /// using the prefab cache. This runs every sync so the client always mirrors the host.
     /// </summary>
-    private void SyncUpcomingEnemies(int hostUpcomingCount)
+    private void SyncUpcomingEnemies(System.Collections.Generic.List<string> hostNames)
     {
         try
         {
             var eim = UnityEngine.Object.FindObjectOfType<Battle.EnemyInfoManager>();
             if (eim == null) return;
 
+            var elementsField = HarmonyLib.AccessTools.Field(typeof(Battle.EnemyInfoManager), "_enemyInfoElements");
+            var elements = elementsField?.GetValue(eim) as System.Collections.Generic.Queue<Battle.EnemyInfoElement>;
+            if (elements == null) return;
+
+            int hostCount = hostNames?.Count ?? 0;
+
+            // Quick check: if counts match, skip rebuild (avoids flicker)
+            if (elements.Count == hostCount && hostCount > 0)
+                return;
+
+            // Destroy all existing UI elements
+            int oldCount = elements.Count;
+            while (elements.Count > 0)
+            {
+                var el = elements.Dequeue();
+                if (el != null) UnityEngine.Object.Destroy(el.gameObject);
+            }
+
+            // Clear the backing _upcomingSpawns list too
             var upcomingField = HarmonyLib.AccessTools.Field(typeof(Battle.EnemyInfoManager), "_upcomingSpawns");
             var upcomingList = upcomingField?.GetValue(eim) as System.Collections.IList;
-            if (upcomingList == null) return;
+            upcomingList?.Clear();
 
-            int clientCount = upcomingList.Count;
-            if (clientCount != hostUpcomingCount)
+            if (hostNames == null || hostNames.Count == 0)
             {
-                // Force match: remove extras from front until counts match
-                while (upcomingList.Count > hostUpcomingCount)
-                    upcomingList.RemoveAt(0);
-
-                // Destroy all existing UI elements and rebuild
-                var elementsField = HarmonyLib.AccessTools.Field(typeof(Battle.EnemyInfoManager), "_enemyInfoElements");
-                var elements = elementsField?.GetValue(eim) as System.Collections.Generic.Queue<Battle.EnemyInfoElement>;
-                if (elements != null)
+                // Hide the scroll when no upcoming enemies
+                try
                 {
-                    while (elements.Count > upcomingList.Count)
+                    var scrollAnim = HarmonyLib.AccessTools.Field(typeof(Battle.EnemyInfoManager), "_scrollAnim")?.GetValue(eim) as UnityEngine.Animator;
+                    scrollAnim?.SetTrigger(UnityEngine.Animator.StringToHash("RollUp"));
+                }
+                catch { }
+                if (oldCount > 0)
+                    _log.LogInfo($"[EnemyApplier] Upcoming sync: cleared {oldCount} → 0");
+                return;
+            }
+
+            // Rebuild UI from host enemy names using prefab cache
+            var prefabs = Loading.AssetLoading.Instance?.EnemyPrefabs;
+            var containerField = HarmonyLib.AccessTools.Field(typeof(Battle.EnemyInfoManager), "_enemyInfoContainer");
+            var container = containerField?.GetValue(eim) as UnityEngine.Transform;
+            var prefabField = HarmonyLib.AccessTools.Field(typeof(Battle.EnemyInfoManager), "_enemyInfoElementPrefab");
+            var elementPrefab = prefabField?.GetValue(eim) as Battle.EnemyInfoElement;
+
+            if (prefabs == null || container == null || elementPrefab == null) return;
+
+            int created = 0;
+            foreach (var name in hostNames)
+            {
+                // Find the enemy prefab by name — try exact match then substring
+                UnityEngine.GameObject prefabGo = null;
+                foreach (var kvp in prefabs)
+                {
+                    if (kvp.Value != null && kvp.Value.name == name)
                     {
-                        var el = elements.Dequeue();
-                        if (el != null) UnityEngine.Object.Destroy(el.gameObject);
+                        prefabGo = kvp.Value;
+                        break;
+                    }
+                }
+                if (prefabGo == null)
+                {
+                    // Try partial match (prefab key often differs from name)
+                    foreach (var kvp in prefabs)
+                    {
+                        if (kvp.Value != null && name.Contains(kvp.Value.name))
+                        {
+                            prefabGo = kvp.Value;
+                            break;
+                        }
                     }
                 }
 
-                _log.LogInfo($"[EnemyApplier] Upcoming sync: forced {clientCount} → {upcomingList.Count} (host={hostUpcomingCount})");
+                var enemy = prefabGo?.GetComponent<Battle.Enemies.Enemy>();
+                if (enemy == null) continue;
+
+                var uiGo = UnityEngine.Object.Instantiate(elementPrefab.gameObject, container);
+                var element = uiGo.GetComponent<Battle.EnemyInfoElement>();
+                element.SetEnemy(enemy);
+                elements.Enqueue(element);
+                created++;
             }
+
+            // Show the scroll
+            if (created > 0)
+            {
+                try
+                {
+                    var scrollAnim = HarmonyLib.AccessTools.Field(typeof(Battle.EnemyInfoManager), "_scrollAnim")?.GetValue(eim) as UnityEngine.Animator;
+                    scrollAnim?.SetTrigger(UnityEngine.Animator.StringToHash("RollDown"));
+                    var mask = HarmonyLib.AccessTools.Field(typeof(Battle.EnemyInfoManager), "_mask")?.GetValue(eim) as UnityEngine.UI.Mask;
+                    if (mask != null)
+                    {
+                        var fullHeight = (float)(HarmonyLib.AccessTools.Field(typeof(Battle.EnemyInfoManager), "_maskFullHeight")?.GetValue(eim) ?? 6.195f);
+                        var sd = mask.rectTransform.sizeDelta;
+                        sd.y = fullHeight;
+                        mask.rectTransform.sizeDelta = sd;
+                    }
+                }
+                catch { }
+            }
+
+            // Update the "+N" indicator
+            var moreField = HarmonyLib.AccessTools.Field(typeof(Battle.EnemyInfoManager), "_moreUpcomingEnemiesIndicator");
+            var moreText = moreField?.GetValue(eim) as TMPro.TMP_Text;
+            if (moreText != null)
+                moreText.gameObject.SetActive(false);
+
+            if (oldCount != created)
+                _log.LogInfo($"[EnemyApplier] Upcoming sync: rebuilt {oldCount} → {created} (host={hostNames.Count})");
         }
         catch { }
     }

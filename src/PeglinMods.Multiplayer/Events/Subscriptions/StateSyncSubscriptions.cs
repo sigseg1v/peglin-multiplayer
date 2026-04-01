@@ -52,6 +52,12 @@ public sealed class StateSyncSubscriptions
             _sync.SyncPlayer();
         });
 
+        // Sync pegboard immediately when refresh pegs activate (mid-turn board restore)
+        BattleController.OnPreRefreshActivated += () => SafeSync("PreRefresh", () =>
+        {
+            _sync.SyncPegboard();
+        });
+
         // Sync after attack resolves (health changed, enemies may have died)
         BattleController.OnAttackStarted += () => SafeSync("AttackStarted", () =>
         {

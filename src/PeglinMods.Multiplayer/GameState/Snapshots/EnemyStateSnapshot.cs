@@ -9,8 +9,8 @@ public class EnemyStateSnapshot
     public string BattleStateName { get; set; }
     public int RoundCount { get; set; }
 
-    /// <summary>Number of upcoming wave enemies remaining (from EnemyInfoManager).</summary>
-    public int UpcomingEnemyCount { get; set; }
+    /// <summary>Upcoming enemy prefab names from EnemyInfoManager (visual preview list).</summary>
+    public List<string> UpcomingEnemyNames { get; set; } = new List<string>();
 }
 
 public class EnemyEntry

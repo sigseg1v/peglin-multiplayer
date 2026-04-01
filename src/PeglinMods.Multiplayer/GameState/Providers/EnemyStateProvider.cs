@@ -114,15 +114,24 @@ public class EnemyStateProvider : IGameStateProvider<EnemyStateSnapshot>
                 }
             }
 
-            // Capture upcoming enemy count from EnemyInfoManager
+            // Capture upcoming enemy names from EnemyInfoManager._upcomingSpawns.
+            // Each Spawn has an .enemy field (Enemy prefab) — grab the GameObject name.
             var eim = UnityEngine.Object.FindObjectOfType<Battle.EnemyInfoManager>();
             if (eim != null)
             {
                 var upcomingField = AccessTools.Field(typeof(Battle.EnemyInfoManager), "_upcomingSpawns");
                 var upcomingList = upcomingField?.GetValue(eim) as System.Collections.IList;
-                snapshot.UpcomingEnemyCount = upcomingList?.Count ?? 0;
-                if (snapshot.UpcomingEnemyCount > 0)
-                    _log.LogInfo($"[EnemyProvider] Upcoming enemies: {snapshot.UpcomingEnemyCount}");
+                if (upcomingList != null && upcomingList.Count > 0)
+                {
+                    var enemyField = AccessTools.Field(upcomingList[0].GetType(), "enemy");
+                    foreach (var spawn in upcomingList)
+                    {
+                        var enemy = enemyField?.GetValue(spawn) as Battle.Enemies.Enemy;
+                        if (enemy != null)
+                            snapshot.UpcomingEnemyNames.Add(enemy.gameObject.name);
+                    }
+                    _log.LogInfo($"[EnemyProvider] Upcoming enemies: {snapshot.UpcomingEnemyNames.Count}");
+                }
             }
 
             return snapshot;

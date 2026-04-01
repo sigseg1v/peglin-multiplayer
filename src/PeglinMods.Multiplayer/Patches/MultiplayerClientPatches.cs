@@ -308,6 +308,19 @@ public static class MultiplayerClientPatches
     }
 
     /// <summary>
+    /// Block upcoming enemy preview generation on client. The host sends the
+    /// actual upcoming enemy list and the applier rebuilds the UI from it.
+    /// </summary>
+    [HarmonyPatch(typeof(Battle.EnemyInfoManager), "Initialize")]
+    [HarmonyPrefix]
+    public static bool EnemyInfoManager_Initialize_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked EnemyInfoManager.Initialize — host will send upcoming enemies");
+        return false;
+    }
+
+    /// <summary>
     /// Block special peg type shuffling on client. The pegboard layout loads
     /// with all pegs as REGULAR. The host sends the correct peg types and
     /// the applier sets them.

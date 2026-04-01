@@ -120,10 +120,17 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 bool clientPopped = false;
                 try { clientPopped = peg.IsDisabled(); } catch { }
 
-                // Handle cleared/popped pegs — host says popped, make client match
+                // Handle cleared/popped pegs — host says popped, make client match.
+                // PegActivated sets visual state (_cleared, material) but for LongPeg
+                // does NOT disable colliders. Must call RemoveIfCleared() after to
+                // actually disable the collider (works for both RegularPeg and LongPeg).
                 if (entry.IsCleared && !clientPopped)
                 {
-                    try { peg.PegActivated(playAudio: false, forcePop: true); }
+                    try
+                    {
+                        peg.PegActivated(playAudio: false, forcePop: true);
+                        peg.RemoveIfCleared();
+                    }
                     catch { }
                 }
 
@@ -140,18 +147,29 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 }
 
                 // Reactivate if host says peg is alive but client has it disabled/popped.
-                // Must clear _cleared flag before Reset() so sprite shows _regularSprite
-                // instead of _previouslyClearedSprite (Reset never clears _cleared itself).
+                // Set _cleared to match host's WasPreviouslyCleared before Reset() so the
+                // peg shows the correct background (previouslyClearedSprite / Cleared color
+                // for refreshed pegs, regularSprite / Regular color for never-cleared pegs).
                 if (!entry.IsCleared && !entry.IsDestroyed)
                 {
+                    var clearedField = HarmonyLib.AccessTools.Field(typeof(Peg), "_cleared");
+
                     if (!peg.gameObject.activeSelf || peg.pegType == Peg.PegType.DESTROYED || clientPopped)
                     {
-                        var clearedField = HarmonyLib.AccessTools.Field(typeof(Peg), "_cleared");
-                        clearedField?.SetValue(peg, false);
-
+                        clearedField?.SetValue(peg, entry.WasPreviouslyCleared);
                         peg.gameObject.SetActive(true);
                         try { peg.Reset(false); } catch { }
                         reactivated++;
+                    }
+                    else
+                    {
+                        // Peg is already active — sync the previously-cleared visual if it differs
+                        bool clientCleared = (bool)(clearedField?.GetValue(peg) ?? false);
+                        if (clientCleared != entry.WasPreviouslyCleared)
+                        {
+                            clearedField?.SetValue(peg, entry.WasPreviouslyCleared);
+                            try { peg.Reset(false); } catch { }
+                        }
                     }
                 }
 
