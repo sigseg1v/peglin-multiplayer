@@ -419,12 +419,9 @@ public static class MultiplayerClientPatches
     }
 
     /// <summary>
-    /// After Start is blocked, run the visual setup that the client needs:
-    /// - rootNode.SetActiveState(NEXT) to show node frames and connection lines
-    /// - SetUpPreviousAndNextNodes() to mark PREVIOUS/NEXT states
-    /// - IntroFade() to fade in the screen from black
-    /// Without this, the map screen stays blank/black for ~10 seconds.
-    /// HarmonyX Postfixes run even when Prefix returns false.
+    /// After Start is blocked, run minimal visual setup on the SINGLETON instance
+    /// (not __instance, which may be a duplicate about to be destroyed by Awake).
+    /// Fades in the screen and sets root nodes to NEXT state.
     /// </summary>
     [HarmonyPatch(typeof(Map.MapController), "Start")]
     [HarmonyPostfix]
@@ -434,31 +431,48 @@ public static class MultiplayerClientPatches
 
         try
         {
-            // 1. Camera follow point (needed for camera to track player)
-            var cfpField = HarmonyLib.AccessTools.Field(typeof(Map.MapController), "_cameraFollowPoint");
-            if (cfpField != null)
+            // Use the singleton — __instance may be a duplicate about to be destroyed
+            var instanceField = HarmonyLib.AccessTools.Field(typeof(Map.MapController), "instance");
+            var mc = instanceField?.GetValue(null) as Map.MapController ?? __instance;
+
+            // 1. Camera follow point
+            try
             {
-                var cfp = __instance.GetComponent<CameraFollowPoint>();
-                cfpField.SetValue(__instance, cfp);
+                var cfpField = HarmonyLib.AccessTools.Field(typeof(Map.MapController), "_cameraFollowPoint");
+                if (cfpField?.GetValue(mc) == null)
+                {
+                    var cfp = mc.GetComponent<CameraFollowPoint>();
+                    if (cfp != null) cfpField.SetValue(mc, cfp);
+                }
             }
+            catch { }
 
-            // 2. Set root node to NEXT state — shows frames, draws lines to children.
-            //    GenerateRoomType is blocked so types stay NONE (no icons yet).
-            //    Our MapApplier will set correct types from host snapshot.
-            var rootField = HarmonyLib.AccessTools.Field(typeof(Map.MapController), "rootNode");
-            var root = rootField?.GetValue(__instance) as MapNode;
-            if (root != null)
+            // 2. Set root node to NEXT state — shows frames and connection lines
+            try
             {
-                root.SetActiveState(RoomState.NEXT, recursive: true, setIcon: false);
+                var rootField = HarmonyLib.AccessTools.Field(typeof(Map.MapController), "rootNode");
+                var root = rootField?.GetValue(mc) as MapNode;
+                root?.SetActiveState(RoomState.NEXT, recursive: true, setIcon: false);
             }
+            catch { }
 
-            // 3. Set up previous/next node visual states and line drawing
-            var setupMethod = HarmonyLib.AccessTools.Method(typeof(Map.MapController), "SetUpPreviousAndNextNodes");
-            setupMethod?.Invoke(__instance, null);
-
-            // 4. Fade in screen from black curtain
-            var fadeMethod = HarmonyLib.AccessTools.Method(typeof(Map.MapController), "IntroFade");
-            fadeMethod?.Invoke(__instance, null);
+            // 3. Clear the black curtain so map is visible (direct — avoid IntroFade
+            //    which accesses _player/_previousNode that may not be initialized)
+            try
+            {
+                var curtainGo = GameObject.FindGameObjectWithTag("Curtain");
+                if (curtainGo != null)
+                {
+                    var image = curtainGo.GetComponent<UnityEngine.UI.Image>();
+                    if (image != null)
+                    {
+                        var c = image.color;
+                        c.a = 0f;
+                        image.color = c;
+                    }
+                }
+            }
+            catch { }
 
             MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] MapController visual setup complete (Start was blocked)");
         }
