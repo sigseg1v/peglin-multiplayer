@@ -344,6 +344,8 @@ public static class MultiplayerClientPatches
     /// Block map-initiated scene loading on client. The map controller's own
     /// LoadSceneFromMapData would load scenes from the client's (wrong) map data.
     /// Our NodeActivatedClientHandler handles scene transitions with the correct data.
+    /// Also clears the fade curtain — the game starts a fade-to-black before loading,
+    /// and blocking the load leaves the screen black permanently.
     /// </summary>
     [HarmonyPatch(typeof(Map.MapController), "LoadSceneFromMapData")]
     [HarmonyPrefix]
@@ -351,6 +353,18 @@ public static class MultiplayerClientPatches
     {
         if (!ShouldSuppressClientLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked LoadSceneFromMapData — host will send transitions");
+
+        // Clear fade curtain — the game started a fade-to-black before we blocked the load
+        try
+        {
+            var curtain = UnityEngine.Object.FindObjectOfType<PeglinUI.FadeCurtain>();
+            if (curtain != null)
+            {
+                curtain.FadeOut();
+            }
+        }
+        catch { }
+
         return false;
     }
 
