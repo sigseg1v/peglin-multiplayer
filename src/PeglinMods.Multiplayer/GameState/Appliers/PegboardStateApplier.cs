@@ -85,17 +85,27 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     matchedPegs.Add(peg);
                     ApplyPegState(peg, entry, ref typeChanged, ref destroyed, ref reactivated);
 
-                    // Skip position snap for moving pegs — they run their own deterministic
-                    // movement code (LinearPegMovement, PegMoveAndReturn, RotatingPegCircle,
-                    // etc.) on both host and client. Snapping fights with the movement and
-                    // causes jittering. Static pegs get snapped to host position.
-                    if (!HasMovementComponent(peg))
+                    // Position sync: soft lerp for moving pegs (prevents jitter while
+                    // correcting drift), hard snap for static pegs (immediate convergence).
+                    var finalPeg = !string.IsNullOrEmpty(entry.Guid) ? _pegId.Find(entry.Guid) : peg;
+                    if (finalPeg == null) finalPeg = peg;
+                    var hostPos = new Vector3(entry.PosX, entry.PosY, finalPeg.transform.position.z);
+
+                    if (HasMovementComponent(finalPeg))
                     {
-                        var finalPeg = !string.IsNullOrEmpty(entry.Guid) ? _pegId.Find(entry.Guid) : peg;
-                        if (finalPeg == null) finalPeg = peg;
-                        finalPeg.transform.position = new Vector3(entry.PosX, entry.PosY, finalPeg.transform.position.z);
+                        // Soft lerp: gently correct drift without fighting movement code.
+                        // Moving pegs calculate their own position each frame — a hard snap
+                        // gets immediately overwritten, causing jitter. Lerp applies a small
+                        // correction that the movement code absorbs smoothly.
+                        finalPeg.transform.position = Vector3.Lerp(
+                            finalPeg.transform.position, hostPos, 0.15f);
+                    }
+                    else
+                    {
+                        // Static pegs: hard snap to host position
+                        finalPeg.transform.position = hostPos;
                         if (finalPeg != peg && peg != null)
-                            peg.transform.position = new Vector3(entry.PosX, entry.PosY, peg.transform.position.z);
+                            peg.transform.position = hostPos;
                     }
                 }
                 else
