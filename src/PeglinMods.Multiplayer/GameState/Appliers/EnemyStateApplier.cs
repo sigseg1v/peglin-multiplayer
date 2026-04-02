@@ -175,6 +175,8 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
     /// Destroys all existing UI elements and recreates from host's enemy name list
     /// using the prefab cache. This runs every sync so the client always mirrors the host.
     /// </summary>
+    private List<string> _lastSyncedUpcoming;
+
     private void SyncUpcomingEnemies(System.Collections.Generic.List<string> hostNames)
     {
         try
@@ -188,8 +190,10 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
 
             int hostCount = hostNames?.Count ?? 0;
 
-            // Quick check: if counts match, skip rebuild (avoids flicker)
-            if (elements.Count == hostCount && hostCount > 0)
+            // Skip rebuild if the list hasn't changed (avoids flicker from constant destroy+recreate)
+            if (_lastSyncedUpcoming != null && hostNames != null &&
+                _lastSyncedUpcoming.Count == hostNames.Count &&
+                _lastSyncedUpcoming.SequenceEqual(hostNames))
                 return;
 
             // Destroy all existing UI elements
@@ -289,10 +293,13 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             if (moreText != null)
                 moreText.gameObject.SetActive(false);
 
-            if (oldCount != created)
-                _log.LogInfo($"[EnemyApplier] Upcoming sync: rebuilt {oldCount} → {created} (host={hostNames.Count})");
+            _lastSyncedUpcoming = hostNames != null ? new List<string>(hostNames) : null;
+            _log.LogInfo($"[EnemyApplier] Upcoming sync: rebuilt {oldCount} → {created} (host={hostNames.Count}, names={string.Join(",", hostNames)})");
         }
-        catch { }
+        catch (System.Exception ex)
+        {
+            _log.LogWarning($"[EnemyApplier] SyncUpcomingEnemies failed: {ex.Message}");
+        }
     }
 
     /// <summary>
