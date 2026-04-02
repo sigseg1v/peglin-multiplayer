@@ -190,10 +190,11 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
 
             int hostCount = hostNames?.Count ?? 0;
 
-            // Skip rebuild if the list hasn't changed (avoids flicker from constant destroy+recreate)
+            // Skip rebuild only if names are identical (avoid flicker on unchanged lists)
             if (_lastSyncedUpcoming != null && hostNames != null &&
                 _lastSyncedUpcoming.Count == hostNames.Count &&
-                _lastSyncedUpcoming.SequenceEqual(hostNames))
+                _lastSyncedUpcoming.SequenceEqual(hostNames) &&
+                elements.Count == hostCount)
                 return;
 
             // Destroy all existing UI elements
