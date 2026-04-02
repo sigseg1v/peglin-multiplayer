@@ -62,7 +62,8 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
             // Set the battle data directly — this is what BattleController.Awake reads
             StaticGameData.dataToLoad = match;
 
-            // Load Battle scene — set flag so our PeglinSceneLoader patch allows it
+            // Load Battle scene — set flags so our patches allow it and ignore stale map syncs
+            GameState.Appliers.MapStateApplier.AwaitingHostBattleConfirmation = true;
             var sceneLoader = PeglinSceneLoader.Instance;
             if (sceneLoader != null)
             {

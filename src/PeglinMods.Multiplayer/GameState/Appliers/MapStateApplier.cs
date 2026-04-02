@@ -58,9 +58,12 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
     private static string _lastRequestedScene;
     private static float _lastRequestTime;
 
-    // Track when Battle was loaded to ignore stale map syncs during the race window
-    private static float _battleLoadedTime;
-    private const float BATTLE_GRACE_PERIOD = 5f;
+    /// <summary>
+    /// Set when the client loads Battle (via NodeActivated or MapApplier).
+    /// While true, stale map syncs (host still on ForestMap) are ignored.
+    /// Cleared when the host confirms it's on Battle (hostScene=Battle).
+    /// </summary>
+    public static bool AwaitingHostBattleConfirmation { get; set; }
 
     public MapStateApplier(ManualLogSource log) => _log = log;
 
@@ -168,9 +171,12 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             {
                 _log.LogInfo($"[MapApplier] Already on scene '{currentScene}', static data updated.");
 
-                // Track when we first see ourselves on Battle
-                if (currentScene == "Battle" && _battleLoadedTime == 0f)
-                    _battleLoadedTime = Time.time;
+                // Host confirmed it's on Battle — clear the awaiting flag
+                if (currentScene == "Battle" && AwaitingHostBattleConfirmation)
+                {
+                    AwaitingHostBattleConfirmation = false;
+                    _log.LogInfo("[MapApplier] Host confirmed Battle — cleared AwaitingHostBattleConfirmation");
+                }
 
                 // Apply host's map node types to client
                 if (MapScenes.Contains(currentScene) && snapshot.Nodes != null && snapshot.Nodes.Count > 0)
@@ -180,29 +186,21 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 return;
             }
 
-            // Grace period: after loading Battle, ignore map syncs for a few seconds.
-            // A stale heartbeat from the host (still on map, hasn't loaded Battle yet)
-            // arrives after NodeActivated already loaded Battle on client. After the
-            // grace period, allow Battle→Map transitions (battle ended legitimately).
-            if (currentScene == "Battle" && MapScenes.Contains(targetScene))
+            // While awaiting host Battle confirmation, ignore stale map syncs.
+            // The client loaded Battle (via NodeActivated), but the host hasn't loaded
+            // it yet — heartbeats still say ForestMap. Once the host confirms Battle
+            // (hostScene=Battle), the flag clears and normal sync resumes.
+            if (currentScene == "Battle" && MapScenes.Contains(targetScene) && AwaitingHostBattleConfirmation)
             {
-                // If _battleLoadedTime was never set (Battle loaded via NodeActivated,
-                // not via MapApplier), set it now — this is our first time seeing Battle.
-                if (_battleLoadedTime == 0f)
-                    _battleLoadedTime = Time.time;
-
-                if (Time.time - _battleLoadedTime < BATTLE_GRACE_PERIOD)
-                {
-                    _log.LogInfo($"[MapApplier] Ignoring map sync '{targetScene}' during Battle grace period ({Time.time - _battleLoadedTime:F1}s < {BATTLE_GRACE_PERIOD}s)");
-                    return;
-                }
+                _log.LogInfo($"[MapApplier] Ignoring stale map sync '{targetScene}' — awaiting host Battle confirmation");
+                return;
             }
 
-            // Track Battle load time for grace period; reset when leaving Battle
+            // Set flag when loading Battle so stale map syncs are ignored
             if (targetScene == "Battle")
-                _battleLoadedTime = Time.time;
+                AwaitingHostBattleConfirmation = true;
             else
-                _battleLoadedTime = 0f;
+                AwaitingHostBattleConfirmation = false;
 
             _log.LogInfo($"[MapApplier] Scene change: '{currentScene}' -> '{targetScene}', loading...");
             LoadTargetScene(targetScene);
