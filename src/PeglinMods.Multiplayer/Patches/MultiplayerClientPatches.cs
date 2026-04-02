@@ -489,19 +489,9 @@ public static class MultiplayerClientPatches
         return false;
     }
 
-    /// <summary>
-    /// Block the reload plunger animation on client. The game triggers this when
-    /// the deck empties (through multiple paths: StartReloading, ShuffleBattleDeck,
-    /// BattleController state machine). The host will send the reshuffled deck.
-    /// Blocking the animation directly is the most reliable way to stop the spam.
-    /// </summary>
-    [HarmonyPatch(typeof(DeckInfoManager), "StartShuffleAnimation")]
-    [HarmonyPrefix]
-    public static bool DeckInfoManager_StartShuffleAnimation_Prefix()
-    {
-        if (!ShouldSuppressClientLogic) return true;
-        return false;
-    }
+    // NOTE: Do NOT block DeckInfoManager.StartShuffleAnimation — it populates
+    // _displayOrbs which is needed for DrawNextOrb to show upcoming orbs.
+    // The reload animation at end of deck is part of the normal visual flow.
 
     /// <summary>Block board field reset on client — prevents re-shuffling pegs.</summary>
     [HarmonyPatch(typeof(BattleController), "ResetField")]
