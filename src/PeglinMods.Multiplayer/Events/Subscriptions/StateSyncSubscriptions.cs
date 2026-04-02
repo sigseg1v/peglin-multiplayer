@@ -116,47 +116,12 @@ public sealed class StateSyncSubscriptions
                 SafeSync("SceneLoaded:" + scene.name, () => _sync.SyncAll("SceneLoaded:" + scene.name));
         };
 
-        // Start shot-active fast sync when ball is fired, stop when shot completes
-        PachinkoBall.OnShotFired += (_) =>
-        {
-            _shotActive = true;
-        };
-        BattleController.OnShotComplete += () =>
-        {
-            _shotActive = false;
-        };
-        BattleController.OnBattleEnded += () =>
-        {
-            _shotActive = false;
-        };
+        // Heartbeat is now self-contained in MainThreadDispatcher.RunHeartbeat()
+        // It resolves IMultiplayerMode and IGameStateSyncService each tick,
+        // so it works regardless of initialization order.
 
-        // Periodic heartbeat via Update timer (not coroutine — survives scene loads)
-        // Use static Instance directly — DI TryResolve can fail if Subscribe runs before registration
-        var dispatcher = MainThreadDispatcher.Instance;
-        if (dispatcher != null)
-        {
-            dispatcher.SetHeartbeat(
-                () =>
-                {
-                    if (!_mode.IsHosting) return;
-                    _heartbeatCount++;
-                    var tag = _shotActive ? $"HEARTBEAT#{_heartbeatCount}(shot)" : $"HEARTBEAT#{_heartbeatCount}";
-                    _sync.SyncAll(tag);
-                },
-                () => _shotActive ? 1f : 2f
-            );
-            _log.LogInfo("StateSyncSubscriptions: heartbeat timer registered (1s in-shot / 2s idle)");
-        }
-        else
-        {
-            _log.LogWarning("StateSyncSubscriptions: NO MainThreadDispatcher — heartbeat NOT started!");
-        }
-
-        _log.LogInfo("StateSyncSubscriptions registered (with real-time peg/deck sync + adaptive heartbeat)");
+        _log.LogInfo("StateSyncSubscriptions registered (event-driven sync + self-contained heartbeat in MainThreadDispatcher)");
     }
-
-    private int _heartbeatCount;
-    private bool _shotActive;
 
     private void SafeSync(string trigger, Action action)
     {
