@@ -84,14 +84,19 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 {
                     matchedPegs.Add(peg);
                     ApplyPegState(peg, entry, ref typeChanged, ref destroyed, ref reactivated);
-                    // Snap to exact host position AFTER ApplyPegState — ConvertPegToType
-                    // may create a new GameObject (e.g., bomb), so re-lookup by GUID
-                    var finalPeg = !string.IsNullOrEmpty(entry.Guid) ? _pegId.Find(entry.Guid) : peg;
-                    if (finalPeg == null) finalPeg = peg;
-                    finalPeg.transform.position = new Vector3(entry.PosX, entry.PosY, finalPeg.transform.position.z);
-                    // Also snap the original peg if it differs (bomb conversion creates child)
-                    if (finalPeg != peg && peg != null)
-                        peg.transform.position = new Vector3(entry.PosX, entry.PosY, peg.transform.position.z);
+
+                    // Skip position snap for moving pegs — they run their own deterministic
+                    // movement code (LinearPegMovement, PegMoveAndReturn, RotatingPegCircle,
+                    // etc.) on both host and client. Snapping fights with the movement and
+                    // causes jittering. Static pegs get snapped to host position.
+                    if (!HasMovementComponent(peg))
+                    {
+                        var finalPeg = !string.IsNullOrEmpty(entry.Guid) ? _pegId.Find(entry.Guid) : peg;
+                        if (finalPeg == null) finalPeg = peg;
+                        finalPeg.transform.position = new Vector3(entry.PosX, entry.PosY, finalPeg.transform.position.z);
+                        if (finalPeg != peg && peg != null)
+                            peg.transform.position = new Vector3(entry.PosX, entry.PosY, peg.transform.position.z);
+                    }
                 }
                 else
                 {
@@ -407,6 +412,25 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 catch { }
             }
         }
+    }
+
+    /// <summary>
+    /// Check if a peg has a movement component (linear, oscillating, rotating, etc.).
+    /// Moving pegs run deterministic movement code on both host and client —
+    /// snapping their position every sync causes jittering.
+    /// </summary>
+    private static bool HasMovementComponent(Peg peg)
+    {
+        if (peg == null) return false;
+        // Check the peg itself and parent (RotatingPegCircle is on the parent)
+        var go = peg.gameObject;
+        var parent = go.transform.parent?.gameObject;
+
+        return go.GetComponent<Battle.PegBehaviour.LinearPegMovement>() != null
+            || go.GetComponent<Battle.PegBehaviour.PegMoveAndReturn>() != null
+            || go.GetComponent<Battle.PegBehaviour.PegSquareMovement>() != null
+            || go.GetComponent<Battle.PegBehaviour.PegSplineFollow>() != null
+            || go.GetComponentInParent<Battle.PegBehaviour.RotatingPegCircle>() != null;
     }
 
     /// <summary>
