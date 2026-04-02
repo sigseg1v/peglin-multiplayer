@@ -40,10 +40,22 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
                 PegLayoutName = (StaticGameData.dataToLoad as Data.MapDataBattle)?.pegLayout?.name,
             };
 
-            // Capture map nodes when on a map scene
+            // Capture map nodes and MapController's internal floor count
             if (MapScenes.Contains(currentScene))
             {
                 snapshot.Nodes = CaptureMapNodes();
+
+                try
+                {
+                    var mc = UnityEngine.Object.FindObjectOfType<Map.MapController>();
+                    if (mc != null)
+                    {
+                        var floorField = AccessTools.Field(typeof(Map.MapController), "floorCount");
+                        if (floorField != null)
+                            snapshot.MapFloorCount = (int)floorField.GetValue(mc);
+                    }
+                }
+                catch { }
             }
 
             return snapshot;

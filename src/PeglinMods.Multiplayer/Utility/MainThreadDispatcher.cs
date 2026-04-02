@@ -15,24 +15,11 @@ public class MainThreadDispatcher : MonoBehaviour
     // --- Heartbeat: self-contained timer that resolves services each tick ---
     private float _heartbeatTimer;
     private int _heartbeatCount;
-    private bool _shotActive;
 
     private void Awake()
     {
         Instance = this;
         MultiplayerPlugin.Logger?.LogInfo("[MainThreadDispatcher] Awake — Instance set, heartbeat will auto-start");
-
-        // Subscribe to shot events for adaptive interval
-        try
-        {
-            PachinkoBall.OnShotFired += (_) => _shotActive = true;
-            Battle.BattleController.OnShotComplete += () => _shotActive = false;
-            Battle.BattleController.OnBattleEnded += () => _shotActive = false;
-        }
-        catch (Exception ex)
-        {
-            MultiplayerPlugin.Logger?.LogWarning($"[MainThreadDispatcher] Shot event subscription failed: {ex.Message}");
-        }
     }
 
     public void Enqueue(Action action)
@@ -53,7 +40,12 @@ public class MainThreadDispatcher : MonoBehaviour
 
     private void RunHeartbeat()
     {
-        float interval = _shotActive ? 1f : 2f;
+        // Check battle state directly — delegate subscriptions get lost when the
+        // game reassigns its static delegate fields (they're not C# events).
+        bool shotActive = Battle.BattleController.CurrentBattleState ==
+            Battle.BattleController.BattleState.AWAITING_SHOT_COMPLETION;
+
+        float interval = shotActive ? 1f : 2f;
         _heartbeatTimer += Time.unscaledDeltaTime;
         if (_heartbeatTimer < interval) return;
         _heartbeatTimer = 0f;
@@ -68,7 +60,7 @@ public class MainThreadDispatcher : MonoBehaviour
             if (!services.TryResolve<IGameStateSyncService>(out var sync)) return;
 
             _heartbeatCount++;
-            var tag = _shotActive ? $"HEARTBEAT#{_heartbeatCount}(shot)" : $"HEARTBEAT#{_heartbeatCount}";
+            var tag = shotActive ? $"HEARTBEAT#{_heartbeatCount}(shot)" : $"HEARTBEAT#{_heartbeatCount}";
             sync.SyncAll(tag);
         }
         catch (Exception ex)

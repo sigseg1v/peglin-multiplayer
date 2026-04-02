@@ -13,6 +13,9 @@ public class MapStateSnapshot
     public int ChosenNextNodeIndex { get; set; }
     public bool HasReachedBoss { get; set; }
 
+    /// <summary>MapController's internal floor count — drives which node row is active.</summary>
+    public int MapFloorCount { get; set; }
+
     /// <summary>Name of the MapDataBattle asset the host loaded (e.g. "SlimeEncounter2").</summary>
     public string BattleDataName { get; set; }
     /// <summary>Name of the PegLayout asset (e.g. "Waves").</summary>

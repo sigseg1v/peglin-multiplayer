@@ -71,6 +71,29 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             // Apply static game data fields so the game's systems see the host's run state
             ApplyStaticGameData(snapshot);
 
+            // Sync MapController's internal floor count — drives which node row is active
+            if (snapshot.MapFloorCount > 0)
+            {
+                try
+                {
+                    var mc = UnityEngine.Object.FindObjectOfType<MapController>();
+                    if (mc != null)
+                    {
+                        var floorField = AccessTools.Field(typeof(MapController), "floorCount");
+                        if (floorField != null)
+                        {
+                            int clientFloor = (int)floorField.GetValue(mc);
+                            if (clientFloor != snapshot.MapFloorCount)
+                            {
+                                floorField.SetValue(mc, snapshot.MapFloorCount);
+                                _log.LogInfo($"[MapApplier] Set MapController.floorCount: {clientFloor} → {snapshot.MapFloorCount}");
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
+
             // Store the host's pre-map-generation RNG state for later restoration
             if (!string.IsNullOrEmpty(snapshot.RandomStateJson))
                 MultiplayerClientPatches.PendingRngStateToRestore = snapshot.RandomStateJson;
