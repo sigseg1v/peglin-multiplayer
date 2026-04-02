@@ -18,7 +18,15 @@ public class MainThreadDispatcher : MonoBehaviour
 
     private void Awake()
     {
+        // Singleton guard: destroy duplicate instances from previous sessions
+        // (DontDestroyOnLoad + HideAndDontSave can leave old instances alive)
+        if (Instance != null && Instance != this)
+        {
+            MultiplayerPlugin.Logger?.LogWarning("[MainThreadDispatcher] Duplicate detected — destroying old instance");
+            Destroy(Instance.gameObject);
+        }
         Instance = this;
+        _heartbeatCount = 0;
         MultiplayerPlugin.Logger?.LogInfo("[MainThreadDispatcher] Awake — Instance set, heartbeat will auto-start");
     }
 
