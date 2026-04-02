@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Battle.Attacks;
 using BepInEx.Logging;
+using Cruciball;
 using HarmonyLib;
 using PeglinMods.Multiplayer.GameState.Snapshots;
 using Relics;
@@ -102,6 +104,13 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
             // but relics added before the battle scene loads won't have icons.
             // Find the RelicUI and ensure all owned relics have icons.
             RefreshRelicUI(owned);
+
+            // Re-initialize all orb Attack components with the updated RelicManager
+            // so damage displays reflect relic modifiers (e.g., "Suffer the Sling" +1/+2).
+            // Without SoftInit, Attack._relicManager is null and CalculateStaticDamageBuffs
+            // skips all relic checks → orbs show base damage instead of modified damage.
+            if (added > 0 || toRemove.Count > 0)
+                ReinitOrbDamageDisplays(rm);
         }
         catch (Exception ex)
         {
@@ -141,6 +150,63 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
         catch (Exception ex)
         {
             _log.LogWarning($"[RelicApplier] RefreshRelicUI failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Call SoftInit on all Attack components in the scene and deck so their
+    /// damage displays reflect the current relic modifiers. Without this,
+    /// Attack._relicManager stays null and CalculateStaticDamageBuffs returns
+    /// base damage (e.g., Pebbal shows 2/4 instead of 3/6 with Suffer the Sling).
+    /// </summary>
+    private void ReinitOrbDamageDisplays(RelicManager rm)
+    {
+        try
+        {
+            var dm = Resources.FindObjectsOfTypeAll<DeckManager>();
+            var deckManager = dm.Length > 0 ? dm[0] : null;
+
+            var cms = Resources.FindObjectsOfTypeAll<CruciballManager>();
+            var cruciballManager = cms.Length > 0 ? cms[0] : null;
+
+            // Re-init all Attack components in the scene (active orbs, UI displays)
+            var attacks = UnityEngine.Object.FindObjectsOfType<Attack>(true);
+            int count = 0;
+            foreach (var atk in attacks)
+            {
+                try
+                {
+                    atk.SoftInit(deckManager, rm, cruciballManager);
+                    count++;
+                }
+                catch { }
+            }
+
+            // Also re-init orbs in the complete deck (they're GameObjects,
+            // some may not be in the scene so FindObjectsOfType misses them)
+            if (DeckManager.completeDeck != null)
+            {
+                foreach (var orbGo in DeckManager.completeDeck)
+                {
+                    if (orbGo == null) continue;
+                    var atk = orbGo.GetComponent<Attack>();
+                    if (atk != null)
+                    {
+                        try
+                        {
+                            atk.SoftInit(deckManager, rm, cruciballManager);
+                            count++;
+                        }
+                        catch { }
+                    }
+                }
+            }
+
+            _log.LogInfo($"[RelicApplier] Re-initialized {count} Attack components with relic modifiers");
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[RelicApplier] ReinitOrbDamageDisplays failed: {ex.Message}");
         }
     }
 }
