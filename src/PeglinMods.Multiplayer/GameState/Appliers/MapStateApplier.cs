@@ -86,6 +86,35 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 return;
             }
 
+            // Event/interaction scenes — host is making choices, client waits
+            if (snapshot.ActiveScene == "Treasure")
+            {
+                ClientWaitingMessage = "Host is completing event...";
+                _log.LogInfo("[MapApplier] Host is on Treasure — showing waiting message");
+                return;
+            }
+
+            if (snapshot.ActiveScene == "TextScenario")
+            {
+                ClientWaitingMessage = "Host is completing event...";
+                _log.LogInfo("[MapApplier] Host is on TextScenario — showing waiting message");
+                return;
+            }
+
+            if (snapshot.ActiveScene == "ShopScenario")
+            {
+                ClientWaitingMessage = "Host is shopping...";
+                _log.LogInfo("[MapApplier] Host is on ShopScenario — showing waiting message");
+                return;
+            }
+
+            if (snapshot.ActiveScene == "PegMinigame")
+            {
+                ClientWaitingMessage = "Host is completing event...";
+                _log.LogInfo("[MapApplier] Host is on PegMinigame — showing waiting message");
+                return;
+            }
+
             // Clear waiting state — we're loading a real game scene
             ClientWaitingMessage = null;
 
