@@ -131,7 +131,8 @@ public sealed class StateSyncSubscriptions
         };
 
         // Periodic heartbeat via Update timer (not coroutine — survives scene loads)
-        var dispatcher = MultiplayerPlugin.Services?.TryResolve<MainThreadDispatcher>(out var d) == true ? d : null;
+        // Use static Instance directly — DI TryResolve can fail if Subscribe runs before registration
+        var dispatcher = MainThreadDispatcher.Instance;
         if (dispatcher != null)
         {
             dispatcher.SetHeartbeat(

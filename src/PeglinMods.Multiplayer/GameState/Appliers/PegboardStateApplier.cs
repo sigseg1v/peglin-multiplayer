@@ -87,8 +87,11 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     // Snap to exact host position AFTER ApplyPegState — ConvertPegToType
                     // may create a new GameObject (e.g., bomb), so re-lookup by GUID
                     var finalPeg = !string.IsNullOrEmpty(entry.Guid) ? _pegId.Find(entry.Guid) : peg;
-                    if (finalPeg != null)
-                        finalPeg.transform.position = new Vector3(entry.PosX, entry.PosY, finalPeg.transform.position.z);
+                    if (finalPeg == null) finalPeg = peg;
+                    finalPeg.transform.position = new Vector3(entry.PosX, entry.PosY, finalPeg.transform.position.z);
+                    // Also snap the original peg if it differs (bomb conversion creates child)
+                    if (finalPeg != peg && peg != null)
+                        peg.transform.position = new Vector3(entry.PosX, entry.PosY, peg.transform.position.z);
                 }
                 else
                 {

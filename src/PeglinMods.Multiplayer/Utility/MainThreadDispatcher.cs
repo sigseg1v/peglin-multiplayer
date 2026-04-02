@@ -6,7 +6,14 @@ namespace PeglinMods.Multiplayer.Utility;
 
 public class MainThreadDispatcher : MonoBehaviour
 {
+    public static MainThreadDispatcher Instance { get; private set; }
+
     private readonly ConcurrentQueue<Action> _queue = new ConcurrentQueue<Action>();
+
+    private void Awake()
+    {
+        Instance = this;
+    }
 
     // --- Heartbeat timer (more robust than coroutine — survives scene loads) ---
     private Action _heartbeatAction;
