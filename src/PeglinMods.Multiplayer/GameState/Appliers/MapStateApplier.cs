@@ -133,12 +133,12 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 return;
             }
 
-            // If client is on a map and host goes to Battle, NodeActivatedClientHandler handles it.
-            // For non-battle scenes (Treasure, PegMinigame, TextScenario, ShopScenario),
-            // NodeActivatedClientHandler can't handle them (no BattleName), so load directly.
-            if (MapScenes.Contains(currentScene) && targetScene == "Battle")
+            // Don't go BACK from Battle to a Map scene — the host is just slightly
+            // behind (hasn't loaded Battle yet). A stale heartbeat from the host's
+            // map scene arrives after NodeActivated already loaded Battle on client.
+            if (currentScene == "Battle" && MapScenes.Contains(targetScene))
             {
-                _log.LogInfo($"[MapApplier] On map '{currentScene}', NodeActivated will handle transition to Battle");
+                _log.LogInfo($"[MapApplier] Ignoring stale map sync '{targetScene}' — client already on Battle, host will catch up");
                 return;
             }
 
