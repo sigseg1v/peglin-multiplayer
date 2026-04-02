@@ -38,15 +38,23 @@ public sealed class BallSubscriptions
     {
         if (!IsHosting) return;
 
-        // Get the current orb name and spawn position
+        // Get the current orb name from the active PachinkoBall (not the deck —
+        // the current orb was already popped from shuffledDeck during DrawBall,
+        // so Peek() would return the NEXT orb, not the fired one).
         string orbName = null;
         float spawnX = 0, spawnY = 0;
         try
         {
-            var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
-            var dm = dms.Length > 0 ? dms[0] : null;
-            if (dm?.shuffledDeck != null && dm.shuffledDeck.Count > 0)
-                orbName = dm.shuffledDeck.Peek()?.name;
+            // Find the ball that was just fired
+            var balls = Object.FindObjectsOfType<PachinkoBall>();
+            foreach (var ball in balls)
+            {
+                if (ball != null && !ball.IsDummy)
+                {
+                    orbName = ball.gameObject.name;
+                    break;
+                }
+            }
 
             var bc = Object.FindObjectOfType<Battle.BattleController>();
             if (bc != null)
