@@ -58,6 +58,10 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
     private static string _lastRequestedScene;
     private static float _lastRequestTime;
 
+    // Track when Battle was loaded to ignore stale map syncs during the race window
+    private static float _battleLoadedTime;
+    private const float BATTLE_GRACE_PERIOD = 5f;
+
     public MapStateApplier(ManualLogSource log) => _log = log;
 
     public void Apply(MapStateSnapshot snapshot)
@@ -125,6 +129,10 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             {
                 _log.LogInfo($"[MapApplier] Already on scene '{currentScene}', static data updated.");
 
+                // Track when we first see ourselves on Battle
+                if (currentScene == "Battle" && _battleLoadedTime == 0f)
+                    _battleLoadedTime = Time.time;
+
                 // Apply host's map node types to client
                 if (MapScenes.Contains(currentScene) && snapshot.Nodes != null && snapshot.Nodes.Count > 0)
                 {
@@ -133,14 +141,24 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 return;
             }
 
-            // Don't go BACK from Battle to a Map scene — the host is just slightly
-            // behind (hasn't loaded Battle yet). A stale heartbeat from the host's
-            // map scene arrives after NodeActivated already loaded Battle on client.
+            // Grace period: after loading Battle, ignore map syncs for a few seconds.
+            // A stale heartbeat from the host (still on map, hasn't loaded Battle yet)
+            // arrives after NodeActivated already loaded Battle on client. After the
+            // grace period, allow Battle→Map transitions (battle ended legitimately).
             if (currentScene == "Battle" && MapScenes.Contains(targetScene))
             {
-                _log.LogInfo($"[MapApplier] Ignoring stale map sync '{targetScene}' — client already on Battle, host will catch up");
-                return;
+                if (Time.time - _battleLoadedTime < BATTLE_GRACE_PERIOD)
+                {
+                    _log.LogInfo($"[MapApplier] Ignoring map sync '{targetScene}' during Battle grace period ({Time.time - _battleLoadedTime:F1}s < {BATTLE_GRACE_PERIOD}s)");
+                    return;
+                }
             }
+
+            // Track Battle load time for grace period; reset when leaving Battle
+            if (targetScene == "Battle")
+                _battleLoadedTime = Time.time;
+            else
+                _battleLoadedTime = 0f;
 
             _log.LogInfo($"[MapApplier] Scene change: '{currentScene}' -> '{targetScene}', loading...");
             LoadTargetScene(targetScene);
