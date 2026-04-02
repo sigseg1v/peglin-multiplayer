@@ -83,9 +83,12 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 if (peg != null)
                 {
                     matchedPegs.Add(peg);
-                    // Always snap to exact host position (client RNG diverges on random layouts)
-                    peg.transform.position = new Vector3(entry.PosX, entry.PosY, peg.transform.position.z);
                     ApplyPegState(peg, entry, ref typeChanged, ref destroyed, ref reactivated);
+                    // Snap to exact host position AFTER ApplyPegState — ConvertPegToType
+                    // may create a new GameObject (e.g., bomb), so re-lookup by GUID
+                    var finalPeg = !string.IsNullOrEmpty(entry.Guid) ? _pegId.Find(entry.Guid) : peg;
+                    if (finalPeg != null)
+                        finalPeg.transform.position = new Vector3(entry.PosX, entry.PosY, finalPeg.transform.position.z);
                 }
                 else
                 {
@@ -114,24 +117,43 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     }
                 }
 
+                // Find a template peg for cloning if we run out of available pegs
+                Peg templatePeg = null;
+                if (clientPegs.Count > 0)
+                    templatePeg = clientPegs[0];
+
                 foreach (var entry in unmatchedEntries)
                 {
-                    if (availablePegs.Count == 0)
+                    Peg peg;
+                    if (availablePegs.Count > 0)
+                    {
+                        peg = availablePegs[availablePegs.Count - 1];
+                        availablePegs.RemoveAt(availablePegs.Count - 1);
+                        repositioned++;
+                    }
+                    else if (templatePeg != null)
+                    {
+                        // Host has more pegs than client — clone one to fill the gap
+                        var clone = UnityEngine.Object.Instantiate(templatePeg, templatePeg.transform.parent);
+                        clone.gameObject.SetActive(true);
+                        peg = clone;
+                        // Add to PegManager so future syncs find it
+                        try { pm.AddPeg(peg); } catch { clientPegs.Add(peg); }
+                        repositioned++;
+                    }
+                    else
                     {
                         missed++;
                         continue;
                     }
 
-                    // Take the last peg from the available pool (O(1) removal)
-                    var peg = availablePegs[availablePegs.Count - 1];
-                    availablePegs.RemoveAt(availablePegs.Count - 1);
-
-                    // Reposition to host position
                     peg.transform.position = new Vector3(entry.PosX, entry.PosY, peg.transform.position.z);
-
                     matchedPegs.Add(peg);
-                    repositioned++;
                     ApplyPegState(peg, entry, ref typeChanged, ref destroyed, ref reactivated);
+                    // Re-snap after type conversion (ConvertPegToType may create new GO)
+                    var finalPeg = !string.IsNullOrEmpty(entry.Guid) ? _pegId.Find(entry.Guid) : peg;
+                    if (finalPeg != null)
+                        finalPeg.transform.position = new Vector3(entry.PosX, entry.PosY, finalPeg.transform.position.z);
                 }
             }
 

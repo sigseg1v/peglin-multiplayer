@@ -1,5 +1,5 @@
 using System;
-using System.Collections;
+
 using Battle;
 using BepInEx.Logging;
 using PeglinMods.Multiplayer.GameState;
@@ -130,12 +130,21 @@ public sealed class StateSyncSubscriptions
             _shotActive = false;
         };
 
-        // Periodic heartbeat: 1s during active shot, 2s otherwise
+        // Periodic heartbeat via Update timer (not coroutine — survives scene loads)
         var dispatcher = MultiplayerPlugin.Services?.TryResolve<MainThreadDispatcher>(out var d) == true ? d : null;
         if (dispatcher != null)
         {
-            dispatcher.StartCoroutine(HostHeartbeat());
-            _log.LogInfo("StateSyncSubscriptions: heartbeat coroutine started (1s in-shot / 2s idle)");
+            dispatcher.SetHeartbeat(
+                () =>
+                {
+                    if (!_mode.IsHosting) return;
+                    _heartbeatCount++;
+                    var tag = _shotActive ? $"HEARTBEAT#{_heartbeatCount}(shot)" : $"HEARTBEAT#{_heartbeatCount}";
+                    _sync.SyncAll(tag);
+                },
+                () => _shotActive ? 1f : 2f
+            );
+            _log.LogInfo("StateSyncSubscriptions: heartbeat timer registered (1s in-shot / 2s idle)");
         }
         else
         {
@@ -147,26 +156,6 @@ public sealed class StateSyncSubscriptions
 
     private int _heartbeatCount;
     private bool _shotActive;
-
-    private IEnumerator HostHeartbeat()
-    {
-        while (true)
-        {
-            yield return new WaitForSeconds(_shotActive ? 1f : 2f);
-            if (!_mode.IsHosting) continue;
-
-            _heartbeatCount++;
-            var tag = _shotActive ? $"HEARTBEAT#{_heartbeatCount}(shot)" : $"HEARTBEAT#{_heartbeatCount}";
-            try
-            {
-                _sync.SyncAll(tag);
-            }
-            catch (Exception ex)
-            {
-                _log.LogWarning($"[{tag}] SyncAll failed: {ex.Message}");
-            }
-        }
-    }
 
     private void SafeSync(string trigger, Action action)
     {
