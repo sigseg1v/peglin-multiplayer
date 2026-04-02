@@ -107,6 +107,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                         {
                             created++;
                             _enemyId.Register(spawned, entry.Id);
+                            SyncStatusEffects(spawned, entry);
                         }
                     }
                     else
@@ -118,6 +119,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                         match.transform.position = new Vector3(
                             entry.PosX, entry.PosY, match.transform.position.z);
                         ForceUpdateHealthBar(match);
+                        SyncStatusEffects(match, entry);
                         matched.Add(match);
                         updated++;
                         _enemyId.Register(match, entry.Id);
@@ -132,6 +134,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                         created++;
                         // Register newly created enemy with host GUID
                         _enemyId.Register(spawned, entry.Id);
+                        SyncStatusEffects(spawned, entry);
                     }
                     else
                     {
@@ -582,5 +585,91 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             method?.Invoke(enemy, null);
         }
         catch { }
+    }
+
+    /// <summary>
+    /// Sync status effects from host to client enemy. Clears existing effects
+    /// and re-applies from the snapshot so the client's visual icons match.
+    /// </summary>
+    private void SyncStatusEffects(Enemy enemy, Snapshots.EnemyEntry entry)
+    {
+        if (entry.StatusEffects == null || entry.StatusEffects.Count == 0)
+            return;
+
+        try
+        {
+            // Get the internal _statusEffects list
+            var statusField = AccessTools.Field(typeof(Enemy), "_statusEffects");
+            var effects = statusField?.GetValue(enemy) as System.Collections.Generic.List<Battle.StatusEffects.StatusEffect>;
+            if (effects == null) return;
+
+            // Build a set of what the host has
+            var hostEffects = new Dictionary<Battle.StatusEffects.StatusEffectType, int>();
+            foreach (var se in entry.StatusEffects)
+            {
+                var type = (Battle.StatusEffects.StatusEffectType)se.EffectType;
+                hostEffects[type] = se.Intensity;
+            }
+
+            // Update existing effects and add missing ones
+            var existingTypes = new HashSet<Battle.StatusEffects.StatusEffectType>();
+            foreach (var eff in effects)
+                existingTypes.Add(eff.EffectType);
+
+            foreach (var kvp in hostEffects)
+            {
+                if (existingTypes.Contains(kvp.Key))
+                {
+                    // Update intensity
+                    foreach (var eff in effects)
+                    {
+                        if (eff.EffectType == kvp.Key)
+                        {
+                            eff.Intensity = kvp.Value;
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    // Add new effect
+                    try
+                    {
+                        enemy.ApplyStatusEffect(
+                            new Battle.StatusEffects.StatusEffect(kvp.Key, kvp.Value),
+                            Battle.StatusEffects.StatusEffectSource.PLAYER,
+                            allowKnockOnEffects: false);
+                    }
+                    catch { }
+                }
+            }
+
+            // Remove effects the host doesn't have
+            for (int i = effects.Count - 1; i >= 0; i--)
+            {
+                if (!hostEffects.ContainsKey(effects[i].EffectType))
+                {
+                    try { enemy.RemoveEffect(effects[i].EffectType); }
+                    catch { effects.RemoveAt(i); }
+                }
+            }
+
+            // Refresh the status effect UI icons
+            try
+            {
+                var uiField = AccessTools.Field(typeof(Enemy), "_statusEffectUI");
+                var ui = uiField?.GetValue(enemy);
+                if (ui != null)
+                {
+                    var updateMethod = AccessTools.Method(ui.GetType(), "UpdateStatusEffects");
+                    updateMethod?.Invoke(ui, new object[] { enemy.StatusEffects });
+                }
+            }
+            catch { }
+        }
+        catch (System.Exception ex)
+        {
+            _log.LogWarning($"[EnemyApplier] SyncStatusEffects failed for '{enemy.locKey}': {ex.Message}");
+        }
     }
 }
