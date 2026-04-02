@@ -186,6 +186,11 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             // grace period, allow Battle→Map transitions (battle ended legitimately).
             if (currentScene == "Battle" && MapScenes.Contains(targetScene))
             {
+                // If _battleLoadedTime was never set (Battle loaded via NodeActivated,
+                // not via MapApplier), set it now — this is our first time seeing Battle.
+                if (_battleLoadedTime == 0f)
+                    _battleLoadedTime = Time.time;
+
                 if (Time.time - _battleLoadedTime < BATTLE_GRACE_PERIOD)
                 {
                     _log.LogInfo($"[MapApplier] Ignoring map sync '{targetScene}' during Battle grace period ({Time.time - _battleLoadedTime:F1}s < {BATTLE_GRACE_PERIOD}s)");
