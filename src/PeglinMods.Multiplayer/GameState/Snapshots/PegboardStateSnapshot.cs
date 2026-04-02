@@ -39,4 +39,7 @@ public class PegEntry
 
     /// <summary>True if this peg is a bomb (from _bombs list, not _allPegs).</summary>
     public bool IsBomb { get; set; }
+
+    /// <summary>Damage buff/debuff value displayed on the peg (-999 to 999).</summary>
+    public int BuffAmount { get; set; }
 }

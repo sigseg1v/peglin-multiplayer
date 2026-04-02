@@ -383,6 +383,16 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
         }
 
+        // Sync buff amount (damage modifier displayed on peg)
+        if (peg.buffAmount != entry.BuffAmount)
+        {
+            int diff = entry.BuffAmount - peg.buffAmount;
+            if (diff != 0)
+            {
+                try { peg.AddBuff(diff); } catch { }
+            }
+        }
+
         // Sync bomb hit count
         if (entry.IsBomb && peg is Bomb bomb)
         {

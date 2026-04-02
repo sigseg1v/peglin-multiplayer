@@ -77,6 +77,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     IsCleared = cleared,
                     WasPreviouslyCleared = wasPreviouslyCleared,
                     CoinCount = peg.NumCoins(),
+                    BuffAmount = peg.buffAmount,
                 });
 
                 if (peg.gameObject.activeSelf && !destroyed)
@@ -119,6 +120,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                         CoinCount = bomb.NumCoins(),
                         HitCount = bomb.HitCount,
                         IsBomb = true,
+                        BuffAmount = bomb.buffAmount,
                     });
 
                     if (bomb.gameObject.activeSelf && !destroyed)
