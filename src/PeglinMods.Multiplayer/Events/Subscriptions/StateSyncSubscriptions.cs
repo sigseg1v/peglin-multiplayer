@@ -116,38 +116,54 @@ public sealed class StateSyncSubscriptions
                 SafeSync("SceneLoaded:" + scene.name, () => _sync.SyncAll("SceneLoaded:" + scene.name));
         };
 
-        // Periodic heartbeat: full resync every 2 seconds to ensure convergence
+        // Start shot-active fast sync when ball is fired, stop when shot completes
+        PachinkoBall.OnShotFired += (_) =>
+        {
+            _shotActive = true;
+        };
+        BattleController.OnShotComplete += () =>
+        {
+            _shotActive = false;
+        };
+        BattleController.OnBattleEnded += () =>
+        {
+            _shotActive = false;
+        };
+
+        // Periodic heartbeat: 1s during active shot, 2s otherwise
         var dispatcher = MultiplayerPlugin.Services?.TryResolve<MainThreadDispatcher>(out var d) == true ? d : null;
         if (dispatcher != null)
         {
             dispatcher.StartCoroutine(HostHeartbeat());
-            _log.LogInfo("StateSyncSubscriptions: heartbeat coroutine started (2s interval)");
+            _log.LogInfo("StateSyncSubscriptions: heartbeat coroutine started (1s in-shot / 2s idle)");
         }
         else
         {
             _log.LogWarning("StateSyncSubscriptions: NO MainThreadDispatcher — heartbeat NOT started!");
         }
 
-        _log.LogInfo("StateSyncSubscriptions registered (with real-time peg/deck sync + 2s heartbeat)");
+        _log.LogInfo("StateSyncSubscriptions registered (with real-time peg/deck sync + adaptive heartbeat)");
     }
 
     private int _heartbeatCount;
+    private bool _shotActive;
 
     private IEnumerator HostHeartbeat()
     {
         while (true)
         {
-            yield return new WaitForSeconds(2f);
+            yield return new WaitForSeconds(_shotActive ? 1f : 2f);
             if (!_mode.IsHosting) continue;
 
             _heartbeatCount++;
+            var tag = _shotActive ? $"HEARTBEAT#{_heartbeatCount}(shot)" : $"HEARTBEAT#{_heartbeatCount}";
             try
             {
-                _sync.SyncAll($"HEARTBEAT#{_heartbeatCount}");
+                _sync.SyncAll(tag);
             }
             catch (Exception ex)
             {
-                _log.LogWarning($"[HEARTBEAT#{_heartbeatCount}] SyncAll failed: {ex.Message}");
+                _log.LogWarning($"[{tag}] SyncAll failed: {ex.Message}");
             }
         }
     }
