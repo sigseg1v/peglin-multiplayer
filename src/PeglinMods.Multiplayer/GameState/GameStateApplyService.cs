@@ -443,7 +443,10 @@ public class GameStateApplyService
     /// </summary>
     private static bool IsEventScene(string scene) =>
         scene == "Treasure" || scene == "TextScenario" ||
-        scene == "ShopScenario" || scene == "PegMinigame";
+        scene == "ShopScenario" || scene == "PegMinigame" ||
+        scene == "ForestWinScene" || scene == "CastleWinScene" ||
+        scene == "FinalWinScene" || scene == "CoreWinScene" ||
+        scene == "RunSummary";
 
     private void SafeApply(string name, Action action)
     {

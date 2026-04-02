@@ -142,6 +142,22 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 return;
             }
 
+            // Act completion / win scenes — host clicks continue, client waits
+            if (snapshot.ActiveScene == "ForestWinScene" || snapshot.ActiveScene == "CastleWinScene" ||
+                snapshot.ActiveScene == "FinalWinScene" || snapshot.ActiveScene == "CoreWinScene")
+            {
+                ClientWaitingMessage = "Act complete! Waiting for host...";
+                _log.LogInfo($"[MapApplier] Host is on win scene '{snapshot.ActiveScene}' — showing waiting message");
+                return;
+            }
+
+            if (snapshot.ActiveScene == "RunSummary")
+            {
+                ClientWaitingMessage = "Host is viewing run summary...";
+                _log.LogInfo("[MapApplier] Host is on RunSummary — showing waiting message");
+                return;
+            }
+
             // Clear waiting state — we're loading a real game scene
             ClientWaitingMessage = null;
 
