@@ -127,6 +127,21 @@ public class GameStateApplyService
                 return;
             }
 
+            // Event/interaction scenes — host is making choices, client should NOT
+            // load these scenes or queue pending snapshots for them. Just apply
+            // player/deck/relic state and let MapApplier show the waiting message.
+            if (IsEventScene(hostScene))
+            {
+                _log.LogInfo($"[ApplyService] Host on event scene '{hostScene}' — applying state without scene transition");
+                if (snapshot.Map != null)
+                {
+                    _latestMap = snapshot.Map;
+                    _mapApplier.Apply(snapshot.Map);
+                }
+                ApplyNonMapState(snapshot);
+                return;
+            }
+
             // CASE 2: Client is on a DIFFERENT scene — queue snapshot and let MapApplier handle transition
             _pendingSnapshot = snapshot;
             _pendingSnapshotScene = hostScene;
@@ -420,6 +435,15 @@ public class GameStateApplyService
             _log.LogWarning($"[Consistency] Check failed: {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// Event/interaction scenes where the host makes choices.
+    /// The client should NOT load these — it stays on its current scene
+    /// and shows a waiting message.
+    /// </summary>
+    private static bool IsEventScene(string scene) =>
+        scene == "Treasure" || scene == "TextScenario" ||
+        scene == "ShopScenario" || scene == "PegMinigame";
 
     private void SafeApply(string name, Action action)
     {
