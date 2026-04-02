@@ -476,7 +476,11 @@ public static class MultiplayerClientPatches
         return false;
     }
 
-    /// <summary>Block orb drawing on client — host sends draw events via BallUsed.</summary>
+    /// <summary>
+    /// Block orb drawing on client — host sends draw events via BallUsed.
+    /// NOTE: We block DrawBall to prevent the client from drawing independently,
+    /// but BallUsedClientHandler triggers the draw animation via DeckInfoManager.
+    /// </summary>
     [HarmonyPatch(typeof(DeckManager), "DrawBall")]
     [HarmonyPrefix]
     public static bool DeckManager_DrawBall_Prefix()
@@ -486,26 +490,14 @@ public static class MultiplayerClientPatches
     }
 
     /// <summary>
-    /// Block deck reload on client — when the deck empties, the game tries to
-    /// shuffle and replay the reload animation. The host will send the reshuffled
-    /// deck via SyncDeck.
+    /// Block the reload plunger animation on client. The game triggers this when
+    /// the deck empties (through multiple paths: StartReloading, ShuffleBattleDeck,
+    /// BattleController state machine). The host will send the reshuffled deck.
+    /// Blocking the animation directly is the most reliable way to stop the spam.
     /// </summary>
-    [HarmonyPatch(typeof(BattleController), "StartReloading")]
+    [HarmonyPatch(typeof(DeckInfoManager), "StartShuffleAnimation")]
     [HarmonyPrefix]
-    public static bool BattleController_StartReloading_Prefix()
-    {
-        if (!ShouldSuppressClientLogic) return true;
-        return false;
-    }
-
-    /// <summary>
-    /// Block battle deck shuffle on client — the host sends the shuffled order.
-    /// Without this, the empty deck triggers ShuffleBattleDeck which fires
-    /// the reload plunger animation in a loop.
-    /// </summary>
-    [HarmonyPatch(typeof(DeckManager), "ShuffleBattleDeck")]
-    [HarmonyPrefix]
-    public static bool DeckManager_ShuffleBattleDeck_Prefix()
+    public static bool DeckInfoManager_StartShuffleAnimation_Prefix()
     {
         if (!ShouldSuppressClientLogic) return true;
         return false;

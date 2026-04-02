@@ -23,17 +23,21 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
                 MultiplayerPlugin.Logger?.LogInfo($"[BallUsed] Popped '{popped?.name}' from shuffledDeck ({dm.shuffledDeck.Count} remaining), firing onBallUsed");
                 DeckManager.onBallUsed?.Invoke(popped);
 
-                // Trigger the orb draw animation so the next orb moves to the
-                // active position (larger, centered in the circular area).
-                // DrawBall is blocked on client, so DeckInfoManager.DrawNextOrb
-                // never fires. Call it directly.
+                // Set the active orb display. DrawBall is blocked on client, so
+                // the DeckInfoManager's draw animation never runs. Manually set
+                // the current orb to active position (larger, centered).
                 try
                 {
                     var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
                     if (dim != null)
                     {
-                        var drawMethod = AccessTools.Method(typeof(DeckInfoManager), "DrawNextOrb");
-                        drawMethod?.Invoke(dim, null);
+                        // If _displayOrbs has entries (from battle start), use DrawNextOrb
+                        var displayOrbs = dim.displayOrbs;
+                        if (displayOrbs != null && displayOrbs.Count > 0)
+                        {
+                            var drawMethod = AccessTools.Method(typeof(DeckInfoManager), "DrawNextOrb");
+                            drawMethod?.Invoke(dim, new object[] { popped });
+                        }
                     }
                 }
                 catch { }
