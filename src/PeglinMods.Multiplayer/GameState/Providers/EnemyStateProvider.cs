@@ -114,24 +114,27 @@ public class EnemyStateProvider : IGameStateProvider<EnemyStateSnapshot>
                 }
             }
 
-            // Capture upcoming enemy names from EnemyInfoManager._upcomingSpawns.
-            // Each Spawn has an .enemy field (Enemy prefab) — grab the GameObject name.
+            // Capture upcoming enemy names from EnemyInfoManager._enemyInfoElements.
+            // This is the VISUAL queue — only contains enemies not yet on the battlefield.
+            // _upcomingSpawns contains ALL wave data including already-spawned entries.
             var eim = UnityEngine.Object.FindObjectOfType<Battle.EnemyInfoManager>();
             if (eim != null)
             {
-                var upcomingField = AccessTools.Field(typeof(Battle.EnemyInfoManager), "_upcomingSpawns");
-                var upcomingList = upcomingField?.GetValue(eim) as System.Collections.IList;
-                if (upcomingList != null && upcomingList.Count > 0)
+                var elementsField = AccessTools.Field(typeof(Battle.EnemyInfoManager), "_enemyInfoElements");
+                var elements = elementsField?.GetValue(eim) as System.Collections.Generic.Queue<Battle.EnemyInfoElement>;
+                if (elements != null && elements.Count > 0)
                 {
-                    var enemyField = AccessTools.Field(upcomingList[0].GetType(), "enemy");
-                    foreach (var spawn in upcomingList)
+                    foreach (var element in elements)
                     {
-                        var enemy = enemyField?.GetValue(spawn) as Battle.Enemies.Enemy;
+                        if (element == null) continue;
+                        // EnemyInfoElement has an _enemy field set by SetEnemy()
+                        var enemyField = AccessTools.Field(typeof(Battle.EnemyInfoElement), "_enemy");
+                        var enemy = enemyField?.GetValue(element) as Battle.Enemies.Enemy;
                         if (enemy != null)
                             snapshot.UpcomingEnemyNames.Add(enemy.gameObject.name);
                     }
-                    _log.LogInfo($"[EnemyProvider] Upcoming enemies: {snapshot.UpcomingEnemyNames.Count}");
                 }
+                _log.LogInfo($"[EnemyProvider] Upcoming enemies: {snapshot.UpcomingEnemyNames.Count}");
             }
 
             return snapshot;
