@@ -20,6 +20,7 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
         {
             ApplyHealth(snapshot);
             ApplyGold(snapshot);
+            ApplySpeedup(snapshot);
             LogStatusEffects(snapshot);
         }
         catch (Exception ex)
@@ -90,6 +91,22 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
             currencyManager.RemoveGold(-diff, silent: true);
 
         _log.LogInfo($"[PlayerApplier] Gold set to {snapshot.Gold} (was {currentGold}, diff={diff})");
+    }
+
+    private void ApplySpeedup(PlayerStateSnapshot snapshot)
+    {
+        try
+        {
+            var tsm = TimescaleManager.Instance;
+            if (tsm == null) return;
+
+            if (tsm.isSpedUp != snapshot.IsSpedUp)
+            {
+                tsm.isSpedUp = snapshot.IsSpedUp;
+                Time.timeScale = snapshot.IsSpedUp ? snapshot.SpeedupLevel : 1f;
+            }
+        }
+        catch { }
     }
 
     private void LogStatusEffects(PlayerStateSnapshot snapshot)

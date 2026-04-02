@@ -9,6 +9,7 @@ public class PlayerStateSnapshot
     public int Gold { get; set; }
     public List<StatusEffectEntry> StatusEffects { get; set; } = new List<StatusEffectEntry>();
     public bool IsSpedUp { get; set; }
+    public float SpeedupLevel { get; set; } = 2f;
 }
 
 public class StatusEffectEntry
