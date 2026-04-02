@@ -786,6 +786,45 @@ public static class MultiplayerClientPatches
     }
 
     // =========================================================================
+    // HOST: MULTIBALL SYNC — send additional ball spawns to client
+    // =========================================================================
+
+    /// <summary>
+    /// When the host spawns a multiball, send its position and velocity to client
+    /// so it can render the additional ball visually.
+    /// </summary>
+    [HarmonyPatch(typeof(PachinkoBall), "SpawnMultiballFromLocation")]
+    [HarmonyPostfix]
+    public static void PachinkoBall_SpawnMultiballFromLocation_Postfix(GameObject __result)
+    {
+        if (!IsHosting || __result == null) return;
+
+        try
+        {
+            var rb = __result.GetComponent<UnityEngine.Rigidbody2D>();
+            var pos = __result.transform.position;
+            var vel = rb != null ? rb.velocity : UnityEngine.Vector2.zero;
+
+            string orbName = null;
+            var atk = __result.GetComponent<Battle.Attacks.Attack>();
+            if (atk != null) orbName = atk.gameObject.name;
+
+            var registry = MultiplayerPlugin.Services?.Resolve<Events.IGameEventRegistry>();
+            registry?.Dispatch(new Events.Network.Ball.MultiballSpawnedEvent
+            {
+                PosX = pos.x,
+                PosY = pos.y,
+                VelX = vel.x,
+                VelY = vel.y,
+                OrbName = orbName,
+            });
+
+            MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Host spawned multiball at ({pos.x:F1},{pos.y:F1}) vel=({vel.x:F1},{vel.y:F1})");
+        }
+        catch { }
+    }
+
+    // =========================================================================
     // RNG SERIALIZATION HELPERS
     // =========================================================================
 

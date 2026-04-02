@@ -1,11 +1,12 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace PeglinMods.Multiplayer.GameState;
 
 /// <summary>
 /// Visual-only ball renderer for the spectating client.
-/// Receives position updates from the host and interpolates for smooth display.
-/// No physics — just a sprite that follows the host's ball.
+/// Supports the primary ball + additional multiball visuals.
+/// No physics — just sprites that follow the host's ball positions.
 /// </summary>
 public class ClientBallRenderer : MonoBehaviour
 {
@@ -17,6 +18,9 @@ public class ClientBallRenderer : MonoBehaviour
     private Vector2 _velocity;
     private float _lastUpdateTime;
     private bool _isActive;
+
+    // Additional multiball visuals
+    private readonly List<GameObject> _multiballs = new List<GameObject>();
 
     private void Awake()
     {
@@ -30,6 +34,13 @@ public class ClientBallRenderer : MonoBehaviour
 
     public void OnShotFired(float aimX, float aimY, string orbName = null)
     {
+        // Clean up any previous multiball visuals
+        foreach (var mb in _multiballs)
+        {
+            if (mb != null) Destroy(mb);
+        }
+        _multiballs.Clear();
+
         if (_ballObject == null)
             CreateBall();
 
@@ -115,11 +126,58 @@ public class ClientBallRenderer : MonoBehaviour
         _ballObject.transform.position = new Vector3(posX, posY, -1f);
     }
 
+    public void OnMultiballSpawned(float posX, float posY, float velX, float velY, string orbName)
+    {
+        var ball = new GameObject("ClientMultiball");
+        ball.hideFlags = HideFlags.HideAndDontSave;
+        DontDestroyOnLoad(ball);
+
+        var renderer = ball.AddComponent<SpriteRenderer>();
+        renderer.sortingOrder = 100;
+
+        // Copy sprite from the primary ball if available
+        if (_ballRenderer?.sprite != null)
+        {
+            renderer.sprite = _ballRenderer.sprite;
+            ball.transform.localScale = _ballObject != null ? _ballObject.transform.localScale : Vector3.one * 0.5f;
+        }
+        else
+        {
+            renderer.sprite = CreateCircleSprite();
+            ball.transform.localScale = Vector3.one * 0.5f;
+        }
+
+        ball.transform.position = new Vector3(posX, posY, -1f);
+
+        // Add a simple physics simulation for the visual ball
+        var rb = ball.AddComponent<Rigidbody2D>();
+        rb.gravityScale = 1f;
+        rb.velocity = new Vector2(velX, velY);
+        rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+
+        // Add a circle collider so it bounces off walls/pegs visually
+        var col = ball.AddComponent<CircleCollider2D>();
+        col.radius = 0.15f;
+        col.isTrigger = false;
+
+        // Auto-destroy after 30 seconds (safety net)
+        Destroy(ball, 30f);
+
+        _multiballs.Add(ball);
+    }
+
     public void OnBallDestroyed()
     {
         _isActive = false;
         if (_ballObject != null)
             _ballObject.SetActive(false);
+
+        // Clean up multiball visuals
+        foreach (var mb in _multiballs)
+        {
+            if (mb != null) Destroy(mb);
+        }
+        _multiballs.Clear();
     }
 
     private void Update()
