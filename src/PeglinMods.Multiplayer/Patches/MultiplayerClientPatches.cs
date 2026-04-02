@@ -471,6 +471,32 @@ public static class MultiplayerClientPatches
         return false;
     }
 
+    /// <summary>
+    /// Block deck reload on client — when the deck empties, the game tries to
+    /// shuffle and replay the reload animation. The host will send the reshuffled
+    /// deck via SyncDeck.
+    /// </summary>
+    [HarmonyPatch(typeof(BattleController), "StartReloading")]
+    [HarmonyPrefix]
+    public static bool BattleController_StartReloading_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// Block battle deck shuffle on client — the host sends the shuffled order.
+    /// Without this, the empty deck triggers ShuffleBattleDeck which fires
+    /// the reload plunger animation in a loop.
+    /// </summary>
+    [HarmonyPatch(typeof(DeckManager), "ShuffleBattleDeck")]
+    [HarmonyPrefix]
+    public static bool DeckManager_ShuffleBattleDeck_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        return false;
+    }
+
     /// <summary>Block board field reset on client — prevents re-shuffling pegs.</summary>
     [HarmonyPatch(typeof(BattleController), "ResetField")]
     [HarmonyPrefix]

@@ -1,6 +1,7 @@
 namespace PeglinMods.Multiplayer.Events.Handlers.Deck;
 
 using System;
+using HarmonyLib;
 using PeglinMods.Multiplayer.Events.Network.Deck;
 using PeglinMods.Multiplayer.Multiplayer;
 using UnityEngine;
@@ -21,6 +22,21 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
                 var popped = dm.shuffledDeck.Pop();
                 MultiplayerPlugin.Logger?.LogInfo($"[BallUsed] Popped '{popped?.name}' from shuffledDeck ({dm.shuffledDeck.Count} remaining), firing onBallUsed");
                 DeckManager.onBallUsed?.Invoke(popped);
+
+                // Trigger the orb draw animation so the next orb moves to the
+                // active position (larger, centered in the circular area).
+                // DrawBall is blocked on client, so DeckInfoManager.DrawNextOrb
+                // never fires. Call it directly.
+                try
+                {
+                    var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
+                    if (dim != null)
+                    {
+                        var drawMethod = AccessTools.Method(typeof(DeckInfoManager), "DrawNextOrb");
+                        drawMethod?.Invoke(dim, null);
+                    }
+                }
+                catch { }
             }
             else
             {
