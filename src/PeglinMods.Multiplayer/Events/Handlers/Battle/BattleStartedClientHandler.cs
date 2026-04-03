@@ -15,6 +15,8 @@ public sealed class BattleStartedClientHandler : IClientHandler<BattleStartedEve
             var enemyId = MultiplayerPlugin.Services?.TryResolve<EnemyIdentifier>(out var eid) == true ? eid : null;
             enemyId?.Clear();
 
+            GameState.Appliers.MapStateApplier.ResetNavigationState();
+
             BattleController.OnBattleStarted?.Invoke();
         }
         catch (Exception e)

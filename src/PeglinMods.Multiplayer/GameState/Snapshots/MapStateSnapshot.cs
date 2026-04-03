@@ -33,6 +33,16 @@ public class MapStateSnapshot
     /// Only populated when on a map scene.
     /// </summary>
     public List<MapNodeEntry> Nodes { get; set; }
+
+    /// <summary>True when the host is in post-battle navigation (choosing next map node).</summary>
+    public bool IsNavigating { get; set; }
+
+    /// <summary>
+    /// Room types of available child nodes during navigation.
+    /// Index 0 = left, last = right, middle = center (if 3 nodes).
+    /// Uses Worldmap.RoomType enum values.
+    /// </summary>
+    public List<int> NavChildNodeTypes { get; set; }
 }
 
 public class MapNodeEntry

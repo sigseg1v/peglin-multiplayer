@@ -58,6 +58,10 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
                 catch { }
             }
 
+            // Capture post-battle navigation state (child node choices)
+            if (currentScene == "Battle")
+                CaptureNavigationState(snapshot);
+
             return snapshot;
         }
         catch (Exception ex)
@@ -65,6 +69,33 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
             _log.LogWarning($"MapStateProvider.Capture failed: {ex.Message}");
             return null;
         }
+    }
+
+    private void CaptureNavigationState(MapStateSnapshot snapshot)
+    {
+        try
+        {
+            var stateField = AccessTools.Field(typeof(Battle.BattleController), "_battleState");
+            var bc = UnityEngine.Object.FindObjectOfType<Battle.BattleController>();
+            if (bc == null || stateField == null) return;
+
+            var state = (Battle.BattleController.BattleState)stateField.GetValue(bc);
+            bool isNav = state == Battle.BattleController.BattleState.AWAITING_POST_BATTLE_CONTROLLER
+                      || state == Battle.BattleController.BattleState.NAVIGATION;
+
+            if (!isNav || StaticGameData.currentNode == null) return;
+
+            var children = StaticGameData.currentNode.ChildNodes;
+            if (children == null || children.Length == 0) return;
+
+            snapshot.IsNavigating = true;
+            snapshot.NavChildNodeTypes = new List<int>();
+            foreach (var child in children)
+            {
+                snapshot.NavChildNodeTypes.Add(child != null ? (int)child.RoomType : 0);
+            }
+        }
+        catch { }
     }
 
     private List<MapNodeEntry> CaptureMapNodes()

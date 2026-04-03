@@ -34,8 +34,15 @@ public class BallPositionSync : MonoBehaviour
 
         var state = BattleController.CurrentBattleState;
 
+        // During NAVIGATION, the ball aims then fires within the same state.
+        // Check IsFiring to decide whether to send position or aim.
+        bool isNav = state == BattleController.BattleState.NAVIGATION;
+        var activeBall = isNav ? FindActiveBall() : null;
+        bool navBallFired = activeBall != null && activeBall.IsFiring();
+
         // Stream ball position during active ball physics (20 Hz)
-        if (state == BattleController.BattleState.AWAITING_SHOT_COMPLETION)
+        if (state == BattleController.BattleState.AWAITING_SHOT_COMPLETION
+            || (isNav && navBallFired))
         {
             if (Time.time - _lastSendTime >= _sendInterval)
             {
@@ -44,7 +51,8 @@ public class BallPositionSync : MonoBehaviour
             }
         }
         // Stream aim direction while player is aiming (10 Hz)
-        else if (state == BattleController.BattleState.AWAITING_SHOT)
+        else if (state == BattleController.BattleState.AWAITING_SHOT
+            || (isNav && !navBallFired))
         {
             if (Time.time - _lastAimSendTime >= _aimSendInterval)
             {

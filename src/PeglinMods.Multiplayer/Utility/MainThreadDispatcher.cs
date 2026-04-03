@@ -50,8 +50,9 @@ public class MainThreadDispatcher : MonoBehaviour
     {
         // Check battle state directly — delegate subscriptions get lost when the
         // game reassigns its static delegate fields (they're not C# events).
-        bool shotActive = Battle.BattleController.CurrentBattleState ==
-            Battle.BattleController.BattleState.AWAITING_SHOT_COMPLETION;
+        var battleState = Battle.BattleController.CurrentBattleState;
+        bool shotActive = battleState == Battle.BattleController.BattleState.AWAITING_SHOT_COMPLETION
+                       || battleState == Battle.BattleController.BattleState.NAVIGATION;
 
         float interval = shotActive ? 1f : 2f;
         _heartbeatTimer += Time.unscaledDeltaTime;

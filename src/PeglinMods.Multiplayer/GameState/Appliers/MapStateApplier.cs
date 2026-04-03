@@ -183,6 +183,12 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 {
                     ApplyMapNodes(snapshot.Nodes);
                 }
+
+                // Show post-battle navigation slots on client
+                if (currentScene == "Battle" && snapshot.IsNavigating)
+                {
+                    ApplyNavigationSlots(snapshot.NavChildNodeTypes);
+                }
                 return;
             }
 
@@ -271,6 +277,138 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         // Fallback: use Unity SceneManager directly
         _log.LogWarning($"[MapApplier] PeglinSceneLoader unavailable or unknown scene '{targetSceneName}', falling back to SceneManager");
         SceneManager.LoadScene(targetSceneName);
+    }
+
+    /// <summary>
+    /// Track whether we've already configured navigation slots this battle,
+    /// so we don't re-tween every heartbeat.
+    /// </summary>
+    private static bool _navigationSlotsConfigured;
+    private static int _lastNavigationHash;
+
+    /// <summary>Reset navigation state when a new battle starts.</summary>
+    public static void ResetNavigationState()
+    {
+        _navigationSlotsConfigured = false;
+        _lastNavigationHash = 0;
+    }
+
+    /// <summary>
+    /// Configure the SlotManagers at the bottom of the Battle scene to show
+    /// post-battle navigation icons matching the host's available paths.
+    /// </summary>
+    private void ApplyNavigationSlots(List<int> childNodeTypes)
+    {
+        if (childNodeTypes == null || childNodeTypes.Count == 0) return;
+
+        // Compute a hash so we only configure once per set of child types
+        int hash = childNodeTypes.Count;
+        foreach (var t in childNodeTypes) hash = hash * 31 + t;
+        if (_navigationSlotsConfigured && hash == _lastNavigationHash) return;
+
+        try
+        {
+            // Find the PostBattleController (already in the Battle scene)
+            var pbc = UnityEngine.Object.FindObjectOfType<Battle.PostBattleController>();
+            if (pbc == null)
+            {
+                _log.LogWarning("[MapApplier] No PostBattleController in scene for navigation slots");
+                return;
+            }
+
+            // Get the three SlotManagers via reflection
+            var leftField = AccessTools.Field(typeof(Battle.PostBattleController), "_leftSlotManager");
+            var centerField = AccessTools.Field(typeof(Battle.PostBattleController), "_centerSlotManager");
+            var rightField = AccessTools.Field(typeof(Battle.PostBattleController), "_rightSlotManager");
+
+            var leftSlot = leftField?.GetValue(pbc) as Battle.SlotManager;
+            var centerSlot = centerField?.GetValue(pbc) as Battle.SlotManager;
+            var rightSlot = rightField?.GetValue(pbc) as Battle.SlotManager;
+
+            if (leftSlot == null || centerSlot == null || rightSlot == null)
+            {
+                _log.LogWarning("[MapApplier] Could not find SlotManagers");
+                return;
+            }
+
+            // Get icon sprites from StaticGameData.currentNode if available
+            MapNode[] childNodes = null;
+            if (StaticGameData.currentNode?.ChildNodes != null)
+                childNodes = StaticGameData.currentNode.ChildNodes;
+
+            int numChildren = childNodeTypes.Count;
+
+            if (numChildren == 1)
+            {
+                var roomType = (RoomType)childNodeTypes[0];
+                var color = MapNode.GetColorForNodeType(roomType);
+                var icon = childNodes != null && childNodes.Length > 0 ? childNodes[0]?.activeIcon : null;
+
+                leftSlot.gameObject.SetActive(true);
+                leftSlot.ConfigureHalfNavigation(color, 0.2f, 0.8f);
+
+                rightSlot.gameObject.SetActive(true);
+                rightSlot.ConfigureHalfNavigation(color, 0.2f, 0.8f);
+
+                centerSlot.gameObject.SetActive(true);
+                if (icon != null)
+                    centerSlot.ConfigureForNavigation(icon, color, 0.2f, 0.8f);
+                else
+                    centerSlot.ConfigureHalfNavigation(color, 0.2f, 0.8f);
+            }
+            else
+            {
+                // Left slot = first child
+                var leftType = (RoomType)childNodeTypes[0];
+                var leftColor = MapNode.GetColorForNodeType(leftType);
+                var leftIcon = childNodes != null && childNodes.Length > 0 ? childNodes[0]?.activeIcon : null;
+
+                leftSlot.gameObject.SetActive(true);
+                if (leftIcon != null)
+                    leftSlot.ConfigureForNavigation(leftIcon, leftColor, 0.2f, 0.8f);
+                else
+                    leftSlot.ConfigureHalfNavigation(leftColor, 0.2f, 0.8f);
+
+                // Right slot = last child
+                var rightType = (RoomType)childNodeTypes[numChildren - 1];
+                var rightColor = MapNode.GetColorForNodeType(rightType);
+                var rightIcon = childNodes != null && childNodes.Length > 0
+                    ? childNodes[childNodes.Length - 1]?.activeIcon : null;
+
+                rightSlot.gameObject.SetActive(true);
+                if (rightIcon != null)
+                    rightSlot.ConfigureForNavigation(rightIcon, rightColor, 0.2f, 0.8f);
+                else
+                    rightSlot.ConfigureHalfNavigation(rightColor, 0.2f, 0.8f);
+
+                // Center slot = middle child (if 3 nodes) or dud
+                centerSlot.gameObject.SetActive(true);
+                if (numChildren > 2)
+                {
+                    var centerType = (RoomType)childNodeTypes[1];
+                    var centerColor = MapNode.GetColorForNodeType(centerType);
+                    var centerIcon = childNodes != null && childNodes.Length > 1 ? childNodes[1]?.activeIcon : null;
+
+                    if (centerIcon != null)
+                        centerSlot.ConfigureForNavigation(centerIcon, centerColor, 0.2f, 0.8f);
+                    else
+                        centerSlot.ConfigureHalfNavigation(centerColor, 0.2f, 0.8f);
+                }
+                else
+                {
+                    centerSlot.ConfigureDudNavigation();
+                }
+            }
+
+            _navigationSlotsConfigured = true;
+            _lastNavigationHash = hash;
+            _log.LogInfo($"[MapApplier] Navigation slots configured: {numChildren} child nodes " +
+                $"({string.Join(",", childNodeTypes.ConvertAll(t => ((RoomType)t).ToString()))})");
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[MapApplier] ApplyNavigationSlots failed: {ex.Message}");
+        }
     }
 
     /// <summary>
