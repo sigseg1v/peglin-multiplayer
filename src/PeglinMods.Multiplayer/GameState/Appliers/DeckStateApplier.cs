@@ -116,7 +116,9 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             // The host sends CurrentOrb (the orb being aimed/fired). On every heartbeat,
             // we check if the deck UI shows it. If not, we set it directly.
             // This is the "dumb canvas" approach — no dependency on BallUsedEvent timing.
-            if (!string.IsNullOrEmpty(snapshot.CurrentOrb) && SceneManager.GetActiveScene().name == "Battle")
+            var scene = SceneManager.GetActiveScene().name;
+            _log.LogInfo($"[DeckApplier] ActiveOrb check: host='{snapshot.CurrentOrb ?? "NULL"}' scene='{scene}'");
+            if (!string.IsNullOrEmpty(snapshot.CurrentOrb) && scene == "Battle")
             {
                 EnsureDeckUIShowsActiveOrb(dm, snapshot.CurrentOrb);
                 EnsureAimerOrbShown(snapshot.CurrentOrb);
@@ -146,7 +148,12 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             // Check if the deck UI already has a current orb displayed
             var currentOrbField = AccessTools.Field(typeof(DeckInfoManager), "_currentOrb");
             var currentOrb = currentOrbField?.GetValue(dim) as GameObject;
-            if (currentOrb != null) return; // Already showing an orb — don't re-set
+            if (currentOrb != null)
+            {
+                _log.LogInfo($"[DeckApplier] Deck UI already has currentOrb: '{currentOrb.name}' — skipping");
+                return;
+            }
+            _log.LogInfo($"[DeckApplier] Deck UI has NO currentOrb — setting up active orb display");
 
             // Force-complete shuffle animation if still running
             if (DeckInfoManager.animating)
