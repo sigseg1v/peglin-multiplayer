@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using BepInEx.Logging;
+using HarmonyLib;
 using Loading;
 using PeglinMods.Multiplayer.GameState.Appliers;
 using PeglinMods.Multiplayer.GameState.Snapshots;
@@ -308,6 +309,9 @@ public class GameStateApplyService
             if (snapshot.Deck != null) SafeApply("Deck", () => _deckApplier.Apply(snapshot.Deck));
             if (snapshot.Relics != null) SafeApply("Relics", () => _relicApplier.Apply(snapshot.Relics));
             VerifyConsistency(snapshot);
+
+            // Post-battle navigation: trigger the game's own setup on the client
+            TriggerNavigationIfNeeded(snapshot);
         }
         else
         {
@@ -447,6 +451,77 @@ public class GameStateApplyService
         scene == "ForestWinScene" || scene == "CastleWinScene" ||
         scene == "FinalWinScene" || scene == "CoreWinScene" ||
         scene == "RunSummary";
+
+    // =========================================================================
+    // POST-BATTLE NAVIGATION
+    // =========================================================================
+
+    private bool _navigationTriggered;
+
+    /// <summary>
+    /// When the host enters post-battle navigation (NAVIGATION or AWAITING_POST_BATTLE_CONTROLLER),
+    /// call the game's own PostBattleController.StartNavigation() on the client.
+    /// This handles: slot icons, fire/gradients, "?" indicators, peg resets, and NavigationOrb ball.
+    /// Only triggers once per navigation phase.
+    /// </summary>
+    private void TriggerNavigationIfNeeded(FullGameStateSnapshot snapshot)
+    {
+        var battleState = snapshot.Enemies?.BattleStateName;
+
+        if (battleState != "NAVIGATION" && battleState != "AWAITING_POST_BATTLE_CONTROLLER")
+        {
+            _navigationTriggered = false;
+            return;
+        }
+
+        if (_navigationTriggered) return;
+
+        try
+        {
+            var pbcs = UnityEngine.Resources.FindObjectsOfTypeAll<Battle.PostBattleController>();
+            if (pbcs.Length == 0)
+            {
+                _log.LogWarning("[ApplyService] No PostBattleController found for navigation trigger");
+                return;
+            }
+            var pbc = pbcs[0];
+
+            // Check if StaticGameData.currentNode is valid (needed by StartNavigation)
+            if (StaticGameData.currentNode == null || StaticGameData.currentNode.ChildNodes == null
+                || StaticGameData.currentNode.ChildNodes.Length == 0)
+            {
+                _log.LogWarning("[ApplyService] StaticGameData.currentNode is null/empty — cannot trigger navigation");
+                return;
+            }
+
+            // Invoke StartNavigation(movePeglin: false) via reflection (it's private)
+            var method = HarmonyLib.AccessTools.Method(typeof(Battle.PostBattleController), "StartNavigation",
+                new[] { typeof(bool) });
+            if (method != null)
+            {
+                method.Invoke(pbc, new object[] { false });
+                _log.LogInfo($"[ApplyService] Triggered PostBattleController.StartNavigation (children={StaticGameData.currentNode.ChildNodes.Length})");
+            }
+            else
+            {
+                _log.LogWarning("[ApplyService] StartNavigation method not found");
+                return;
+            }
+
+            // Also update the ClientBallRenderer to show NavigationOrb sprite
+            var activeOrb = snapshot.Deck?.CurrentOrb;
+            if (!string.IsNullOrEmpty(activeOrb) && activeOrb.Contains("NavigationOrb"))
+            {
+                ClientBallRenderer.Instance?.OnOrbDrawn(activeOrb);
+            }
+
+            _navigationTriggered = true;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[ApplyService] TriggerNavigation failed: {ex.Message}");
+        }
+    }
 
     private void SafeApply(string name, Action action)
     {

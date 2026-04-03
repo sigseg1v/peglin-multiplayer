@@ -184,11 +184,8 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                     ApplyMapNodes(snapshot.Nodes);
                 }
 
-                // Show post-battle navigation slots on client
-                if (currentScene == "Battle" && snapshot.IsNavigating)
-                {
-                    ApplyNavigationSlots(snapshot.NavChildNodeTypes);
-                }
+                // Navigation is now triggered by GameStateApplyService.TriggerNavigationIfNeeded()
+                // which calls PostBattleController.StartNavigation() directly.
                 return;
             }
 
