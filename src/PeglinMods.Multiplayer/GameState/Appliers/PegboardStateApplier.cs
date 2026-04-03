@@ -83,29 +83,43 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 if (peg != null)
                 {
                     matchedPegs.Add(peg);
-                    ApplyPegState(peg, entry, ref typeChanged, ref destroyed, ref reactivated);
 
-                    // Position sync: soft lerp for moving pegs (prevents jitter while
-                    // correcting drift), hard snap for static pegs (immediate convergence).
+                    // If client peg is a Bomb but host says it should NOT be a bomb,
+                    // deactivate the bomb — Bomb.ConvertPegToType(REGULAR) doesn't
+                    // change the visual. The bomb stays visible as a bomb forever.
+                    var targetType = (Peg.PegType)entry.PegType;
+                    if (peg is Bomb && !entry.IsBomb && targetType != Peg.PegType.BOMB)
+                    {
+                        peg.gameObject.SetActive(false);
+                        // Don't apply further state — this peg is gone
+                    }
+                    else
+                    {
+                        ApplyPegState(peg, entry, ref typeChanged, ref destroyed, ref reactivated);
+                    }
+
+                    // Position sync: hard snap for static pegs, soft lerp for moving pegs
                     var finalPeg = !string.IsNullOrEmpty(entry.Guid) ? _pegId.Find(entry.Guid) : peg;
                     if (finalPeg == null) finalPeg = peg;
                     var hostPos = new Vector3(entry.PosX, entry.PosY, finalPeg.transform.position.z);
 
                     if (HasMovementComponent(finalPeg))
                     {
-                        // Soft lerp: gently correct drift without fighting movement code.
-                        // Moving pegs calculate their own position each frame — a hard snap
-                        // gets immediately overwritten, causing jitter. Lerp applies a small
-                        // correction that the movement code absorbs smoothly.
                         finalPeg.transform.position = Vector3.Lerp(
                             finalPeg.transform.position, hostPos, 0.15f);
                     }
                     else
                     {
-                        // Static pegs: hard snap to host position
                         finalPeg.transform.position = hostPos;
+                        // Also set via Rigidbody2D if present (physics can override transform)
+                        var rb = finalPeg.GetComponent<UnityEngine.Rigidbody2D>();
+                        if (rb != null) rb.position = new Vector2(entry.PosX, entry.PosY);
                         if (finalPeg != peg && peg != null)
+                        {
                             peg.transform.position = hostPos;
+                            var rb2 = peg.GetComponent<UnityEngine.Rigidbody2D>();
+                            if (rb2 != null) rb2.position = new Vector2(entry.PosX, entry.PosY);
+                        }
                     }
                 }
                 else
