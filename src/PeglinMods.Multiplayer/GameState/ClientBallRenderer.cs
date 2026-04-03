@@ -83,11 +83,27 @@ public class ClientBallRenderer : MonoBehaviour
         }
         catch { }
 
-        // Always force sorting layer — the real ball may not exist on client (DrawBall blocked)
-        if (_ballRenderer != null && _ballRenderer.sortingLayerName == "Default")
+        // Always force sorting layer from a visible game object (pegs render correctly).
+        // Hardcoded layer names may not match the build's sorting layer table.
+        if (_ballRenderer != null)
         {
-            _ballRenderer.sortingLayerName = "PegBoardMain";
-            _ballRenderer.sortingOrder = 100;
+            try
+            {
+                // Find any active peg's SpriteRenderer and copy its sorting layer
+                var pegs = Object.FindObjectsOfType<Peg>();
+                foreach (var p in pegs)
+                {
+                    if (p == null || !p.gameObject.activeSelf) continue;
+                    var pr = p.GetComponentInChildren<SpriteRenderer>();
+                    if (pr != null)
+                    {
+                        _ballRenderer.sortingLayerID = pr.sortingLayerID;
+                        _ballRenderer.sortingOrder = pr.sortingOrder + 10;
+                        break;
+                    }
+                }
+            }
+            catch { }
         }
 
         var hasSprite = _ballRenderer?.sprite != null;
@@ -210,8 +226,10 @@ public class ClientBallRenderer : MonoBehaviour
         DontDestroyOnLoad(ball);
 
         var renderer = ball.AddComponent<SpriteRenderer>();
-        renderer.sortingLayerName = "PegBoardMain";
         renderer.sortingOrder = 100;
+        // Copy sorting layer from primary ball if available
+        if (_ballRenderer != null)
+            renderer.sortingLayerID = _ballRenderer.sortingLayerID;
 
         // Copy sprite from the primary ball if available
         if (_ballRenderer?.sprite != null)
@@ -295,8 +313,7 @@ public class ClientBallRenderer : MonoBehaviour
         DontDestroyOnLoad(_ballObject);
 
         _ballRenderer = _ballObject.AddComponent<SpriteRenderer>();
-        _ballRenderer.sortingLayerName = "PegBoardMain";
-        _ballRenderer.sortingOrder = 100; // Above pegs
+        _ballRenderer.sortingOrder = 100; // Above pegs — layer set in OnOrbDrawn from actual game renderers
 
         // Try to get the orb sprite from the current orb
         try
