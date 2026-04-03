@@ -490,14 +490,14 @@ public static class MultiplayerClientPatches
     }
 
     /// <summary>
-    /// Block the shuffle/reload plunger animation on client to prevent spam.
-    /// This also prevents _displayOrbs from populating, so the upcoming orb
-    /// stack won't show — but the active orb is handled separately via
-    /// ClientBallRenderer during the aiming phase.
+    /// Block the battle deck reshuffle on client — prevents reload animation spam.
+    /// The initial ShuffleCompleteDeck (at battle start) is allowed for UI setup.
+    /// ShuffleBattleDeck fires during reload (deck empty) and triggers the plunger
+    /// animation loop. The host sends the correct deck order via SyncDeck.
     /// </summary>
-    [HarmonyPatch(typeof(DeckInfoManager), "StartShuffleAnimation")]
+    [HarmonyPatch(typeof(DeckManager), "ShuffleBattleDeck")]
     [HarmonyPrefix]
-    public static bool DeckInfoManager_StartShuffleAnimation_Prefix()
+    public static bool DeckManager_ShuffleBattleDeck_Prefix()
     {
         if (!ShouldSuppressClientLogic) return true;
         return false;
