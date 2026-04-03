@@ -210,10 +210,26 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
 
             // ===== CLEANUP: Deactivate extra client pegs not in host snapshot =====
+            // Build set of transforms that are parents of matched pegs — don't deactivate these
+            var matchedParents = new HashSet<Transform>();
+            foreach (var mp in matchedPegs)
+            {
+                if (mp != null)
+                {
+                    var p = mp.transform.parent;
+                    while (p != null)
+                    {
+                        matchedParents.Add(p);
+                        p = p.parent;
+                    }
+                }
+            }
+
             int extrasRemoved = 0;
             foreach (var peg in clientPegs)
             {
-                if (peg != null && peg.gameObject.activeSelf && !matchedPegs.Contains(peg))
+                if (peg != null && peg.gameObject.activeSelf && !matchedPegs.Contains(peg)
+                    && !matchedParents.Contains(peg.transform))
                 {
                     peg.gameObject.SetActive(false);
                     extrasRemoved++;
@@ -223,7 +239,8 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             {
                 foreach (var bomb in clientBombs)
                 {
-                    if (bomb != null && bomb.gameObject.activeSelf && !matchedPegs.Contains(bomb))
+                    if (bomb != null && bomb.gameObject.activeSelf && !matchedPegs.Contains(bomb)
+                        && !matchedParents.Contains(bomb.transform))
                     {
                         bomb.gameObject.SetActive(false);
                         extrasRemoved++;
@@ -234,7 +251,8 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             {
                 foreach (var bouncer in clientBouncers)
                 {
-                    if (bouncer != null && bouncer.gameObject.activeSelf && !matchedPegs.Contains(bouncer))
+                    if (bouncer != null && bouncer.gameObject.activeSelf && !matchedPegs.Contains(bouncer)
+                        && !matchedParents.Contains(bouncer.transform))
                     {
                         bouncer.gameObject.SetActive(false);
                         extrasRemoved++;
