@@ -264,9 +264,24 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     bool dis = false;
                     try { dis = b.IsDisabled(); } catch { }
                     var guid = _pegId.GetGuid(b) ?? "none";
+                    var parentInfo = "";
+                    if (dis && b.gameObject.activeSelf)
+                    {
+                        // activeSelf=true but activeInHierarchy=false means parent is inactive
+                        var p = b.transform.parent;
+                        while (p != null)
+                        {
+                            if (!p.gameObject.activeSelf)
+                            {
+                                parentInfo = $" inactiveParent='{p.name}'";
+                                break;
+                            }
+                            p = p.parent;
+                        }
+                    }
                     _log.LogInfo($"[PegboardApplier] CLIENT_BOMB[{i}] guid={guid} " +
                         $"pos=({b.transform.position.x:F1},{b.transform.position.y:F1}) " +
-                        $"type={b.pegType} active={b.gameObject.activeSelf} disabled={dis} hits={b.HitCount}");
+                        $"type={b.pegType} active={b.gameObject.activeSelf} disabled={dis} hits={b.HitCount}{parentInfo}");
                 }
             }
         }
@@ -413,6 +428,11 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             {
                 DG.Tweening.DOTween.Kill(peg.gameObject);
 
+                // Activate all parents in the hierarchy first — bombs under
+                // inactive parent containers (RotatingPegCircle, pegboard sub-groups)
+                // will have activeSelf=true but activeInHierarchy=false.
+                EnsureParentChainActive(peg.gameObject);
+
                 clearedField?.SetValue(peg, entry.WasPreviouslyCleared);
                 peg.gameObject.SetActive(true);
                 try { peg.Reset(false); } catch { }
@@ -544,6 +564,25 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             || go.GetComponent<Battle.PegBehaviour.PegSquareMovement>() != null
             || go.GetComponent<Battle.PegBehaviour.PegSplineFollow>() != null
             || go.GetComponentInParent<Battle.PegBehaviour.RotatingPegCircle>() != null;
+    }
+
+    /// <summary>
+    /// Walk up the transform hierarchy and activate any inactive parents.
+    /// Bombs under inactive containers (RotatingPegCircle, pegboard sub-groups)
+    /// can have activeSelf=true but activeInHierarchy=false, making them invisible.
+    /// </summary>
+    private void EnsureParentChainActive(GameObject go)
+    {
+        var parent = go.transform.parent;
+        while (parent != null)
+        {
+            if (!parent.gameObject.activeSelf)
+            {
+                _log.LogInfo($"[PegboardApplier] Activating inactive parent '{parent.name}' for peg at ({go.transform.position.x:F1},{go.transform.position.y:F1})");
+                parent.gameObject.SetActive(true);
+            }
+            parent = parent.parent;
+        }
     }
 
     private void ForceRendererVisible(Peg peg)
