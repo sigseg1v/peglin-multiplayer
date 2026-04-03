@@ -15,25 +15,38 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
             if (mode == null || !mode.IsSpectating) return;
 
-            // Call DrawBall directly — this creates the PachinkoBall (needed for
-            // orb display rotation/position), pops from shuffledDeck, fires onBallUsed,
-            // and triggers DeckInfoManager's orb draw animation.
             var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
             var dm = dms.Length > 0 ? dms[0] : null;
-            if (dm != null && dm.shuffledDeck != null && dm.shuffledDeck.Count > 0)
-            {
-                var orbName = dm.shuffledDeck.Peek()?.name;
-                dm.DrawBall(null);
-                MultiplayerPlugin.Logger?.LogInfo($"[BallUsed] Called DrawBall for '{orbName}' ({dm.shuffledDeck.Count} remaining)");
-            }
-            else
+            if (dm == null || dm.shuffledDeck == null || dm.shuffledDeck.Count == 0)
             {
                 MultiplayerPlugin.Logger?.LogWarning($"[BallUsed] shuffledDeck empty, cannot draw for '{e.OrbName}'");
+                return;
+            }
+
+            var orbName = dm.shuffledDeck.Peek()?.name;
+
+            // Try DrawBall — creates PachinkoBall needed for orb display.
+            // May fail on subsequent draws because BattleController state machine
+            // isn't in the right state (Update is blocked on client).
+            try
+            {
+                dm.DrawBall(null);
+                MultiplayerPlugin.Logger?.LogInfo($"[BallUsed] DrawBall succeeded for '{orbName}' ({dm.shuffledDeck.Count} remaining)");
+            }
+            catch
+            {
+                // DrawBall failed — manually pop and fire events for deck UI
+                var popped = dm.shuffledDeck.Pop();
+                DeckManager.onBallUsed?.Invoke(popped);
+                MultiplayerPlugin.Logger?.LogInfo($"[BallUsed] DrawBall failed, manual pop for '{popped?.name}' ({dm.shuffledDeck.Count} remaining)");
+
+                // Show the orb via ClientBallRenderer as fallback
+                GameState.ClientBallRenderer.Instance?.OnOrbDrawn(popped?.name);
             }
         }
         catch (Exception ex)
         {
-            MultiplayerPlugin.Logger.LogWarning($"BallUsed handler failed: {ex.Message}");
+            MultiplayerPlugin.Logger?.LogWarning($"BallUsed handler failed: {ex.Message}");
         }
     }
 }
