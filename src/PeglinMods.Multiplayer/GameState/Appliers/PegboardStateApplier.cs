@@ -120,11 +120,25 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     var targetType = (Peg.PegType)entry.PegType;
                     if (peg is Bomb && !entry.IsBomb && targetType != Peg.PegType.BOMB)
                     {
+                        _log.LogWarning($"[PegboardApplier] BOMB DEACTIVATED: {entry.Guid} client is Bomb but host says {entry.PegTypeName}");
                         peg.gameObject.SetActive(false);
                     }
                     else
                     {
                         ApplyPegState(peg, entry, clientBombs, ref typeChanged, ref destroyed, ref reactivated);
+                    }
+
+                    // Log bomb entry matching details
+                    if (entry.IsBomb)
+                    {
+                        bool pegActive = peg.gameObject.activeSelf;
+                        bool pegDisabled = false;
+                        try { pegDisabled = peg.IsDisabled(); } catch { }
+                        _log.LogInfo($"[PegboardApplier] BOMB MATCH: guid={entry.Guid} " +
+                            $"hostPos=({entry.PosX:F1},{entry.PosY:F1}) " +
+                            $"clientPos=({peg.transform.position.x:F1},{peg.transform.position.y:F1}) " +
+                            $"active={pegActive} disabled={pegDisabled} type={peg.pegType} " +
+                            $"entry(cleared={entry.IsCleared},destroyed={entry.IsDestroyed},hits={entry.HitCount})");
                     }
 
                     SyncPegPosition(peg, entry);
@@ -239,6 +253,22 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 $"registry={_pegId.Count})");
 
             LogActualPegState(clientPegs, clientBombs, clientBouncers);
+
+            // Dump all client bombs for debugging
+            if (clientBombs != null)
+            {
+                for (int i = 0; i < clientBombs.Count; i++)
+                {
+                    var b = clientBombs[i];
+                    if (b == null) { _log.LogInfo($"[PegboardApplier] CLIENT_BOMB[{i}] NULL"); continue; }
+                    bool dis = false;
+                    try { dis = b.IsDisabled(); } catch { }
+                    var guid = _pegId.GetGuid(b) ?? "none";
+                    _log.LogInfo($"[PegboardApplier] CLIENT_BOMB[{i}] guid={guid} " +
+                        $"pos=({b.transform.position.x:F1},{b.transform.position.y:F1}) " +
+                        $"type={b.pegType} active={b.gameObject.activeSelf} disabled={dis} hits={b.HitCount}");
+                }
+            }
         }
         catch (Exception ex)
         {

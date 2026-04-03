@@ -49,10 +49,11 @@ public class ClientBallRenderer : MonoBehaviour
 
         // Position at player spawn
         var bc = Object.FindObjectOfType<Battle.BattleController>();
+        Transform pt = null;
         if (bc != null)
         {
             var playerField = HarmonyLib.AccessTools.Field(typeof(Battle.BattleController), "_playerTransform");
-            var pt = playerField?.GetValue(bc) as Transform;
+            pt = playerField?.GetValue(bc) as Transform;
             if (pt != null)
             {
                 _spawnPos = pt.position;
@@ -63,6 +64,12 @@ public class ClientBallRenderer : MonoBehaviour
         _isAiming = true;
         _isActive = false; // Not launched yet
         _ballObject.SetActive(true);
+
+        var hasSprite = _ballRenderer?.sprite != null;
+        MultiplayerPlugin.Logger?.LogInfo(
+            $"[ClientBallRenderer] OnOrbDrawn '{orbName}' playerTransform={pt != null} " +
+            $"pos=({_spawnPos.x:F1},{_spawnPos.y:F1}) hasSprite={hasSprite} " +
+            $"ballActive={_ballObject.activeSelf}");
     }
 
     /// <summary>
