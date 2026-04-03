@@ -183,6 +183,7 @@ public class ClientBallRenderer : MonoBehaviour
         DontDestroyOnLoad(ball);
 
         var renderer = ball.AddComponent<SpriteRenderer>();
+        renderer.sortingLayerName = "PegBoardMain";
         renderer.sortingOrder = 100;
 
         // Copy sprite from the primary ball if available
@@ -267,6 +268,7 @@ public class ClientBallRenderer : MonoBehaviour
         DontDestroyOnLoad(_ballObject);
 
         _ballRenderer = _ballObject.AddComponent<SpriteRenderer>();
+        _ballRenderer.sortingLayerName = "PegBoardMain";
         _ballRenderer.sortingOrder = 100; // Above pegs
 
         // Try to get the orb sprite from the current orb

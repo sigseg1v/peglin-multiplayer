@@ -596,51 +596,59 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
     }
 
     /// <summary>
-    /// Sync status effects from host to client enemy. Clears existing effects
-    /// and re-applies from the snapshot so the client's visual icons match.
+    /// Sync status effects from host to client enemy.
+    /// Uses "dumb canvas" approach: clear everything, re-apply only what the host says.
+    /// No diffing — just overwrite. This prevents duplicate accumulation.
     /// </summary>
     private void SyncStatusEffects(Enemy enemy, Snapshots.EnemyEntry entry)
     {
-        if (entry.StatusEffects == null || entry.StatusEffects.Count == 0)
-            return;
-
         try
         {
-            // Get the internal _statusEffects list
             var statusField = AccessTools.Field(typeof(Enemy), "_statusEffects");
             var effects = statusField?.GetValue(enemy) as System.Collections.Generic.List<Battle.StatusEffects.StatusEffect>;
             if (effects == null) return;
 
-            // Build a set of what the host has
+            // Build what the host has
             var hostEffects = new Dictionary<Battle.StatusEffects.StatusEffectType, int>();
-            foreach (var se in entry.StatusEffects)
+            if (entry.StatusEffects != null)
             {
-                var type = (Battle.StatusEffects.StatusEffectType)se.EffectType;
-                hostEffects[type] = se.Intensity;
+                foreach (var se in entry.StatusEffects)
+                {
+                    var type = (Battle.StatusEffects.StatusEffectType)se.EffectType;
+                    hostEffects[type] = se.Intensity;
+                }
             }
 
-            // Update existing effects and add missing ones
-            var existingTypes = new HashSet<Battle.StatusEffects.StatusEffectType>();
-            foreach (var eff in effects)
-                existingTypes.Add(eff.EffectType);
+            // Remove all effects that the host doesn't have
+            for (int i = effects.Count - 1; i >= 0; i--)
+            {
+                if (!hostEffects.ContainsKey(effects[i].EffectType))
+                {
+                    try { enemy.RemoveEffect(effects[i].EffectType); }
+                    catch { effects.RemoveAt(i); }
+                }
+            }
 
+            // Re-read effects after removal (RemoveEffect may have modified the list)
+            effects = statusField?.GetValue(enemy) as System.Collections.Generic.List<Battle.StatusEffects.StatusEffect>;
+            if (effects == null) return;
+
+            // For each host effect: update if exists, add if missing
             foreach (var kvp in hostEffects)
             {
-                if (existingTypes.Contains(kvp.Key))
+                bool found = false;
+                foreach (var eff in effects)
                 {
-                    // Update intensity
-                    foreach (var eff in effects)
+                    if (eff.EffectType == kvp.Key)
                     {
-                        if (eff.EffectType == kvp.Key)
-                        {
-                            eff.Intensity = kvp.Value;
-                            break;
-                        }
+                        eff.Intensity = kvp.Value;
+                        found = true;
+                        break;
                     }
                 }
-                else
+
+                if (!found)
                 {
-                    // Add new effect
                     try
                     {
                         enemy.ApplyStatusEffect(
@@ -652,17 +660,19 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                 }
             }
 
-            // Remove effects the host doesn't have
-            for (int i = effects.Count - 1; i >= 0; i--)
+            // Remove any duplicates that crept in (game logic may add extras)
+            effects = statusField?.GetValue(enemy) as System.Collections.Generic.List<Battle.StatusEffects.StatusEffect>;
+            if (effects != null)
             {
-                if (!hostEffects.ContainsKey(effects[i].EffectType))
+                var seen = new HashSet<Battle.StatusEffects.StatusEffectType>();
+                for (int i = effects.Count - 1; i >= 0; i--)
                 {
-                    try { enemy.RemoveEffect(effects[i].EffectType); }
-                    catch { effects.RemoveAt(i); }
+                    if (!seen.Add(effects[i].EffectType))
+                        effects.RemoveAt(i); // duplicate — remove
                 }
             }
 
-            // Refresh the status effect UI icons
+            // Refresh the status effect UI
             try
             {
                 var uiField = AccessTools.Field(typeof(Enemy), "_statusEffectUI");
