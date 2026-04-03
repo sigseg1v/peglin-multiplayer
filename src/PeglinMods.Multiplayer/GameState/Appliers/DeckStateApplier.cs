@@ -188,17 +188,15 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             var nextOrbField = AccessTools.Field(typeof(DeckInfoManager), "_nextOrb");
             nextOrbField?.SetValue(dim, null);
 
+            // Unparent from plunger so world position is independent
+            nextOrb.transform.SetParent(null);
+
             // Move to the active orb display position
             var displayPosField = AccessTools.Field(typeof(DeckInfoManager), "_currentOrbDisplayPos");
             var displayPos = displayPosField?.GetValue(dim) as Transform;
             if (displayPos != null)
                 nextOrb.transform.position = displayPos.position;
             nextOrb.transform.localScale = Vector3.one * 0.85f; // ACTIVE_ORB_DISPLAY_HEIGHT
-
-            // Move plunger up by orb height
-            var spriteRenderer = nextOrb.GetComponent<SpriteRenderer>();
-            if (plungerParent != null && spriteRenderer != null)
-                plungerParent.position += Vector3.up * spriteRenderer.bounds.size.y;
 
             // Set level ring
             var uod = nextOrb.GetComponentInChildren<PeglinUI.OrbDisplay.UpcomingOrbDisplay>();

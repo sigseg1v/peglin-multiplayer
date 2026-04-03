@@ -93,6 +93,9 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
             // Kill any tweens on the new orb
             DOTween.Kill(nextOrb.transform);
 
+            // Unparent from plunger so world position is independent
+            nextOrb.transform.SetParent(null);
+
             // Move to the active orb display position (instant, no animation)
             var displayPosField = AccessTools.Field(typeof(DeckInfoManager), "_currentOrbDisplayPos");
             var displayPos = displayPosField?.GetValue(dim) as Transform;
@@ -100,14 +103,6 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
                 nextOrb.transform.position = displayPos.position;
 
             nextOrb.transform.localScale = Vector3.one * 0.85f; // ACTIVE_ORB_DISPLAY_HEIGHT
-
-            // Move the plunger up by the orb sprite height (keeps upcoming orbs aligned)
-            var spriteRenderer = nextOrb.GetComponent<SpriteRenderer>();
-            if (plunger != null && spriteRenderer != null)
-            {
-                float height = spriteRenderer.bounds.size.y;
-                plunger.position += Vector3.up * height;
-            }
 
             // Set level ring sprite
             var uod = nextOrb.GetComponentInChildren<PeglinUI.OrbDisplay.UpcomingOrbDisplay>();
