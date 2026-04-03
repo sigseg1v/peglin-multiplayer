@@ -508,10 +508,60 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
 
             _log.LogInfo($"[MapApplier] Applied {applied} node types from host, {skipped} skipped " +
                 $"(host={hostNodes.Count}, client={clientNodes.Length})");
+
+            // Move the player sprite to the correct node.
+            // The node with PREVIOUS state is where the player currently stands.
+            // If none is PREVIOUS, try NEXT (player is about to move there).
+            MovePlayerToCurrentNode(mc, clientNodes, hostNodes);
         }
         catch (Exception ex)
         {
             _log.LogWarning($"[MapApplier] ApplyMapNodes failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Move the map player sprite to the node the host's player is at.
+    /// The host's _previousNode corresponds to the node with RoomState.PREVIOUS.
+    /// Also updates MapController._previousNode so future game logic references it.
+    /// </summary>
+    private void MovePlayerToCurrentNode(MapController mc, MapNode[] clientNodes, List<MapNodeEntry> hostNodes)
+    {
+        try
+        {
+            // Find the node the host player is at (PREVIOUS = just traversed, player stands here)
+            MapNode targetNode = null;
+            foreach (var entry in hostNodes)
+            {
+                if (entry.RoomState == (int)RoomState.PREVIOUS && entry.Index >= 0 && entry.Index < clientNodes.Length)
+                {
+                    targetNode = clientNodes[entry.Index];
+                    break;
+                }
+            }
+
+            if (targetNode == null) return;
+
+            // Get the player GameObject from MapController
+            var playerField = AccessTools.Field(typeof(MapController), "_player");
+            var player = playerField?.GetValue(mc) as GameObject;
+            if (player == null) return;
+
+            // Move player to the node position
+            var targetPos = targetNode.transform.position;
+            if (Vector3.Distance(player.transform.position, targetPos) > 0.1f)
+            {
+                player.transform.position = targetPos;
+                _log.LogInfo($"[MapApplier] Moved player to node at ({targetPos.x:F1},{targetPos.y:F1})");
+            }
+
+            // Update _previousNode so the game knows where the player is
+            var prevNodeField = AccessTools.Field(typeof(MapController), "_previousNode");
+            prevNodeField?.SetValue(mc, targetNode);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[MapApplier] MovePlayerToCurrentNode failed: {ex.Message}");
         }
     }
 }
