@@ -93,6 +93,10 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
             // Kill any tweens on the new orb
             DOTween.Kill(nextOrb.transform);
 
+            // Get the orb height BEFORE unparenting (need it for plunger shift)
+            var spriteRenderer = nextOrb.GetComponent<SpriteRenderer>();
+            float orbHeight = spriteRenderer != null ? spriteRenderer.bounds.size.y : 0f;
+
             // Unparent from plunger so world position is independent
             nextOrb.transform.SetParent(null);
 
@@ -103,6 +107,11 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
                 nextOrb.transform.position = displayPos.position;
 
             nextOrb.transform.localScale = Vector3.one * 0.85f; // ACTIVE_ORB_DISPLAY_HEIGHT
+
+            // Move the plunger up by the orb height so remaining orbs shift up to fill the gap
+            // (same as what DrawNextOrb does on the host)
+            if (plunger != null && orbHeight > 0f)
+                plunger.position += Vector3.up * orbHeight;
 
             // Set level ring sprite
             var uod = nextOrb.GetComponentInChildren<PeglinUI.OrbDisplay.UpcomingOrbDisplay>();

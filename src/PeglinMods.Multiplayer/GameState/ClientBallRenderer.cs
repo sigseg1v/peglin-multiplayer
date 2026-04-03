@@ -65,10 +65,30 @@ public class ClientBallRenderer : MonoBehaviour
         _isActive = false; // Not launched yet
         _ballObject.SetActive(true);
 
+        // Also try to copy scale from a real PachinkoBall in the scene
+        try
+        {
+            var realBall = Object.FindObjectOfType<PachinkoBall>();
+            if (realBall != null)
+            {
+                var realRenderer = realBall.GetComponentInChildren<SpriteRenderer>();
+                if (realRenderer?.sprite != null && _ballRenderer != null)
+                {
+                    _ballRenderer.sortingLayerName = realRenderer.sortingLayerName;
+                    _ballRenderer.sortingOrder = realRenderer.sortingOrder + 1;
+                    _ballObject.transform.localScale = realBall.transform.localScale;
+                    _ballObject.transform.position = new Vector3(_spawnPos.x, _spawnPos.y, realBall.transform.position.z);
+                }
+            }
+        }
+        catch { }
+
         var hasSprite = _ballRenderer?.sprite != null;
         MultiplayerPlugin.Logger?.LogInfo(
             $"[ClientBallRenderer] OnOrbDrawn '{orbName}' playerTransform={pt != null} " +
-            $"pos=({_spawnPos.x:F1},{_spawnPos.y:F1}) hasSprite={hasSprite} " +
+            $"pos=({_ballObject.transform.position.x:F1},{_ballObject.transform.position.y:F1},{_ballObject.transform.position.z:F1}) " +
+            $"scale=({_ballObject.transform.localScale.x:F2},{_ballObject.transform.localScale.y:F2}) " +
+            $"hasSprite={hasSprite} layer={_ballRenderer?.sortingLayerName} order={_ballRenderer?.sortingOrder} " +
             $"ballActive={_ballObject.activeSelf}");
     }
 
