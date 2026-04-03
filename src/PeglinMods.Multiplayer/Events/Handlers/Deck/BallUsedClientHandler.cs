@@ -26,32 +26,29 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
 
             var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
 
-            // If the shuffle animation is still running, force-complete it so DrawNextOrb
-            // doesn't fight the plunger animation for the same transform.
+            // Force-complete shuffle animation if still running
             if (dim != null && DeckInfoManager.animating)
                 ForceCompleteShuffleAnimation(dim);
-
-            int displayCountBefore = dim?.displayOrbs?.Count ?? -1;
 
             // Pop from shuffledDeck (data)
             var popped = dm.shuffledDeck.Pop();
             MultiplayerPlugin.Logger?.LogInfo($"[BallUsed] Popped '{popped?.name}' ({dm.shuffledDeck.Count} remaining)");
 
-            // Fire onBallUsed — DeckInfoManager subscribes to this in OnEnable and calls
-            // DrawNextOrb, which pops from _displayOrbs and starts the plunger/scale animation.
-            DeckManager.onBallUsed?.Invoke(popped);
-
-            int displayCountAfter = dim?.displayOrbs?.Count ?? -1;
-            bool delegateFired = displayCountAfter < displayCountBefore;
-            MultiplayerPlugin.Logger?.LogInfo($"[BallUsed] displayOrbs: {displayCountBefore} -> {displayCountAfter} (delegate {(delegateFired ? "fired" : "did NOT fire")})");
-
-            // Only call DrawNextOrb manually if the delegate did NOT handle it.
-            // Previously we ALWAYS called it, causing a double-pop that broke the animation chain.
-            if (!delegateFired && dim != null && displayCountAfter > 0)
+            // === DECK UI: directly set the active orb WITHOUT animation ===
+            // On the client, activePachinkoBall doesn't exist (DrawBall is blocked).
+            // DeckInfoManager.DrawNextOrb's animation chain crashes at PreSetActive/SetActive
+            // because they call UpdateAimTrackingTransform which accesses activePachinkoBall.
+            // We bypass the entire chain and directly set the current orb.
+            //
+            // Do NOT fire DeckManager.onBallUsed — DeckInfoManager subscribes to it and
+            // would trigger DrawNextOrb, which crashes for the same reason.
+            if (dim != null && dim.displayOrbs != null && dim.displayOrbs.Count > 0)
             {
-                MultiplayerPlugin.Logger?.LogWarning("[BallUsed] Delegate did not fire — calling DrawNextOrb manually as fallback");
-                var drawMethod = AccessTools.Method(typeof(DeckInfoManager), "DrawNextOrb");
-                drawMethod?.Invoke(dim, new object[] { popped });
+                SetActiveOrbDirectly(dim);
+            }
+            else
+            {
+                MultiplayerPlugin.Logger?.LogWarning($"[BallUsed] displayOrbs empty ({dim?.displayOrbs?.Count ?? -1}) — cannot set active orb");
             }
 
             // Show orb at aimer via ClientBallRenderer
@@ -64,8 +61,95 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
     }
 
     /// <summary>
-    /// Force-complete the shuffle animation (plunger drop → create sprites → plunger rise).
-    /// Without this, DrawNextOrb's plunger animation fights with the shuffle's plunger animation.
+    /// Directly pop the next display orb and place it at the active orb position.
+    /// Bypasses DrawNextOrb → BallDrawFinished → EndCurrentOrbScale chain entirely,
+    /// because that chain depends on activePachinkoBall which doesn't exist on the client.
+    /// </summary>
+    private static void SetActiveOrbDirectly(DeckInfoManager dim)
+    {
+        try
+        {
+            var nextOrb = dim.displayOrbs.Pop();
+
+            // Kill any ongoing tweens on the plunger (from shuffle or previous draw)
+            var plungerField = AccessTools.Field(typeof(DeckInfoManager), "_plungerParent");
+            var plunger = plungerField?.GetValue(dim) as Transform;
+            if (plunger != null)
+                DOTween.Kill(plunger);
+
+            // Destroy the current active orb if one exists
+            var currentOrbField = AccessTools.Field(typeof(DeckInfoManager), "_currentOrb");
+            var oldOrb = currentOrbField?.GetValue(dim) as GameObject;
+            if (oldOrb != null)
+            {
+                DOTween.Kill(oldOrb.transform);
+                UnityEngine.Object.Destroy(oldOrb);
+            }
+
+            // Clear _nextOrb to prevent stale animation callbacks from using it
+            var nextOrbField = AccessTools.Field(typeof(DeckInfoManager), "_nextOrb");
+            nextOrbField?.SetValue(dim, null);
+
+            // Kill any tweens on the new orb
+            DOTween.Kill(nextOrb.transform);
+
+            // Move to the active orb display position (instant, no animation)
+            var displayPosField = AccessTools.Field(typeof(DeckInfoManager), "_currentOrbDisplayPos");
+            var displayPos = displayPosField?.GetValue(dim) as Transform;
+            if (displayPos != null)
+                nextOrb.transform.position = displayPos.position;
+
+            nextOrb.transform.localScale = Vector3.one * 0.85f; // ACTIVE_ORB_DISPLAY_HEIGHT
+
+            // Move the plunger up by the orb sprite height (keeps upcoming orbs aligned)
+            var spriteRenderer = nextOrb.GetComponent<SpriteRenderer>();
+            if (plunger != null && spriteRenderer != null)
+            {
+                float height = spriteRenderer.bounds.size.y;
+                plunger.position += Vector3.up * height;
+            }
+
+            // Set level ring sprite
+            var uod = nextOrb.GetComponentInChildren<PeglinUI.OrbDisplay.UpcomingOrbDisplay>();
+            int levelIdx = 0;
+            if (uod?.attack != null)
+                levelIdx = Mathf.Clamp(uod.attack.Level - 1, 0, 2);
+
+            var levelRingField = AccessTools.Field(typeof(DeckInfoManager), "_currentOrbLevelRingRenderer");
+            var levelSpritesField = AccessTools.Field(typeof(DeckInfoManager), "_orbLevelDisplaySprites");
+            var levelRing = levelRingField?.GetValue(dim) as SpriteRenderer;
+            var levelSprites = levelSpritesField?.GetValue(dim) as Sprite[];
+            if (levelRing != null && levelSprites != null && levelIdx < levelSprites.Length)
+                levelRing.sprite = levelSprites[levelIdx];
+
+            // Activate the level frame mask
+            if (uod?.mainOrbLevelFrameMask != null)
+                uod.mainOrbLevelFrameMask.SetActive(true);
+
+            // Set as current orb
+            currentOrbField?.SetValue(dim, nextOrb);
+
+            // Enable the animator
+            var animator = nextOrb.GetComponentInChildren<Animator>();
+            if (animator != null) animator.speed = 1f;
+
+            // Fire events for any listeners
+            DeckInfoManager.onActiveOrbScaleStarted?.Invoke(nextOrb);
+            DeckInfoManager.onActiveOrbScaleCompleted?.Invoke();
+            DeckInfoManager.populatingDisplayOrb = false;
+            DeckInfoManager.animating = false;
+
+            MultiplayerPlugin.Logger?.LogInfo($"[BallUsed] Set active orb directly at ({displayPos?.position.x:F1},{displayPos?.position.y:F1}), displayOrbs remaining: {dim.displayOrbs.Count}");
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[BallUsed] SetActiveOrbDirectly failed: {ex.Message}");
+            DeckInfoManager.populatingDisplayOrb = false;
+        }
+    }
+
+    /// <summary>
+    /// Force-complete the shuffle animation so it doesn't fight with our direct orb placement.
     /// </summary>
     private static void ForceCompleteShuffleAnimation(DeckInfoManager dim)
     {
@@ -75,7 +159,6 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
             var plungerParent = plungerParentField?.GetValue(dim) as Transform;
             if (plungerParent != null)
             {
-                // Complete with callbacks so PlungerPlungeComplete → ShuffleAnimComplete chain fires
                 int safety = 0;
                 while (DeckInfoManager.animating && safety++ < 5)
                 {
