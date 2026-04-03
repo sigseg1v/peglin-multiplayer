@@ -34,10 +34,16 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
             try
             {
                 var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
-                if (dim?.displayOrbs != null && dim.displayOrbs.Count > 0)
+                int displayCount = dim?.displayOrbs?.Count ?? -1;
+                if (dim != null && displayCount > 0)
                 {
                     var drawMethod = AccessTools.Method(typeof(DeckInfoManager), "DrawNextOrb");
                     drawMethod?.Invoke(dim, new object[] { popped });
+                    MultiplayerPlugin.Logger?.LogInfo($"[BallUsed] DrawNextOrb called (displayOrbs was {displayCount})");
+                }
+                else
+                {
+                    MultiplayerPlugin.Logger?.LogWarning($"[BallUsed] _displayOrbs empty ({displayCount}) — cannot animate orb to active position");
                 }
             }
             catch (System.Exception ex2)
