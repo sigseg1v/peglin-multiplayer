@@ -489,9 +489,19 @@ public static class MultiplayerClientPatches
         return false;
     }
 
-    // NOTE: Do NOT block DeckInfoManager.StartShuffleAnimation — it populates
-    // _displayOrbs which is needed for DrawNextOrb to show upcoming orbs.
-    // The reload animation at end of deck is part of the normal visual flow.
+    /// <summary>
+    /// Block the shuffle/reload plunger animation on client to prevent spam.
+    /// This also prevents _displayOrbs from populating, so the upcoming orb
+    /// stack won't show — but the active orb is handled separately via
+    /// ClientBallRenderer during the aiming phase.
+    /// </summary>
+    [HarmonyPatch(typeof(DeckInfoManager), "StartShuffleAnimation")]
+    [HarmonyPrefix]
+    public static bool DeckInfoManager_StartShuffleAnimation_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        return false;
+    }
 
     /// <summary>Block board field reset on client — prevents re-shuffling pegs.</summary>
     [HarmonyPatch(typeof(BattleController), "ResetField")]

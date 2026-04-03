@@ -23,21 +23,8 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
                 MultiplayerPlugin.Logger?.LogInfo($"[BallUsed] Popped '{popped?.name}' from shuffledDeck ({dm.shuffledDeck.Count} remaining), firing onBallUsed");
                 DeckManager.onBallUsed?.Invoke(popped);
 
-                // Trigger the orb draw animation — DrawNextOrb moves the next orb
-                // from the display stack to the active position (larger, centered).
-                try
-                {
-                    var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
-                    if (dim?.displayOrbs != null && dim.displayOrbs.Count > 0)
-                    {
-                        var drawMethod = AccessTools.Method(typeof(DeckInfoManager), "DrawNextOrb");
-                        drawMethod?.Invoke(dim, new object[] { popped });
-                    }
-                }
-                catch (System.Exception ex)
-                {
-                    MultiplayerPlugin.Logger?.LogWarning($"[BallUsed] DrawNextOrb failed: {ex.Message}");
-                }
+                // Show the orb at the aimer position during aiming phase
+                GameState.ClientBallRenderer.Instance?.OnOrbDrawn(popped?.name);
             }
             else
             {

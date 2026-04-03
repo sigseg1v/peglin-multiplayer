@@ -18,6 +18,9 @@ public class ClientBallRenderer : MonoBehaviour
     private Vector2 _velocity;
     private float _lastUpdateTime;
     private bool _isActive;
+    private bool _isAiming; // True between BallUsed (orb drawn) and ShotFired
+    private Vector2 _aimDirection;
+    private Vector3 _spawnPos;
 
     // Additional multiball visuals
     private readonly List<GameObject> _multiballs = new List<GameObject>();
@@ -30,6 +33,45 @@ public class ClientBallRenderer : MonoBehaviour
     private void OnDestroy()
     {
         if (Instance == this) Instance = null;
+    }
+
+    /// <summary>
+    /// Show the orb at the spawn point during the aiming phase.
+    /// Called from BallUsedClientHandler when the host draws an orb.
+    /// The orb stays at the spawn position until OnShotFired launches it.
+    /// </summary>
+    public void OnOrbDrawn(string orbName)
+    {
+        if (_ballObject == null)
+            CreateBall();
+
+        UpdateBallSprite(orbName);
+
+        // Position at player spawn
+        var bc = Object.FindObjectOfType<Battle.BattleController>();
+        if (bc != null)
+        {
+            var playerField = HarmonyLib.AccessTools.Field(typeof(Battle.BattleController), "_playerTransform");
+            var pt = playerField?.GetValue(bc) as Transform;
+            if (pt != null)
+            {
+                _spawnPos = pt.position;
+                _ballObject.transform.position = new Vector3(_spawnPos.x, _spawnPos.y, -1f);
+            }
+        }
+
+        _isAiming = true;
+        _isActive = false; // Not launched yet
+        _ballObject.SetActive(true);
+    }
+
+    /// <summary>
+    /// Update the aim direction so the orb sprite rotates with the aimer.
+    /// Called from ClientAimRenderer or ShotFired with the aim vector.
+    /// </summary>
+    public void UpdateAimDirection(float aimX, float aimY)
+    {
+        _aimDirection = new Vector2(aimX, aimY).normalized;
     }
 
     public void OnShotFired(float aimX, float aimY, string orbName = null)
@@ -62,6 +104,7 @@ public class ClientBallRenderer : MonoBehaviour
 
         _velocity = Vector2.zero;
         _lastUpdateTime = Time.time;
+        _isAiming = false;
         _isActive = true;
         _ballObject.SetActive(true);
     }
@@ -182,14 +225,29 @@ public class ClientBallRenderer : MonoBehaviour
 
     private void Update()
     {
-        if (!_isActive || _ballObject == null) return;
+        if (_ballObject == null) return;
 
-        // Dead-reckoning: extrapolate position using velocity between network updates
+        // Aiming phase: show orb at spawn position, rotate with aim direction
+        if (_isAiming && !_isActive)
+        {
+            _ballObject.transform.position = new Vector3(_spawnPos.x, _spawnPos.y, -1f);
+
+            // Rotate to face aim direction
+            if (_aimDirection.sqrMagnitude > 0.01f)
+            {
+                float angle = Mathf.Atan2(_aimDirection.y, _aimDirection.x) * Mathf.Rad2Deg;
+                _ballObject.transform.rotation = Quaternion.Euler(0, 0, angle);
+            }
+            return;
+        }
+
+        if (!_isActive) return;
+
+        // Flight phase: extrapolate position using velocity between network updates
         float dt = Time.time - _lastUpdateTime;
-        if (dt > 0f && dt < 0.2f) // Don't extrapolate too far
+        if (dt > 0f && dt < 0.2f)
         {
             var extrapolated = _targetPos + _velocity * dt;
-            // Apply gravity
             extrapolated.y += -9.81f * dt * dt * 0.5f;
             _ballObject.transform.position = new Vector3(extrapolated.x, extrapolated.y, -1f);
         }

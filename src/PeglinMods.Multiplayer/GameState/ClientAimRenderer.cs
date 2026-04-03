@@ -43,6 +43,9 @@ public class ClientAimRenderer : MonoBehaviour
             _lineObject.SetActive(true);
             _isVisible = true;
         }
+
+        // Also update the orb sprite rotation at the aimer base
+        ClientBallRenderer.Instance?.UpdateAimDirection(aimX, aimY);
     }
 
     public void HideAim()
