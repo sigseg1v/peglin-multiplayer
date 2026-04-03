@@ -101,9 +101,16 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     var pt = (int)bomb.pegType;
                     bool destroyed = !bomb.gameObject.activeSelf || (pt & 0x20) != 0;
                     bool cleared = false;
+                    bool wasPreviouslyCleared = false;
                     if (!destroyed)
                     {
                         try { cleared = bomb.IsDisabled(); } catch { }
+                        try
+                        {
+                            var clearedField = HarmonyLib.AccessTools.Field(typeof(Peg), "_cleared");
+                            wasPreviouslyCleared = (bool)(clearedField?.GetValue(bomb) ?? false);
+                        }
+                        catch { }
                     }
 
                     snapshot.Pegs.Add(new PegEntry
@@ -117,6 +124,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                         SlimeType = (int)bomb.slimeType,
                         IsDestroyed = destroyed,
                         IsCleared = cleared,
+                        WasPreviouslyCleared = wasPreviouslyCleared,
                         CoinCount = bomb.NumCoins(),
                         HitCount = bomb.HitCount,
                         IsBomb = true,
@@ -128,10 +136,58 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                 }
             }
 
+            // Capture bouncer pegs from _bouncerPegs (bouncers are NOT in allPegs — they're separate)
+            var bouncers = pm.bouncerPegs;
+            if (bouncers != null)
+            {
+                for (int i = 0; i < bouncers.Count; i++)
+                {
+                    var bouncer = bouncers[i];
+                    if (bouncer == null) continue;
+
+                    var guid = _pegId.GetOrAssignGuid(bouncer);
+                    var pt = (int)bouncer.pegType;
+                    bool destroyed = !bouncer.gameObject.activeSelf || (pt & 0x20) != 0;
+                    bool cleared = false;
+                    bool wasPreviouslyCleared = false;
+                    if (!destroyed)
+                    {
+                        try { cleared = bouncer.IsDisabled(); } catch { }
+                        try
+                        {
+                            var clearedField = HarmonyLib.AccessTools.Field(typeof(Peg), "_cleared");
+                            wasPreviouslyCleared = (bool)(clearedField?.GetValue(bouncer) ?? false);
+                        }
+                        catch { }
+                    }
+
+                    snapshot.Pegs.Add(new PegEntry
+                    {
+                        Guid = guid,
+                        Index = pegs.Count + (bombs?.Count ?? 0) + i,
+                        PegType = pt,
+                        PegTypeName = bouncer.pegType.ToString(),
+                        PosX = bouncer.transform.position.x,
+                        PosY = bouncer.transform.position.y,
+                        SlimeType = (int)bouncer.slimeType,
+                        IsDestroyed = destroyed,
+                        IsCleared = cleared,
+                        WasPreviouslyCleared = wasPreviouslyCleared,
+                        CoinCount = bouncer.NumCoins(),
+                        IsBouncer = true,
+                        BuffAmount = bouncer.buffAmount,
+                    });
+
+                    if (bouncer.gameObject.activeSelf && !destroyed)
+                        snapshot.BouncerPegCount++;
+                }
+            }
+
             snapshot.TotalPegCount = snapshot.Pegs.Count;
 
-            _log.LogInfo($"[PegProvider] Captured {snapshot.TotalPegCount} pegs from PegManager.allPegs " +
-                $"(crit={snapshot.CritPegCount}, bomb={snapshot.BombPegCount}, reset={snapshot.ResetPegCount}, registry={_pegId.Count})");
+            _log.LogInfo($"[PegProvider] Captured {snapshot.TotalPegCount} pegs from PegManager " +
+                $"(crit={snapshot.CritPegCount}, bomb={snapshot.BombPegCount}, reset={snapshot.ResetPegCount}, " +
+                $"bouncer={snapshot.BouncerPegCount}, registry={_pegId.Count})");
 
             return snapshot;
         }

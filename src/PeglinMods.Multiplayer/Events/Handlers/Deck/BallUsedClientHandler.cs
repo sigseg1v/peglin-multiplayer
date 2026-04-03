@@ -1,6 +1,7 @@
 namespace PeglinMods.Multiplayer.Events.Handlers.Deck;
 
 using System;
+using DG.Tweening;
 using HarmonyLib;
 using PeglinMods.Multiplayer.Events.Network.Deck;
 using PeglinMods.Multiplayer.Multiplayer;
@@ -23,32 +24,34 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
                 return;
             }
 
+            var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
+
+            // If the shuffle animation is still running, force-complete it so DrawNextOrb
+            // doesn't fight the plunger animation for the same transform.
+            if (dim != null && DeckInfoManager.animating)
+                ForceCompleteShuffleAnimation(dim);
+
+            int displayCountBefore = dim?.displayOrbs?.Count ?? -1;
+
             // Pop from shuffledDeck (data)
             var popped = dm.shuffledDeck.Pop();
             MultiplayerPlugin.Logger?.LogInfo($"[BallUsed] Popped '{popped?.name}' ({dm.shuffledDeck.Count} remaining)");
 
-            // Fire onBallUsed for game systems
+            // Fire onBallUsed — DeckInfoManager subscribes to this in OnEnable and calls
+            // DrawNextOrb, which pops from _displayOrbs and starts the plunger/scale animation.
             DeckManager.onBallUsed?.Invoke(popped);
 
-            // Trigger DeckInfoManager's draw animation from _displayOrbs
-            try
+            int displayCountAfter = dim?.displayOrbs?.Count ?? -1;
+            bool delegateFired = displayCountAfter < displayCountBefore;
+            MultiplayerPlugin.Logger?.LogInfo($"[BallUsed] displayOrbs: {displayCountBefore} -> {displayCountAfter} (delegate {(delegateFired ? "fired" : "did NOT fire")})");
+
+            // Only call DrawNextOrb manually if the delegate did NOT handle it.
+            // Previously we ALWAYS called it, causing a double-pop that broke the animation chain.
+            if (!delegateFired && dim != null && displayCountAfter > 0)
             {
-                var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
-                int displayCount = dim?.displayOrbs?.Count ?? -1;
-                if (dim != null && displayCount > 0)
-                {
-                    var drawMethod = AccessTools.Method(typeof(DeckInfoManager), "DrawNextOrb");
-                    drawMethod?.Invoke(dim, new object[] { popped });
-                    MultiplayerPlugin.Logger?.LogInfo($"[BallUsed] DrawNextOrb called (displayOrbs was {displayCount})");
-                }
-                else
-                {
-                    MultiplayerPlugin.Logger?.LogWarning($"[BallUsed] _displayOrbs empty ({displayCount}) — cannot animate orb to active position");
-                }
-            }
-            catch (System.Exception ex2)
-            {
-                MultiplayerPlugin.Logger?.LogWarning($"[BallUsed] DrawNextOrb failed: {ex2.Message}");
+                MultiplayerPlugin.Logger?.LogWarning("[BallUsed] Delegate did not fire — calling DrawNextOrb manually as fallback");
+                var drawMethod = AccessTools.Method(typeof(DeckInfoManager), "DrawNextOrb");
+                drawMethod?.Invoke(dim, new object[] { popped });
             }
 
             // Show orb at aimer via ClientBallRenderer
@@ -57,6 +60,33 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
         catch (Exception ex)
         {
             MultiplayerPlugin.Logger?.LogWarning($"BallUsed handler failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Force-complete the shuffle animation (plunger drop → create sprites → plunger rise).
+    /// Without this, DrawNextOrb's plunger animation fights with the shuffle's plunger animation.
+    /// </summary>
+    private static void ForceCompleteShuffleAnimation(DeckInfoManager dim)
+    {
+        try
+        {
+            var plungerParentField = AccessTools.Field(typeof(DeckInfoManager), "_plungerParent");
+            var plungerParent = plungerParentField?.GetValue(dim) as Transform;
+            if (plungerParent != null)
+            {
+                // Complete with callbacks so PlungerPlungeComplete → ShuffleAnimComplete chain fires
+                int safety = 0;
+                while (DeckInfoManager.animating && safety++ < 5)
+                {
+                    DOTween.Complete(plungerParent, true);
+                }
+            }
+            MultiplayerPlugin.Logger?.LogInfo($"[BallUsed] Force-completed shuffle animation (still animating: {DeckInfoManager.animating})");
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[BallUsed] Failed to complete shuffle anim: {ex.Message}");
         }
     }
 }

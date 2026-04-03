@@ -9,6 +9,7 @@ public class PegboardStateSnapshot
     public int CritPegCount { get; set; }
     public int BombPegCount { get; set; }
     public int ResetPegCount { get; set; }
+    public int BouncerPegCount { get; set; }
 }
 
 public class PegEntry
@@ -39,6 +40,9 @@ public class PegEntry
 
     /// <summary>True if this peg is a bomb (from _bombs list, not _allPegs).</summary>
     public bool IsBomb { get; set; }
+
+    /// <summary>True if this peg is a bouncer (from _bouncerPegs list, not _allPegs).</summary>
+    public bool IsBouncer { get; set; }
 
     /// <summary>Damage buff/debuff value displayed on the peg (-999 to 999).</summary>
     public int BuffAmount { get; set; }

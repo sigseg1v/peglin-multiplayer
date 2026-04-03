@@ -11,11 +11,13 @@ namespace PeglinMods.Multiplayer.GameState.Appliers;
 /// <summary>
 /// Syncs pegboard state from host to client using GUID-based tracking.
 ///
+/// PegManager stores three separate lists: _allPegs, _bombs, _bouncerPegs.
+/// Bombs and bouncers are NOT in allPegs — they must be handled separately.
+///
 /// Three-phase matching:
-/// 1. GUID match (subsequent syncs, best case)
-/// 2. Position match within 1 unit (first sync, handles matching layouts)
+/// 1. GUID match with type validation (subsequent syncs, best case)
+/// 2. Type-aware position match: bombs→bombs, bouncers→bouncers, regulars→regulars
 /// 3. Reposition: grab any unmatched client peg and move it to host position
-///    (handles RNG-divergent random layouts where positions differ)
 ///
 /// After matching, deactivate extras on client that don't exist on host.
 /// </summary>
@@ -40,7 +42,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 return;
             }
 
-            var bc = UnityEngine.Object.FindObjectOfType<Battle.BattleController>();
+            var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
             var pm = bc?.pegManager;
             if (pm == null || pm.allPegs == null)
             {
@@ -49,33 +51,61 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
 
             var clientPegs = pm.allPegs;
-            var bombsField = HarmonyLib.AccessTools.Field(typeof(Battle.PegManager), "_bombs");
-            var clientBombs = bombsField?.GetValue(pm) as System.Collections.Generic.List<Bomb>;
+            var bombsField = HarmonyLib.AccessTools.Field(typeof(PegManager), "_bombs");
+            var clientBombs = bombsField?.GetValue(pm) as List<Bomb>;
+            var clientBouncers = pm.bouncerPegs;
 
             int guidMatched = 0, posMatched = 0, repositioned = 0, typeChanged = 0,
-                destroyed = 0, reactivated = 0, missed = 0;
+                destroyed = 0, reactivated = 0, missed = 0, guidTypeInvalid = 0;
             var matchedPegs = new HashSet<Peg>();
 
-            // Collect all unmatched host peg entries for the reposition phase
             var unmatchedEntries = new List<PegEntry>();
 
-            // ===== PHASE 1 & 2: GUID match, then position match =====
+            // ===== PHASE 1 & 2: GUID match (type-validated), then type-aware position match =====
             foreach (var entry in snapshot.Pegs)
             {
                 Peg peg = null;
 
-                // Phase 1: GUID match
+                // Phase 1: GUID match with type validation
                 if (!string.IsNullOrEmpty(entry.Guid))
                 {
                     peg = _pegId.Find(entry.Guid);
                     if (peg != null)
-                        guidMatched++;
+                    {
+                        // Validate: bomb GUIDs → bombs, bouncer GUIDs → bouncers, regular → neither
+                        bool pegIsBomb = peg is Bomb;
+                        bool pegIsBouncer = peg is BouncerPeg;
+                        bool typeOk = (entry.IsBomb == pegIsBomb) && (entry.IsBouncer == pegIsBouncer);
+                        if (!typeOk)
+                        {
+                            _log.LogWarning($"[PegboardApplier] GUID type mismatch: {entry.Guid} " +
+                                $"entry(bomb={entry.IsBomb},bouncer={entry.IsBouncer}) " +
+                                $"peg({peg.GetType().Name}) — re-matching by position");
+                            guidTypeInvalid++;
+                            peg = null;
+                        }
+                        else
+                        {
+                            guidMatched++;
+                        }
+                    }
                 }
 
-                // Phase 2: closest position within 1 unit
+                // Phase 2: type-aware position match
+                // Prefer same-type: bombs→bombs, bouncers→bouncers, regulars→regulars
                 if (peg == null)
                 {
-                    peg = FindClosestUnmatched(entry, clientPegs, clientBombs, matchedPegs, 1f);
+                    if (entry.IsBomb)
+                        peg = FindClosestUnmatched(entry, null, clientBombs, null, matchedPegs, 3f);
+                    else if (entry.IsBouncer)
+                        peg = FindClosestUnmatched(entry, null, null, clientBouncers, matchedPegs, 3f);
+                    else
+                        peg = FindClosestUnmatched(entry, clientPegs, null, null, matchedPegs, 1f);
+
+                    // Cross-type fallback only if same-type failed
+                    if (peg == null)
+                        peg = FindClosestUnmatched(entry, clientPegs, clientBombs, clientBouncers, matchedPegs, 2f);
+
                     if (peg != null)
                         posMatched++;
                 }
@@ -91,36 +121,13 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     if (peg is Bomb && !entry.IsBomb && targetType != Peg.PegType.BOMB)
                     {
                         peg.gameObject.SetActive(false);
-                        // Don't apply further state — this peg is gone
                     }
                     else
                     {
-                        ApplyPegState(peg, entry, ref typeChanged, ref destroyed, ref reactivated);
+                        ApplyPegState(peg, entry, clientBombs, ref typeChanged, ref destroyed, ref reactivated);
                     }
 
-                    // Position sync: hard snap for static pegs, soft lerp for moving pegs
-                    var finalPeg = !string.IsNullOrEmpty(entry.Guid) ? _pegId.Find(entry.Guid) : peg;
-                    if (finalPeg == null) finalPeg = peg;
-                    var hostPos = new Vector3(entry.PosX, entry.PosY, finalPeg.transform.position.z);
-
-                    if (HasMovementComponent(finalPeg))
-                    {
-                        finalPeg.transform.position = Vector3.Lerp(
-                            finalPeg.transform.position, hostPos, 0.15f);
-                    }
-                    else
-                    {
-                        finalPeg.transform.position = hostPos;
-                        // Also set via Rigidbody2D if present (physics can override transform)
-                        var rb = finalPeg.GetComponent<UnityEngine.Rigidbody2D>();
-                        if (rb != null) rb.position = new Vector2(entry.PosX, entry.PosY);
-                        if (finalPeg != peg && peg != null)
-                        {
-                            peg.transform.position = hostPos;
-                            var rb2 = peg.GetComponent<UnityEngine.Rigidbody2D>();
-                            if (rb2 != null) rb2.position = new Vector2(entry.PosX, entry.PosY);
-                        }
-                    }
+                    SyncPegPosition(peg, entry);
                 }
                 else
                 {
@@ -129,9 +136,6 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
 
             // ===== PHASE 3: Reposition unmatched client pegs to host positions =====
-            // For host pegs that had no close match, grab any leftover client peg and
-            // move it to the host position. This handles RNG-divergent random layouts
-            // where client generated pegs at completely different positions.
             if (unmatchedEntries.Count > 0)
             {
                 var availablePegs = new List<Peg>();
@@ -148,8 +152,15 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                             availablePegs.Add(b);
                     }
                 }
+                if (clientBouncers != null)
+                {
+                    foreach (var bo in clientBouncers)
+                    {
+                        if (bo != null && !matchedPegs.Contains(bo))
+                            availablePegs.Add(bo);
+                    }
+                }
 
-                // Find a template peg for cloning if we run out of available pegs
                 Peg templatePeg = null;
                 if (clientPegs.Count > 0)
                     templatePeg = clientPegs[0];
@@ -165,11 +176,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     }
                     else if (templatePeg != null)
                     {
-                        // Host has more pegs than client — clone one to fill the gap
                         var clone = UnityEngine.Object.Instantiate(templatePeg, templatePeg.transform.parent);
                         clone.gameObject.SetActive(true);
                         peg = clone;
-                        // Add to PegManager so future syncs find it
                         try { pm.AddPeg(peg); } catch { clientPegs.Add(peg); }
                         repositioned++;
                     }
@@ -181,11 +190,8 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
                     peg.transform.position = new Vector3(entry.PosX, entry.PosY, peg.transform.position.z);
                     matchedPegs.Add(peg);
-                    ApplyPegState(peg, entry, ref typeChanged, ref destroyed, ref reactivated);
-                    // Re-snap after type conversion (ConvertPegToType may create new GO)
-                    var finalPeg = !string.IsNullOrEmpty(entry.Guid) ? _pegId.Find(entry.Guid) : peg;
-                    if (finalPeg != null)
-                        finalPeg.transform.position = new Vector3(entry.PosX, entry.PosY, finalPeg.transform.position.z);
+                    ApplyPegState(peg, entry, clientBombs, ref typeChanged, ref destroyed, ref reactivated);
+                    SyncPegPosition(peg, entry);
                 }
             }
 
@@ -210,16 +216,29 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     }
                 }
             }
+            if (clientBouncers != null)
+            {
+                foreach (var bouncer in clientBouncers)
+                {
+                    if (bouncer != null && bouncer.gameObject.activeSelf && !matchedPegs.Contains(bouncer))
+                    {
+                        bouncer.gameObject.SetActive(false);
+                        extrasRemoved++;
+                    }
+                }
+            }
 
-            int totalClient = clientPegs.Count + (clientBombs?.Count ?? 0);
+            int totalClient = clientPegs.Count + (clientBombs?.Count ?? 0) + (clientBouncers?.Count ?? 0);
             _log.LogInfo($"[PegboardApplier] GUIDMatched={guidMatched}, PosMatched={posMatched}, " +
                 $"Repositioned={repositioned}, TypeChanged={typeChanged}, Destroyed={destroyed}, " +
-                $"Reactivated={reactivated}, Missed={missed}, ExtrasRemoved={extrasRemoved} " +
+                $"Reactivated={reactivated}, Missed={missed}, GUIDTypeInvalid={guidTypeInvalid}, " +
+                $"ExtrasRemoved={extrasRemoved} " +
                 $"(host={snapshot.TotalPegCount}, client={totalClient}, " +
-                $"crit={snapshot.CritPegCount}, bomb={snapshot.BombPegCount}, reset={snapshot.ResetPegCount}, " +
+                $"crit={snapshot.CritPegCount}, bomb={snapshot.BombPegCount}, " +
+                $"reset={snapshot.ResetPegCount}, bouncer={snapshot.BouncerPegCount}, " +
                 $"registry={_pegId.Count})");
 
-            LogActualPegState(clientPegs, clientBombs);
+            LogActualPegState(clientPegs, clientBombs, clientBouncers);
         }
         catch (Exception ex)
         {
@@ -228,21 +247,59 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     }
 
     /// <summary>
+    /// Sync a peg's position to the host's position.
+    /// Looks up the final object via GUID (ConvertPegToType may create a new GO).
+    /// Hard-snaps static pegs; soft-lerps moving pegs.
+    /// </summary>
+    private void SyncPegPosition(Peg originalPeg, PegEntry entry)
+    {
+        var finalPeg = !string.IsNullOrEmpty(entry.Guid) ? _pegId.Find(entry.Guid) : null;
+        if (finalPeg == null) finalPeg = originalPeg;
+
+        var hostPos = new Vector3(entry.PosX, entry.PosY, finalPeg.transform.position.z);
+
+        if (HasMovementComponent(finalPeg))
+        {
+            finalPeg.transform.position = Vector3.Lerp(
+                finalPeg.transform.position, hostPos, 0.15f);
+        }
+        else
+        {
+            finalPeg.transform.position = hostPos;
+            var rb = finalPeg.GetComponent<Rigidbody2D>();
+            if (rb != null) rb.position = new Vector2(entry.PosX, entry.PosY);
+        }
+
+        // If ConvertPegToType created a new GO, also snap the original (now parent)
+        if (finalPeg != originalPeg && originalPeg != null)
+        {
+            originalPeg.transform.position = hostPos;
+            var rb2 = originalPeg.GetComponent<Rigidbody2D>();
+            if (rb2 != null) rb2.position = new Vector2(entry.PosX, entry.PosY);
+        }
+    }
+
+    /// <summary>
     /// Find the closest unmatched peg within the given distance threshold.
+    /// Pass null for any list to skip it (type-aware matching).
     /// </summary>
     private Peg FindClosestUnmatched(PegEntry entry, List<Peg> clientPegs,
-        System.Collections.Generic.List<Bomb> clientBombs, HashSet<Peg> matched, float maxDist)
+        List<Bomb> clientBombs, List<BouncerPeg> clientBouncers,
+        HashSet<Peg> matched, float maxDist)
     {
         Peg closest = null;
-        float closestDist = maxDist * maxDist; // compare squared distances
+        float closestDist = maxDist * maxDist;
 
-        foreach (var p in clientPegs)
+        if (clientPegs != null)
         {
-            if (p == null || matched.Contains(p)) continue;
-            float dx = p.transform.position.x - entry.PosX;
-            float dy = p.transform.position.y - entry.PosY;
-            float dist = dx * dx + dy * dy;
-            if (dist < closestDist) { closestDist = dist; closest = p; }
+            foreach (var p in clientPegs)
+            {
+                if (p == null || matched.Contains(p)) continue;
+                float dx = p.transform.position.x - entry.PosX;
+                float dy = p.transform.position.y - entry.PosY;
+                float dist = dx * dx + dy * dy;
+                if (dist < closestDist) { closestDist = dist; closest = p; }
+            }
         }
         if (clientBombs != null)
         {
@@ -255,13 +312,24 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 if (dist < closestDist) { closestDist = dist; closest = b; }
             }
         }
+        if (clientBouncers != null)
+        {
+            foreach (var bo in clientBouncers)
+            {
+                if (bo == null || matched.Contains(bo)) continue;
+                float dx = bo.transform.position.x - entry.PosX;
+                float dy = bo.transform.position.y - entry.PosY;
+                float dist = dx * dx + dy * dy;
+                if (dist < closestDist) { closestDist = dist; closest = bo; }
+            }
+        }
         return closest;
     }
 
     /// <summary>
     /// Apply host state (type, cleared, destroyed, slime, coins, bomb fuse) to a matched client peg.
     /// </summary>
-    private void ApplyPegState(Peg peg, PegEntry entry,
+    private void ApplyPegState(Peg peg, PegEntry entry, List<Bomb> clientBombs,
         ref int typeChanged, ref int destroyed, ref int reactivated)
     {
         // Register with host GUID
@@ -271,11 +339,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         bool clientPopped = false;
         try { clientPopped = peg.IsDisabled(); } catch { }
 
-        // Handle cleared/popped pegs — pop and fade out, matching the host flow.
-        // After PegActivated, force the dot sprite before RemoveIfCleared starts
-        // the fade. On the host the destruction animation has time to set this,
-        // but on the client PegActivated+RemoveIfCleared run back-to-back so
-        // special pegs (crit/reset) may still show their type sprite during fade.
+        // Handle cleared/popped pegs
         if (entry.IsCleared && !clientPopped)
         {
             try
@@ -286,9 +350,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 if (peg is RegularPeg)
                 {
                     var renderer = HarmonyLib.AccessTools.Field(typeof(RegularPeg), "_renderer")
-                        ?.GetValue(peg) as UnityEngine.SpriteRenderer;
+                        ?.GetValue(peg) as SpriteRenderer;
                     var sprite = HarmonyLib.AccessTools.Field(typeof(RegularPeg), "_previouslyClearedSprite")
-                        ?.GetValue(peg) as UnityEngine.Sprite;
+                        ?.GetValue(peg) as Sprite;
                     if (renderer != null && sprite != null)
                         renderer.sprite = sprite;
                 }
@@ -310,24 +374,19 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             return;
         }
 
-        // Reactivate if host says peg is alive but client has it disabled/popped.
-        // This handles the Reset ("R") peg refresh: previously-cleared pegs come back
-        // with a dot visual (_previouslyClearedSprite). After RemoveIfCleared fades the
-        // renderer to alpha 0, we must kill the tween and restore alpha for the dot to show.
+        // Reactivate if host says peg is alive but client has it disabled/popped
         if (!entry.IsCleared && !entry.IsDestroyed)
         {
             var clearedField = HarmonyLib.AccessTools.Field(typeof(Peg), "_cleared");
 
             if (!peg.gameObject.activeSelf || peg.pegType == Peg.PegType.DESTROYED || clientPopped)
             {
-                // Kill any in-progress DOTween fade from a prior RemoveIfCleared
                 DG.Tweening.DOTween.Kill(peg.gameObject);
 
                 clearedField?.SetValue(peg, entry.WasPreviouslyCleared);
                 peg.gameObject.SetActive(true);
                 try { peg.Reset(false); } catch { }
 
-                // Force renderer alpha to 1 — RemoveIfCleared DOFade may have left it at 0
                 ForceRendererVisible(peg);
 
                 reactivated++;
@@ -343,49 +402,56 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
         }
 
-        // Force peg type to match host
-        var targetType = (Peg.PegType)entry.PegType;
-        if (peg.pegType != targetType)
+        // Force peg type to match host (skip for bouncers — they don't support conversion)
+        if (!(peg is BouncerPeg))
         {
-            try
+            var targetType = (Peg.PegType)entry.PegType;
+            if (peg.pegType != targetType)
             {
-                if (peg.SupportsPegType(targetType))
+                try
                 {
-                    var result = peg.ConvertPegToType(targetType);
-                    if (targetType == Peg.PegType.BOMB && result != null && result != peg.gameObject)
+                    if (peg.SupportsPegType(targetType))
                     {
-                        var newBomb = result.GetComponent<Peg>();
-                        if (newBomb != null && !string.IsNullOrEmpty(entry.Guid))
-                            _pegId.Register(newBomb, entry.Guid);
+                        var result = peg.ConvertPegToType(targetType);
+                        if (targetType == Peg.PegType.BOMB && result != null && result != peg.gameObject)
+                        {
+                            var newBomb = result.GetComponent<Bomb>();
+                            if (newBomb != null)
+                            {
+                                if (!string.IsNullOrEmpty(entry.Guid))
+                                    _pegId.Register(newBomb, entry.Guid);
+
+                                if (clientBombs != null && !clientBombs.Contains(newBomb))
+                                    clientBombs.Add(newBomb);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        peg.pegType = targetType;
                     }
                 }
-                else
+                catch
                 {
                     peg.pegType = targetType;
                 }
+                typeChanged++;
             }
-            catch
-            {
-                peg.pegType = targetType;
-            }
-            typeChanged++;
         }
 
         // After type conversion, if the peg is in "previously cleared" state,
-        // re-apply the dot sprite. ConvertPegToType overwrites the sprite to the
-        // type-specific one (e.g., crit bonus sprite), hiding the dot.
+        // re-apply the dot sprite.
         if (entry.WasPreviouslyCleared && !entry.IsCleared && !entry.IsDestroyed)
         {
             if (peg is RegularPeg)
             {
                 var rendererField = HarmonyLib.AccessTools.Field(typeof(RegularPeg), "_renderer");
                 var spriteField = HarmonyLib.AccessTools.Field(typeof(RegularPeg), "_previouslyClearedSprite");
-                var renderer = rendererField?.GetValue(peg) as UnityEngine.SpriteRenderer;
-                var sprite = spriteField?.GetValue(peg) as UnityEngine.Sprite;
+                var renderer = rendererField?.GetValue(peg) as SpriteRenderer;
+                var sprite = spriteField?.GetValue(peg) as Sprite;
                 if (renderer != null && sprite != null)
                     renderer.sprite = sprite;
             }
-            // LongPeg: color is handled by Reset() and not overwritten by ConvertPegToType
         }
 
         // Apply slime type
@@ -412,7 +478,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
         }
 
-        // Sync buff amount (damage modifier displayed on peg)
+        // Sync buff amount
         if (peg.buffAmount != entry.BuffAmount)
         {
             int diff = entry.BuffAmount - peg.buffAmount;
@@ -430,7 +496,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 bomb.HitCount = entry.HitCount;
                 try
                 {
-                    var animator = bomb.GetComponent<UnityEngine.Animator>();
+                    var animator = bomb.GetComponent<Animator>();
                     animator?.SetInteger("NumHits", entry.HitCount);
                 }
                 catch { }
@@ -438,17 +504,10 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         }
     }
 
-    /// <summary>
-    /// Check if a peg has a movement component (linear, oscillating, rotating, etc.).
-    /// Moving pegs run deterministic movement code on both host and client —
-    /// snapping their position every sync causes jittering.
-    /// </summary>
     private static bool HasMovementComponent(Peg peg)
     {
         if (peg == null) return false;
-        // Check the peg itself and parent (RotatingPegCircle is on the parent)
         var go = peg.gameObject;
-        var parent = go.transform.parent?.gameObject;
 
         return go.GetComponent<Battle.PegBehaviour.LinearPegMovement>() != null
             || go.GetComponent<Battle.PegBehaviour.PegMoveAndReturn>() != null
@@ -457,11 +516,6 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             || go.GetComponentInParent<Battle.PegBehaviour.RotatingPegCircle>() != null;
     }
 
-    /// <summary>
-    /// Force a peg's renderer back to full visibility (alpha=1).
-    /// After RemoveIfCleared fades the renderer to 0 via DOTween, reactivation
-    /// via Reset() sets the sprite but the alpha stays at 0. This fixes that.
-    /// </summary>
     private void ForceRendererVisible(Peg peg)
     {
         try
@@ -469,30 +523,40 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             if (peg is RegularPeg)
             {
                 var rendererField = HarmonyLib.AccessTools.Field(typeof(RegularPeg), "_renderer");
-                var renderer = rendererField?.GetValue(peg) as UnityEngine.SpriteRenderer;
+                var renderer = rendererField?.GetValue(peg) as SpriteRenderer;
                 if (renderer != null)
                 {
                     var c = renderer.color;
-                    if (c.a < 1f) renderer.color = new UnityEngine.Color(c.r, c.g, c.b, 1f);
+                    if (c.a < 1f) renderer.color = new Color(c.r, c.g, c.b, 1f);
                 }
             }
             else if (peg is LongPeg)
             {
                 var rendererField = HarmonyLib.AccessTools.Field(typeof(LongPeg), "_renderer");
-                var renderer = rendererField?.GetValue(peg) as UnityEngine.MeshRenderer;
+                var renderer = rendererField?.GetValue(peg) as MeshRenderer;
                 if (renderer?.material != null)
                 {
                     var c = renderer.material.color;
-                    if (c.a < 1f) renderer.material.color = new UnityEngine.Color(c.r, c.g, c.b, 1f);
+                    if (c.a < 1f) renderer.material.color = new Color(c.r, c.g, c.b, 1f);
+                }
+            }
+            else if (peg is BouncerPeg)
+            {
+                // BouncerPeg stores its renderer in a private _renderer field (SpriteRenderer)
+                var renderer = peg.GetComponentInChildren<SpriteRenderer>();
+                if (renderer != null)
+                {
+                    var c = renderer.color;
+                    if (c.a < 1f) renderer.color = new Color(c.r, c.g, c.b, 1f);
                 }
             }
         }
         catch { }
     }
 
-    private void LogActualPegState(List<Peg> pegs, System.Collections.Generic.List<Bomb> bombs)
+    private void LogActualPegState(List<Peg> pegs, List<Bomb> bombs, List<BouncerPeg> bouncers)
     {
-        int active = 0, crits = 0, bombCount = 0, resets = 0, regular = 0;
+        int active = 0, crits = 0, bombCount = 0, resets = 0, regular = 0, bouncerCount = 0;
         foreach (var peg in pegs)
         {
             if (peg == null || !peg.gameObject.activeSelf || peg.pegType == Peg.PegType.DESTROYED) continue;
@@ -517,7 +581,19 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 bombCount++;
             }
         }
+        if (bouncers != null)
+        {
+            foreach (var bouncer in bouncers)
+            {
+                if (bouncer == null || !bouncer.gameObject.activeSelf || bouncer.pegType == Peg.PegType.DESTROYED) continue;
+                bool disabled = false;
+                try { disabled = bouncer.IsDisabled(); } catch { }
+                if (disabled) continue;
+                active++;
+                bouncerCount++;
+            }
+        }
         _log.LogInfo($"[PegboardApplier] CLIENT ACTUAL: {active} active pegs " +
-            $"(regular={regular}, crit={crits}, bomb={bombCount}, reset={resets})");
+            $"(regular={regular}, crit={crits}, bomb={bombCount}, reset={resets}, bouncer={bouncerCount})");
     }
 }
