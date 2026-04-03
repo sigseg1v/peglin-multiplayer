@@ -308,8 +308,10 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
 
         try
         {
-            // Find the PostBattleController (already in the Battle scene)
-            var pbc = UnityEngine.Object.FindObjectOfType<Battle.PostBattleController>();
+            // Find the PostBattleController — it's on a disabled GameObject,
+            // so FindObjectOfType won't work. Use FindObjectsOfTypeAll instead.
+            var pbcs = Resources.FindObjectsOfTypeAll<Battle.PostBattleController>();
+            var pbc = pbcs.Length > 0 ? pbcs[0] : null;
             if (pbc == null)
             {
                 _log.LogWarning("[MapApplier] No PostBattleController in scene for navigation slots");

@@ -170,6 +170,17 @@ public class ClientBallRenderer : MonoBehaviour
                     orbGo = loader.GetOrbPrefab(cleanName);
             }
 
+            // NavigationOrb: get from BattleController's serialized prefab
+            if (orbGo == null && cleanName == "NavigationOrb")
+            {
+                var bc = Object.FindObjectOfType<Battle.BattleController>();
+                if (bc != null)
+                {
+                    var navField = HarmonyLib.AccessTools.Field(typeof(Battle.BattleController), "_navigationOrb");
+                    orbGo = navField?.GetValue(bc) as GameObject;
+                }
+            }
+
             // Fallback: try battleDeck
             if (orbGo == null)
             {
