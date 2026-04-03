@@ -23,26 +23,30 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
                 return;
             }
 
-            var orbName = dm.shuffledDeck.Peek()?.name;
+            // Pop from shuffledDeck (data)
+            var popped = dm.shuffledDeck.Pop();
+            MultiplayerPlugin.Logger?.LogInfo($"[BallUsed] Popped '{popped?.name}' ({dm.shuffledDeck.Count} remaining)");
 
-            // Try DrawBall — creates PachinkoBall needed for orb display.
-            // May fail on subsequent draws because BattleController state machine
-            // isn't in the right state (Update is blocked on client).
+            // Fire onBallUsed for game systems
+            DeckManager.onBallUsed?.Invoke(popped);
+
+            // Trigger DeckInfoManager's draw animation from _displayOrbs
             try
             {
-                dm.DrawBall(null);
-                MultiplayerPlugin.Logger?.LogInfo($"[BallUsed] DrawBall succeeded for '{orbName}' ({dm.shuffledDeck.Count} remaining)");
+                var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
+                if (dim?.displayOrbs != null && dim.displayOrbs.Count > 0)
+                {
+                    var drawMethod = AccessTools.Method(typeof(DeckInfoManager), "DrawNextOrb");
+                    drawMethod?.Invoke(dim, new object[] { popped });
+                }
             }
-            catch
+            catch (System.Exception ex2)
             {
-                // DrawBall failed — manually pop and fire events for deck UI
-                var popped = dm.shuffledDeck.Pop();
-                DeckManager.onBallUsed?.Invoke(popped);
-                MultiplayerPlugin.Logger?.LogInfo($"[BallUsed] DrawBall failed, manual pop for '{popped?.name}' ({dm.shuffledDeck.Count} remaining)");
-
-                // Show the orb via ClientBallRenderer as fallback
-                GameState.ClientBallRenderer.Instance?.OnOrbDrawn(popped?.name);
+                MultiplayerPlugin.Logger?.LogWarning($"[BallUsed] DrawNextOrb failed: {ex2.Message}");
             }
+
+            // Show orb at aimer via ClientBallRenderer
+            GameState.ClientBallRenderer.Instance?.OnOrbDrawn(popped?.name);
         }
         catch (Exception ex)
         {

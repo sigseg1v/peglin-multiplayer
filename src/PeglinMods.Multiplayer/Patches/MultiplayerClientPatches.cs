@@ -477,11 +477,17 @@ public static class MultiplayerClientPatches
     }
 
     /// <summary>
-    /// DrawBall is NOT blocked on client — it creates the PachinkoBall needed
-    /// for the active orb display (rotation, position, sprite). BallUsedClientHandler
-    /// calls it directly when the host draws. The client's shuffledDeck is synced
-    /// from the host so the correct orb is drawn.
+    /// Block DrawBall on client — it NREs on subsequent calls because
+    /// BattleController's state machine isn't advancing (Update blocked).
+    /// BallUsedClientHandler manually handles deck pop and UI animation.
     /// </summary>
+    [HarmonyPatch(typeof(DeckManager), "DrawBall")]
+    [HarmonyPrefix]
+    public static bool DeckManager_DrawBall_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        return false;
+    }
 
     /// <summary>
     /// Block the battle deck reshuffle on client — prevents reload animation spam.
