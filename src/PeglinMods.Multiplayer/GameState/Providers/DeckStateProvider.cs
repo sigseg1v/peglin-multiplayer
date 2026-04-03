@@ -69,7 +69,20 @@ public class DeckStateProvider : IGameStateProvider<DeckStateSnapshot>
 
             snapshot.DeckSize = snapshot.CompleteDeck.Count;
 
-            _log.LogInfo($"[DeckProvider] Captured {snapshot.CompleteDeck.Count} complete, {snapshot.BattleDeck.Count} battle, {snapshot.ShuffledOrder.Count} shuffled orbs ({_orbId.Count} in registry)");
+            // Capture the currently active orb (the one being aimed/fired)
+            try
+            {
+                var bc = UnityEngine.Object.FindObjectOfType<Battle.BattleController>();
+                if (bc?.activePachinkoBall != null)
+                {
+                    snapshot.CurrentOrb = bc.activePachinkoBall.name;
+                    var atk = bc.activePachinkoBall.GetComponent<Attack>();
+                    snapshot.CurrentOrbLevel = atk?.Level ?? 1;
+                }
+            }
+            catch { }
+
+            _log.LogInfo($"[DeckProvider] Captured {snapshot.CompleteDeck.Count} complete, {snapshot.BattleDeck.Count} battle, {snapshot.ShuffledOrder.Count} shuffled orbs ({_orbId.Count} in registry) activeOrb={snapshot.CurrentOrb ?? "none"}");
 
             return snapshot;
         }

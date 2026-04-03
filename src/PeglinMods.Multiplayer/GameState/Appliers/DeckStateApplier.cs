@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using Battle.Attacks;
 using BepInEx.Logging;
+using DG.Tweening;
+using HarmonyLib;
 using Loading;
 using PeglinMods.Multiplayer.GameState.Snapshots;
 using UnityEngine;
@@ -110,12 +112,148 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                 }
             }
 
+            // === DECK UI: ensure the active orb is shown ===
+            // The host sends CurrentOrb (the orb being aimed/fired). On every heartbeat,
+            // we check if the deck UI shows it. If not, we set it directly.
+            // This is the "dumb canvas" approach — no dependency on BallUsedEvent timing.
+            if (!string.IsNullOrEmpty(snapshot.CurrentOrb) && SceneManager.GetActiveScene().name == "Battle")
+            {
+                EnsureDeckUIShowsActiveOrb(dm, snapshot.CurrentOrb);
+                EnsureAimerOrbShown(snapshot.CurrentOrb);
+            }
+
             // Diagnostic: log what the game actually sees
             LogActualDeckState(dm);
         }
         catch (Exception ex)
         {
             _log.LogError($"[DeckApplier] Apply failed: {ex.Message}\n{ex.StackTrace}");
+        }
+    }
+
+    /// <summary>
+    /// Ensure DeckInfoManager shows the correct active orb at the top of the deck UI.
+    /// Called every heartbeat. If _currentOrb is already set, does nothing.
+    /// If _currentOrb is null (initial draw was missed), pops from _displayOrbs and sets it.
+    /// </summary>
+    private void EnsureDeckUIShowsActiveOrb(DeckManager dm, string activeOrbName)
+    {
+        try
+        {
+            var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
+            if (dim == null) return;
+
+            // Check if the deck UI already has a current orb displayed
+            var currentOrbField = AccessTools.Field(typeof(DeckInfoManager), "_currentOrb");
+            var currentOrb = currentOrbField?.GetValue(dim) as GameObject;
+            if (currentOrb != null) return; // Already showing an orb — don't re-set
+
+            // Force-complete shuffle animation if still running
+            if (DeckInfoManager.animating)
+            {
+                var plungerField = AccessTools.Field(typeof(DeckInfoManager), "_plungerParent");
+                var plunger = plungerField?.GetValue(dim) as Transform;
+                if (plunger != null)
+                {
+                    int safety = 0;
+                    while (DeckInfoManager.animating && safety++ < 5)
+                        DOTween.Complete(plunger, true);
+                }
+            }
+
+            if (dim.displayOrbs == null || dim.displayOrbs.Count == 0)
+            {
+                _log.LogWarning("[DeckApplier] displayOrbs empty — cannot set active orb in deck UI");
+                return;
+            }
+
+            // Pop the top display orb and set it as active (same logic as BallUsedClientHandler)
+            var nextOrb = dim.displayOrbs.Pop();
+
+            // Kill any ongoing tweens
+            var plungerParentField = AccessTools.Field(typeof(DeckInfoManager), "_plungerParent");
+            var plungerParent = plungerParentField?.GetValue(dim) as Transform;
+            if (plungerParent != null)
+                DOTween.Kill(plungerParent);
+            DOTween.Kill(nextOrb.transform);
+
+            // Clear stale _nextOrb
+            var nextOrbField = AccessTools.Field(typeof(DeckInfoManager), "_nextOrb");
+            nextOrbField?.SetValue(dim, null);
+
+            // Move to the active orb display position
+            var displayPosField = AccessTools.Field(typeof(DeckInfoManager), "_currentOrbDisplayPos");
+            var displayPos = displayPosField?.GetValue(dim) as Transform;
+            if (displayPos != null)
+                nextOrb.transform.position = displayPos.position;
+            nextOrb.transform.localScale = Vector3.one * 0.85f; // ACTIVE_ORB_DISPLAY_HEIGHT
+
+            // Move plunger up by orb height
+            var spriteRenderer = nextOrb.GetComponent<SpriteRenderer>();
+            if (plungerParent != null && spriteRenderer != null)
+                plungerParent.position += Vector3.up * spriteRenderer.bounds.size.y;
+
+            // Set level ring
+            var uod = nextOrb.GetComponentInChildren<PeglinUI.OrbDisplay.UpcomingOrbDisplay>();
+            int levelIdx = 0;
+            if (uod?.attack != null)
+                levelIdx = Mathf.Clamp(uod.attack.Level - 1, 0, 2);
+
+            var levelRingField = AccessTools.Field(typeof(DeckInfoManager), "_currentOrbLevelRingRenderer");
+            var levelSpritesField = AccessTools.Field(typeof(DeckInfoManager), "_orbLevelDisplaySprites");
+            var levelRing = levelRingField?.GetValue(dim) as SpriteRenderer;
+            var levelSprites = levelSpritesField?.GetValue(dim) as Sprite[];
+            if (levelRing != null && levelSprites != null && levelIdx < levelSprites.Length)
+                levelRing.sprite = levelSprites[levelIdx];
+
+            // Activate frame mask
+            if (uod?.mainOrbLevelFrameMask != null)
+                uod.mainOrbLevelFrameMask.SetActive(true);
+
+            // Set as current orb
+            currentOrbField?.SetValue(dim, nextOrb);
+
+            var animator = nextOrb.GetComponentInChildren<Animator>();
+            if (animator != null) animator.speed = 1f;
+
+            DeckInfoManager.onActiveOrbScaleStarted?.Invoke(nextOrb);
+            DeckInfoManager.onActiveOrbScaleCompleted?.Invoke();
+            DeckInfoManager.populatingDisplayOrb = false;
+            DeckInfoManager.animating = false;
+
+            _log.LogInfo($"[DeckApplier] Set active orb in deck UI: '{activeOrbName}' at ({displayPos?.position.x:F1},{displayPos?.position.y:F1}), displayOrbs remaining: {dim.displayOrbs.Count}");
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[DeckApplier] EnsureDeckUIShowsActiveOrb failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Ensure ClientBallRenderer shows the orb at the aimer position.
+    /// Called every heartbeat. If already showing, does nothing.
+    /// </summary>
+    private void EnsureAimerOrbShown(string activeOrbName)
+    {
+        try
+        {
+            var cbr = ClientBallRenderer.Instance;
+            if (cbr == null) return;
+
+            // Check if already showing via the _isAiming or _isActive flags
+            var aimingField = AccessTools.Field(typeof(ClientBallRenderer), "_isAiming");
+            var activeField = AccessTools.Field(typeof(ClientBallRenderer), "_isActive");
+            bool isAiming = (bool)(aimingField?.GetValue(cbr) ?? false);
+            bool isActive = (bool)(activeField?.GetValue(cbr) ?? false);
+
+            if (isAiming || isActive) return; // Already showing
+
+            cbr.OnOrbDrawn(activeOrbName);
+            _log.LogInfo($"[DeckApplier] Triggered aimer orb display for '{activeOrbName}'");
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[DeckApplier] EnsureAimerOrbShown failed: {ex.Message}");
         }
     }
 
