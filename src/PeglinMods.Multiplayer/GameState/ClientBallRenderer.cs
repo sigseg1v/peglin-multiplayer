@@ -65,7 +65,7 @@ public class ClientBallRenderer : MonoBehaviour
         _isActive = false; // Not launched yet
         _ballObject.SetActive(true);
 
-        // Also try to copy scale from a real PachinkoBall in the scene
+        // Copy render settings from a real PachinkoBall in the scene if available
         try
         {
             var realBall = Object.FindObjectOfType<PachinkoBall>();
@@ -82,6 +82,13 @@ public class ClientBallRenderer : MonoBehaviour
             }
         }
         catch { }
+
+        // Always force sorting layer — the real ball may not exist on client (DrawBall blocked)
+        if (_ballRenderer != null && _ballRenderer.sortingLayerName == "Default")
+        {
+            _ballRenderer.sortingLayerName = "PegBoardMain";
+            _ballRenderer.sortingOrder = 100;
+        }
 
         var hasSprite = _ballRenderer?.sprite != null;
         MultiplayerPlugin.Logger?.LogInfo(
