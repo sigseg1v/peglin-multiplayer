@@ -651,12 +651,17 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                 {
                     try
                     {
+                        Patches.MultiplayerClientPatches.AllowStatusEffectSync = true;
                         enemy.ApplyStatusEffect(
                             new Battle.StatusEffects.StatusEffect(kvp.Key, kvp.Value),
                             Battle.StatusEffects.StatusEffectSource.PLAYER,
                             allowKnockOnEffects: false);
                     }
                     catch { }
+                    finally
+                    {
+                        Patches.MultiplayerClientPatches.AllowStatusEffectSync = false;
+                    }
                 }
             }
 

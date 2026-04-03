@@ -401,6 +401,22 @@ public static class MultiplayerClientPatches
     }
 
     /// <summary>
+    /// Block status effect application on client enemies. The host sends the correct
+    /// status effects via heartbeat and the applier sets them directly. Without this,
+    /// the client's own attack resolution keeps stacking effects every frame.
+    /// The applier sets AllowStatusEffectSync=true while it's applying host effects.
+    /// </summary>
+    internal static bool AllowStatusEffectSync;
+
+    [HarmonyPatch(typeof(Battle.Enemies.Enemy), "ApplyStatusEffect")]
+    [HarmonyPrefix]
+    public static bool Enemy_ApplyStatusEffect_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        return AllowStatusEffectSync; // only allow when the applier is syncing
+    }
+
+    /// <summary>
     /// Block special peg type shuffling on client. The pegboard layout loads
     /// with all pegs as REGULAR. The host sends the correct peg types and
     /// the applier sets them.
