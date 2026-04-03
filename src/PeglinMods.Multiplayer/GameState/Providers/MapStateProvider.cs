@@ -71,6 +71,10 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
         }
     }
 
+    // Cache child node data when currentNode is valid — it gets destroyed after scene cleanup
+    private static List<int> _cachedNavChildTypes;
+    private static bool _wasNavigating;
+
     private void CaptureNavigationState(MapStateSnapshot snapshot)
     {
         try
@@ -83,16 +87,36 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
             bool isNav = state == Battle.BattleController.BattleState.AWAITING_POST_BATTLE_CONTROLLER
                       || state == Battle.BattleController.BattleState.NAVIGATION;
 
-            if (!isNav || StaticGameData.currentNode == null) return;
-
-            var children = StaticGameData.currentNode.ChildNodes;
-            if (children == null || children.Length == 0) return;
-
-            snapshot.IsNavigating = true;
-            snapshot.NavChildNodeTypes = new List<int>();
-            foreach (var child in children)
+            if (!isNav)
             {
-                snapshot.NavChildNodeTypes.Add(child != null ? (int)child.RoomType : 0);
+                // Clear cache when no longer navigating
+                if (_wasNavigating)
+                {
+                    _cachedNavChildTypes = null;
+                    _wasNavigating = false;
+                }
+                return;
+            }
+
+            // Try to capture child node data if not cached yet
+            if (_cachedNavChildTypes == null && StaticGameData.currentNode != null)
+            {
+                var children = StaticGameData.currentNode.ChildNodes;
+                if (children != null && children.Length > 0)
+                {
+                    _cachedNavChildTypes = new List<int>();
+                    foreach (var child in children)
+                        _cachedNavChildTypes.Add(child != null ? (int)child.RoomType : 0);
+                    _log.LogInfo($"[MapProvider] Cached {_cachedNavChildTypes.Count} nav child types");
+                }
+            }
+
+            // Send cached data in every heartbeat during navigation
+            if (_cachedNavChildTypes != null && _cachedNavChildTypes.Count > 0)
+            {
+                snapshot.IsNavigating = true;
+                snapshot.NavChildNodeTypes = _cachedNavChildTypes;
+                _wasNavigating = true;
             }
         }
         catch { }

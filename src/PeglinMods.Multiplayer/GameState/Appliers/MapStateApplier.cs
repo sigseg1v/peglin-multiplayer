@@ -294,7 +294,7 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
     /// Configure the SlotManagers at the bottom of the Battle scene to show
     /// post-battle navigation icons matching the host's available paths.
     /// </summary>
-    private void ApplyNavigationSlots(List<int> childNodeTypes)
+    public void ApplyNavigationSlots(List<int> childNodeTypes)
     {
         if (childNodeTypes == null || childNodeTypes.Count == 0) return;
 
@@ -330,10 +330,26 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 return;
             }
 
-            // Get icon sprites from StaticGameData.currentNode if available
-            MapNode[] childNodes = null;
-            if (StaticGameData.currentNode?.ChildNodes != null)
-                childNodes = StaticGameData.currentNode.ChildNodes;
+            // Try to get icon sprites from any MapNode in memory (they may still
+            // be loaded even though currentNode is null on the client)
+            Sprite GetIconForRoomType(RoomType rt)
+            {
+                try
+                {
+                    // Find any MapNode with matching RoomType
+                    var allNodes = Resources.FindObjectsOfTypeAll<MapNode>();
+                    foreach (var node in allNodes)
+                    {
+                        if (node != null && node.RoomType == rt)
+                        {
+                            var icon = node.activeIcon;
+                            if (icon != null) return icon;
+                        }
+                    }
+                }
+                catch { }
+                return null;
+            }
 
             int numChildren = childNodeTypes.Count;
 
@@ -341,7 +357,7 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             {
                 var roomType = (RoomType)childNodeTypes[0];
                 var color = MapNode.GetColorForNodeType(roomType);
-                var icon = childNodes != null && childNodes.Length > 0 ? childNodes[0]?.activeIcon : null;
+                var icon = GetIconForRoomType(roomType);
 
                 leftSlot.gameObject.SetActive(true);
                 leftSlot.ConfigureHalfNavigation(color, 0.2f, 0.8f);
@@ -360,7 +376,7 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 // Left slot = first child
                 var leftType = (RoomType)childNodeTypes[0];
                 var leftColor = MapNode.GetColorForNodeType(leftType);
-                var leftIcon = childNodes != null && childNodes.Length > 0 ? childNodes[0]?.activeIcon : null;
+                var leftIcon = GetIconForRoomType(leftType);
 
                 leftSlot.gameObject.SetActive(true);
                 if (leftIcon != null)
@@ -371,8 +387,7 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 // Right slot = last child
                 var rightType = (RoomType)childNodeTypes[numChildren - 1];
                 var rightColor = MapNode.GetColorForNodeType(rightType);
-                var rightIcon = childNodes != null && childNodes.Length > 0
-                    ? childNodes[childNodes.Length - 1]?.activeIcon : null;
+                var rightIcon = GetIconForRoomType(rightType);
 
                 rightSlot.gameObject.SetActive(true);
                 if (rightIcon != null)
@@ -386,7 +401,7 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 {
                     var centerType = (RoomType)childNodeTypes[1];
                     var centerColor = MapNode.GetColorForNodeType(centerType);
-                    var centerIcon = childNodes != null && childNodes.Length > 1 ? childNodes[1]?.activeIcon : null;
+                    var centerIcon = GetIconForRoomType(centerType);
 
                     if (centerIcon != null)
                         centerSlot.ConfigureForNavigation(centerIcon, centerColor, 0.2f, 0.8f);

@@ -459,16 +459,17 @@ public class GameStateApplyService
     private bool _navigationTriggered;
 
     /// <summary>
-    /// When the host enters post-battle navigation (NAVIGATION or AWAITING_POST_BATTLE_CONTROLLER),
-    /// call the game's own PostBattleController.StartNavigation() on the client.
-    /// This handles: slot icons, fire/gradients, "?" indicators, peg resets, and NavigationOrb ball.
-    /// Only triggers once per navigation phase.
+    /// When the host enters post-battle navigation, configure the client's slot visuals
+    /// and update the ball sprite to NavigationOrb. Uses synced child node data from the
+    /// MapStateSnapshot (cached on the host before currentNode is destroyed).
+    /// Also resets pegs to match host's navigation state.
     /// </summary>
     private void TriggerNavigationIfNeeded(FullGameStateSnapshot snapshot)
     {
         var battleState = snapshot.Enemies?.BattleStateName;
+        bool isNav = battleState == "NAVIGATION" || battleState == "AWAITING_POST_BATTLE_CONTROLLER";
 
-        if (battleState != "NAVIGATION" && battleState != "AWAITING_POST_BATTLE_CONTROLLER")
+        if (!isNav)
         {
             _navigationTriggered = false;
             return;
@@ -478,44 +479,35 @@ public class GameStateApplyService
 
         try
         {
-            var pbcs = UnityEngine.Resources.FindObjectsOfTypeAll<Battle.PostBattleController>();
-            if (pbcs.Length == 0)
+            // Configure slot visuals from synced child node data
+            var navTypes = snapshot.Map?.NavChildNodeTypes;
+            if (navTypes != null && navTypes.Count > 0 && (snapshot.Map?.IsNavigating ?? false))
             {
-                _log.LogWarning("[ApplyService] No PostBattleController found for navigation trigger");
-                return;
-            }
-            var pbc = pbcs[0];
-
-            // Check if StaticGameData.currentNode is valid (needed by StartNavigation)
-            if (StaticGameData.currentNode == null || StaticGameData.currentNode.ChildNodes == null
-                || StaticGameData.currentNode.ChildNodes.Length == 0)
-            {
-                _log.LogWarning("[ApplyService] StaticGameData.currentNode is null/empty — cannot trigger navigation");
-                return;
+                _mapApplier.ApplyNavigationSlots(navTypes);
             }
 
-            // Invoke StartNavigation(movePeglin: false) via reflection (it's private)
-            var method = HarmonyLib.AccessTools.Method(typeof(Battle.PostBattleController), "StartNavigation",
-                new[] { typeof(bool) });
-            if (method != null)
-            {
-                method.Invoke(pbc, new object[] { false });
-                _log.LogInfo($"[ApplyService] Triggered PostBattleController.StartNavigation (children={StaticGameData.currentNode.ChildNodes.Length})");
-            }
-            else
-            {
-                _log.LogWarning("[ApplyService] StartNavigation method not found");
-                return;
-            }
-
-            // Also update the ClientBallRenderer to show NavigationOrb sprite
+            // Update ClientBallRenderer to show NavigationOrb sprite
             var activeOrb = snapshot.Deck?.CurrentOrb;
             if (!string.IsNullOrEmpty(activeOrb) && activeOrb.Contains("NavigationOrb"))
             {
                 ClientBallRenderer.Instance?.OnOrbDrawn(activeOrb);
             }
 
+            // Reset pegs for navigation — the host calls PreparePegsForNavigation()
+            // which resets all pegs to their base state (removes crit highlight, etc.)
+            try
+            {
+                var bc = UnityEngine.Object.FindObjectOfType<Battle.BattleController>();
+                if (bc != null)
+                {
+                    bc.PreparePegsForNavigation();
+                    bc.RemoveClearedPegs();
+                }
+            }
+            catch { }
+
             _navigationTriggered = true;
+            _log.LogInfo($"[ApplyService] Navigation triggered: {navTypes?.Count ?? 0} child nodes, orb={activeOrb}");
         }
         catch (Exception ex)
         {
