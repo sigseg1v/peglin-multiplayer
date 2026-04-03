@@ -110,6 +110,15 @@ public class ClientBallRenderer : MonoBehaviour
         _aimDirection = new Vector2(aimX, aimY).normalized;
     }
 
+    /// <summary>
+    /// Update the spawn position from the host's aim event data.
+    /// This ensures the ball is at the same position as the aimer line origin.
+    /// </summary>
+    public void UpdateSpawnPosition(float spawnX, float spawnY)
+    {
+        _spawnPos = new Vector3(spawnX, spawnY, 0f);
+    }
+
     public void OnShotFired(float aimX, float aimY, string orbName = null)
     {
         // Clean up any previous multiball visuals
@@ -193,7 +202,7 @@ public class ClientBallRenderer : MonoBehaviour
                     // Copy sorting settings from the prefab — sorting layer is baked into
                     // the asset, not set in code.
                     _ballRenderer.sortingLayerID = orbRenderer.sortingLayerID;
-                    _ballRenderer.sortingOrder = orbRenderer.sortingOrder + 1;
+                    _ballRenderer.sortingOrder = 100;
                     _ballObject.transform.localScale = orbGo.transform.localScale * 0.8f;
                     _renderCopied = true;
                     return;
@@ -283,7 +292,7 @@ public class ClientBallRenderer : MonoBehaviour
         // Aiming phase: show orb at spawn position, rotate with aim direction
         if (_isAiming && !_isActive)
         {
-            _ballObject.transform.position = new Vector3(_spawnPos.x, _spawnPos.y, -1f);
+            _ballObject.transform.position = new Vector3(_spawnPos.x, _spawnPos.y, -0.5f);
 
             // Rotate to face aim direction
             if (_aimDirection.sqrMagnitude > 0.01f)

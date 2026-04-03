@@ -265,10 +265,13 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             var ballObj = ballObjField?.GetValue(cbr) as GameObject;
             var sr = rendererField?.GetValue(cbr) as UnityEngine.SpriteRenderer;
             bool renderCopied = (bool)(renderCopiedField?.GetValue(cbr) ?? false);
+            var pos = ballObj?.transform.position ?? UnityEngine.Vector3.zero;
+            var scale = ballObj?.transform.localScale ?? UnityEngine.Vector3.zero;
             _log.LogInfo($"[DeckApplier] AimerOrb: aiming={isAiming} active={isActive} " +
-                $"ballObj={ballObj != null} ballActive={ballObj?.activeSelf} " +
-                $"sprite={sr?.sprite != null} material={sr?.material?.name ?? "NULL"} " +
-                $"layer={sr?.sortingLayerName} order={sr?.sortingOrder} renderCopied={renderCopied}");
+                $"pos=({pos.x:F1},{pos.y:F1},{pos.z:F1}) scale=({scale.x:F2},{scale.y:F2}) " +
+                $"sprite={sr?.sprite != null} enabled={sr?.enabled} color={sr?.color} " +
+                $"material={sr?.material?.name ?? "NULL"} layer={sr?.sortingLayerName} order={sr?.sortingOrder} " +
+                $"renderCopied={renderCopied}");
 
             if (isAiming || isActive) return; // Already showing
 
