@@ -256,8 +256,19 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             // Check if already showing via the _isAiming or _isActive flags
             var aimingField = AccessTools.Field(typeof(ClientBallRenderer), "_isAiming");
             var activeField = AccessTools.Field(typeof(ClientBallRenderer), "_isActive");
+            var ballObjField = AccessTools.Field(typeof(ClientBallRenderer), "_ballObject");
+            var rendererField = AccessTools.Field(typeof(ClientBallRenderer), "_ballRenderer");
+            var renderCopiedField = AccessTools.Field(typeof(ClientBallRenderer), "_renderCopied");
             bool isAiming = (bool)(aimingField?.GetValue(cbr) ?? false);
             bool isActive = (bool)(activeField?.GetValue(cbr) ?? false);
+
+            var ballObj = ballObjField?.GetValue(cbr) as GameObject;
+            var sr = rendererField?.GetValue(cbr) as UnityEngine.SpriteRenderer;
+            bool renderCopied = (bool)(renderCopiedField?.GetValue(cbr) ?? false);
+            _log.LogInfo($"[DeckApplier] AimerOrb: aiming={isAiming} active={isActive} " +
+                $"ballObj={ballObj != null} ballActive={ballObj?.activeSelf} " +
+                $"sprite={sr?.sprite != null} material={sr?.material?.name ?? "NULL"} " +
+                $"layer={sr?.sortingLayerName} order={sr?.sortingOrder} renderCopied={renderCopied}");
 
             if (isAiming || isActive) return; // Already showing
 

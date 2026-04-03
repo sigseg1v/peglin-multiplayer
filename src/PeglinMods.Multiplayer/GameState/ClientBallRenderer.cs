@@ -21,6 +21,7 @@ public class ClientBallRenderer : MonoBehaviour
     private bool _isAiming; // True between BallUsed (orb drawn) and ShotFired
     private Vector2 _aimDirection;
     private Vector3 _spawnPos;
+    private bool _renderCopied; // True once material+sorting copied from a real renderer
 
     // Additional multiball visuals
     private readonly List<GameObject> _multiballs = new List<GameObject>();
@@ -65,31 +66,12 @@ public class ClientBallRenderer : MonoBehaviour
         _isActive = false; // Not launched yet
         _ballObject.SetActive(true);
 
-        // Copy render settings from a real PachinkoBall in the scene if available
-        try
-        {
-            var realBall = Object.FindObjectOfType<PachinkoBall>();
-            if (realBall != null)
-            {
-                var realRenderer = realBall.GetComponentInChildren<SpriteRenderer>();
-                if (realRenderer?.sprite != null && _ballRenderer != null)
-                {
-                    _ballRenderer.sortingLayerName = realRenderer.sortingLayerName;
-                    _ballRenderer.sortingOrder = realRenderer.sortingOrder + 1;
-                    _ballObject.transform.localScale = realBall.transform.localScale;
-                    _ballObject.transform.position = new Vector3(_spawnPos.x, _spawnPos.y, realBall.transform.position.z);
-                }
-            }
-        }
-        catch { }
-
-        // Always force sorting layer from a visible game object (pegs render correctly).
-        // Hardcoded layer names may not match the build's sorting layer table.
-        if (_ballRenderer != null)
+        // Fallback: if UpdateBallSprite didn't copy render settings from the orb prefab,
+        // copy material + sorting from a visible peg so we use the correct URP 2D material.
+        if (!_renderCopied && _ballRenderer != null)
         {
             try
             {
-                // Find any active peg's SpriteRenderer and copy its sorting layer
                 var pegs = Object.FindObjectsOfType<Peg>();
                 foreach (var p in pegs)
                 {
@@ -97,8 +79,11 @@ public class ClientBallRenderer : MonoBehaviour
                     var pr = p.GetComponentInChildren<SpriteRenderer>();
                     if (pr != null)
                     {
+                        if (pr.sharedMaterial != null)
+                            _ballRenderer.material = pr.sharedMaterial;
                         _ballRenderer.sortingLayerID = pr.sortingLayerID;
                         _ballRenderer.sortingOrder = pr.sortingOrder + 10;
+                        _renderCopied = true;
                         break;
                     }
                 }
@@ -112,6 +97,7 @@ public class ClientBallRenderer : MonoBehaviour
             $"pos=({_ballObject.transform.position.x:F1},{_ballObject.transform.position.y:F1},{_ballObject.transform.position.z:F1}) " +
             $"scale=({_ballObject.transform.localScale.x:F2},{_ballObject.transform.localScale.y:F2}) " +
             $"hasSprite={hasSprite} layer={_ballRenderer?.sortingLayerName} order={_ballRenderer?.sortingOrder} " +
+            $"material={_ballRenderer?.material?.name ?? "NULL"} renderCopied={_renderCopied} " +
             $"ballActive={_ballObject.activeSelf}");
     }
 
@@ -199,7 +185,17 @@ public class ClientBallRenderer : MonoBehaviour
                 if (orbRenderer?.sprite != null)
                 {
                     _ballRenderer.sprite = orbRenderer.sprite;
+                    // Copy material — URP 2D uses a different sprite material than the
+                    // built-in pipeline.  A bare AddComponent<SpriteRenderer>() gets the
+                    // wrong material and renders invisible.
+                    if (orbRenderer.sharedMaterial != null)
+                        _ballRenderer.material = orbRenderer.sharedMaterial;
+                    // Copy sorting settings from the prefab — sorting layer is baked into
+                    // the asset, not set in code.
+                    _ballRenderer.sortingLayerID = orbRenderer.sortingLayerID;
+                    _ballRenderer.sortingOrder = orbRenderer.sortingOrder + 1;
                     _ballObject.transform.localScale = orbGo.transform.localScale * 0.8f;
+                    _renderCopied = true;
                     return;
                 }
             }
@@ -227,9 +223,13 @@ public class ClientBallRenderer : MonoBehaviour
 
         var renderer = ball.AddComponent<SpriteRenderer>();
         renderer.sortingOrder = 100;
-        // Copy sorting layer from primary ball if available
+        // Copy sorting layer and material from primary ball if available
         if (_ballRenderer != null)
+        {
             renderer.sortingLayerID = _ballRenderer.sortingLayerID;
+            if (_ballRenderer.sharedMaterial != null)
+                renderer.material = _ballRenderer.sharedMaterial;
+        }
 
         // Copy sprite from the primary ball if available
         if (_ballRenderer?.sprite != null)
@@ -313,33 +313,27 @@ public class ClientBallRenderer : MonoBehaviour
         DontDestroyOnLoad(_ballObject);
 
         _ballRenderer = _ballObject.AddComponent<SpriteRenderer>();
-        _ballRenderer.sortingOrder = 100; // Above pegs — layer set in OnOrbDrawn from actual game renderers
+        _ballRenderer.sortingOrder = 100;
+        _renderCopied = false;
 
-        // Try to get the orb sprite from the current orb
+        // Copy the URP 2D sprite material from any visible SpriteRenderer in the scene.
+        // A bare AddComponent<SpriteRenderer>() in URP gets the built-in Sprites-Default
+        // material which doesn't render through the URP 2D renderer pipeline.
         try
         {
-            var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
-            var dm = dms.Length > 0 ? dms[0] : null;
-            if (dm?.shuffledDeck != null && dm.shuffledDeck.Count > 0)
+            var anyRenderer = Object.FindObjectOfType<SpriteRenderer>();
+            if (anyRenderer?.sharedMaterial != null)
             {
-                var orb = dm.shuffledDeck.Peek();
-                var orbRenderer = orb?.GetComponentInChildren<SpriteRenderer>();
-                if (orbRenderer != null)
-                {
-                    _ballRenderer.sprite = orbRenderer.sprite;
-                    _ballObject.transform.localScale = orb.transform.localScale;
-                }
+                _ballRenderer.material = anyRenderer.sharedMaterial;
+                _ballRenderer.sortingLayerID = anyRenderer.sortingLayerID;
             }
         }
         catch { }
 
         // Fallback: create a simple circle if no sprite found
-        if (_ballRenderer.sprite == null)
-        {
-            _ballRenderer.sprite = CreateCircleSprite();
-            _ballRenderer.color = Color.white;
-            _ballObject.transform.localScale = Vector3.one * 0.5f;
-        }
+        _ballRenderer.sprite = CreateCircleSprite();
+        _ballRenderer.color = Color.white;
+        _ballObject.transform.localScale = Vector3.one * 0.5f;
 
         _ballObject.SetActive(false);
     }
