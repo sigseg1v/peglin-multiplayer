@@ -590,19 +590,11 @@ public static class MultiplayerClientPatches
         return __instance.RoomType != RoomType.NONE;
     }
 
-    /// <summary>
-    /// Block deck shuffle on client. BattleController.Start() calls ShuffleCompleteDeck()
-    /// which re-shuffles with the client's own RNG, producing wrong orb order.
-    /// Our DeckApplier syncs the correct shuffledDeck order from the host.
-    /// </summary>
-    [HarmonyPatch(typeof(DeckManager), "ShuffleCompleteDeck")]
-    [HarmonyPrefix]
-    public static bool DeckManager_ShuffleCompleteDeck_Prefix()
-    {
-        if (!ShouldSuppressClientLogic) return true;
-        MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked ShuffleCompleteDeck — host will send deck order");
-        return false;
-    }
+    // ShuffleCompleteDeck is NOT blocked — it triggers onDeckShuffled which
+    // triggers StartShuffleAnimation which populates _displayOrbs for the
+    // deck UI. The client shuffles with wrong RNG order, but DeckApplier
+    // overwrites shuffledDeck with the correct host order immediately after.
+    // Without this, the entire deck UI is dead (no orbs visible).
 
     /// <summary>
     /// Block gold coin placement on client pegs. BattleController.Start() calls
