@@ -15,20 +15,20 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
             if (mode == null || !mode.IsSpectating) return;
 
+            // Call DrawBall directly — this creates the PachinkoBall (needed for
+            // orb display rotation/position), pops from shuffledDeck, fires onBallUsed,
+            // and triggers DeckInfoManager's orb draw animation.
             var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
             var dm = dms.Length > 0 ? dms[0] : null;
-            if (dm?.shuffledDeck != null && dm.shuffledDeck.Count > 0)
+            if (dm != null && dm.shuffledDeck != null && dm.shuffledDeck.Count > 0)
             {
-                var popped = dm.shuffledDeck.Pop();
-                MultiplayerPlugin.Logger?.LogInfo($"[BallUsed] Popped '{popped?.name}' from shuffledDeck ({dm.shuffledDeck.Count} remaining), firing onBallUsed");
-                DeckManager.onBallUsed?.Invoke(popped);
-
-                // Show the orb at the aimer position during aiming phase
-                GameState.ClientBallRenderer.Instance?.OnOrbDrawn(popped?.name);
+                var orbName = dm.shuffledDeck.Peek()?.name;
+                dm.DrawBall(null);
+                MultiplayerPlugin.Logger?.LogInfo($"[BallUsed] Called DrawBall for '{orbName}' ({dm.shuffledDeck.Count} remaining)");
             }
             else
             {
-                MultiplayerPlugin.Logger?.LogWarning($"[BallUsed] shuffledDeck empty, cannot pop for '{e.OrbName}'");
+                MultiplayerPlugin.Logger?.LogWarning($"[BallUsed] shuffledDeck empty, cannot draw for '{e.OrbName}'");
             }
         }
         catch (Exception ex)
