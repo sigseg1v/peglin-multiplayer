@@ -478,6 +478,15 @@ public static class MultiplayerClientPatches
         return false;
     }
 
+    /// <summary>Block shield peg creation on client — host sync handles shield state.</summary>
+    [HarmonyPatch(typeof(PegManager), "ApplyShieldToRegularPegs")]
+    [HarmonyPrefix]
+    public static bool PegManager_ApplyShieldToRegularPegs_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        return false;
+    }
+
     /// <summary>
     /// Block RandomPegField's per-turn peg repositioning on client.
     /// When moveEveryTurn is true, RandomPegField.TurnComplete re-randomizes all

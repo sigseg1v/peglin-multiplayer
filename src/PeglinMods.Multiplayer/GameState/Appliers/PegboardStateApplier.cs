@@ -570,6 +570,59 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 catch { }
             }
         }
+
+        // Sync shield overlay
+        SyncShieldState(peg, entry);
+    }
+
+    private void SyncShieldState(Peg peg, PegEntry entry)
+    {
+        try
+        {
+            var overlayField = HarmonyLib.AccessTools.Field(typeof(Peg), "PegShieldOverlayInstance");
+            var shieldedField = HarmonyLib.AccessTools.Field(typeof(Peg), "_shielded");
+            var overlay = overlayField?.GetValue(peg) as Battle.PegBehaviour.PegShieldOverlay;
+
+            if (entry.IsShielded)
+            {
+                // Host says this peg should be shielded
+                if (!peg.shielded)
+                {
+                    // Apply shielding if not already shielded
+                    try { peg.ApplyShielding(claimed: false, startupShield: false); }
+                    catch { }
+                    overlay = overlayField?.GetValue(peg) as Battle.PegBehaviour.PegShieldOverlay;
+                }
+
+                if (overlay != null)
+                {
+                    overlay.hitCount = entry.ShieldHitCount;
+                    overlay.hitLimit = entry.ShieldHitLimit;
+                    // Update the animator to show correct visual state
+                    try
+                    {
+                        var anim = overlay.GetComponent<UnityEngine.Animator>();
+                        anim?.SetInteger(UnityEngine.Animator.StringToHash("HitCount"), entry.ShieldHitCount);
+                        // Hide if broken
+                        var rend = overlay.GetComponent<UnityEngine.SpriteRenderer>();
+                        if (rend != null)
+                            rend.enabled = entry.ShieldHitCount < entry.ShieldHitLimit;
+                    }
+                    catch { }
+                }
+            }
+            else if (peg.shielded)
+            {
+                // Host says no shield but client has one — remove it
+                if (overlay != null)
+                {
+                    overlay.hitCount = overlay.hitLimit;
+                    overlay.gameObject.SetActive(false);
+                }
+                shieldedField?.SetValue(peg, false);
+            }
+        }
+        catch { }
     }
 
     private static bool HasMovementComponent(Peg peg)

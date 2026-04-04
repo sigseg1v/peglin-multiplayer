@@ -46,4 +46,13 @@ public class PegEntry
 
     /// <summary>Damage buff/debuff value displayed on the peg (-999 to 999).</summary>
     public int BuffAmount { get; set; }
+
+    /// <summary>True if this peg has an active shield overlay.</summary>
+    public bool IsShielded { get; set; }
+
+    /// <summary>Shield hit count (0=untouched, hitLimit=broken).</summary>
+    public int ShieldHitCount { get; set; }
+
+    /// <summary>Shield hit limit (default 4). Shield breaks when hitCount >= hitLimit.</summary>
+    public int ShieldHitLimit { get; set; }
 }

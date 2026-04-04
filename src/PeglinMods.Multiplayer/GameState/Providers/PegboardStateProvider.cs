@@ -64,7 +64,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     catch { }
                 }
 
-                snapshot.Pegs.Add(new PegEntry
+                var entry = new PegEntry
                 {
                     Guid = guid,
                     Index = i,
@@ -78,7 +78,9 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     WasPreviouslyCleared = wasPreviouslyCleared,
                     CoinCount = peg.NumCoins(),
                     BuffAmount = peg.buffAmount,
-                });
+                };
+                CaptureShieldState(peg, entry);
+                snapshot.Pegs.Add(entry);
 
                 if (peg.gameObject.activeSelf && !destroyed)
                 {
@@ -113,7 +115,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                         catch { }
                     }
 
-                    snapshot.Pegs.Add(new PegEntry
+                    var bombEntry = new PegEntry
                     {
                         Guid = guid,
                         Index = pegs.Count + i,
@@ -129,7 +131,9 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                         HitCount = bomb.HitCount,
                         IsBomb = true,
                         BuffAmount = bomb.buffAmount,
-                    });
+                    };
+                    CaptureShieldState(bomb, bombEntry);
+                    snapshot.Pegs.Add(bombEntry);
 
                     if (bomb.gameObject.activeSelf && !destroyed)
                         snapshot.BombPegCount++;
@@ -164,7 +168,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                         catch { }
                     }
 
-                    snapshot.Pegs.Add(new PegEntry
+                    var bouncerEntry = new PegEntry
                     {
                         Guid = guid,
                         Index = pegs.Count + (bombs?.Count ?? 0) + i,
@@ -179,7 +183,9 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                         CoinCount = bouncer.NumCoins(),
                         IsBouncer = true,
                         BuffAmount = bouncer.buffAmount,
-                    });
+                    };
+                    CaptureShieldState(bouncer, bouncerEntry);
+                    snapshot.Pegs.Add(bouncerEntry);
 
                     if (bouncer.gameObject.activeSelf && !destroyed)
                         snapshot.BouncerPegCount++;
@@ -199,5 +205,22 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
             _log.LogWarning($"PegboardStateProvider.Capture failed: {ex.Message}");
             return null;
         }
+    }
+
+    private static void CaptureShieldState(Peg peg, PegEntry entry)
+    {
+        try
+        {
+            if (!peg.shielded) return;
+            entry.IsShielded = true;
+            var overlayField = HarmonyLib.AccessTools.Field(typeof(Peg), "PegShieldOverlayInstance");
+            var overlay = overlayField?.GetValue(peg) as Battle.PegBehaviour.PegShieldOverlay;
+            if (overlay != null)
+            {
+                entry.ShieldHitCount = overlay.hitCount;
+                entry.ShieldHitLimit = overlay.hitLimit;
+            }
+        }
+        catch { }
     }
 }
