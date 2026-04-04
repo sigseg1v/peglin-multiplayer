@@ -18,9 +18,9 @@ public class NetworkClient : IMessageReceiver
         _transport.OnDataReceived += ProcessIncoming;
     }
 
-    public void ProcessIncoming(byte[] data)
+    public void ProcessIncoming(int senderPeerId, byte[] data)
     {
         var (typeId, jsonPayload) = _serializer.Deserialize(data);
-        _eventRegistry.HandleIncoming(typeId, jsonPayload);
+        _eventRegistry.HandleIncoming(typeId, jsonPayload, senderPeerId);
     }
 }

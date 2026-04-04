@@ -7,6 +7,8 @@ using PeglinMods.Multiplayer.Events.Handlers.Currency;
 using PeglinMods.Multiplayer.Events.Handlers.Deck;
 using PeglinMods.Multiplayer.Events.Handlers.Enemy;
 using PeglinMods.Multiplayer.Events.Handlers.Health;
+using CoopHandlers = PeglinMods.Multiplayer.Events.Handlers.Coop;
+using LobbyHandlers = PeglinMods.Multiplayer.Events.Handlers.Lobby;
 using PeglinMods.Multiplayer.Events.Handlers.Map;
 using PeglinMods.Multiplayer.Events.Handlers.Peg;
 using PeglinMods.Multiplayer.Events.Handlers.Relic;
@@ -21,6 +23,8 @@ using PeglinMods.Multiplayer.Events.Network.Currency;
 using PeglinMods.Multiplayer.Events.Network.Deck;
 using PeglinMods.Multiplayer.Events.Network.Enemy;
 using PeglinMods.Multiplayer.Events.Network.Health;
+using PeglinMods.Multiplayer.Events.Network.Coop;
+using PeglinMods.Multiplayer.Events.Network.Lobby;
 using PeglinMods.Multiplayer.Events.Network.Map;
 using PeglinMods.Multiplayer.Events.Network.Peg;
 using PeglinMods.Multiplayer.Events.Network.Relic;
@@ -113,8 +117,20 @@ public static class ServiceRegistration
         var orbId = new OrbIdentifier();
         container.RegisterSingleton(orbId);
 
+        // Player registry for co-op lobby
+        var playerRegistry = new PlayerRegistry();
+        container.RegisterSingleton(playerRegistry);
+
+        // Co-op state manager (host-side per-player state)
+        var coopStateManager = new CoopStateManager(log, playerRegistry);
+        container.RegisterSingleton(coopStateManager);
+
+        // Turn manager (host-side turn order tracking)
+        var turnManager = new TurnManager(log, coopStateManager);
+        container.RegisterSingleton(turnManager);
+
         // Game state sync service (host -> captures state and sends)
-        var syncService = new GameStateSyncService(log, eventRegistry, container.Resolve<IMultiplayerMode>(), enemyId, pegId, orbId);
+        var syncService = new GameStateSyncService(log, eventRegistry, container.Resolve<IMultiplayerMode>(), enemyId, pegId, orbId, coopStateManager);
         container.RegisterSingleton<IGameStateSyncService>(syncService);
 
         // Game state apply service (client -> receives state and applies)
@@ -149,7 +165,8 @@ public static class ServiceRegistration
         var enemyId = container.Resolve<EnemyIdentifier>();
         var orbId = container.Resolve<OrbIdentifier>();
         var syncService = container.Resolve<IGameStateSyncService>();
-        SubscribeAll(eventRegistry, multiplayerMode, enemyId, orbId, syncService, log);
+        var coopStateManager = container.Resolve<CoopStateManager>();
+        SubscribeAll(eventRegistry, multiplayerMode, enemyId, orbId, syncService, coopStateManager, log);
     }
 
     private static void Phase6_Handshake(ServiceContainer container)
@@ -159,7 +176,7 @@ public static class ServiceRegistration
 
         var syncService = container.Resolve<IGameStateSyncService>();
 
-        transport.OnClientConnected += () =>
+        transport.OnClientConnected += peerId =>
         {
             eventRegistry.Dispatch(new HandshakeEvent
             {
@@ -252,6 +269,23 @@ public static class ServiceRegistration
         registry.Register(new NodeSelectedServerHandler(), new NodeSelectedClientHandler());
         registry.Register(new NodeActivatedServerHandler(), new NodeActivatedClientHandler());
 
+        // Lobby events
+        registry.Register(new LobbyHandlers.LobbyStateServerHandler(), new LobbyHandlers.LobbyStateClientHandler());
+        registry.Register(new LobbyHandlers.ClassSelectServerHandler(), new LobbyHandlers.ClassSelectClientHandler());
+        registry.Register(new LobbyHandlers.ReadyServerHandler(), new LobbyHandlers.ReadyClientHandler());
+        registry.Register(new LobbyHandlers.GameStartServerHandler(), new LobbyHandlers.GameStartClientHandler());
+
+        // Co-op turn system events
+        registry.Register(new CoopHandlers.TurnChangeServerHandler(), new CoopHandlers.TurnChangeClientHandler());
+        registry.Register(new CoopHandlers.ShootRequestServerHandler(), new CoopHandlers.ShootRequestClientHandler());
+
+        // Co-op relic/reward selection events
+        registry.Register(new CoopHandlers.RelicChoicesServerHandler(), new CoopHandlers.RelicChoicesClientHandler());
+        registry.Register(new CoopHandlers.RelicChoiceServerHandler(), new CoopHandlers.RelicChoiceClientHandler());
+        registry.Register(new CoopHandlers.RewardChoicesServerHandler(), new CoopHandlers.RewardChoicesClientHandler());
+        registry.Register(new CoopHandlers.RewardChoiceServerHandler(), new CoopHandlers.RewardChoiceClientHandler());
+        registry.Register(new CoopHandlers.AllChoicesCompleteServerHandler(), new CoopHandlers.AllChoicesCompleteClientHandler());
+
         // State sync snapshots
         registry.Register(new FullGameStateServerHandler(), new FullGameStateClientHandler());
         registry.Register(new MapStateSnapshotServerHandler(), new MapStateSnapshotClientHandler());
@@ -268,6 +302,7 @@ public static class ServiceRegistration
         EnemyIdentifier enemyIdentifier,
         OrbIdentifier orbIdentifier,
         IGameStateSyncService syncService,
+        CoopStateManager coopStateManager,
         ManualLogSource log)
     {
         new BattleEventSubscriptions(registry, multiplayerMode).Subscribe();
@@ -280,6 +315,9 @@ public static class ServiceRegistration
         new BallSubscriptions(registry, log).Subscribe();
         new PegSubscriptions(registry, log).Subscribe();
         new MapSubscriptions(registry, log).Subscribe();
+
+        // Co-op damage distribution - enemy damage applies to all players
+        new CoopSubscriptions(multiplayerMode, coopStateManager, log).Subscribe();
 
         // State sync subscriptions - triggers full/partial state capture on key events
         new StateSyncSubscriptions(syncService, multiplayerMode, log).Subscribe();

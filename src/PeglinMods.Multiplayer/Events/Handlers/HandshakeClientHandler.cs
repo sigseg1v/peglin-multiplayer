@@ -1,4 +1,6 @@
+using PeglinMods.Multiplayer.Events.Handlers.Lobby;
 using PeglinMods.Multiplayer.Events.Network;
+using PeglinMods.Multiplayer.Multiplayer;
 
 namespace PeglinMods.Multiplayer.Events.Handlers;
 
@@ -34,6 +36,27 @@ public sealed class HandshakeClientHandler : IClientHandler<HandshakeEvent>
         RemotePeerInfo.IsHost = networkEvent.IsHost;
         RemotePeerInfo.HandlerCount = networkEvent.RegisteredHandlerCount;
         RemotePeerInfo.Received = true;
+
+        // On host: register the client in the PlayerRegistry and broadcast lobby state
+        var services = MultiplayerPlugin.Services;
+        if (services?.TryResolve<IMultiplayerMode>(out var mode) == true && mode.IsHosting && !networkEvent.IsHost)
+        {
+            if (services.TryResolve<PlayerRegistry>(out var registry))
+            {
+                var senderPeerId = (services.TryResolve<IGameEventRegistry>(out var er)
+                    ? (er as GameEventRegistry)?.CurrentSenderPeerId : null) ?? -1;
+                var slot = registry.GetSlotByPeerId(senderPeerId);
+                if (slot == null)
+                {
+                    registry.RegisterClient(senderPeerId, networkEvent.PlayerName ?? "Unknown");
+                    log.LogInfo($"[Lobby] Registered client '{networkEvent.PlayerName}' as slot {registry.SlotCount - 1} (peerId={senderPeerId})");
+                }
+
+                // Broadcast updated lobby state
+                if (services.TryResolve<IGameEventRegistry>(out var eventRegistry))
+                    LobbyHelper.BroadcastLobbyState(registry, eventRegistry);
+            }
+        }
     }
 }
 

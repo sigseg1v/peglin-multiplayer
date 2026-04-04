@@ -18,4 +18,10 @@ public class NetworkHost : IMessageSender
         var data = _serializer.Serialize(networkEvent);
         _transport.Broadcast(data);
     }
+
+    public void SendTo<TNetworkEvent>(int peerId, TNetworkEvent networkEvent) where TNetworkEvent : class
+    {
+        var data = _serializer.Serialize(networkEvent);
+        _transport.SendTo(peerId, data);
+    }
 }

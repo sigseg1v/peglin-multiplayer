@@ -2,6 +2,7 @@ using System;
 using PeglinMods.Multiplayer.GameState;
 using PeglinMods.Multiplayer.GameState.Snapshots;
 using PeglinMods.Multiplayer.Multiplayer;
+using PeglinMods.Multiplayer.UI;
 
 namespace PeglinMods.Multiplayer.Events.Handlers.State;
 
@@ -12,6 +13,11 @@ public sealed class FullGameStateClientHandler : IClientHandler<FullGameStateSna
         var log = MultiplayerPlugin.Logger;
         try
         {
+            // Always update co-op player visuals data from every heartbeat
+            if (e.PlayerSummaries != null)
+                CoopPlayerVisuals.LatestPlayerSummaries = e.PlayerSummaries;
+            CoopPlayerVisuals.LatestActiveSlot = e.ActivePlayerSlot;
+
             var mode = MultiplayerPlugin.Services?.Resolve<IMultiplayerMode>();
             if (mode?.ClientMode == ClientMode.Mirror)
             {
@@ -38,6 +44,8 @@ public sealed class FullGameStateClientHandler : IClientHandler<FullGameStateSna
                 log?.LogInfo($"  Battle: state={e.Enemies.BattleStateName}, {e.Enemies.Enemies?.Count ?? 0} enemies");
             if (e.Pegboard != null)
                 log?.LogInfo($"  Pegboard: {e.Pegboard.TotalPegCount} pegs");
+            if (e.PlayerSummaries != null)
+                log?.LogInfo($"  CoopPlayers: {e.PlayerSummaries.Count} players, activeSlot={e.ActivePlayerSlot}");
             log?.LogInfo("================================");
         }
         catch (Exception ex)

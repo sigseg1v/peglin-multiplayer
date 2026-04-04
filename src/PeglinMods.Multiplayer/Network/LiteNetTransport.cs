@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using LiteNetLib;
 
 namespace PeglinMods.Multiplayer.Network;
@@ -7,14 +8,15 @@ namespace PeglinMods.Multiplayer.Network;
 public class LiteNetTransport : INetworkTransport, INetEventListener
 {
     private NetManager _netManager;
-    private readonly List<NetPeer> _peers = new List<NetPeer>();
+    private readonly Dictionary<int, NetPeer> _peers = new Dictionary<int, NetPeer>();
 
     public bool IsHost { get; private set; }
     public bool IsConnected => _peers.Count > 0;
+    public IReadOnlyList<int> ConnectedPeerIds => _peers.Keys.ToList();
 
-    public event Action<byte[]> OnDataReceived;
-    public event Action OnClientConnected;
-    public event Action OnDisconnected;
+    public event Action<int, byte[]> OnDataReceived;
+    public event Action<int> OnClientConnected;
+    public event Action<int> OnDisconnected;
 
     public void StartHost(int port)
     {
@@ -33,9 +35,15 @@ public class LiteNetTransport : INetworkTransport, INetEventListener
 
     public void Send(byte[] data) => Broadcast(data);
 
+    public void SendTo(int peerId, byte[] data)
+    {
+        if (_peers.TryGetValue(peerId, out var peer))
+            peer.Send(data, DeliveryMethod.ReliableOrdered);
+    }
+
     public void Broadcast(byte[] data)
     {
-        foreach (var peer in _peers)
+        foreach (var peer in _peers.Values)
             peer.Send(data, DeliveryMethod.ReliableOrdered);
     }
 
@@ -49,21 +57,21 @@ public class LiteNetTransport : INetworkTransport, INetEventListener
 
     public void OnPeerConnected(NetPeer peer)
     {
-        _peers.Add(peer);
-        OnClientConnected?.Invoke();
+        _peers[peer.Id] = peer;
+        OnClientConnected?.Invoke(peer.Id);
     }
 
     public void OnPeerDisconnected(NetPeer peer, DisconnectInfo disconnectInfo)
     {
-        _peers.Remove(peer);
-        OnDisconnected?.Invoke();
+        _peers.Remove(peer.Id);
+        OnDisconnected?.Invoke(peer.Id);
     }
 
     public void OnNetworkReceive(NetPeer peer, NetPacketReader reader, byte channelNumber, DeliveryMethod deliveryMethod)
     {
         var data = new byte[reader.AvailableBytes];
         reader.GetBytes(data, data.Length);
-        OnDataReceived?.Invoke(data);
+        OnDataReceived?.Invoke(peer.Id, data);
     }
 
     public void OnConnectionRequest(ConnectionRequest request)

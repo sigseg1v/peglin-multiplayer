@@ -49,9 +49,7 @@ public class MultiplayerUI : MonoBehaviour
     private TextMeshProUGUI _hostInfoText;
 
     // Lobby panel elements
-    private TextMeshProUGUI _lobbyListText;
     private TextMeshProUGUI _lobbyStatusText;
-    private Button _playButton;
 
     // Multiplayer panel elements (client fullscreen event feed)
     private TextMeshProUGUI _multiplayerFeedText;
@@ -77,8 +75,8 @@ public class MultiplayerUI : MonoBehaviour
             _transport = MultiplayerPlugin.Services.Resolve<INetworkTransport>();
             _multiplayerMode = MultiplayerPlugin.Services.Resolve<IMultiplayerMode>();
 
-            _transport.OnClientConnected += OnConnected;
-            _transport.OnDisconnected += OnDisconnected;
+            _transport.OnClientConnected += peerId => OnConnected();
+            _transport.OnDisconnected += peerId => OnDisconnected();
 
             CreateCanvas();
             CreateOverlay();
@@ -130,11 +128,9 @@ public class MultiplayerUI : MonoBehaviour
 
     private void OnDestroy()
     {
-        if (_transport != null)
-        {
-            _transport.OnClientConnected -= OnConnected;
-            _transport.OnDisconnected -= OnDisconnected;
-        }
+        // Transport event cleanup happens via transport.Stop() on disconnect.
+        // Lambda subscriptions can't be directly unsubscribed, but the transport
+        // is shared and lives for the plugin lifetime alongside this UI.
         if (_canvasObj != null) Destroy(_canvasObj);
     }
 
@@ -312,26 +308,6 @@ public class MultiplayerUI : MonoBehaviour
         var rect = _lobbyPanel.GetComponent<RectTransform>() ?? _lobbyPanel.AddComponent<RectTransform>();
         StretchFill(rect);
 
-        // "Players:" label — positioned below the parent's "Multiplayer" title
-        var playersLabel = CreateText(_lobbyPanel.transform, "PlayersLabel", "Players:", 28);
-        playersLabel.alignment = TextAlignmentOptions.Left;
-        var plRect = playersLabel.rectTransform;
-        plRect.anchorMin = new Vector2(0.5f, 0.5f);
-        plRect.anchorMax = new Vector2(0.5f, 0.5f);
-        plRect.pivot = new Vector2(0.5f, 0.5f);
-        plRect.anchoredPosition = new Vector2(0, 120);
-        plRect.sizeDelta = new Vector2(580, 36);
-
-        // Player list
-        _lobbyListText = CreateText(_lobbyPanel.transform, "LobbyList", "", 26);
-        _lobbyListText.alignment = TextAlignmentOptions.TopLeft;
-        var listRect = _lobbyListText.rectTransform;
-        listRect.anchorMin = new Vector2(0.5f, 0.5f);
-        listRect.anchorMax = new Vector2(0.5f, 0.5f);
-        listRect.pivot = new Vector2(0.5f, 0.5f);
-        listRect.anchoredPosition = new Vector2(0, 50);
-        listRect.sizeDelta = new Vector2(580, 100);
-
         // Status line
         _lobbyStatusText = CreateText(_lobbyPanel.transform, "LobbyStatus", "", 22);
         _lobbyStatusText.color = new Color(0.6f, 0.6f, 0.6f, 1f);
@@ -339,18 +315,12 @@ public class MultiplayerUI : MonoBehaviour
         statusRect.anchorMin = new Vector2(0.5f, 0.5f);
         statusRect.anchorMax = new Vector2(0.5f, 0.5f);
         statusRect.pivot = new Vector2(0.5f, 0.5f);
-        statusRect.anchoredPosition = new Vector2(0, -20);
+        statusRect.anchoredPosition = new Vector2(0, 160);
         statusRect.sizeDelta = new Vector2(640, 36);
 
-        // Play button (host only, hidden until client connects)
-        _playButton = CreateButton(_lobbyPanel.transform, "PlayBtn", "Play",
-            new Color(0.2f, 0.55f, 0.25f, 1f), new Vector2(0, -100), new Vector2(480, 88));
-        _playButton.onClick.AddListener(OnPlayClicked);
-        _playButton.gameObject.SetActive(false);
-
-        // Disconnect button
+        // Disconnect button at the bottom
         var disconnectBtn = CreateButton(_lobbyPanel.transform, "DisconnectBtn", "Disconnect",
-            new Color(0.5f, 0.2f, 0.2f, 1f), new Vector2(0, -200), new Vector2(480, 88));
+            new Color(0.5f, 0.2f, 0.2f, 1f), new Vector2(0, -260), new Vector2(480, 64));
         disconnectBtn.onClick.AddListener(OnDisconnectClicked);
 
         _lobbyPanel.SetActive(false);
@@ -358,29 +328,7 @@ public class MultiplayerUI : MonoBehaviour
 
     private void UpdateLobbyPanel()
     {
-        if (_lobbyListText == null) return;
-
-        var lines = "";
-        var myRole = _multiplayerMode.IsHosting ? "Host" : "Client";
-        lines += $"  <color=#88FF88>{LocalPlayerName}</color>  <color=#AAAAAA>({myRole} - You)</color>\n";
-
-        bool remoteConnected = false;
-        if (RemotePeerInfo.Received)
-        {
-            var remoteRole = RemotePeerInfo.IsHost ? "Host" : "Client";
-            lines += $"  <color=#88AAFF>{RemotePeerInfo.PlayerName}</color>  <color=#AAAAAA>({remoteRole})</color>\n";
-            remoteConnected = true;
-        }
-        else if (_transport.IsConnected)
-        {
-            lines += "  <color=#AAAA55>Connecting...</color>\n";
-        }
-        else if (_multiplayerMode.IsHosting)
-        {
-            lines += "  <color=#AAAA55>Waiting for player...</color>\n";
-        }
-
-        _lobbyListText.text = lines;
+        if (_lobbyStatusText == null) return;
 
         if (_multiplayerMode.IsHosting)
             _lobbyStatusText.text = $"Hosting on port {NetworkConfig.DefaultPort}";
@@ -389,9 +337,18 @@ public class MultiplayerUI : MonoBehaviour
         else
             _lobbyStatusText.text = "Connecting...";
 
-        // Show Play button for host when a client is connected
-        if (_playButton != null)
-            _playButton.gameObject.SetActive(_multiplayerMode.IsHosting && remoteConnected);
+        // Delegate to LobbyUI for the class select / ready system
+        LobbyUI.UpdateLobbyUI(
+            _lobbyPanel.transform,
+            _multiplayerMode.IsHosting,
+            (parent, name, text, size) => CreateText(parent, name, text, size),
+            (parent, name, text, color, pos, sz) => CreateButton(parent, name, text, color, pos, sz));
+
+        // Check if game start was triggered (host or client)
+        if (LobbyUI.GameStartReceived)
+        {
+            HideOverlay();
+        }
     }
 
     private void OnDisconnectClicked()
@@ -403,22 +360,6 @@ public class MultiplayerUI : MonoBehaviour
             _waitingPanel.SetActive(false);
         _overlayPanel.SetActive(true);
         ShowMainPanel();
-    }
-
-    private void OnPlayClicked()
-    {
-        // Host clicks Play → hide overlay and start a new game
-        HideOverlay();
-        var playButton = UnityEngine.Object.FindObjectOfType<PeglinUI.MainMenu.PlayButton>();
-        if (playButton != null)
-        {
-            playButton.MovetoCharacterSelect();
-            Log?.LogInfo("Host starting game via PlayButton.MovetoCharacterSelect()");
-        }
-        else
-        {
-            Log?.LogWarning("PlayButton not found — cannot start game");
-        }
     }
 
     private void CreateMultiplayerPanel()
@@ -594,6 +535,11 @@ public class MultiplayerUI : MonoBehaviour
             _multiplayerMode.EnableHosting();
             _transport.StartHost(NetworkConfig.DefaultPort);
             Utility.FileLogger.RoleTag = "HOST";
+
+            // Register host in PlayerRegistry
+            if (MultiplayerPlugin.Services?.TryResolve<Multiplayer.PlayerRegistry>(out var registry) == true)
+                registry.RegisterHost(LocalPlayerName);
+
             Log.LogInfo($"Started hosting on port {NetworkConfig.DefaultPort}");
             ShowLobby();
         }

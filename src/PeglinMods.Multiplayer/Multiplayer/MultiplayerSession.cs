@@ -11,6 +11,7 @@ using PeglinMods.Multiplayer.Network;
 using PeglinMods.Multiplayer.Patches;
 using PeglinMods.Multiplayer.UI;
 using PeglinMods.Multiplayer.Utility;
+using LobbyUI = PeglinMods.Multiplayer.UI.LobbyUI;
 using UnityEngine.SceneManagement;
 
 namespace PeglinMods.Multiplayer.Multiplayer;
@@ -69,7 +70,14 @@ public static class MultiplayerSession
             // 5. Reset all static state across the mod
             ResetStaticState(services);
 
-            // 6. Clear event feed
+            // 6. Clear player registry, coop state, and lobby state
+            if (services.TryResolve<PlayerRegistry>(out var playerRegistry))
+                playerRegistry.Clear();
+            if (services.TryResolve<GameState.CoopStateManager>(out var coopState))
+                coopState.Reset();
+            LobbyUI.Reset();
+
+            // 7. Clear event feed
             EventFeed.Clear();
 
             // 7. Reset file logger role tag

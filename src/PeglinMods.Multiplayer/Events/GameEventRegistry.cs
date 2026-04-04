@@ -25,6 +25,9 @@ public class GameEventRegistry : IGameEventRegistry
     public IReadOnlyCollection<string> UnhandledTypeIds => _unhandledTypeIds;
     private readonly HashSet<string> _unhandledTypeIds = new HashSet<string>();
 
+    /// <summary>The peer ID of the sender of the event currently being handled.</summary>
+    public int CurrentSenderPeerId { get; private set; } = -1;
+
     public GameEventRegistry(
         INetworkSerializer serializer,
         INetworkTransport transport,
@@ -88,35 +91,45 @@ public class GameEventRegistry : IGameEventRegistry
         }
     }
 
-    public void HandleIncoming(string typeId, string jsonPayload)
+    public void HandleIncoming(string typeId, string jsonPayload, int senderPeerId)
     {
         // Feed all incoming events to the multiplayer UI
         UI.EventFeed.Add(typeId, jsonPayload ?? "");
 
-        if (_clientDispatchers.TryGetValue(typeId, out var dispatcher))
+        // Set sender context for handlers to access
+        var previousSender = CurrentSenderPeerId;
+        CurrentSenderPeerId = senderPeerId;
+
+        try
         {
-            try
+            if (_clientDispatchers.TryGetValue(typeId, out var dispatcher))
             {
-                dispatcher(jsonPayload);
-            }
-            catch (Exception ex)
-            {
-                _log.LogError($"Error handling incoming {typeId}: {ex}");
-            }
-        }
-        else
-        {
-            // Unknown event - log it but don't crash
-            if (_unhandledTypeIds.Add(typeId))
-            {
-                // First time seeing this typeId - log a warning
-                _log.LogWarning($"UNHANDLED EVENT from remote: '{typeId}' (no client handler registered)");
-                _log.LogWarning($"  This may be from a newer mod version. Payload preview: {Truncate(jsonPayload, 200)}");
+                try
+                {
+                    dispatcher(jsonPayload);
+                }
+                catch (Exception ex)
+                {
+                    _log.LogError($"Error handling incoming {typeId}: {ex}");
+                }
             }
             else
             {
-                _log.LogDebug($"Unhandled event (repeated): '{typeId}'");
+                // Unknown event - log it but don't crash
+                if (_unhandledTypeIds.Add(typeId))
+                {
+                    _log.LogWarning($"UNHANDLED EVENT from remote: '{typeId}' (no client handler registered)");
+                    _log.LogWarning($"  This may be from a newer mod version. Payload preview: {Truncate(jsonPayload, 200)}");
+                }
+                else
+                {
+                    _log.LogDebug($"Unhandled event (repeated): '{typeId}'");
+                }
             }
+        }
+        finally
+        {
+            CurrentSenderPeerId = previousSender;
         }
     }
 

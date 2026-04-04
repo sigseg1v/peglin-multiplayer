@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using BepInEx.Logging;
 using PeglinMods.Multiplayer.Events;
 using PeglinMods.Multiplayer.GameState.Providers;
@@ -19,6 +20,7 @@ public class GameStateSyncService : IGameStateSyncService
     private readonly PegboardStateProvider _pegboardProvider;
     private readonly DeckStateProvider _deckProvider;
     private readonly RelicStateProvider _relicProvider;
+    private readonly CoopStateManager _coopStateManager;
 
     public GameStateSyncService(
         ManualLogSource log,
@@ -26,7 +28,8 @@ public class GameStateSyncService : IGameStateSyncService
         IMultiplayerMode mode,
         EnemyIdentifier enemyId,
         PegIdentifier pegId,
-        OrbIdentifier orbId)
+        OrbIdentifier orbId,
+        CoopStateManager coopStateManager = null)
     {
         _log = log;
         _registry = registry;
@@ -37,6 +40,7 @@ public class GameStateSyncService : IGameStateSyncService
         _pegboardProvider = new PegboardStateProvider(log, pegId);
         _deckProvider = new DeckStateProvider(log, orbId);
         _relicProvider = new RelicStateProvider(log);
+        _coopStateManager = coopStateManager;
     }
 
     public void SyncAll(string trigger = null)
@@ -58,8 +62,33 @@ public class GameStateSyncService : IGameStateSyncService
                 Pegboard = _pegboardProvider.Capture(),
             };
 
+            // Add co-op multi-player data if available
+            if (_coopStateManager != null && _coopStateManager.TotalPlayerCount > 0)
+            {
+                snapshot.ActivePlayerSlot = _coopStateManager.ActivePlayerSlot;
+                snapshot.TotalPlayerCount = _coopStateManager.TotalPlayerCount;
+                snapshot.PlayerSummaries = new List<CoopPlayerSummary>();
+
+                foreach (var kvp in _coopStateManager.PlayerStates)
+                {
+                    var ps = kvp.Value;
+                    // For the active player, use live singleton data
+                    var isActive = kvp.Key == _coopStateManager.ActivePlayerSlot;
+                    snapshot.PlayerSummaries.Add(new CoopPlayerSummary
+                    {
+                        SlotIndex = ps.SlotIndex,
+                        PlayerName = ps.PlayerName,
+                        ChosenClass = ps.ChosenClass,
+                        CurrentHealth = isActive ? (snapshot.Player?.CurrentHealth ?? ps.CurrentHealth) : ps.CurrentHealth,
+                        MaxHealth = isActive ? (snapshot.Player?.MaxHealth ?? ps.MaxHealth) : ps.MaxHealth,
+                        Gold = isActive ? (snapshot.Player?.Gold ?? ps.Gold) : ps.Gold,
+                        HasShotThisRound = ps.HasShotThisRound,
+                    });
+                }
+            }
+
             _registry.Dispatch(snapshot);
-            _log.LogInfo($"{tag}SyncAll: sent full state (map={snapshot.Map?.ActiveScene}, enemies={snapshot.Enemies?.Enemies?.Count ?? 0}, pegs={snapshot.Pegboard?.TotalPegCount ?? 0})");
+            _log.LogInfo($"{tag}SyncAll: sent full state (map={snapshot.Map?.ActiveScene}, enemies={snapshot.Enemies?.Enemies?.Count ?? 0}, pegs={snapshot.Pegboard?.TotalPegCount ?? 0}, players={snapshot.TotalPlayerCount})");
 
             // Only dump verbose diagnostics for non-heartbeat syncs to reduce log noise
             if (trigger == null || !trigger.StartsWith("HEARTBEAT"))
