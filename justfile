@@ -73,6 +73,8 @@ dev: setup
 # Optional: pass level to force a starting act, e.g. just dev-multi 3 (Mines)
 #   Acts: 1=Forest, 2=Castle, 3=Mines, 4=Core
 #   With floor: just dev-multi 3-2
+# Optional: set PEGLIN_SEED env var for deterministic seeds, e.g.
+#   PEGLIN_SEED=12345 just dev-multi 2
 dev-multi level="": setup
     dotnet build '{{src}}/PeglinMods.sln' -c Debug --nologo -v quiet; \
     just copy-plugins Debug; \

@@ -5,16 +5,23 @@ using Loading;
 namespace PeglinMods.Multiplayer.Patches;
 
 /// <summary>
-/// When PEGLIN_MULTI_DEBUG_FORCE_LEVEL is set (e.g. "3" or "3-2"),
-/// overrides the starting map scene so the game jumps straight to that act.
+/// Debug environment variable overrides for testing:
+///
+/// PEGLIN_MULTI_DEBUG_FORCE_LEVEL (e.g. "3" or "3-2")
+///   Overrides the starting map scene so the game jumps straight to that act.
 ///   1 = Forest, 2 = Castle, 3 = Mines, 4 = Core
-/// The optional second number sets StaticGameData.totalFloorCount.
+///   The optional second number sets StaticGameData.totalFloorCount.
+///
+/// PEGLIN_SEED (e.g. "12345")
+///   Forces a specific game seed for deterministic map/RNG generation.
+///   Set StaticGameData.currentSeed before GameInit.Start picks a random one.
 /// </summary>
 [HarmonyPatch]
 public static class DebugForceLevel
 {
     private static PeglinSceneLoader.Scene? _forcedScene;
     private static int? _forcedFloorCount;
+    private static string _forcedSeed;
     private static bool _parsed;
 
     private static void Parse()
@@ -23,26 +30,48 @@ public static class DebugForceLevel
         _parsed = true;
 
         var val = Environment.GetEnvironmentVariable("PEGLIN_MULTI_DEBUG_FORCE_LEVEL");
-        if (string.IsNullOrEmpty(val)) return;
-
-        var parts = val.Split('-');
-        if (!int.TryParse(parts[0], out var act)) return;
-
-        _forcedScene = act switch
+        if (!string.IsNullOrEmpty(val))
         {
-            1 => PeglinSceneLoader.Scene.FOREST_MAP,
-            2 => PeglinSceneLoader.Scene.CASTLE_MAP,
-            3 => PeglinSceneLoader.Scene.MINES_MAP,
-            4 => PeglinSceneLoader.Scene.CORE_MAP,
-            _ => null,
-        };
+            var parts = val.Split('-');
+            if (int.TryParse(parts[0], out var act))
+            {
+                _forcedScene = act switch
+                {
+                    1 => PeglinSceneLoader.Scene.FOREST_MAP,
+                    2 => PeglinSceneLoader.Scene.CASTLE_MAP,
+                    3 => PeglinSceneLoader.Scene.MINES_MAP,
+                    4 => PeglinSceneLoader.Scene.CORE_MAP,
+                    _ => null,
+                };
 
-        if (parts.Length > 1 && int.TryParse(parts[1], out var floor))
-            _forcedFloorCount = floor;
+                if (parts.Length > 1 && int.TryParse(parts[1], out var floor))
+                    _forcedFloorCount = floor;
 
-        if (_forcedScene != null)
-            MultiplayerPlugin.Logger?.LogInfo(
-                $"[DebugForceLevel] Forcing start scene to {_forcedScene} (floor={_forcedFloorCount?.ToString() ?? "default"})");
+                if (_forcedScene != null)
+                    MultiplayerPlugin.Logger?.LogInfo(
+                        $"[DebugForceLevel] Forcing start scene to {_forcedScene} (floor={_forcedFloorCount?.ToString() ?? "default"})");
+            }
+        }
+
+        _forcedSeed = Environment.GetEnvironmentVariable("PEGLIN_SEED");
+        if (!string.IsNullOrEmpty(_forcedSeed))
+            MultiplayerPlugin.Logger?.LogInfo($"[DebugForceLevel] Forcing seed to '{_forcedSeed}'");
+    }
+
+    /// <summary>
+    /// Set the seed before GameInit.Start generates a random one.
+    /// GameInit.Start checks `if (currentSeed == "")` — if we set it first,
+    /// it skips random seed generation and uses ours.
+    /// </summary>
+    [HarmonyPatch(typeof(GameInit), "Start")]
+    [HarmonyPrefix]
+    public static void GameInit_Start_Prefix()
+    {
+        Parse();
+        if (string.IsNullOrEmpty(_forcedSeed)) return;
+
+        StaticGameData.currentSeed = _forcedSeed;
+        MultiplayerPlugin.Logger?.LogInfo($"[DebugForceLevel] Set StaticGameData.currentSeed = '{_forcedSeed}'");
     }
 
     [HarmonyPatch(typeof(GameInit), "LoadMapScene")]
