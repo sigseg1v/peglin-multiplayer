@@ -194,10 +194,86 @@ public class CoopStateManager
 
     private void LoadDeckState(CoopPlayerState state)
     {
-        // Deck loading is complex — for now, we store/restore the state but actual
-        // deck manipulation requires resolving orb prefabs back to GameObjects.
-        // This will be fully implemented when the turn system needs it.
-        _log.LogInfo($"[CoopState] LoadDeckState for slot {state.SlotIndex} (deck={state.CompleteDeck.Count} orbs)");
+        try
+        {
+            var deckMgr = Resources.FindObjectsOfTypeAll<DeckManager>()?.FirstOrDefault();
+            if (deckMgr == null) return;
+
+            // Rebuild completeDeck from serialized orb names
+            if (DeckManager.completeDeck == null)
+                DeckManager.completeDeck = new List<GameObject>();
+
+            // Destroy existing orb instances
+            foreach (var go in DeckManager.completeDeck)
+                if (go != null) UnityEngine.Object.Destroy(go);
+            DeckManager.completeDeck.Clear();
+
+            foreach (var orb in state.CompleteDeck)
+            {
+                var prefab = Loading.AssetLoading.Instance?.GetOrbPrefab(orb.PrefabName);
+                if (prefab != null)
+                {
+                    var instance = UnityEngine.Object.Instantiate(prefab);
+                    instance.name = orb.PrefabName;
+                    instance.SetActive(false);
+                    DeckManager.completeDeck.Add(instance);
+                }
+                else
+                {
+                    _log.LogWarning($"[CoopState] Orb prefab not found: '{orb.PrefabName}'");
+                }
+            }
+
+            // Rebuild battleDeck
+            if (deckMgr.battleDeck == null)
+                deckMgr.battleDeck = new List<GameObject>();
+
+            foreach (var go in deckMgr.battleDeck)
+                if (go != null) UnityEngine.Object.Destroy(go);
+            deckMgr.battleDeck.Clear();
+
+            foreach (var orb in state.BattleDeck)
+            {
+                var prefab = Loading.AssetLoading.Instance?.GetOrbPrefab(orb.PrefabName);
+                if (prefab != null)
+                {
+                    var instance = UnityEngine.Object.Instantiate(prefab);
+                    instance.name = orb.PrefabName;
+                    instance.SetActive(false);
+                    deckMgr.battleDeck.Add(instance);
+                }
+            }
+
+            // Rebuild shuffledDeck from shuffled order
+            deckMgr.shuffledDeck.Clear();
+            if (state.ShuffledOrder != null)
+            {
+                // Push in reverse — stack is LIFO, index 0 = top = first draw
+                for (int i = state.ShuffledOrder.Count - 1; i >= 0; i--)
+                {
+                    var orbName = state.ShuffledOrder[i];
+                    GameObject match = null;
+                    foreach (var go in deckMgr.battleDeck)
+                    {
+                        if (go != null && go.name == orbName)
+                        {
+                            match = go;
+                            break;
+                        }
+                    }
+                    if (match != null)
+                        deckMgr.shuffledDeck.Push(match);
+                }
+            }
+
+            _log.LogInfo($"[CoopState] LoadDeckState for slot {state.SlotIndex}: " +
+                $"complete={DeckManager.completeDeck.Count}, battle={deckMgr.battleDeck.Count}, " +
+                $"shuffled={deckMgr.shuffledDeck.Count}");
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[CoopState] LoadDeckState failed: {ex.Message}");
+        }
     }
 
     // --- Relic save/load ---
@@ -243,7 +319,63 @@ public class CoopStateManager
 
     private void LoadRelicState(CoopPlayerState state)
     {
-        _log.LogInfo($"[CoopState] LoadRelicState for slot {state.SlotIndex} ({state.OwnedRelics.Count} relics)");
+        try
+        {
+            var relicMgr = Resources.FindObjectsOfTypeAll<RelicManager>()?.FirstOrDefault();
+            if (relicMgr == null) return;
+
+            // Reset the relic manager to clear all owned relics
+            relicMgr.Reset();
+
+            // Find all available Relic ScriptableObject assets
+            var allRelicAssets = Resources.FindObjectsOfTypeAll<Relic>();
+
+            int added = 0;
+            foreach (var entry in state.OwnedRelics)
+            {
+                var effect = (RelicEffect)entry.Effect;
+                if (effect == RelicEffect.NONE) continue;
+
+                // Find the relic asset by effect or locKey
+                var relicAsset = allRelicAssets.FirstOrDefault(r => r.effect == effect)
+                    ?? allRelicAssets.FirstOrDefault(r => r.locKey == entry.LocKey);
+
+                if (relicAsset != null)
+                {
+                    try
+                    {
+                        relicMgr.AddRelic(relicAsset);
+                        added++;
+                    }
+                    catch (Exception ex)
+                    {
+                        _log.LogWarning($"[CoopState] AddRelic failed for {effect}: {ex.Message}");
+                    }
+                }
+                else
+                {
+                    _log.LogWarning($"[CoopState] Relic asset not found: effect={effect}, locKey={entry.LocKey}");
+                }
+            }
+
+            // Restore countdowns
+            if (state.RelicCountdowns.Count > 0)
+            {
+                var countdownField = AccessTools.Field(typeof(RelicManager), "_relicRemainingCountdowns");
+                var countdowns = countdownField?.GetValue(relicMgr) as Dictionary<RelicEffect, int>;
+                if (countdowns != null)
+                {
+                    foreach (var kvp in state.RelicCountdowns)
+                        countdowns[(RelicEffect)kvp.Key] = kvp.Value;
+                }
+            }
+
+            _log.LogInfo($"[CoopState] LoadRelicState for slot {state.SlotIndex}: {added}/{state.OwnedRelics.Count} relics loaded");
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[CoopState] LoadRelicState failed: {ex.Message}");
+        }
     }
 
     // --- Health save/load ---
