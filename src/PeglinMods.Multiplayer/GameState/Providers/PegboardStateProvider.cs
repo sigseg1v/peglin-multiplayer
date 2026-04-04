@@ -38,11 +38,17 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
             }
 
             // Capture regular pegs from allPegs
+            // NOTE: Bomb instances can end up in allPegs (pre-placed in layout, or added
+            // via HandlePegAdded for non-BOMB types). Detect them by checking `peg is Bomb`.
             var pegs = pm.allPegs;
+            int allPegsBombCount = 0;
             for (int i = 0; i < pegs.Count; i++)
             {
                 var peg = pegs[i];
                 if (peg == null) continue;
+
+                bool isBombInstance = peg is Bomb;
+                if (isBombInstance) allPegsBombCount++;
 
                 var guid = _pegId.GetOrAssignGuid(peg);
                 var pt = (int)peg.pegType;
@@ -79,6 +85,8 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     WasPreviouslyCleared = wasPreviouslyCleared,
                     CoinCount = peg.NumCoins(),
                     BuffAmount = peg.buffAmount,
+                    IsBomb = isBombInstance,
+                    HitCount = isBombInstance ? ((Bomb)peg).HitCount : 0,
                 };
                 CaptureShieldState(peg, entry);
                 CaptureLpmParentPos(peg, entry);
@@ -86,8 +94,9 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
 
                 if (peg.gameObject.activeSelf && !destroyed)
                 {
-                    if ((pt & 0x2) != 0) snapshot.CritPegCount++;
-                    if ((pt & 0x8) != 0) snapshot.ResetPegCount++;
+                    if (isBombInstance) snapshot.BombPegCount++;
+                    else if ((pt & 0x2) != 0) snapshot.CritPegCount++;
+                    else if ((pt & 0x8) != 0) snapshot.ResetPegCount++;
                 }
             }
 
@@ -198,9 +207,11 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
 
             snapshot.TotalPegCount = snapshot.Pegs.Count;
 
+            int bombsListCount = bombs?.Count ?? -1;
             _log.LogInfo($"[PegProvider] Captured {snapshot.TotalPegCount} pegs from PegManager " +
                 $"(crit={snapshot.CritPegCount}, bomb={snapshot.BombPegCount}, reset={snapshot.ResetPegCount}, " +
-                $"bouncer={snapshot.BouncerPegCount}, registry={_pegId.Count})");
+                $"bouncer={snapshot.BouncerPegCount}, registry={_pegId.Count}, " +
+                $"_bombs={bombsListCount}, allPegsBombs={allPegsBombCount})");
 
             return snapshot;
         }
