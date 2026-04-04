@@ -34,6 +34,11 @@ public class MapStateSnapshot
     /// </summary>
     public List<MapNodeEntry> Nodes { get; set; }
 
+    /// <summary>Host player's position on the map (world coords from MapController._player).</summary>
+    public float? PlayerMapPosX { get; set; }
+    /// <summary>Host player's position on the map (world coords from MapController._player).</summary>
+    public float? PlayerMapPosY { get; set; }
+
     /// <summary>True when the host is in post-battle navigation (choosing next map node).</summary>
     public bool IsNavigating { get; set; }
 

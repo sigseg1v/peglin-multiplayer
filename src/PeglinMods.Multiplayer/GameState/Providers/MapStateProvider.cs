@@ -53,6 +53,15 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
                         var floorField = AccessTools.Field(typeof(Map.MapController), "floorCount");
                         if (floorField != null)
                             snapshot.MapFloorCount = (int)floorField.GetValue(mc);
+
+                        // Capture player's absolute position on the map
+                        var playerField = AccessTools.Field(typeof(Map.MapController), "_player");
+                        var player = playerField?.GetValue(mc) as GameObject;
+                        if (player != null)
+                        {
+                            snapshot.PlayerMapPosX = player.transform.position.x;
+                            snapshot.PlayerMapPosY = player.transform.position.y;
+                        }
                     }
                 }
                 catch { }

@@ -181,7 +181,7 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 // Apply host's map node types to client
                 if (MapScenes.Contains(currentScene) && snapshot.Nodes != null && snapshot.Nodes.Count > 0)
                 {
-                    ApplyMapNodes(snapshot.Nodes);
+                    ApplyMapNodes(snapshot.Nodes, snapshot.PlayerMapPosX, snapshot.PlayerMapPosY);
                 }
 
                 // Navigation is now triggered by GameStateApplyService.TriggerNavigationIfNeeded()
@@ -500,7 +500,7 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
     /// and room state with icon generation. This is the primary way the client's
     /// map is synced since CreateMapDataLists is blocked on client.
     /// </summary>
-    private void ApplyMapNodes(List<MapNodeEntry> hostNodes)
+    private void ApplyMapNodes(List<MapNodeEntry> hostNodes, float? hostPlayerX = null, float? hostPlayerY = null)
     {
         try
         {
@@ -579,10 +579,9 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             _log.LogInfo($"[MapApplier] Applied {applied} node types from host, {skipped} skipped " +
                 $"(host={hostNodes.Count}, client={clientNodes.Length})");
 
-            // Move the player sprite to the correct node.
-            // The node with PREVIOUS state is where the player currently stands.
-            // If none is PREVIOUS, try NEXT (player is about to move there).
-            MovePlayerToCurrentNode(mc, clientNodes, hostNodes);
+            // Move the player sprite to the host's position.
+            // Use absolute position from host if available, fall back to PREVIOUS node.
+            MovePlayerToCurrentNode(mc, clientNodes, hostNodes, hostPlayerX, hostPlayerY);
         }
         catch (Exception ex)
         {
@@ -591,43 +590,60 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
     }
 
     /// <summary>
-    /// Move the map player sprite to the node the host's player is at.
-    /// The host's _previousNode corresponds to the node with RoomState.PREVIOUS.
-    /// Also updates MapController._previousNode so future game logic references it.
+    /// Move the map player sprite to the host's absolute position.
+    /// Falls back to PREVIOUS node position if host position is unavailable.
+    /// Also updates MapController._previousNode to the closest node.
     /// </summary>
-    private void MovePlayerToCurrentNode(MapController mc, MapNode[] clientNodes, List<MapNodeEntry> hostNodes)
+    private void MovePlayerToCurrentNode(MapController mc, MapNode[] clientNodes,
+        List<MapNodeEntry> hostNodes, float? hostPlayerX, float? hostPlayerY)
     {
         try
         {
-            // Find the node the host player is at (PREVIOUS = just traversed, player stands here)
-            MapNode targetNode = null;
-            foreach (var entry in hostNodes)
-            {
-                if (entry.RoomState == (int)RoomState.PREVIOUS && entry.Index >= 0 && entry.Index < clientNodes.Length)
-                {
-                    targetNode = clientNodes[entry.Index];
-                    break;
-                }
-            }
-
-            if (targetNode == null) return;
-
-            // Get the player GameObject from MapController
             var playerField = AccessTools.Field(typeof(MapController), "_player");
             var player = playerField?.GetValue(mc) as GameObject;
             if (player == null) return;
 
-            // Move player to the node position
-            var targetPos = targetNode.transform.position;
+            Vector3 targetPos;
+
+            // Use absolute host position if available (primary — direct sync)
+            if (hostPlayerX.HasValue && hostPlayerY.HasValue)
+            {
+                targetPos = new Vector3(hostPlayerX.Value, hostPlayerY.Value, player.transform.position.z);
+            }
+            else
+            {
+                // Fallback: find the PREVIOUS node
+                MapNode targetNode = null;
+                foreach (var entry in hostNodes)
+                {
+                    if (entry.RoomState == (int)RoomState.PREVIOUS && entry.Index >= 0 && entry.Index < clientNodes.Length)
+                    {
+                        targetNode = clientNodes[entry.Index];
+                        break;
+                    }
+                }
+                if (targetNode == null) return;
+                targetPos = targetNode.transform.position;
+            }
+
             if (Vector3.Distance(player.transform.position, targetPos) > 0.1f)
             {
                 player.transform.position = targetPos;
-                _log.LogInfo($"[MapApplier] Moved player to node at ({targetPos.x:F1},{targetPos.y:F1})");
+                _log.LogInfo($"[MapApplier] Moved player to ({targetPos.x:F1},{targetPos.y:F1})");
             }
 
-            // Update _previousNode so the game knows where the player is
+            // Update _previousNode to the closest node so game logic references it
             var prevNodeField = AccessTools.Field(typeof(MapController), "_previousNode");
-            prevNodeField?.SetValue(mc, targetNode);
+            MapNode closest = null;
+            float closestDist = float.MaxValue;
+            foreach (var node in clientNodes)
+            {
+                if (node == null) continue;
+                float d = Vector3.SqrMagnitude(node.transform.position - targetPos);
+                if (d < closestDist) { closestDist = d; closest = node; }
+            }
+            if (closest != null)
+                prevNodeField?.SetValue(mc, closest);
         }
         catch (Exception ex)
         {
