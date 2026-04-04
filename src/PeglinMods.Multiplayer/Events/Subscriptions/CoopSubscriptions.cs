@@ -45,6 +45,7 @@ public sealed class CoopSubscriptions
         BattleController.OnBattleStarted += OnBattleStarted;
         BattleController.OnStartedAwaitingShot += OnAwaitingShot;
         BattleController.OnShotComplete += OnShotComplete;
+        BattleController.OnVictory += OnVictory;
         _log.LogInfo("CoopSubscriptions registered (with turn system)");
     }
 
@@ -55,6 +56,7 @@ public sealed class CoopSubscriptions
         BattleController.OnBattleStarted -= OnBattleStarted;
         BattleController.OnStartedAwaitingShot -= OnAwaitingShot;
         BattleController.OnShotComplete -= OnShotComplete;
+        BattleController.OnVictory -= OnVictory;
     }
 
     /// <summary>
@@ -226,6 +228,79 @@ public sealed class CoopSubscriptions
         BroadcastTurnChange();
 
         _log.LogInfo($"[CoopSubs] Shot complete — advanced turn. Phase={_turnManager.Phase}, slot={_turnManager.CurrentPlayerSlot}");
+    }
+
+    // =========================================================================
+    // POST-BATTLE REWARDS — send reward choices to non-host players
+    // =========================================================================
+
+    /// <summary>
+    /// Called when the battle is won. Save active player state and send reward
+    /// choices to each non-host player so they can independently pick rewards.
+    /// The host picks rewards via the normal game UI.
+    /// </summary>
+    private void OnVictory()
+    {
+        if (!_mode.IsHosting) return;
+        if (_coopStateManager.TotalPlayerCount < 2) return;
+
+        try
+        {
+            // Save active player state before reward selection
+            _coopStateManager.SaveActivePlayerState();
+
+            // Generate reward choices for each non-host player
+            var services = MultiplayerPlugin.Services;
+            if (services?.TryResolve<IGameEventRegistry>(out var registry) != true) return;
+
+            foreach (var kvp in _coopStateManager.PlayerStates)
+            {
+                if (kvp.Key == 0) continue; // Host picks rewards via the normal game UI
+
+                var options = new System.Collections.Generic.List<RewardOption>();
+                int idx = 0;
+
+                // Option 1: Heal 20 HP
+                options.Add(new RewardOption
+                {
+                    OptionIndex = idx++,
+                    Type = "heal",
+                    DisplayName = "Heal 20 HP",
+                    Description = "Restore 20 hit points",
+                });
+
+                // Option 2: +5 max HP
+                options.Add(new RewardOption
+                {
+                    OptionIndex = idx++,
+                    Type = "max_hp",
+                    DisplayName = "+5 Max HP",
+                    Description = "Permanently gain 5 max hit points",
+                });
+
+                // Option 3: Skip (small gold reward)
+                options.Add(new RewardOption
+                {
+                    OptionIndex = idx++,
+                    Type = "skip",
+                    DisplayName = "Skip",
+                    Description = "Skip this reward and gain 10 gold",
+                    GoldReward = 10,
+                });
+
+                registry.Dispatch(new RewardChoicesEvent
+                {
+                    TargetSlotIndex = kvp.Key,
+                    Options = options,
+                });
+
+                _log.LogInfo($"[CoopSubs] Sent {options.Count} reward choices to slot {kvp.Key}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[CoopSubs] OnVictory reward distribution failed: {ex.Message}");
+        }
     }
 
     /// <summary>

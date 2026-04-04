@@ -210,6 +210,67 @@ public static class MultiplayerClientPatches
         return false;
     }
 
+    /// <summary>
+    /// Host-side: when it's a client's turn and we have a PendingShot from
+    /// ShootRequestEvent, set the aim vector on the PachinkoBall and fire it.
+    /// This runs after BattleController.Update on the host.
+    /// </summary>
+    [HarmonyPatch(typeof(BattleController), "Update")]
+    [HarmonyPostfix]
+    public static void BattleController_Update_Postfix()
+    {
+        if (!IsHosting) return;
+        if (!UI.LobbyUI.GameStartReceived) return;
+
+        // Only fire when BattleController is in AWAITING_SHOT and there's a pending shot
+        if (BattleController.CurrentBattleState != BattleController.BattleState.AWAITING_SHOT) return;
+
+        var pending = Events.Handlers.Coop.ShootRequestClientHandler.ConsumePendingShot();
+        if (pending == null) return;
+
+        try
+        {
+            // Find the active PachinkoBall (the one drawn for aiming)
+            var balls = UnityEngine.Object.FindObjectsOfType<PachinkoBall>();
+            PachinkoBall activeBall = null;
+            foreach (var ball in balls)
+            {
+                if (ball.IsDummy) continue;
+                if (ball.CurrentState == PachinkoBall.FireballState.AIMING)
+                {
+                    activeBall = ball;
+                    break;
+                }
+            }
+
+            if (activeBall == null)
+            {
+                MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] PendingShot from {pending.PlayerName} but no aiming PachinkoBall found");
+                return;
+            }
+
+            // Set aim direction on the ball
+            var aimField = HarmonyLib.AccessTools.Field(typeof(PachinkoBall), "_aimVector");
+            if (aimField != null)
+            {
+                var aimDir = new UnityEngine.Vector2(pending.AimDirectionX, pending.AimDirectionY);
+                aimField.SetValue(activeBall, aimDir);
+                activeBall.transform.right = aimDir;
+            }
+
+            // Fire the ball
+            activeBall.Fire();
+
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[ClientPatches] Executed PendingShot from {pending.PlayerName} (slot {pending.SlotIndex}): " +
+                $"aim=({pending.AimDirectionX:F2},{pending.AimDirectionY:F2})");
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] PendingShot execution failed: {ex.Message}");
+        }
+    }
+
     [HarmonyPatch(typeof(SaveManager), "SaveRun")]
     [HarmonyPrefix]
     public static bool SaveManager_SaveRun_Prefix() => !ShouldSuppressClientLogic;
@@ -267,6 +328,51 @@ public static class MultiplayerClientPatches
             var loadMapMethod = typeof(GameInit).GetMethod("LoadMapScene",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             loadMapMethod?.Invoke(__instance, null);
+
+            // Generate starting relic choices for each non-host player and send
+            if (services.TryResolve<IGameEventRegistry>(out var registry) && gameStartEvent?.FinalPlayers != null)
+            {
+                var relicMgrs = UnityEngine.Resources.FindObjectsOfTypeAll<Relics.RelicManager>();
+                if (relicMgrs != null && relicMgrs.Length > 0)
+                {
+                    var rm = relicMgrs[0];
+                    foreach (var player in gameStartEvent.FinalPlayers)
+                    {
+                        if (player.IsHost) continue;
+
+                        var choices = new System.Collections.Generic.List<GameState.Snapshots.RelicEntry>();
+                        try
+                        {
+                            var relics = rm.GetMultipleRelicsOffOfQueue(3, Relics.RelicRarity.COMMON);
+                            foreach (var relic in relics)
+                            {
+                                choices.Add(new GameState.Snapshots.RelicEntry
+                                {
+                                    Effect = (int)relic.effect,
+                                    EffectName = relic.englishDisplayName ?? relic.locKey ?? "Unknown",
+                                    LocKey = relic.locKey ?? "",
+                                    Rarity = (int)relic.globalRarity,
+                                    IsEnabled = true,
+                                });
+                            }
+                        }
+                        catch (Exception ex2)
+                        {
+                            MultiplayerPlugin.Logger?.LogWarning($"[GameInit] Failed to generate relic choices for slot {player.SlotIndex}: {ex2.Message}");
+                        }
+
+                        if (choices.Count > 0)
+                        {
+                            registry.Dispatch(new Events.Network.Coop.RelicChoicesEvent
+                            {
+                                TargetSlotIndex = player.SlotIndex,
+                                Choices = choices,
+                            });
+                            MultiplayerPlugin.Logger?.LogInfo($"[GameInit] Sent {choices.Count} relic choices to slot {player.SlotIndex}");
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -979,7 +1085,7 @@ public static class MultiplayerClientPatches
             MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] ShootRequest send failed: {ex.Message}");
         }
 
-        return true; // Allow the local fire to execute (client sees their own shot)
+        return false; // Suppress local fire — host will execute this shot
     }
 
     // =========================================================================

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using BepInEx.Logging;
+using PeglinMods.Multiplayer.Events.Handlers.Lobby;
 using PeglinMods.Multiplayer.GameState.Snapshots;
 using PeglinMods.Multiplayer.Multiplayer;
 using TMPro;
@@ -255,9 +256,17 @@ public class CoopPlayerVisuals : MonoBehaviour
             if (visual.HpText != null)
                 visual.HpText.text = $"{summary.CurrentHealth:F0} / {summary.MaxHealth:F0}";
 
-            // Update name text
+            // Update name text with class and turn indicator
             if (visual.NameText != null)
-                visual.NameText.text = summary.PlayerName ?? $"Player {summary.SlotIndex}";
+            {
+                string playerName = summary.PlayerName ?? $"Player {summary.SlotIndex}";
+                string className = LobbyHelper.GetClassName(summary.ChosenClass);
+                string turnMarker = (activeSlot == visual.SlotIndex) ? " [YOUR TURN]" : "";
+                visual.NameText.text = $"{playerName} ({className}){turnMarker}";
+                visual.NameText.color = (activeSlot == visual.SlotIndex)
+                    ? new Color(1f, 1f, 0.6f) // yellow-ish for active
+                    : Color.white;
+            }
 
             // Active player highlight
             float targetScale = (activeSlot == visual.SlotIndex) ? 1.15f : 1f;
