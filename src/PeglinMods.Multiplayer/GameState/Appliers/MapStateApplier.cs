@@ -235,19 +235,89 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             {
                 var allBattles = Resources.FindObjectsOfTypeAll<MapDataBattle>();
                 var match = allBattles.FirstOrDefault(b => b.name == snapshot.BattleDataName);
+
+                // Scenario battles (e.g. RainbowSlimeOnlyScenarioBattle) are loaded via
+                // Addressables in the TextScenario scene, which the client skips.
+                // Try loading from the Addressable catalog by name.
+                if (match == null)
+                {
+                    match = TryLoadBattleFromAddressables(snapshot.BattleDataName);
+                }
+
                 if (match != null)
                 {
+                    // Copy background/frame from current dataToLoad if missing
+                    if (match.background == null && current != null)
+                        match.background = current.background;
+                    if (match.pegboardFrame == null && current != null)
+                        match.pegboardFrame = current.pegboardFrame;
+
                     StaticGameData.dataToLoad = match;
                     _log.LogInfo($"[MapApplier] Set dataToLoad to '{match.name}' (pegLayout={match.pegLayout?.name})");
                 }
                 else
                 {
-                    _log.LogWarning($"[MapApplier] MapDataBattle '{snapshot.BattleDataName}' not found in {allBattles.Length} loaded assets");
+                    _log.LogWarning($"[MapApplier] MapDataBattle '{snapshot.BattleDataName}' not found in {allBattles.Length} loaded assets or Addressables");
                 }
             }
         }
 
         _log.LogInfo($"[MapApplier] StaticGameData: seed={seed}, floor={snapshot.TotalFloorCount}, class={StaticGameData.chosenClass}, node={snapshot.ChosenNextNodeIndex}, battle={snapshot.BattleDataName}");
+    }
+
+    /// <summary>
+    /// Try to load a MapDataBattle from the Addressable catalog by searching all
+    /// resource locations for a matching name. This handles scenario battles that
+    /// are only loaded when the TextScenario scene runs (which the client skips).
+    /// </summary>
+    private MapDataBattle TryLoadBattleFromAddressables(string battleName)
+    {
+        try
+        {
+            // Search all Addressable locations for MapDataBattle assets
+            var locHandle = UnityEngine.AddressableAssets.Addressables
+                .LoadResourceLocationsAsync(typeof(MapDataBattle));
+            var locations = locHandle.WaitForCompletion();
+
+            if (locations != null)
+            {
+                foreach (var loc in locations)
+                {
+                    if (loc.PrimaryKey.Contains(battleName) ||
+                        loc.InternalId.Contains(battleName))
+                    {
+                        var assetHandle = UnityEngine.AddressableAssets.Addressables
+                            .LoadAssetAsync<MapDataBattle>(loc);
+                        var battle = assetHandle.WaitForCompletion();
+                        if (battle != null)
+                        {
+                            _log.LogInfo($"[MapApplier] Loaded '{battle.name}' via Addressables (key={loc.PrimaryKey})");
+                            return battle;
+                        }
+                    }
+                }
+                _log.LogInfo($"[MapApplier] Addressables: searched {locations.Count} locations, no match for '{battleName}'");
+            }
+
+            // Fallback: try loading by name directly as an Addressable key
+            try
+            {
+                var directHandle = UnityEngine.AddressableAssets.Addressables
+                    .LoadAssetAsync<MapDataBattle>(battleName);
+                var direct = directHandle.WaitForCompletion();
+                if (direct != null)
+                {
+                    _log.LogInfo($"[MapApplier] Loaded '{direct.name}' via Addressables direct key");
+                    return direct;
+                }
+            }
+            catch { }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[MapApplier] Addressables lookup failed for '{battleName}': {ex.Message}");
+        }
+        return null;
     }
 
     private void LoadTargetScene(string targetSceneName)
