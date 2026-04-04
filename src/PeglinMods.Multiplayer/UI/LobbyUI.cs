@@ -5,6 +5,7 @@ using PeglinMods.Multiplayer.Events.Handlers.Lobby;
 using PeglinMods.Multiplayer.Events.Network.Lobby;
 using PeglinMods.Multiplayer.Multiplayer;
 using PeglinMods.Multiplayer.Network;
+using IMessageSender = PeglinMods.Multiplayer.Network.IMessageSender;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -57,10 +58,34 @@ public static class LobbyUI
         _localIsReady = false;
         _gameStartReceived = false;
         _gameStartEvent = null;
-        _lobbyRoot = null;
+
+        // Destroy dynamically created GameObjects before clearing references
+        foreach (var row in _playerRows)
+        {
+            if (row.Root != null)
+                UnityEngine.Object.Destroy(row.Root);
+        }
         _playerRows.Clear();
-        _startButton = null;
-        _readyButton = null;
+
+        if (_startButton != null)
+        {
+            UnityEngine.Object.Destroy(_startButton.gameObject);
+            _startButton = null;
+            _startButtonText = null;
+        }
+
+        if (_readyButton != null)
+        {
+            UnityEngine.Object.Destroy(_readyButton.gameObject);
+            _readyButton = null;
+            _readyButtonText = null;
+        }
+
+        if (_lobbyRoot != null)
+        {
+            UnityEngine.Object.Destroy(_lobbyRoot);
+            _lobbyRoot = null;
+        }
     }
 
     /// <summary>Called by LobbyStateClientHandler when receiving lobby state from host.</summary>
@@ -315,9 +340,9 @@ public static class LobbyUI
         }
         else
         {
-            // Client sends ClassSelectEvent to host
-            if (services.TryResolve<IGameEventRegistry>(out var eventRegistry))
-                eventRegistry.Dispatch(new ClassSelectEvent { ChosenClass = _localChosenClass });
+            // Client sends ClassSelectEvent to host over the network
+            if (services.TryResolve<IMessageSender>(out var sender))
+                sender.Send(new ClassSelectEvent { ChosenClass = _localChosenClass });
         }
     }
 
@@ -326,9 +351,9 @@ public static class LobbyUI
         _localIsReady = !_localIsReady;
 
         var services = MultiplayerPlugin.Services;
-        if (services?.TryResolve<IGameEventRegistry>(out var eventRegistry) == true)
+        if (services?.TryResolve<IMessageSender>(out var sender) == true)
         {
-            eventRegistry.Dispatch(new ReadyEvent { IsReady = _localIsReady });
+            sender.Send(new ReadyEvent { IsReady = _localIsReady });
         }
     }
 
