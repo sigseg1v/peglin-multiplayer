@@ -330,9 +330,13 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
         var hostPos = new Vector3(entry.PosX, entry.PosY, finalPeg.transform.position.z);
 
-        // Check for LinearPegMovement on a parent — sync the parent transform instead
-        // of individual children to avoid wrap-direction conflicts on circular rows.
-        var lpm = finalPeg.GetComponentInParent<Battle.PegBehaviour.LinearPegMovement>();
+        // Check for LinearPegMovement on the peg itself or its direct parent.
+        // LinearPegMovement rows have pegs as direct children of the moving parent.
+        // Don't use GetComponentInParent — it could match distant ancestors and
+        // incorrectly move static pegs (e.g. bouncers) that share a root.
+        var lpm = finalPeg.GetComponent<Battle.PegBehaviour.LinearPegMovement>();
+        if (lpm == null && finalPeg.transform.parent != null)
+            lpm = finalPeg.transform.parent.GetComponent<Battle.PegBehaviour.LinearPegMovement>();
         if (lpm != null)
         {
             var parentT = lpm.transform;
@@ -364,7 +368,13 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         {
             finalPeg.transform.position = hostPos;
             var rb = finalPeg.GetComponent<Rigidbody2D>();
-            if (rb != null) rb.position = new Vector2(entry.PosX, entry.PosY);
+            if (rb != null)
+            {
+                rb.position = new Vector2(entry.PosX, entry.PosY);
+                // Zero velocity on static pegs to prevent physics drift from position corrections
+                if (rb.bodyType != RigidbodyType2D.Static)
+                    rb.velocity = Vector2.zero;
+            }
         }
 
         // If ConvertPegToType created a new GO, also snap the original (now parent)
@@ -372,7 +382,12 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         {
             originalPeg.transform.position = hostPos;
             var rb2 = originalPeg.GetComponent<Rigidbody2D>();
-            if (rb2 != null) rb2.position = new Vector2(entry.PosX, entry.PosY);
+            if (rb2 != null)
+            {
+                rb2.position = new Vector2(entry.PosX, entry.PosY);
+                if (rb2.bodyType != RigidbodyType2D.Static)
+                    rb2.velocity = Vector2.zero;
+            }
         }
     }
 
@@ -664,8 +679,12 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         if (peg == null) return false;
         var go = peg.gameObject;
 
-        return go.GetComponentInParent<Battle.PegBehaviour.LinearPegMovement>() != null
-            || go.GetComponent<Battle.PegBehaviour.PegMoveAndReturn>() != null
+        // Check self and direct parent only for LinearPegMovement (not distant ancestors)
+        if (go.GetComponent<Battle.PegBehaviour.LinearPegMovement>() != null) return true;
+        if (go.transform.parent != null &&
+            go.transform.parent.GetComponent<Battle.PegBehaviour.LinearPegMovement>() != null) return true;
+
+        return go.GetComponent<Battle.PegBehaviour.PegMoveAndReturn>() != null
             || go.GetComponent<Battle.PegBehaviour.PegSquareMovement>() != null
             || go.GetComponent<Battle.PegBehaviour.PegSplineFollow>() != null
             || go.GetComponentInParent<Battle.PegBehaviour.RotatingPegCircle>() != null;
