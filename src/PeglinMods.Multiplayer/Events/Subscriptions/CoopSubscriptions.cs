@@ -30,23 +30,34 @@ public sealed class CoopSubscriptions
     /// </summary>
     private float _healthBeforeAttack;
 
+    /// <summary>
+    /// Singleton instance so the BattleController.Awake Postfix can re-subscribe.
+    /// The game's static delegates may lose subscribers across scene loads,
+    /// so we re-subscribe at the start of every battle.
+    /// </summary>
+    internal static CoopSubscriptions Instance { get; private set; }
+
     public CoopSubscriptions(IMultiplayerMode mode, CoopStateManager coopStateManager, TurnManager turnManager, ManualLogSource log)
     {
         _mode = mode;
         _coopStateManager = coopStateManager;
         _turnManager = turnManager;
         _log = log;
+        Instance = this;
     }
 
     public void Subscribe()
     {
+        // Unsubscribe first to avoid duplicate handlers if called multiple times
+        Unsubscribe();
+
         BattleController.OnAttackStarted += OnAttackStarted;
         BattleController.OnTurnComplete += OnTurnComplete;
         BattleController.OnBattleStarted += OnBattleStarted;
         BattleController.OnStartedAwaitingShot += OnAwaitingShot;
         BattleController.OnShotComplete += OnShotComplete;
         BattleController.OnVictory += OnVictory;
-        _log.LogInfo("CoopSubscriptions registered (with turn system)");
+        _log.LogInfo($"CoopSubscriptions registered (with turn system) — TotalPlayerCount={_coopStateManager.TotalPlayerCount}, IsHosting={_mode.IsHosting}");
     }
 
     public void Unsubscribe()

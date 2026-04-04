@@ -384,18 +384,37 @@ public class CoopStateManager
     {
         try
         {
+            // Try the battle-scene MonoBehaviour first
             var phc = UnityEngine.Object.FindObjectOfType<Battle.PlayerHealthController>();
-            if (phc == null) return;
-
-            state.CurrentHealth = phc.CurrentHealth;
-
-            var maxField = AccessTools.Field(typeof(Battle.PlayerHealthController), "_maxPlayerHealth");
-            var maxVar = maxField?.GetValue(phc);
-            if (maxVar != null)
+            if (phc != null)
             {
-                var valProp = maxVar.GetType().GetProperty("Value");
-                state.MaxHealth = valProp != null ? (float)valProp.GetValue(maxVar) : 0;
+                state.CurrentHealth = phc.CurrentHealth;
+
+                var maxField = AccessTools.Field(typeof(Battle.PlayerHealthController), "_maxPlayerHealth");
+                var maxVar = maxField?.GetValue(phc);
+                if (maxVar != null)
+                {
+                    var valProp = maxVar.GetType().GetProperty("Value");
+                    state.MaxHealth = valProp != null ? (float)valProp.GetValue(maxVar) : 0;
+                }
+                return;
             }
+
+            // Fallback: read directly from FloatVariable ScriptableObject assets.
+            // PlayerHealthController may not exist on non-battle scenes (e.g., PostMainMenu
+            // where GameInit runs). The FloatVariable SOs are the authoritative source of
+            // health data and persist across scenes.
+            var floatVars = Resources.FindObjectsOfTypeAll<FloatVariable>();
+            foreach (var fv in floatVars)
+            {
+                if (fv.name == "PlayerHealth" || fv.name == "playerHealth")
+                    state.CurrentHealth = fv.Value;
+                else if (fv.name == "MaxPlayerHealth" || fv.name == "maxPlayerHealth")
+                    state.MaxHealth = fv.Value;
+            }
+
+            if (state.CurrentHealth > 0 || state.MaxHealth > 0)
+                _log.LogInfo($"[CoopState] SaveHealthState via FloatVariable fallback: hp={state.CurrentHealth}/{state.MaxHealth}");
         }
         catch (Exception ex)
         {
@@ -408,23 +427,35 @@ public class CoopStateManager
         try
         {
             var phc = UnityEngine.Object.FindObjectOfType<Battle.PlayerHealthController>();
-            if (phc == null) return;
-
-            var healthField = AccessTools.Field(typeof(Battle.PlayerHealthController), "_playerHealth");
-            var maxField = AccessTools.Field(typeof(Battle.PlayerHealthController), "_maxPlayerHealth");
-
-            var healthVar = healthField?.GetValue(phc);
-            var maxVar = maxField?.GetValue(phc);
-
-            if (healthVar != null)
+            if (phc != null)
             {
-                var valProp = healthVar.GetType().GetProperty("Value");
-                valProp?.SetValue(healthVar, state.CurrentHealth);
+                var healthField = AccessTools.Field(typeof(Battle.PlayerHealthController), "_playerHealth");
+                var maxField = AccessTools.Field(typeof(Battle.PlayerHealthController), "_maxPlayerHealth");
+
+                var healthVar = healthField?.GetValue(phc);
+                var maxVar = maxField?.GetValue(phc);
+
+                if (healthVar != null)
+                {
+                    var valProp = healthVar.GetType().GetProperty("Value");
+                    valProp?.SetValue(healthVar, state.CurrentHealth);
+                }
+                if (maxVar != null)
+                {
+                    var valProp = maxVar.GetType().GetProperty("Value");
+                    valProp?.SetValue(maxVar, state.MaxHealth);
+                }
+                return;
             }
-            if (maxVar != null)
+
+            // Fallback: write directly to FloatVariable ScriptableObject assets
+            var floatVars = Resources.FindObjectsOfTypeAll<FloatVariable>();
+            foreach (var fv in floatVars)
             {
-                var valProp = maxVar.GetType().GetProperty("Value");
-                valProp?.SetValue(maxVar, state.MaxHealth);
+                if (fv.name == "PlayerHealth" || fv.name == "playerHealth")
+                    fv.Set(state.CurrentHealth);
+                else if (fv.name == "MaxPlayerHealth" || fv.name == "maxPlayerHealth")
+                    fv.Set(state.MaxHealth);
             }
         }
         catch (Exception ex)

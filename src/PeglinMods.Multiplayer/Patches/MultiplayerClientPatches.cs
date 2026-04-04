@@ -6,6 +6,7 @@ using Loading;
 using Map;
 using PeglinMods.Multiplayer.Events;
 using PeglinMods.Multiplayer.Events.Network.Map;
+using PeglinMods.Multiplayer.Events.Subscriptions;
 using PeglinMods.Multiplayer.Multiplayer;
 using Tutorial;
 using UnityEngine;
@@ -317,7 +318,32 @@ public static class MultiplayerClientPatches
             coopState.CaptureInitialState(0);
             coopState.ActivePlayerSlot = 0;
 
-            MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Coop: captured host initial state, ActivePlayerSlot=0, {gameStartEvent.FinalPlayers.Count} players");
+            // CaptureInitialState reads health from PlayerHealthController, which may not
+            // exist on the PostMainMenu scene. Read directly from GameInit's FloatVariable
+            // ScriptableObject references which ARE set after Start() completes.
+            var hostState = coopState.GetPlayerState(0);
+            if (hostState != null && hostState.MaxHealth <= 0)
+            {
+                try
+                {
+                    float hp = __instance.playerHealth?.Value ?? 0;
+                    float maxHp = __instance.maxPlayerHealth?.Value ?? 0;
+                    if (maxHp > 0)
+                    {
+                        hostState.CurrentHealth = hp;
+                        hostState.MaxHealth = maxHp;
+                        MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Health from GameInit FloatVars: hp={hp}/{maxHp}");
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] Failed to read health from GameInit: {ex.Message}");
+                }
+            }
+
+            MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Coop: captured host initial state, ActivePlayerSlot=0, " +
+                $"{gameStartEvent.FinalPlayers.Count} players, hp={hostState?.CurrentHealth}/{hostState?.MaxHealth}, " +
+                $"deck={hostState?.CompleteDeck.Count}");
         }
 
         // Skip the relic selection screen — in coop mode, starting relics come from
@@ -1190,5 +1216,33 @@ public static class MultiplayerClientPatches
             return (Random.State)boxed;
         }
         catch { return null; }
+    }
+
+    // =========================================================================
+    // BATTLE INIT — re-subscribe CoopSubscriptions at the start of every battle
+    // =========================================================================
+
+    /// <summary>
+    /// Re-subscribe CoopSubscriptions to BattleController static delegates at
+    /// the start of every battle. This ensures the turn system handlers are
+    /// active regardless of any timing issues with the initial subscription
+    /// (e.g., delegate references being replaced across scene loads).
+    /// </summary>
+    [HarmonyPatch(typeof(BattleController), "Awake")]
+    [HarmonyPostfix]
+    public static void BattleController_Awake_Postfix()
+    {
+        if (!IsHosting) return;
+        if (!UI.LobbyUI.GameStartReceived) return;
+
+        var coopSubs = CoopSubscriptions.Instance;
+        if (coopSubs == null)
+        {
+            MultiplayerPlugin.Logger?.LogWarning("[ClientPatches] BattleController.Awake: CoopSubscriptions.Instance is null");
+            return;
+        }
+
+        coopSubs.Subscribe();
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] BattleController.Awake: re-subscribed CoopSubscriptions");
     }
 }

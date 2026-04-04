@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using BepInEx.Logging;
+using PeglinMods.Multiplayer.DI;
 using PeglinMods.Multiplayer.Events.Handlers.Lobby;
+using PeglinMods.Multiplayer.GameState;
 using PeglinMods.Multiplayer.GameState.Snapshots;
 using PeglinMods.Multiplayer.Multiplayer;
 using TMPro;
@@ -74,6 +76,14 @@ public class CoopPlayerVisuals : MonoBehaviour
 
             _inBattle = true;
 
+            // On the HOST, LatestPlayerSummaries is never set by the heartbeat
+            // (the host sends heartbeats, it doesn't receive them). Build summaries
+            // directly from CoopStateManager so the host sees all player visuals.
+            if (mode.IsHosting)
+            {
+                BuildHostSummaries(services);
+            }
+
             var summaries = LatestPlayerSummaries;
             if (summaries == null || summaries.Count <= 1) return; // No co-op data or solo
 
@@ -93,6 +103,43 @@ public class CoopPlayerVisuals : MonoBehaviour
         catch (Exception ex)
         {
             Log?.LogError($"[CoopPlayerVisuals] Update error: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// On the host, build player summaries from CoopStateManager so the host
+    /// can see all players (including non-host clones). The host never receives
+    /// heartbeats, so LatestPlayerSummaries would otherwise be null.
+    /// </summary>
+    private void BuildHostSummaries(IServiceContainer services)
+    {
+        try
+        {
+            if (!services.TryResolve<CoopStateManager>(out var coopState)) return;
+            if (coopState.TotalPlayerCount < 2) return;
+
+            var summaries = new List<CoopPlayerSummary>();
+            foreach (var kvp in coopState.PlayerStates)
+            {
+                var ps = kvp.Value;
+                summaries.Add(new CoopPlayerSummary
+                {
+                    SlotIndex = ps.SlotIndex,
+                    PlayerName = ps.PlayerName,
+                    ChosenClass = ps.ChosenClass,
+                    CurrentHealth = ps.CurrentHealth,
+                    MaxHealth = ps.MaxHealth,
+                    Gold = ps.Gold,
+                    HasShotThisRound = ps.HasShotThisRound,
+                });
+            }
+
+            LatestPlayerSummaries = summaries;
+            LatestActiveSlot = coopState.ActivePlayerSlot;
+        }
+        catch (Exception ex)
+        {
+            Log?.LogError($"[CoopPlayerVisuals] BuildHostSummaries failed: {ex.Message}");
         }
     }
 
