@@ -1,6 +1,7 @@
 using System;
 using BepInEx.Logging;
 using HarmonyLib;
+using PeglinMods.Multiplayer.Multiplayer;
 using PeglinMods.Multiplayer.UI;
 using TMPro;
 using UnityEngine;
@@ -130,7 +131,19 @@ public class SceneWatcher : MonoBehaviour
             }
 
             if (scene.name == "MainMenu")
+            {
+                // If we're in a multiplayer session and land on MainMenu,
+                // the game ended (death, quit, run complete). Disconnect everyone.
+                var services = MultiplayerPlugin.Services;
+                if (services != null && services.TryResolve<IMultiplayerMode>(out var m)
+                    && (m.IsHosting || m.IsSpectating))
+                {
+                    Log?.LogInfo("SceneWatcher: MainMenu reached while in multiplayer — disconnecting");
+                    MultiplayerSession.DisconnectAndReset("Game returned to main menu");
+                }
+
                 StartCoroutine(DelayedInject());
+            }
         }
         catch { }
     }

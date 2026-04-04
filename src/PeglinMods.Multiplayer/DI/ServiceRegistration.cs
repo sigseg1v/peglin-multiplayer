@@ -179,8 +179,9 @@ public static class ServiceRegistration
 
     private static void RegisterAllHandlers(IGameEventRegistry registry)
     {
-        // Handshake (version exchange)
+        // Handshake (version exchange) & disconnect
         registry.Register(new HandshakeServerHandler(), new HandshakeClientHandler());
+        registry.Register(new DisconnectServerHandler(), new DisconnectClientHandler());
 
         // Battle events
         registry.Register(new BattleStartedServerHandler(), new BattleStartedClientHandler());

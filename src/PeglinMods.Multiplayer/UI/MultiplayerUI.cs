@@ -396,13 +396,12 @@ public class MultiplayerUI : MonoBehaviour
 
     private void OnDisconnectClicked()
     {
-        _transport.Stop();
-        _multiplayerMode.Disable();
-        RemotePeerInfo.Reset();
+        Multiplayer.MultiplayerSession.DisconnectAndReset("User clicked disconnect");
         if (_multiplayerPanel != null)
             _multiplayerPanel.SetActive(false);
+        if (_waitingPanel != null)
+            _waitingPanel.SetActive(false);
         _overlayPanel.SetActive(true);
-        Log?.LogInfo("Disconnected");
         ShowMainPanel();
     }
 
@@ -674,9 +673,31 @@ public class MultiplayerUI : MonoBehaviour
     private void OnDisconnected()
     {
         _lastConnectionStatus = "Disconnected";
-        RemotePeerInfo.Reset();
-        UpdateLobbyPanel();
-        Log.LogInfo("Disconnected from host");
+        Log?.LogInfo("Transport disconnected — scheduling full reset");
+
+        // Queue the reset to next frame to avoid calling transport.Stop() from
+        // within the PollEvents callback that fired this event.
+        var dispatcher = Utility.MainThreadDispatcher.Instance;
+        if (dispatcher != null)
+        {
+            dispatcher.Enqueue(HandleDisconnectReset);
+        }
+        else
+        {
+            HandleDisconnectReset();
+        }
+    }
+
+    private void HandleDisconnectReset()
+    {
+        Multiplayer.MultiplayerSession.DisconnectAndReset("Transport disconnected");
+
+        if (_multiplayerPanel != null)
+            _multiplayerPanel.SetActive(false);
+        if (_waitingPanel != null)
+            _waitingPanel.SetActive(false);
+        _overlayPanel?.SetActive(true);
+        ShowMainPanel();
     }
 
     // --- Helpers ---

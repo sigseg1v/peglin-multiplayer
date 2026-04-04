@@ -360,6 +360,16 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         _lastNavigationHash = 0;
     }
 
+    /// <summary>Reset all static state on disconnect.</summary>
+    public static void ResetAllState()
+    {
+        ClientWaitingMessage = null;
+        AwaitingHostBattleConfirmation = false;
+        _lastRequestedScene = null;
+        _lastRequestTime = 0;
+        ResetNavigationState();
+    }
+
     /// <summary>
     /// Configure the SlotManagers at the bottom of the Battle scene to show
     /// post-battle navigation icons matching the host's available paths.

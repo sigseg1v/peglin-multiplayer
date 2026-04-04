@@ -61,6 +61,22 @@ public class GameStateApplyService
         SceneManager.sceneLoaded += OnSceneLoaded;
     }
 
+    /// <summary>
+    /// Reset all internal state on disconnect. Clears pending snapshots,
+    /// buffered state, and host scene tracking.
+    /// </summary>
+    public void Reset()
+    {
+        _hostScene = "";
+        _hostSceneTimestamp = 0;
+        _pendingSnapshot = null;
+        _pendingSnapshotScene = "";
+        _latestPlayer = null;
+        _latestMap = null;
+        _navigationTriggered = false;
+        _log.LogInfo("[ApplyService] State reset");
+    }
+
     // =========================================================================
     // SCENE LOADED — apply pending state, start post-load coroutine
     // =========================================================================

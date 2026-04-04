@@ -84,6 +84,13 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
     private static List<int> _cachedNavChildTypes;
     private static bool _wasNavigating;
 
+    /// <summary>Reset cached state on disconnect.</summary>
+    public static void ResetCachedState()
+    {
+        _cachedNavChildTypes = null;
+        _wasNavigating = false;
+    }
+
     private void CaptureNavigationState(MapStateSnapshot snapshot)
     {
         try
