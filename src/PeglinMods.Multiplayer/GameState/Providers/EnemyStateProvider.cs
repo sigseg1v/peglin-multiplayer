@@ -108,8 +108,11 @@ public class EnemyStateProvider : IGameStateProvider<EnemyStateSnapshot>
                         catch { }
 
                         snapshot.Enemies.Add(entry);
+                        var effectStr = entry.StatusEffects?.Count > 0
+                            ? string.Join(",", entry.StatusEffects.ConvertAll(e => $"{e.EffectName}={e.Intensity}"))
+                            : "none";
                         _log.LogInfo($"[EnemyProvider] Captured enemy: guid={guid} loc={entry.LocKey} name={entry.EnemyName} " +
-                            $"hp={entry.CurrentHealth}/{entry.MaxHealth} pos=({entry.PosX:F1},{entry.PosY:F1}) slot={i}");
+                            $"hp={entry.CurrentHealth}/{entry.MaxHealth} pos=({entry.PosX:F1},{entry.PosY:F1}) slot={i} effects=[{effectStr}]");
                     }
                 }
             }

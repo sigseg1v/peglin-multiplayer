@@ -597,8 +597,9 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
 
     /// <summary>
     /// Sync status effects from host to client enemy.
-    /// Uses "dumb canvas" approach: clear everything, re-apply only what the host says.
-    /// No diffing — just overwrite. This prevents duplicate accumulation.
+    /// Directly manipulates the _statusEffects list and updates the UI.
+    /// NEVER calls ApplyStatusEffect — that method runs relic checks, intensity
+    /// modifiers, knock-on effects, and other game logic that corrupts the host values.
     /// </summary>
     private void SyncStatusEffects(Enemy enemy, Snapshots.EnemyEntry entry)
     {
@@ -607,6 +608,9 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             var statusField = AccessTools.Field(typeof(Enemy), "_statusEffects");
             var effects = statusField?.GetValue(enemy) as System.Collections.Generic.List<Battle.StatusEffects.StatusEffect>;
             if (effects == null) return;
+
+            var uiField = AccessTools.Field(typeof(Enemy), "_statusEffectUI");
+            var ui = uiField?.GetValue(enemy) as Battle.StatusEffects.StatusEffectIconManager;
 
             // Build what the host has
             var hostEffects = new Dictionary<Battle.StatusEffects.StatusEffectType, int>();
@@ -619,21 +623,20 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                 }
             }
 
-            // Remove all effects that the host doesn't have
+            // Remove effects that the host doesn't have
             for (int i = effects.Count - 1; i >= 0; i--)
             {
                 if (!hostEffects.ContainsKey(effects[i].EffectType))
                 {
-                    try { enemy.RemoveEffect(effects[i].EffectType); }
-                    catch { effects.RemoveAt(i); }
+                    // Signal UI to remove the icon by setting intensity to 0
+                    var removed = effects[i];
+                    removed.Intensity = 0;
+                    try { ui?.UpdateStatusEffect(removed); } catch { }
+                    effects.RemoveAt(i);
                 }
             }
 
-            // Re-read effects after removal (RemoveEffect may have modified the list)
-            effects = statusField?.GetValue(enemy) as System.Collections.Generic.List<Battle.StatusEffects.StatusEffect>;
-            if (effects == null) return;
-
-            // For each host effect: update if exists, add if missing
+            // Update existing / add missing — direct list manipulation only
             foreach (var kvp in hostEffects)
             {
                 bool found = false;
@@ -649,46 +652,13 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
 
                 if (!found)
                 {
-                    try
-                    {
-                        Patches.MultiplayerClientPatches.AllowStatusEffectSync = true;
-                        enemy.ApplyStatusEffect(
-                            new Battle.StatusEffects.StatusEffect(kvp.Key, kvp.Value),
-                            Battle.StatusEffects.StatusEffectSource.PLAYER,
-                            allowKnockOnEffects: false);
-                    }
-                    catch { }
-                    finally
-                    {
-                        Patches.MultiplayerClientPatches.AllowStatusEffectSync = false;
-                    }
+                    // Add directly to the list — no ApplyStatusEffect game logic
+                    effects.Add(new Battle.StatusEffects.StatusEffect(kvp.Key, kvp.Value));
                 }
             }
 
-            // Remove any duplicates that crept in (game logic may add extras)
-            effects = statusField?.GetValue(enemy) as System.Collections.Generic.List<Battle.StatusEffects.StatusEffect>;
-            if (effects != null)
-            {
-                var seen = new HashSet<Battle.StatusEffects.StatusEffectType>();
-                for (int i = effects.Count - 1; i >= 0; i--)
-                {
-                    if (!seen.Add(effects[i].EffectType))
-                        effects.RemoveAt(i); // duplicate — remove
-                }
-            }
-
-            // Refresh the status effect UI
-            try
-            {
-                var uiField = AccessTools.Field(typeof(Enemy), "_statusEffectUI");
-                var ui = uiField?.GetValue(enemy);
-                if (ui != null)
-                {
-                    var updateMethod = AccessTools.Method(ui.GetType(), "UpdateStatusEffects");
-                    updateMethod?.Invoke(ui, new object[] { enemy.StatusEffects });
-                }
-            }
-            catch { }
+            // Refresh UI with final state
+            try { ui?.UpdateStatusEffects(enemy.StatusEffects); } catch { }
         }
         catch (System.Exception ex)
         {
