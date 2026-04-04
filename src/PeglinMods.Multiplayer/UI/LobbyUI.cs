@@ -28,7 +28,6 @@ public static class LobbyUI
 
     // UI references (set by MultiplayerUI when creating the lobby panel)
     private static GameObject _lobbyRoot;
-    private static TextMeshProUGUI _titleText;
     private static readonly List<PlayerRow> _playerRows = new List<PlayerRow>();
     private static Button _startButton;
     private static TextMeshProUGUI _startButtonText;
@@ -197,7 +196,7 @@ public static class LobbyUI
         if (_startButton == null && isHost)
         {
             _startButton = createButton(lobbyParent, "StartGameBtn", "Start Game",
-                new Color(0.2f, 0.55f, 0.25f, 1f), new Vector2(0, -200), new Vector2(480, 88));
+                new Color(0.2f, 0.55f, 0.25f, 1f), new Vector2(0, -160), new Vector2(400, 72));
             _startButton.onClick.AddListener(OnStartClicked);
             _startButtonText = _startButton.GetComponentInChildren<TextMeshProUGUI>();
         }
@@ -222,7 +221,8 @@ public static class LobbyUI
         Func<Transform, string, string, int, TextMeshProUGUI> createText,
         Func<Transform, string, string, Color, Vector2, Vector2, Button> createButton)
     {
-        float yBase = 80 - rowIndex * 80;
+        // Rows positioned from top of lobby area: first row at y=60, each row 72px apart
+        float yBase = 60 - rowIndex * 72;
 
         var rowObj = new GameObject($"PlayerRow_{rowIndex}");
         rowObj.transform.SetParent(parent, false);
@@ -231,54 +231,52 @@ public static class LobbyUI
         rowRect.anchorMax = new Vector2(0.5f, 0.5f);
         rowRect.pivot = new Vector2(0.5f, 0.5f);
         rowRect.anchoredPosition = new Vector2(0, yBase);
-        rowRect.sizeDelta = new Vector2(640, 64);
+        rowRect.sizeDelta = new Vector2(840, 56);
 
         var row = new PlayerRow { Root = rowObj };
 
-        // Player name (left)
-        row.NameText = createText(rowObj.transform, $"Name_{rowIndex}", "", 26);
+        // Column 1: Player name (left side)
+        row.NameText = createText(rowObj.transform, $"Name_{rowIndex}", "", 30);
         var nameRect = row.NameText.rectTransform;
-        nameRect.anchorMin = new Vector2(0, 0.5f);
-        nameRect.anchorMax = new Vector2(0, 0.5f);
-        nameRect.pivot = new Vector2(0, 0.5f);
-        nameRect.anchoredPosition = new Vector2(0, 0);
-        nameRect.sizeDelta = new Vector2(160, 40);
+        nameRect.anchorMin = new Vector2(0.5f, 0.5f);
+        nameRect.anchorMax = new Vector2(0.5f, 0.5f);
+        nameRect.pivot = new Vector2(0.5f, 0.5f);
+        nameRect.anchoredPosition = new Vector2(-300, 0);
+        nameRect.sizeDelta = new Vector2(220, 44);
         row.NameText.alignment = TextAlignmentOptions.Left;
 
-        // Left arrow
-        row.LeftArrow = createButton(rowObj.transform, $"Left_{rowIndex}", "<",
-            new Color(0.3f, 0.3f, 0.4f, 1f), new Vector2(180, 0), new Vector2(40, 40));
+        // Column 2: Class selection (center) — [<] ClassName [>]
         int ri = rowIndex;
+
+        row.LeftArrow = createButton(rowObj.transform, $"Left_{rowIndex}", "<",
+            new Color(0.3f, 0.3f, 0.4f, 1f), new Vector2(-100, 0), new Vector2(44, 44));
         row.LeftArrow.onClick.AddListener(() => OnClassArrow(ri, -1));
 
-        // Class name (center)
-        row.ClassText = createText(rowObj.transform, $"Class_{rowIndex}", "Peglin", 26);
+        row.ClassText = createText(rowObj.transform, $"Class_{rowIndex}", "Peglin", 30);
         var classRect = row.ClassText.rectTransform;
-        classRect.anchorMin = new Vector2(0, 0.5f);
-        classRect.anchorMax = new Vector2(0, 0.5f);
-        classRect.pivot = new Vector2(0, 0.5f);
-        classRect.anchoredPosition = new Vector2(230, 0);
-        classRect.sizeDelta = new Vector2(140, 40);
+        classRect.anchorMin = new Vector2(0.5f, 0.5f);
+        classRect.anchorMax = new Vector2(0.5f, 0.5f);
+        classRect.pivot = new Vector2(0.5f, 0.5f);
+        classRect.anchoredPosition = new Vector2(-10, 0);
+        classRect.sizeDelta = new Vector2(140, 44);
         row.ClassText.alignment = TextAlignmentOptions.Center;
 
-        // Right arrow
         row.RightArrow = createButton(rowObj.transform, $"Right_{rowIndex}", ">",
-            new Color(0.3f, 0.3f, 0.4f, 1f), new Vector2(380, 0), new Vector2(40, 40));
+            new Color(0.3f, 0.3f, 0.4f, 1f), new Vector2(80, 0), new Vector2(44, 44));
         row.RightArrow.onClick.AddListener(() => OnClassArrow(ri, 1));
 
-        // Ready text (for non-local players)
-        row.ReadyText = createText(rowObj.transform, $"Ready_{rowIndex}", "", 24);
+        // Column 3: Ready status / button (right side)
+        row.ReadyText = createText(rowObj.transform, $"Ready_{rowIndex}", "", 28);
         var readyRect = row.ReadyText.rectTransform;
-        readyRect.anchorMin = new Vector2(0, 0.5f);
-        readyRect.anchorMax = new Vector2(0, 0.5f);
-        readyRect.pivot = new Vector2(0, 0.5f);
-        readyRect.anchoredPosition = new Vector2(440, 0);
-        readyRect.sizeDelta = new Vector2(200, 40);
+        readyRect.anchorMin = new Vector2(0.5f, 0.5f);
+        readyRect.anchorMax = new Vector2(0.5f, 0.5f);
+        readyRect.pivot = new Vector2(0.5f, 0.5f);
+        readyRect.anchoredPosition = new Vector2(280, 0);
+        readyRect.sizeDelta = new Vector2(200, 44);
         row.ReadyText.alignment = TextAlignmentOptions.Center;
 
-        // Ready button (for local client only)
         row.ReadyButton = createButton(rowObj.transform, $"ReadyBtn_{rowIndex}", "NOT READY",
-            new Color(0.5f, 0.3f, 0.2f, 1f), new Vector2(500, 0), new Vector2(140, 40));
+            new Color(0.5f, 0.3f, 0.2f, 1f), new Vector2(280, 0), new Vector2(180, 44));
         row.ReadyButton.onClick.AddListener(OnReadyToggle);
         row.ReadyButtonText = row.ReadyButton.GetComponentInChildren<TextMeshProUGUI>();
         row.ReadyButton.gameObject.SetActive(false);

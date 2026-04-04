@@ -168,7 +168,7 @@ public class MultiplayerUI : MonoBehaviour
 
         // Centered content panel
         var centerPanel = CreatePanel(_overlayPanel.transform, "CenterPanel",
-            new Color(0.12f, 0.12f, 0.12f, 1f), new Vector2(720, 608));
+            new Color(0.12f, 0.12f, 0.12f, 1f), new Vector2(960, 720));
 
         // Title
         var title = CreateText(centerPanel.transform, "Title", "Multiplayer", 48);
@@ -320,7 +320,7 @@ public class MultiplayerUI : MonoBehaviour
 
         // Disconnect button at the bottom
         var disconnectBtn = CreateButton(_lobbyPanel.transform, "DisconnectBtn", "Disconnect",
-            new Color(0.5f, 0.2f, 0.2f, 1f), new Vector2(0, -260), new Vector2(480, 64));
+            new Color(0.5f, 0.2f, 0.2f, 1f), new Vector2(0, -310), new Vector2(400, 56));
         disconnectBtn.onClick.AddListener(OnDisconnectClicked);
 
         _lobbyPanel.SetActive(false);
@@ -463,6 +463,9 @@ public class MultiplayerUI : MonoBehaviour
         _hostPanel.SetActive(false);
         _joinPanel.SetActive(false);
         _lobbyPanel.SetActive(true);
+        // Hide the waiting panel (MapStateApplier shows it for MainMenu)
+        if (_waitingPanel != null)
+            _waitingPanel.SetActive(false);
         UpdateLobbyPanel();
     }
 
@@ -470,8 +473,9 @@ public class MultiplayerUI : MonoBehaviour
     {
         _overlayVisible = true;
 
-        // Client spectating: show fullscreen event feed
-        if (_multiplayerMode.IsSpectating && _transport.IsConnected)
+        // If in a multiplayer session (hosting or spectating) and game has started,
+        // show the spectator/diagnostics view
+        if (_multiplayerMode.IsSpectating && _transport.IsConnected && LobbyUI.GameStartReceived)
         {
             ShowMultiplayerView();
             return;
@@ -479,7 +483,10 @@ public class MultiplayerUI : MonoBehaviour
 
         _overlayPanel.SetActive(true);
 
-        if (_multiplayerMode.IsHosting)
+        // If connected (either hosting or spectating), show lobby
+        if ((_multiplayerMode.IsHosting || _multiplayerMode.IsSpectating) && _transport.IsConnected)
+            ShowLobby();
+        else if (_multiplayerMode.IsHosting)
             ShowLobby();
         else
             ShowMainPanel();
@@ -602,18 +609,11 @@ public class MultiplayerUI : MonoBehaviour
     {
         _lastConnectionStatus = "Connected!";
 
-        if (_multiplayerMode.IsSpectating)
-        {
-            // Client: switch to fullscreen multiplayer event feed
-            ShowMultiplayerView();
-        }
-        else
-        {
-            // Host: refresh lobby
-            UpdateLobbyPanel();
-        }
+        // Both host and client: show the lobby for class selection and ready-up
+        _overlayPanel.SetActive(true);
+        ShowLobby();
 
-        Log.LogInfo("Connected to host");
+        Log.LogInfo("Connected — showing lobby");
     }
 
     private void OnDisconnected()
