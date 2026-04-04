@@ -166,7 +166,8 @@ public static class ServiceRegistration
         var orbId = container.Resolve<OrbIdentifier>();
         var syncService = container.Resolve<IGameStateSyncService>();
         var coopStateManager = container.Resolve<CoopStateManager>();
-        SubscribeAll(eventRegistry, multiplayerMode, enemyId, orbId, syncService, coopStateManager, log);
+        var turnManager = container.Resolve<TurnManager>();
+        SubscribeAll(eventRegistry, multiplayerMode, enemyId, orbId, syncService, coopStateManager, turnManager, log);
     }
 
     private static void Phase6_Handshake(ServiceContainer container)
@@ -303,6 +304,7 @@ public static class ServiceRegistration
         OrbIdentifier orbIdentifier,
         IGameStateSyncService syncService,
         CoopStateManager coopStateManager,
+        TurnManager turnManager,
         ManualLogSource log)
     {
         new BattleEventSubscriptions(registry, multiplayerMode).Subscribe();
@@ -316,8 +318,9 @@ public static class ServiceRegistration
         new PegSubscriptions(registry, log).Subscribe();
         new MapSubscriptions(registry, log).Subscribe();
 
-        // Co-op damage distribution - enemy damage applies to all players
-        new CoopSubscriptions(multiplayerMode, coopStateManager, log).Subscribe();
+        // Co-op damage distribution + turn system - enemy damage applies to all players,
+        // TurnManager drives turn order during co-op battles
+        new CoopSubscriptions(multiplayerMode, coopStateManager, turnManager, log).Subscribe();
 
         // State sync subscriptions - triggers full/partial state capture on key events
         new StateSyncSubscriptions(syncService, multiplayerMode, log).Subscribe();

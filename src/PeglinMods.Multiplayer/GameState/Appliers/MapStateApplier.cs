@@ -104,9 +104,18 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             // Scenes where the client can't follow — show waiting message instead
             if (snapshot.ActiveScene == "PostMainMenu")
             {
-                ClientWaitingMessage = "Host is selecting starting relic...";
-                _log.LogInfo("[MapApplier] Host is on PostMainMenu — showing waiting message");
-                return;
+                if (UI.LobbyUI.GameStartReceived)
+                {
+                    // Coop mode: let client follow to PostMainMenu so GameInit runs
+                    _log.LogInfo("[MapApplier] Coop mode: allowing client to follow to PostMainMenu");
+                    // Fall through to normal scene load logic below
+                }
+                else
+                {
+                    ClientWaitingMessage = "Host is selecting starting relic...";
+                    _log.LogInfo("[MapApplier] Host is on PostMainMenu — showing waiting message");
+                    return;
+                }
             }
 
             if (snapshot.ActiveScene == "MainMenu")

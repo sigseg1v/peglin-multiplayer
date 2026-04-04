@@ -19,7 +19,7 @@ public class CoopStateManager
     private readonly PlayerRegistry _playerRegistry;
 
     public Dictionary<int, CoopPlayerState> PlayerStates { get; } = new Dictionary<int, CoopPlayerState>();
-    public int ActivePlayerSlot { get; private set; } = -1;
+    public int ActivePlayerSlot { get; internal set; } = -1;
     public int TotalPlayerCount => PlayerStates.Count;
 
     public CoopStateManager(ManualLogSource log, PlayerRegistry playerRegistry)

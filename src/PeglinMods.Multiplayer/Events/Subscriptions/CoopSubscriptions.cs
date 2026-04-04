@@ -1,6 +1,8 @@
 using System;
 using Battle;
 using BepInEx.Logging;
+using PeglinMods.Multiplayer.Events;
+using PeglinMods.Multiplayer.Events.Network.Coop;
 using PeglinMods.Multiplayer.GameState;
 using PeglinMods.Multiplayer.Multiplayer;
 using UnityEngine;
@@ -8,7 +10,8 @@ using UnityEngine;
 namespace PeglinMods.Multiplayer.Events.Subscriptions;
 
 /// <summary>
-/// Subscribes to battle events to distribute enemy damage to all co-op players.
+/// Subscribes to battle events to distribute enemy damage to all co-op players
+/// and to drive the turn system (TurnManager) during co-op battles.
 ///
 /// During the enemy attack phase, the game's PlayerHealthController applies damage
 /// to whichever player is currently loaded in the singletons (the active player).
@@ -19,6 +22,7 @@ public sealed class CoopSubscriptions
 {
     private readonly IMultiplayerMode _mode;
     private readonly CoopStateManager _coopStateManager;
+    private readonly TurnManager _turnManager;
     private readonly ManualLogSource _log;
 
     /// <summary>
@@ -26,10 +30,11 @@ public sealed class CoopSubscriptions
     /// </summary>
     private float _healthBeforeAttack;
 
-    public CoopSubscriptions(IMultiplayerMode mode, CoopStateManager coopStateManager, ManualLogSource log)
+    public CoopSubscriptions(IMultiplayerMode mode, CoopStateManager coopStateManager, TurnManager turnManager, ManualLogSource log)
     {
         _mode = mode;
         _coopStateManager = coopStateManager;
+        _turnManager = turnManager;
         _log = log;
     }
 
@@ -37,13 +42,19 @@ public sealed class CoopSubscriptions
     {
         BattleController.OnAttackStarted += OnAttackStarted;
         BattleController.OnTurnComplete += OnTurnComplete;
-        _log.LogInfo("CoopSubscriptions registered");
+        BattleController.OnBattleStarted += OnBattleStarted;
+        BattleController.OnStartedAwaitingShot += OnAwaitingShot;
+        BattleController.OnShotComplete += OnShotComplete;
+        _log.LogInfo("CoopSubscriptions registered (with turn system)");
     }
 
     public void Unsubscribe()
     {
         BattleController.OnAttackStarted -= OnAttackStarted;
         BattleController.OnTurnComplete -= OnTurnComplete;
+        BattleController.OnBattleStarted -= OnBattleStarted;
+        BattleController.OnStartedAwaitingShot -= OnAwaitingShot;
+        BattleController.OnShotComplete -= OnShotComplete;
     }
 
     /// <summary>
@@ -128,6 +139,102 @@ public sealed class CoopSubscriptions
         catch (Exception ex)
         {
             _log.LogWarning($"[CoopSubs] OnTurnComplete damage distribution failed: {ex.Message}");
+        }
+    }
+
+    // =========================================================================
+    // TURN SYSTEM — drive TurnManager from battle lifecycle events
+    // =========================================================================
+
+    /// <summary>
+    /// Called when a battle starts. Build the turn order and start round 1.
+    /// </summary>
+    private void OnBattleStarted()
+    {
+        if (!_mode.IsHosting) return;
+        if (_coopStateManager.TotalPlayerCount < 2) return;
+
+        _turnManager.BuildTurnOrder();
+        _turnManager.StartNewRound();
+        BroadcastTurnChange();
+
+        _log.LogInfo($"[CoopSubs] Battle started — turn order built, round 1 started, slot {_turnManager.CurrentPlayerSlot} is up");
+    }
+
+    /// <summary>
+    /// Called when the game is ready for a shot (awaiting player input).
+    /// If all players have shot, move to damage phase. Otherwise broadcast
+    /// whose turn it is.
+    /// </summary>
+    private void OnAwaitingShot()
+    {
+        if (!_mode.IsHosting) return;
+        if (_coopStateManager.TotalPlayerCount < 2) return;
+
+        if (_turnManager.Phase == TurnPhase.ALL_DONE)
+        {
+            _turnManager.EnterDamagePhase();
+            BroadcastTurnChange();
+        }
+        else if (_turnManager.Phase != TurnPhase.PLAYER_AIMING)
+        {
+            // New round: swap to first player (host, slot 0)
+            _turnManager.StartNewRound();
+            if (_turnManager.CurrentPlayerSlot >= 0)
+                _coopStateManager.SwapToPlayer(_turnManager.CurrentPlayerSlot);
+            BroadcastTurnChange();
+        }
+    }
+
+    /// <summary>
+    /// Called when a shot resolves. Advance to the next player's turn.
+    /// </summary>
+    private void OnShotComplete()
+    {
+        if (!_mode.IsHosting) return;
+        if (_coopStateManager.TotalPlayerCount < 2) return;
+
+        // Mark current player's shot as fired before advancing
+        _turnManager.MarkShotFired();
+
+        // Save current player's state before swapping
+        _coopStateManager.SaveActivePlayerState();
+
+        _turnManager.AdvanceTurn();
+
+        // If advancing to a new player, swap their state into the singletons
+        if (_turnManager.Phase == TurnPhase.PLAYER_AIMING && _turnManager.CurrentPlayerSlot >= 0)
+        {
+            _coopStateManager.SwapToPlayer(_turnManager.CurrentPlayerSlot);
+            _log.LogInfo($"[CoopSubs] Swapped to player slot {_turnManager.CurrentPlayerSlot}");
+        }
+
+        BroadcastTurnChange();
+
+        _log.LogInfo($"[CoopSubs] Shot complete — advanced turn. Phase={_turnManager.Phase}, slot={_turnManager.CurrentPlayerSlot}");
+    }
+
+    /// <summary>
+    /// Broadcast the current turn state to all clients.
+    /// </summary>
+    private void BroadcastTurnChange()
+    {
+        try
+        {
+            var services = MultiplayerPlugin.Services;
+            if (services?.TryResolve<IGameEventRegistry>(out var eventRegistry) != true) return;
+
+            eventRegistry.Dispatch(new TurnChangeEvent
+            {
+                ActiveSlotIndex = _turnManager.CurrentPlayerSlot,
+                ActivePlayerName = _turnManager.GetCurrentPlayerName(),
+                TurnPhase = _turnManager.Phase.ToString(),
+                RoundNumber = _turnManager.RoundNumber,
+            });
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[CoopSubs] BroadcastTurnChange failed: {ex.Message}");
         }
     }
 }

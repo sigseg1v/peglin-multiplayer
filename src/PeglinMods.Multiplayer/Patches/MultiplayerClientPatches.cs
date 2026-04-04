@@ -228,6 +228,48 @@ public static class MultiplayerClientPatches
         return !ShouldSuppressClientLogic;
     }
 
+    /// <summary>
+    /// After GameInit.Start() completes in coop mode, initialize per-player state
+    /// in CoopStateManager, capture the host's initial state, and skip the relic
+    /// selection screen by calling LoadMapScene() directly.
+    /// </summary>
+    [HarmonyPatch(typeof(GameInit), "Start")]
+    [HarmonyPostfix]
+    public static void GameInit_Start_Postfix(GameInit __instance)
+    {
+        // Only run when hosting or in coop mode
+        if (!UI.LobbyUI.GameStartReceived) return;
+
+        var services = MultiplayerPlugin.Services;
+        if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true) return;
+
+        var gameStartEvent = UI.LobbyUI.LatestGameStartEvent;
+        if (gameStartEvent?.FinalPlayers != null)
+        {
+            foreach (var player in gameStartEvent.FinalPlayers)
+            {
+                coopState.InitializePlayer(player.SlotIndex, player.ChosenClass, player.PlayerName);
+                MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Initialized coop player: slot={player.SlotIndex}, name={player.PlayerName}, class={player.ChosenClass}");
+            }
+
+            // Capture host's initial state (slot 0) after GameInit has set up deck/relics/health
+            coopState.CaptureInitialState(0);
+            coopState.ActivePlayerSlot = 0;
+
+            MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Coop: captured host initial state, ActivePlayerSlot=0, {gameStartEvent.FinalPlayers.Count} players");
+        }
+
+        // Skip the relic selection screen — in coop mode, starting relics come from
+        // ClassLoadoutData (already applied by GameInit). Go straight to the map.
+        if (IsHosting)
+        {
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Coop host: skipping relic selection, calling LoadMapScene");
+            var loadMapMethod = typeof(GameInit).GetMethod("LoadMapScene",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            loadMapMethod?.Invoke(__instance, null);
+        }
+    }
+
     // =========================================================================
     // BLOCK CLIENT SCENE LOADS — only our sync handlers may load scenes
     // =========================================================================
@@ -586,12 +628,15 @@ public static class MultiplayerClientPatches
     /// Block DrawBall on client — it NREs on subsequent calls because
     /// BattleController's state machine isn't advancing (Update blocked).
     /// BallUsedClientHandler manually handles deck pop and UI animation.
+    /// In coop mode, allow deck operations during the client's own turn.
     /// </summary>
     [HarmonyPatch(typeof(DeckManager), "DrawBall")]
     [HarmonyPrefix]
     public static bool DeckManager_DrawBall_Prefix()
     {
         if (!ShouldSuppressClientLogic) return true;
+        // In coop, allow deck operations during client's turn
+        if (UI.LobbyUI.GameStartReceived && Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn) return true;
         return false;
     }
 
@@ -606,15 +651,20 @@ public static class MultiplayerClientPatches
     public static bool DeckManager_ShuffleBattleDeck_Prefix()
     {
         if (!ShouldSuppressClientLogic) return true;
+        // In coop, allow deck operations during client's turn
+        if (UI.LobbyUI.GameStartReceived && Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn) return true;
         return false;
     }
 
-    /// <summary>Block board field reset on client — prevents re-shuffling pegs.</summary>
+    /// <summary>Block board field reset on client — prevents re-shuffling pegs.
+    /// In coop, allow during client's turn so board refreshes work.</summary>
     [HarmonyPatch(typeof(BattleController), "ResetField")]
     [HarmonyPrefix]
     public static bool BattleController_ResetField_Prefix()
     {
         if (!ShouldSuppressClientLogic) return true;
+        // In coop, allow field reset during client's turn
+        if (UI.LobbyUI.GameStartReceived && Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn) return true;
         return false;
     }
 
