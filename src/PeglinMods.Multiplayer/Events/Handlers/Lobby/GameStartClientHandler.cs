@@ -28,8 +28,13 @@ public sealed class GameStartClientHandler : IClientHandler<GameStartEvent>
                 var myEntry = networkEvent.FinalPlayers.FirstOrDefault(p => !p.IsHost);
                 if (myEntry != null)
                 {
-                    StaticGameData.chosenClass = (Peglin.ClassSystem.Class)myEntry.ChosenClass;
+                    var chosenClass = (Peglin.ClassSystem.Class)myEntry.ChosenClass;
+                    StaticGameData.chosenClass = chosenClass;
                     MultiplayerPlugin.Logger?.LogInfo($"[GameStart] Set client class to {myEntry.ChosenClassName} ({myEntry.ChosenClass})");
+
+                    // Set StartingOrbs/StartingRelics from ClassLoadoutData so GameInit
+                    // can initialize the deck properly when the client enters the game
+                    Patches.MultiplayerClientPatches.SetStartingLoadoutFromClass(chosenClass);
                 }
 
                 // Also set PlayerRegistry.LocalSlot if available

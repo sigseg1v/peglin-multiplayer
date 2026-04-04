@@ -112,10 +112,48 @@ public static class MultiplayerClientPatches
         // In multiplayer, skip character select and go straight to game start
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Skipping character select — class chosen in lobby");
 
-        // Set the class from lobby selection (host already set it in LobbyUI.OnStartClicked)
-        // Then call ConfirmRunConfigAndStartGame to start the game
+        // Set StartingOrbs and StartingRelics from the chosen class's ClassLoadoutData.
+        // Normally LoadoutManager.SetupDataForNewGame() does this, but we skip that UI entirely.
+        SetStartingLoadoutFromClass(StaticGameData.chosenClass);
+
         __instance.ConfirmRunConfigAndStartGame();
         return false; // Skip the normal SwitchToRunConfigCanvas
+    }
+
+    /// <summary>
+    /// Look up the ClassLoadoutData for the given class and set StaticGameData.StartingOrbs
+    /// and StaticGameData.StartingRelics so GameInit.Start() can initialize the deck properly.
+    /// </summary>
+    public static void SetStartingLoadoutFromClass(Peglin.ClassSystem.Class chosenClass)
+    {
+        var classLoadouts = StaticGameData.classLoadouts;
+        if (classLoadouts == null || classLoadouts.Length == 0)
+        {
+            MultiplayerPlugin.Logger?.LogWarning("[ClientPatches] StaticGameData.classLoadouts is null/empty — cannot set starting orbs");
+            return;
+        }
+
+        Peglin.ClassSystem.ClassLoadoutData loadout = null;
+        foreach (var pair in classLoadouts)
+        {
+            if (pair.Class == chosenClass)
+            {
+                loadout = pair.Loadout;
+                break;
+            }
+        }
+
+        if (loadout == null)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] No ClassLoadoutData found for class {chosenClass}");
+            return;
+        }
+
+        StaticGameData.StartingOrbs = loadout.StartingOrbs?.ToArray();
+        StaticGameData.StartingRelics = loadout.StartingRelics?.ToArray();
+
+        MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Set starting loadout for {chosenClass}: " +
+            $"{StaticGameData.StartingOrbs?.Length ?? 0} orbs, {StaticGameData.StartingRelics?.Length ?? 0} relics");
     }
 
     // =========================================================================
@@ -182,7 +220,13 @@ public static class MultiplayerClientPatches
 
     [HarmonyPatch(typeof(GameInit), "Start")]
     [HarmonyPrefix]
-    public static bool GameInit_Start_Prefix() => !ShouldSuppressClientLogic;
+    public static bool GameInit_Start_Prefix()
+    {
+        // In coop mode (lobby game start), allow GameInit so each player gets their own deck/relics
+        if (UI.LobbyUI.GameStartReceived)
+            return true;
+        return !ShouldSuppressClientLogic;
+    }
 
     // =========================================================================
     // BLOCK CLIENT SCENE LOADS — only our sync handlers may load scenes

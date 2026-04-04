@@ -317,13 +317,19 @@ public class GameStateApplyService
         if (snapshot.Player != null)
             SafeApply("Player", () => _playerApplier.Apply(snapshot.Player));
 
+        // In coop mode, each player has their own deck/relics — don't overwrite with host's
+        var isCoop = UI.LobbyUI.GameStartReceived;
+
         // Battle-specific state
         if (currentScene == "Battle")
         {
             if (snapshot.Enemies != null) SafeApply("Enemies", () => _enemyApplier.Apply(snapshot.Enemies));
             if (snapshot.Pegboard != null) SafeApply("Pegboard", () => _pegboardApplier.Apply(snapshot.Pegboard));
-            if (snapshot.Deck != null) SafeApply("Deck", () => _deckApplier.Apply(snapshot.Deck));
-            if (snapshot.Relics != null) SafeApply("Relics", () => _relicApplier.Apply(snapshot.Relics));
+            if (!isCoop)
+            {
+                if (snapshot.Deck != null) SafeApply("Deck", () => _deckApplier.Apply(snapshot.Deck));
+                if (snapshot.Relics != null) SafeApply("Relics", () => _relicApplier.Apply(snapshot.Relics));
+            }
             VerifyConsistency(snapshot);
 
             // Post-battle navigation: trigger the game's own setup on the client
@@ -331,10 +337,13 @@ public class GameStateApplyService
         }
         else
         {
-            // Non-battle scenes: still sync deck and relics (they're global)
-            if (snapshot.Deck != null) SafeApply("Deck", () => _deckApplier.Apply(snapshot.Deck));
-            if (snapshot.Relics != null) SafeApply("Relics", () => _relicApplier.Apply(snapshot.Relics));
-            _log.LogInfo($"[ApplyService] Non-battle scene '{currentScene}': applied player/deck/relics, skipped enemies/pegs");
+            if (!isCoop)
+            {
+                // Non-battle scenes: still sync deck and relics (they're global) in spectator mode
+                if (snapshot.Deck != null) SafeApply("Deck", () => _deckApplier.Apply(snapshot.Deck));
+                if (snapshot.Relics != null) SafeApply("Relics", () => _relicApplier.Apply(snapshot.Relics));
+            }
+            _log.LogInfo($"[ApplyService] Non-battle scene '{currentScene}': applied player/deck/relics, skipped enemies/pegs{(isCoop ? " (coop: deck/relic sync skipped)" : "")}");
         }
     }
 
