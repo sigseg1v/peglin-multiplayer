@@ -462,7 +462,8 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             // Without this, HealthBarBarSprite is null and HP display doesn't work.
             try
             {
-                var statusData = UnityEngine.Object.FindObjectOfType<Battle.StatusEffects.StatusEffectData>();
+                var statusDatas = UnityEngine.Resources.FindObjectsOfTypeAll<Battle.StatusEffects.StatusEffectData>();
+                var statusData = statusDatas.Length > 0 ? statusDatas[0] : null;
                 var relicMgrs = UnityEngine.Resources.FindObjectsOfTypeAll<Relics.RelicManager>();
                 var relicMgr = relicMgrs.Length > 0 ? relicMgrs[0] : null;
                 enemy.Initialize(statusData, em, relicMgr, prefab.name);
@@ -665,7 +666,17 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                 }
             }
 
-            // Only refresh UI if effects changed (avoid animation spam from repeated updates)
+            // Ensure EffectData is set — Initialize may have failed to find it via FindObjectOfType
+            if (ui != null && ui.EffectData == null)
+            {
+                var statusDatas = UnityEngine.Resources.FindObjectsOfTypeAll<Battle.StatusEffects.StatusEffectData>();
+                if (statusDatas.Length > 0)
+                {
+                    ui.EffectData = statusDatas[0];
+                    _log.LogInfo($"[EnemyApplier] StatusSync set EffectData for '{enemy.locKey}' from Resources");
+                }
+            }
+
             bool hasUiData = ui != null && ui.EffectData != null;
             if (hasUiData)
             {
