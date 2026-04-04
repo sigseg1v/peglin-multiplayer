@@ -31,19 +31,19 @@ publish:
 setup:
     if (Test-Path '{{game}}/winhttp.dll') { \
         Write-Host 'BepInEx already installed in release/'; \
-        return; \
-    } \
-    Write-Host '==> Downloading BepInEx {{bepinex_version}}...'; \
-    New-Item -ItemType Directory -Path '{{root}}/vendor' -Force | Out-Null; \
-    if (-not (Test-Path '{{bepinex_cache}}')) { \
-        Invoke-WebRequest -Uri '{{bepinex_url}}' -OutFile '{{bepinex_cache}}'; \
-    } \
-    Write-Host '==> Extracting BepInEx to release/...'; \
-    Expand-Archive -Path '{{bepinex_cache}}' -DestinationPath '{{game}}' -Force; \
-    foreach ($d in @('plugins','patchers','config')) { \
-        New-Item -ItemType Directory -Path (Join-Path '{{game}}' "BepInEx/$d") -Force | Out-Null; \
-    } \
-    Write-Host 'BepInEx {{bepinex_version}} installed to release/'
+    } else { \
+        Write-Host '==> Downloading BepInEx {{bepinex_version}}...'; \
+        New-Item -ItemType Directory -Path '{{root}}/vendor' -Force | Out-Null; \
+        if (-not (Test-Path '{{bepinex_cache}}')) { \
+            Invoke-WebRequest -Uri '{{bepinex_url}}' -OutFile '{{bepinex_cache}}'; \
+        } \
+        Write-Host '==> Extracting BepInEx to release/...'; \
+        Expand-Archive -Path '{{bepinex_cache}}' -DestinationPath '{{game}}' -Force; \
+        foreach ($d in @('plugins','patchers','config')) { \
+            New-Item -ItemType Directory -Path (Join-Path '{{game}}' "BepInEx/$d") -Force | Out-Null; \
+        } \
+        Write-Host 'BepInEx {{bepinex_version}} installed to release/'; \
+    }
 
 # Deploy plugin DLLs to game dir
 [private]
