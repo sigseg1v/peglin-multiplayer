@@ -106,7 +106,9 @@ public class MultiplayerUI : MonoBehaviour
         }
 
         // Mirror mode waiting overlay — shows when host is on a non-followable scene
-        if (_multiplayerMode.IsSpectating && _multiplayerMode.ClientMode == ClientMode.Mirror)
+        // BUT NOT while the lobby is active (before game starts)
+        if (_multiplayerMode.IsSpectating && _multiplayerMode.ClientMode == ClientMode.Mirror
+            && LobbyUI.GameStartReceived)
         {
             var waitMsg = MapStateApplier.ClientWaitingMessage;
             if (!string.IsNullOrEmpty(waitMsg))
