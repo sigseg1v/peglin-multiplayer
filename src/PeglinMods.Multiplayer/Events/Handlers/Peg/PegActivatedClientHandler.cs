@@ -24,19 +24,24 @@ public sealed class PegActivatedClientHandler : IClientHandler<PegActivatedEvent
 
             if (peg != null && peg.gameObject.activeSelf)
             {
-                // For bombs, ensure _inited is true (it's set in Bomb.Start which may not have run)
-                if (peg is Bomb bomb)
+                // Skip PegActivated for bombs — it runs full game logic (increments
+                // HitCount, triggers detonation, chain-explodes nearby pegs).
+                // Bomb state is synced authoritatively via the heartbeat snapshot.
+                if (peg is Bomb)
                 {
-                    var initField = HarmonyLib.AccessTools.Field(typeof(Bomb), "_inited");
-                    if (initField != null && !(bool)initField.GetValue(bomb))
-                        initField.SetValue(bomb, true);
+                    MultiplayerPlugin.Logger?.LogInfo($"[PegActivated] Skipping PegActivated for bomb {networkEvent.PegGuid} — heartbeat handles bomb state");
                 }
-                try { peg.PegActivated(playAudio: true, forcePop: false); }
-                catch { }
+                else
+                {
+                    try { peg.PegActivated(playAudio: true, forcePop: false); }
+                    catch { }
+                }
             }
 
-            // Also fire the global delegate for any UI/sound subscribers
-            global::Peg.OnPegActivated?.Invoke((global::Peg.PegType)networkEvent.PegType, peg);
+            // Fire the global delegate for UI/sound subscribers (skip for bombs
+            // to prevent relic triggers and battle controller side effects)
+            if (!(peg is Bomb))
+                global::Peg.OnPegActivated?.Invoke((global::Peg.PegType)networkEvent.PegType, peg);
         }
         catch (Exception e)
         {

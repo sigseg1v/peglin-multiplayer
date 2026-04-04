@@ -330,30 +330,56 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
         var hostPos = new Vector3(entry.PosX, entry.PosY, finalPeg.transform.position.z);
 
-        // Check for LinearPegMovement on the peg itself or its direct parent.
-        // LinearPegMovement rows have pegs as direct children of the moving parent.
-        // Don't use GetComponentInParent — it could match distant ancestors and
-        // incorrectly move static pegs (e.g. bouncers) that share a root.
+        // Check for LinearPegMovement on the peg itself, its direct parent, or
+        // grandparent (bombs are children of the original peg which is child of LPM row).
         var lpm = finalPeg.GetComponent<Battle.PegBehaviour.LinearPegMovement>();
         if (lpm == null && finalPeg.transform.parent != null)
             lpm = finalPeg.transform.parent.GetComponent<Battle.PegBehaviour.LinearPegMovement>();
+        if (lpm == null && finalPeg.transform.parent?.parent != null)
+            lpm = finalPeg.transform.parent.parent.GetComponent<Battle.PegBehaviour.LinearPegMovement>();
+
+        // Also detect via the snapshot — host tells us this peg is under LPM
+        if (lpm == null && entry.LpmParentPosX.HasValue)
+        {
+            // Peg is under LPM but we couldn't find the component — search upward
+            var t = finalPeg.transform.parent;
+            while (t != null && lpm == null)
+            {
+                lpm = t.GetComponent<Battle.PegBehaviour.LinearPegMovement>();
+                t = t.parent;
+            }
+        }
+
         if (lpm != null)
         {
             var parentT = lpm.transform;
-            // Only sync each parent once per heartbeat (first child determines the offset)
+            // Only sync each parent once per heartbeat
             if (_syncedMovementParents.Add(parentT))
             {
-                // Calculate how far the parent needs to shift so this child lands at hostPos
-                var childWorldPos = finalPeg.transform.position;
-                var delta = hostPos - childWorldPos;
-                var newParentPos = parentT.position + delta;
-                newParentPos.z = parentT.position.z;
-
-                var rb = lpm.GetComponent<Rigidbody2D>();
-                if (rb != null)
-                    rb.position = new Vector2(newParentPos.x, newParentPos.y);
+                if (entry.LpmParentPosX.HasValue && entry.LpmParentPosY.HasValue)
+                {
+                    // Use host's authoritative parent position directly
+                    var newParentPos = new Vector3(entry.LpmParentPosX.Value,
+                        entry.LpmParentPosY.Value, parentT.position.z);
+                    var rb = lpm.GetComponent<Rigidbody2D>();
+                    if (rb != null)
+                        rb.position = new Vector2(newParentPos.x, newParentPos.y);
+                    else
+                        parentT.position = newParentPos;
+                }
                 else
-                    parentT.position = newParentPos;
+                {
+                    // Fallback: calculate delta from child (legacy path)
+                    var childWorldPos = finalPeg.transform.position;
+                    var delta = hostPos - childWorldPos;
+                    var newParentPos = parentT.position + delta;
+                    newParentPos.z = parentT.position.z;
+                    var rb = lpm.GetComponent<Rigidbody2D>();
+                    if (rb != null)
+                        rb.position = new Vector2(newParentPos.x, newParentPos.y);
+                    else
+                        parentT.position = newParentPos;
+                }
             }
             // Skip individual peg position setting — parent handles it
             return;

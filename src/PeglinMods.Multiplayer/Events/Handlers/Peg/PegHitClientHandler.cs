@@ -24,8 +24,10 @@ public sealed class PegHitClientHandler : IClientHandler<PegHitEvent>
                 peg = pegId?.Find(e.PegGuid);
             }
 
-            // Invoke with actual peg reference (null-safe — some subscribers handle null)
-            if (peg != null)
+            // Invoke with actual peg reference (null-safe — some subscribers handle null).
+            // Skip for bombs — OnPegHit subscribers run game logic (relic effects,
+            // battle controller state) that the dumb-canvas client should not execute.
+            if (peg != null && !(peg is Bomb))
             {
                 global::Peg.OnPegHit?.Invoke((global::Peg.PegType)e.PegType, peg);
             }

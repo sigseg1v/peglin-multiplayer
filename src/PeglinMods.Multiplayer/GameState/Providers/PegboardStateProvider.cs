@@ -1,5 +1,6 @@
 using System;
 using Battle;
+using Battle.PegBehaviour;
 using BepInEx.Logging;
 using HarmonyLib;
 using PeglinMods.Multiplayer.GameState.Snapshots;
@@ -80,6 +81,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     BuffAmount = peg.buffAmount,
                 };
                 CaptureShieldState(peg, entry);
+                CaptureLpmParentPos(peg, entry);
                 snapshot.Pegs.Add(entry);
 
                 if (peg.gameObject.activeSelf && !destroyed)
@@ -133,6 +135,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                         BuffAmount = bomb.buffAmount,
                     };
                     CaptureShieldState(bomb, bombEntry);
+                    CaptureLpmParentPos(bomb, bombEntry);
                     snapshot.Pegs.Add(bombEntry);
 
                     if (bomb.gameObject.activeSelf && !destroyed)
@@ -185,6 +188,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                         BuffAmount = bouncer.buffAmount,
                     };
                     CaptureShieldState(bouncer, bouncerEntry);
+                    CaptureLpmParentPos(bouncer, bouncerEntry);
                     snapshot.Pegs.Add(bouncerEntry);
 
                     if (bouncer.gameObject.activeSelf && !destroyed)
@@ -219,6 +223,31 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
             {
                 entry.ShieldHitCount = overlay.hitCount;
                 entry.ShieldHitLimit = overlay.hitLimit;
+            }
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// If the peg is under a LinearPegMovement parent (self or direct parent),
+    /// capture the parent's world position for direct sync on the client.
+    /// </summary>
+    private static void CaptureLpmParentPos(Peg peg, PegEntry entry)
+    {
+        try
+        {
+            var lpm = peg.GetComponent<LinearPegMovement>();
+            if (lpm == null && peg.transform.parent != null)
+                lpm = peg.transform.parent.GetComponent<LinearPegMovement>();
+            // Also check grandparent — bombs are children of the original peg,
+            // which is a child of the LPM row.
+            if (lpm == null && peg.transform.parent?.parent != null)
+                lpm = peg.transform.parent.parent.GetComponent<LinearPegMovement>();
+
+            if (lpm != null)
+            {
+                entry.LpmParentPosX = lpm.transform.position.x;
+                entry.LpmParentPosY = lpm.transform.position.y;
             }
         }
         catch { }

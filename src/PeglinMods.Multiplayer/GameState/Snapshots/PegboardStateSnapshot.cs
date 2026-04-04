@@ -55,4 +55,9 @@ public class PegEntry
 
     /// <summary>Shield hit limit (default 4). Shield breaks when hitCount >= hitLimit.</summary>
     public int ShieldHitLimit { get; set; }
+
+    /// <summary>World X of the LinearPegMovement parent (null if peg is not under LPM).</summary>
+    public float? LpmParentPosX { get; set; }
+    /// <summary>World Y of the LinearPegMovement parent (null if peg is not under LPM).</summary>
+    public float? LpmParentPosY { get; set; }
 }
