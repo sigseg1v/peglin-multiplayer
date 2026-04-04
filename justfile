@@ -70,7 +70,10 @@ dev: setup
 
 # Build, deploy, launch TWO windowed instances for multiplayer testing.
 # Both host and client write to peglinmods_shared.log with [HOST]/[CLIENT] tags.
-dev-multi: setup
+# Optional: pass level to force a starting act, e.g. just dev-multi 3 (Mines)
+#   Acts: 1=Forest, 2=Castle, 3=Mines, 4=Core
+#   With floor: just dev-multi 3-2
+dev-multi level="": setup
     dotnet build '{{src}}/PeglinMods.sln' -c Debug --nologo -v quiet; \
     just copy-plugins Debug; \
     $logsDir = Split-Path '{{logfile}}'; \
@@ -79,6 +82,10 @@ dev-multi: setup
     [IO.File]::Create($sharedLog).Close(); \
     $windowArgs = @('-screen-fullscreen','0','-screen-width','1280','-screen-height','720'); \
     $compatBase = "$HOME/.steam/steam/steamapps/compatdata"; \
+    if ('{{level}}' -ne '') { \
+        $env:PEGLIN_MULTI_DEBUG_FORCE_LEVEL = '{{level}}'; \
+        Write-Host "==> Force level: {{level}}"; \
+    } \
     Write-Host '==> Launching PEGLIN1 (windowed)...'; \
     $env:PEGLINMODS_INSTANCE = 'PEGLIN1'; \
     $env:STEAM_COMPAT_DATA_PATH = "$compatBase/1296610"; \
@@ -88,7 +95,7 @@ dev-multi: setup
     $env:PEGLINMODS_INSTANCE = 'PEGLIN2'; \
     $env:STEAM_COMPAT_DATA_PATH = "$compatBase/1296611"; \
     Start-Process pwsh -ArgumentList (@('-NoProfile','-File','{{root}}/launch.ps1') + $windowArgs); \
-    Remove-Item Env:\PEGLINMODS_INSTANCE,Env:\STEAM_COMPAT_DATA_PATH -ErrorAction SilentlyContinue; \
+    Remove-Item Env:\PEGLINMODS_INSTANCE,Env:\STEAM_COMPAT_DATA_PATH,Env:\PEGLIN_MULTI_DEBUG_FORCE_LEVEL -ErrorAction SilentlyContinue; \
     Write-Host "==> Tailing shared log (Ctrl+C to stop)"; \
     Write-Host "    Log: $sharedLog`n"; \
     Start-Sleep 1; \
