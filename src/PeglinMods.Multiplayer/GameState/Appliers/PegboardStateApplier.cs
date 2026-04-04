@@ -36,6 +36,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     {
         try
         {
+            // Reset per-heartbeat tracking for movement parent sync
+            _syncedMovementParents.Clear();
+
             if (snapshot.Pegs == null || snapshot.Pegs.Count == 0)
             {
                 _log.LogInfo("[PegboardApplier] No pegs in snapshot.");
@@ -312,14 +315,45 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     /// <summary>
     /// Sync a peg's position to the host's position.
     /// Looks up the final object via GUID (ConvertPegToType may create a new GO).
-    /// Hard-snaps static pegs; soft-lerps moving pegs.
+    /// For pegs under LinearPegMovement parents, adjusts the PARENT position
+    /// so the entire row shifts correctly (avoids wrap-direction conflicts).
+    /// Hard-snaps static pegs; soft-lerps other moving pegs.
     /// </summary>
+    private HashSet<Transform> _syncedMovementParents = new HashSet<Transform>();
+
+    public void ResetMovementParentTracking() => _syncedMovementParents.Clear();
+
     private void SyncPegPosition(Peg originalPeg, PegEntry entry)
     {
         var finalPeg = !string.IsNullOrEmpty(entry.Guid) ? _pegId.Find(entry.Guid) : null;
         if (finalPeg == null) finalPeg = originalPeg;
 
         var hostPos = new Vector3(entry.PosX, entry.PosY, finalPeg.transform.position.z);
+
+        // Check for LinearPegMovement on a parent — sync the parent transform instead
+        // of individual children to avoid wrap-direction conflicts on circular rows.
+        var lpm = finalPeg.GetComponentInParent<Battle.PegBehaviour.LinearPegMovement>();
+        if (lpm != null)
+        {
+            var parentT = lpm.transform;
+            // Only sync each parent once per heartbeat (first child determines the offset)
+            if (_syncedMovementParents.Add(parentT))
+            {
+                // Calculate how far the parent needs to shift so this child lands at hostPos
+                var childWorldPos = finalPeg.transform.position;
+                var delta = hostPos - childWorldPos;
+                var newParentPos = parentT.position + delta;
+                newParentPos.z = parentT.position.z;
+
+                var rb = lpm.GetComponent<Rigidbody2D>();
+                if (rb != null)
+                    rb.position = new Vector2(newParentPos.x, newParentPos.y);
+                else
+                    parentT.position = newParentPos;
+            }
+            // Skip individual peg position setting — parent handles it
+            return;
+        }
 
         if (HasMovementComponent(finalPeg))
         {
@@ -630,7 +664,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         if (peg == null) return false;
         var go = peg.gameObject;
 
-        return go.GetComponent<Battle.PegBehaviour.LinearPegMovement>() != null
+        return go.GetComponentInParent<Battle.PegBehaviour.LinearPegMovement>() != null
             || go.GetComponent<Battle.PegBehaviour.PegMoveAndReturn>() != null
             || go.GetComponent<Battle.PegBehaviour.PegSquareMovement>() != null
             || go.GetComponent<Battle.PegBehaviour.PegSplineFollow>() != null
