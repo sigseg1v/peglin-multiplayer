@@ -612,6 +612,14 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             var uiField = AccessTools.Field(typeof(Enemy), "_statusEffectUI");
             var ui = uiField?.GetValue(enemy) as Battle.StatusEffects.StatusEffectIconManager;
 
+            // Log current state before sync
+            if (effects.Count > 0)
+            {
+                var beforeStr = string.Join(",", effects.ConvertAll(e =>
+                    $"{e.EffectType}({(int)e.EffectType})={e.Intensity}"));
+                _log.LogInfo($"[EnemyApplier] StatusSync BEFORE '{enemy.locKey}': [{beforeStr}]");
+            }
+
             // Build what the host has
             var hostEffects = new Dictionary<Battle.StatusEffects.StatusEffectType, int>();
             if (entry.StatusEffects != null)
@@ -628,7 +636,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             {
                 if (!hostEffects.ContainsKey(effects[i].EffectType))
                 {
-                    // Signal UI to remove the icon by setting intensity to 0
+                    _log.LogInfo($"[EnemyApplier] StatusSync REMOVING '{enemy.locKey}': {effects[i].EffectType}({(int)effects[i].EffectType})={effects[i].Intensity}");
                     var removed = effects[i];
                     removed.Intensity = 0;
                     try { ui?.UpdateStatusEffect(removed); } catch { }
@@ -652,13 +660,21 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
 
                 if (!found)
                 {
-                    // Add directly to the list — no ApplyStatusEffect game logic
+                    _log.LogInfo($"[EnemyApplier] StatusSync ADDING '{enemy.locKey}': {kvp.Key}({(int)kvp.Key})={kvp.Value}");
                     effects.Add(new Battle.StatusEffects.StatusEffect(kvp.Key, kvp.Value));
                 }
             }
 
-            // Refresh UI with final state
-            try { ui?.UpdateStatusEffects(enemy.StatusEffects); } catch { }
+            // Only refresh UI if effects changed (avoid animation spam from repeated updates)
+            bool hasUiData = ui != null && ui.EffectData != null;
+            if (hasUiData)
+            {
+                try { ui.UpdateStatusEffects(enemy.StatusEffects); } catch { }
+            }
+            else if (ui != null)
+            {
+                _log.LogWarning($"[EnemyApplier] StatusSync UI has null EffectData for '{enemy.locKey}' — icons won't render");
+            }
         }
         catch (System.Exception ex)
         {
