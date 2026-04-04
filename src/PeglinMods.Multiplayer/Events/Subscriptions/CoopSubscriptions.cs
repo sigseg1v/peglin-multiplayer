@@ -188,6 +188,10 @@ public sealed class CoopSubscriptions
 
     /// <summary>
     /// Called when a shot resolves. Advance to the next player's turn.
+    /// If not all players have shot, redirect BattleController back to
+    /// AWAITING_SHOT so the next player can aim. The game has already set
+    /// _battleState to PRE_ATTACK_SPAWN_CHECK before invoking OnShotComplete,
+    /// so we override it here to prevent the attack/damage phase from starting.
     /// </summary>
     private void OnShotComplete()
     {
@@ -203,10 +207,20 @@ public sealed class CoopSubscriptions
         _turnManager.AdvanceTurn();
 
         // If advancing to a new player, swap their state into the singletons
+        // and redirect the BattleController back to AWAITING_SHOT so the game
+        // draws the next orb and waits for the next player's shot.
         if (_turnManager.Phase == TurnPhase.PLAYER_AIMING && _turnManager.CurrentPlayerSlot >= 0)
         {
             _coopStateManager.SwapToPlayer(_turnManager.CurrentPlayerSlot);
-            _log.LogInfo($"[CoopSubs] Swapped to player slot {_turnManager.CurrentPlayerSlot}");
+
+            // CRITICAL: The BattleController already set _battleState to
+            // PRE_ATTACK_SPAWN_CHECK (or DO_ATTACK) before firing OnShotComplete.
+            // Override it back to AWAITING_SHOT so the state machine re-enters
+            // the aiming phase instead of proceeding to the attack/damage phase.
+            BattleController.CurrentBattleState = BattleController.BattleState.AWAITING_SHOT;
+
+            _log.LogInfo($"[CoopSubs] Swapped to player slot {_turnManager.CurrentPlayerSlot}, " +
+                $"redirected BattleState -> AWAITING_SHOT");
         }
 
         BroadcastTurnChange();

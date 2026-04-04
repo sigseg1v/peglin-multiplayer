@@ -126,11 +126,21 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             }
 
             // Event/interaction scenes — host is making choices, client waits
+            // In coop mode, let the client follow to Treasure so they can pick
+            // their own post-battle rewards (their deck is independent).
             if (snapshot.ActiveScene == "Treasure")
             {
-                ClientWaitingMessage = "Host is completing event...";
-                _log.LogInfo("[MapApplier] Host is on Treasure — showing waiting message");
-                return;
+                if (UI.LobbyUI.GameStartReceived)
+                {
+                    _log.LogInfo("[MapApplier] Coop mode: allowing client to follow to Treasure for independent rewards");
+                    // Fall through to normal scene load logic below
+                }
+                else
+                {
+                    ClientWaitingMessage = "Host is completing event...";
+                    _log.LogInfo("[MapApplier] Host is on Treasure — showing waiting message");
+                    return;
+                }
             }
 
             if (snapshot.ActiveScene == "TextScenario")

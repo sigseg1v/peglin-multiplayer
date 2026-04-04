@@ -942,6 +942,47 @@ public static class MultiplayerClientPatches
     }
 
     // =========================================================================
+    // CLIENT SHOT INTERCEPTION — send ShootRequestEvent to host in coop
+    // =========================================================================
+
+    /// <summary>
+    /// In coop, when the client fires their shot, capture the aim direction and
+    /// send a ShootRequestEvent to the host. The local fire is allowed to proceed
+    /// so the client sees their own shot immediately.
+    /// </summary>
+    [HarmonyPatch(typeof(PachinkoBall), "Fire")]
+    [HarmonyPrefix]
+    public static bool PachinkoBall_Fire_Prefix(PachinkoBall __instance)
+    {
+        // Only intercept on spectating client during their coop turn
+        if (!ShouldSuppressClientLogic) return true; // Host or non-multiplayer: allow
+        if (!UI.LobbyUI.GameStartReceived) return true; // Not coop
+        if (!Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn) return false; // Not my turn: block
+
+        // It's the client's turn — capture aim and send to host, then allow local fire
+        try
+        {
+            var aimVec = __instance.aimVector;
+            var services = MultiplayerPlugin.Services;
+            if (services?.TryResolve<Network.IMessageSender>(out var sender) == true)
+            {
+                sender.Send(new Events.Network.Coop.ShootRequestEvent
+                {
+                    AimDirectionX = aimVec.x,
+                    AimDirectionY = aimVec.y,
+                });
+                MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Sent ShootRequest: aim=({aimVec.x:F2},{aimVec.y:F2})");
+            }
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] ShootRequest send failed: {ex.Message}");
+        }
+
+        return true; // Allow the local fire to execute (client sees their own shot)
+    }
+
+    // =========================================================================
     // NODE ACTIVATION SYNC — host sends battle name when activating a node
     // =========================================================================
 
