@@ -1,6 +1,6 @@
 # PeglinMods
 
-A modding framework and multiplayer multiplayer mode for [Peglin](https://store.steampowered.com/app/1296610/Peglin/) (v2.0.7, Unity 2022.3, Mono).
+A modding framework and multiplayer mode for [Peglin](https://store.steampowered.com/app/1296610/Peglin/) (v2.0.7, Unity 2022.3, Mono).
 
 Built with BepInEx 5 + HarmonyX. Cross-platform: Windows (native) and Linux (Proton/Wine).
 All scripts use PowerShell (pwsh) for portability.
@@ -16,14 +16,15 @@ That's it. On first run it downloads BepInEx automatically.
 ## All Commands
 
 ```bash
-just build     # compile (debug)
-just publish   # compile (release) + copy DLLs to build/
-just setup     # download + install BepInEx into release/ (auto-run by dev/deploy)
-just deploy    # build + deploy plugin into release/BepInEx/plugins/
-just dev       # build + deploy + launch game + tail logs
-just log       # tail the dev log file
-just clean     # remove build artifacts
-just uninstall # remove BepInEx from release/ (restore to vanilla)
+just build      # compile (debug)
+just publish    # compile (release) + copy DLLs to build/
+just setup      # download + install BepInEx into release/ (auto-run by dev/deploy)
+just deploy     # build + deploy plugin into release/BepInEx/plugins/
+just dev        # build + deploy + launch game + tail logs
+just dev-multi  # build + deploy + launch two game instances (host + client)
+just log        # tail the dev log file
+just clean      # remove build artifacts
+just uninstall  # remove BepInEx from release/ (restore to vanilla)
 ```
 
 ## Prerequisites
@@ -50,14 +51,13 @@ install/                   Install/uninstall scripts for end users
    just dev
    ```
 
-2. Press **F7** in-game to open the Multiplayer overlay.
+2. Launch the game, click **Multiplayer** on the main menu.
+   - **Host**: Click Host Game. Share the displayed IP:PORT code.
+   - **Join**: Click Join Game. Enter the host's address and click Connect.
 
-## Multiplayer (Multiplayer Mode)
+## Multiplayer
 
-One player hosts, another spectates in real-time.
-
-- **Host**: Press F7 > Host Game. Share the displayed IP:PORT code.
-- **Join**: Press F7 > Join Game. Enter the host's code and click Connect.
+Cooperative multiplayer with per-player classes, decks, relics, and turn-based battles.
 
 The host's game events are captured via static delegate subscriptions, serialized as JSON, and sent over LiteNetLib UDP to the multiplayer client, which replays them by invoking the same game delegates locally.
 
