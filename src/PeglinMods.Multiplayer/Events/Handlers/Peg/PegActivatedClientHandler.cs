@@ -21,10 +21,14 @@ public sealed class PegActivatedClientHandler : IClientHandler<PegActivatedEvent
                 peg = pegId?.Find(networkEvent.PegGuid);
             }
 
-            if (peg == null || !peg.gameObject.activeSelf) return;
+            if (peg == null)
+            {
+                MultiplayerPlugin.Logger?.LogInfo($"[PegActivated] Peg not found for guid={networkEvent.PegGuid}");
+                return;
+            }
+            if (!peg.gameObject.activeSelf) return;
 
             // Skip bombs entirely — heartbeat handles bomb state (HitCount, detonation).
-            // Calling PegActivated on bombs runs full detonation logic.
             if (peg is Bomb) return;
 
             // Call PegActivated for the visual pop (destruction animation, audio, sprite change)
@@ -38,7 +42,10 @@ public sealed class PegActivatedClientHandler : IClientHandler<PegActivatedEvent
             {
                 peg.PegActivated(playAudio: true, forcePop: false);
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                MultiplayerPlugin.Logger?.LogWarning($"[PegActivated] PegActivated threw: {ex.Message}");
+            }
             finally
             {
                 global::Peg.OnPegActivated = savedOnPegActivated;
