@@ -31,6 +31,8 @@ public static class LobbyUI
     private static readonly List<PlayerRow> _playerRows = new List<PlayerRow>();
     private static Button _startButton;
     private static TextMeshProUGUI _startButtonText;
+    private static Button _readyButton;
+    private static TextMeshProUGUI _readyButtonText;
     private static bool _isHost;
 
     private class PlayerRow
@@ -41,8 +43,6 @@ public static class LobbyUI
         public Button LeftArrow;
         public Button RightArrow;
         public TextMeshProUGUI ReadyText;
-        public Button ReadyButton;
-        public TextMeshProUGUI ReadyButtonText;
         public int SlotIndex;
         public bool IsLocalPlayer;
     }
@@ -60,6 +60,7 @@ public static class LobbyUI
         _lobbyRoot = null;
         _playerRows.Clear();
         _startButton = null;
+        _readyButton = null;
     }
 
     /// <summary>Called by LobbyStateClientHandler when receiving lobby state from host.</summary>
@@ -162,30 +163,28 @@ public static class LobbyUI
             row.NameText.text = entry.PlayerName ?? "???";
             row.NameText.color = row.IsLocalPlayer ? new Color(0.53f, 1f, 0.53f) : new Color(0.53f, 0.67f, 1f);
 
-            row.ClassText.text = entry.ChosenClassName ?? LobbyHelper.GetClassName(entry.ChosenClass);
+            // For local player, show _localChosenClass directly (no round-trip delay)
+            row.ClassText.text = row.IsLocalPlayer
+                ? LobbyHelper.GetClassName(_localChosenClass)
+                : (entry.ChosenClassName ?? LobbyHelper.GetClassName(entry.ChosenClass));
 
             // Show arrows only for local player
             row.LeftArrow.gameObject.SetActive(row.IsLocalPlayer);
             row.RightArrow.gameObject.SetActive(row.IsLocalPlayer);
 
-            // Ready status
+            // Ready status text in column 3
             if (entry.IsHost)
             {
                 row.ReadyText.text = "<color=#88FF88>HOST</color>";
-                row.ReadyButton.gameObject.SetActive(false);
             }
             else if (row.IsLocalPlayer)
             {
-                row.ReadyText.text = "";
-                row.ReadyButton.gameObject.SetActive(true);
-                row.ReadyButtonText.text = _localIsReady ? "READY" : "NOT READY";
-                var colors = row.ReadyButton.colors;
-                colors.normalColor = _localIsReady ? new Color(0.2f, 0.55f, 0.25f) : new Color(0.5f, 0.3f, 0.2f);
-                row.ReadyButton.colors = colors;
+                row.ReadyText.text = _localIsReady
+                    ? "<color=#88FF88>READY</color>"
+                    : "<color=#FF8888>NOT READY</color>";
             }
             else
             {
-                row.ReadyButton.gameObject.SetActive(false);
                 row.ReadyText.text = entry.IsReady
                     ? "<color=#88FF88>READY</color>"
                     : "<color=#FF8888>NOT READY</color>";
@@ -212,6 +211,24 @@ public static class LobbyUI
                 var hasClients = players.Count > 1;
                 _startButton.interactable = allReady && hasClients;
             }
+        }
+
+        // Ready button (client only — same position as Start Game)
+        if (_readyButton == null && !isHost)
+        {
+            _readyButton = createButton(lobbyParent, "ReadyBtn", "Ready",
+                new Color(0.5f, 0.3f, 0.2f, 1f), new Vector2(0, -160), new Vector2(400, 72));
+            _readyButton.onClick.AddListener(OnReadyToggle);
+            _readyButtonText = _readyButton.GetComponentInChildren<TextMeshProUGUI>();
+        }
+
+        if (_readyButton != null)
+        {
+            _readyButton.gameObject.SetActive(!isHost);
+            _readyButtonText.text = _localIsReady ? "Not Ready" : "Ready";
+            var colors = _readyButton.colors;
+            colors.normalColor = _localIsReady ? new Color(0.5f, 0.3f, 0.2f) : new Color(0.2f, 0.55f, 0.25f);
+            _readyButton.colors = colors;
         }
     }
 
@@ -265,7 +282,7 @@ public static class LobbyUI
             new Color(0.3f, 0.3f, 0.4f, 1f), new Vector2(80, 0), new Vector2(44, 44));
         row.RightArrow.onClick.AddListener(() => OnClassArrow(ri, 1));
 
-        // Column 3: Ready status / button (right side)
+        // Column 3: Ready status text (right side)
         row.ReadyText = createText(rowObj.transform, $"Ready_{rowIndex}", "", 28);
         var readyRect = row.ReadyText.rectTransform;
         readyRect.anchorMin = new Vector2(0.5f, 0.5f);
@@ -275,12 +292,6 @@ public static class LobbyUI
         readyRect.sizeDelta = new Vector2(200, 44);
         row.ReadyText.alignment = TextAlignmentOptions.Center;
 
-        row.ReadyButton = createButton(rowObj.transform, $"ReadyBtn_{rowIndex}", "NOT READY",
-            new Color(0.5f, 0.3f, 0.2f, 1f), new Vector2(280, 0), new Vector2(180, 44));
-        row.ReadyButton.onClick.AddListener(OnReadyToggle);
-        row.ReadyButtonText = row.ReadyButton.GetComponentInChildren<TextMeshProUGUI>();
-        row.ReadyButton.gameObject.SetActive(false);
-
         _playerRows.Add(row);
     }
 
@@ -288,24 +299,25 @@ public static class LobbyUI
     {
         _localChosenClass = (_localChosenClass + direction + ClassNames.Length) % ClassNames.Length;
 
+        var services = MultiplayerPlugin.Services;
+        if (services == null) return;
+
         if (_isHost)
         {
-            // Host updates its own slot directly
-            var services = MultiplayerPlugin.Services;
-            if (services?.TryResolve<PlayerRegistry>(out var registry) == true)
+            // Host updates its own slot and broadcasts lobby state
+            if (services.TryResolve<PlayerRegistry>(out var registry))
             {
                 var hostSlot = registry.GetHostSlot();
                 if (hostSlot != null) hostSlot.ChosenClass = _localChosenClass;
             }
+            if (services.TryResolve<PlayerRegistry>(out var reg2) && services.TryResolve<IGameEventRegistry>(out var er))
+                LobbyHelper.BroadcastLobbyState(reg2, er);
         }
         else
         {
             // Client sends ClassSelectEvent to host
-            var services = MultiplayerPlugin.Services;
-            if (services?.TryResolve<IGameEventRegistry>(out var eventRegistry) == true)
-            {
+            if (services.TryResolve<IGameEventRegistry>(out var eventRegistry))
                 eventRegistry.Dispatch(new ClassSelectEvent { ChosenClass = _localChosenClass });
-            }
         }
     }
 
