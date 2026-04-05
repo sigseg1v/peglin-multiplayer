@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Battle;
 using BepInEx.Logging;
 using HarmonyLib;
@@ -21,10 +22,21 @@ namespace PeglinMods.Multiplayer.Events.Subscriptions;
 /// </summary>
 public sealed class CoopSubscriptions
 {
+    /// <summary>Per-player peg damage data accumulated during shots.</summary>
+    private class ShotDamageData
+    {
+        public int PegMultiplierDamageTally;
+        public int CriticalHitCount;
+        public int NumPegsHit;
+        public int CactusDamageTally;
+    }
+
     private readonly IMultiplayerMode _mode;
     private readonly CoopStateManager _coopStateManager;
     private readonly TurnManager _turnManager;
     private readonly ManualLogSource _log;
+
+    private readonly Dictionary<int, ShotDamageData> _accumulatedShotData = new Dictionary<int, ShotDamageData>();
 
     /// <summary>
     /// Track health before the enemy attack phase to compute the damage delta.
@@ -168,6 +180,7 @@ public sealed class CoopSubscriptions
         if (!_mode.IsHosting) return;
         if (_coopStateManager.TotalPlayerCount < 2) return;
 
+        _accumulatedShotData.Clear();
         _turnManager.BuildTurnOrder();
         _turnManager.StartNewRound();
         BroadcastTurnChange();
@@ -177,22 +190,19 @@ public sealed class CoopSubscriptions
 
     /// <summary>
     /// Called when the game is ready for a shot (awaiting player input).
-    /// If all players have shot, move to damage phase. Otherwise broadcast
-    /// whose turn it is.
+    /// After a full turn cycle (all players shot + attack + enemy turn),
+    /// the game naturally reaches AWAITING_SHOT. Start a new round.
+    /// If we're already in PLAYER_AIMING, do nothing — OnShotComplete handles player swaps.
     /// </summary>
     private void OnAwaitingShot()
     {
         if (!_mode.IsHosting) return;
         if (_coopStateManager.TotalPlayerCount < 2) return;
 
-        if (_turnManager.Phase == TurnPhase.ALL_DONE)
+        // After a full turn cycle (all players shot + attack + enemy turn),
+        // the game naturally reaches AWAITING_SHOT. Start a new round.
+        if (_turnManager.Phase == TurnPhase.ALL_DONE || _turnManager.Phase == TurnPhase.DAMAGE_PHASE)
         {
-            _turnManager.EnterDamagePhase();
-            BroadcastTurnChange();
-        }
-        else if (_turnManager.Phase != TurnPhase.PLAYER_AIMING)
-        {
-            // New round: swap to first player (host, slot 0)
             _turnManager.StartNewRound();
             if (_turnManager.CurrentPlayerSlot >= 0)
             {
@@ -201,19 +211,46 @@ public sealed class CoopSubscriptions
             }
             BroadcastTurnChange();
         }
+        // If we're already in PLAYER_AIMING, do nothing — OnShotComplete handles player swaps
     }
 
     /// <summary>
-    /// Called when a shot resolves. Advance to the next player's turn.
-    /// If not all players have shot, redirect BattleController back to
-    /// AWAITING_SHOT so the next player can aim. The game has already set
-    /// _battleState to PRE_ATTACK_SPAWN_CHECK before invoking OnShotComplete,
-    /// so we override it here to prevent the attack/damage phase from starting.
+    /// Called when a shot resolves. Save the current player's peg damage tallies,
+    /// then either advance to the next player (more shots needed) or let the
+    /// attack proceed with combined damage from all players.
     /// </summary>
     private void OnShotComplete()
     {
         if (!_mode.IsHosting) return;
         if (_coopStateManager.TotalPlayerCount < 2) return;
+
+        int activeSlot = _coopStateManager.ActivePlayerSlot;
+
+        // Read BattleController's peg damage tallies for this player's shot
+        var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
+        var pegTallyField = AccessTools.Field(typeof(BattleController), "_pegMultiplierDamageTally");
+        var critField = AccessTools.Field(typeof(BattleController), "_criticalHitCount");
+        var numPegsField = AccessTools.Field(typeof(BattleController), "_numPegsHit");
+        var cactusField = AccessTools.Field(typeof(BattleController), "_cactusDamageTally");
+
+        if (bc != null)
+        {
+            int pegTally = pegTallyField != null ? (int)pegTallyField.GetValue(bc) : 0;
+            // _criticalHitCount is static, so pass null for the instance
+            int critCount = critField != null ? (int)critField.GetValue(null) : 0;
+            int numPegs = numPegsField != null ? (int)numPegsField.GetValue(bc) : 0;
+            int cactusTally = cactusField != null ? (int)cactusField.GetValue(bc) : 0;
+
+            _accumulatedShotData[activeSlot] = new ShotDamageData
+            {
+                PegMultiplierDamageTally = pegTally,
+                CriticalHitCount = critCount,
+                NumPegsHit = numPegs,
+                CactusDamageTally = cactusTally,
+            };
+
+            _log.LogInfo($"[CoopSubs] Saved shot data for slot {activeSlot}: pegTally={pegTally}, crits={critCount}, pegsHit={numPegs}, cactus={cactusTally}");
+        }
 
         // Mark current player's shot as fired before advancing
         _turnManager.MarkShotFired();
@@ -223,28 +260,29 @@ public sealed class CoopSubscriptions
 
         _turnManager.AdvanceTurn();
 
-        // If advancing to a new player, swap their state into the singletons
-        // and redirect the BattleController back to AWAITING_SHOT so the game
-        // draws the next orb and waits for the next player's shot.
         if (_turnManager.Phase == TurnPhase.PLAYER_AIMING && _turnManager.CurrentPlayerSlot >= 0)
         {
-            _coopStateManager.SwapToPlayer(_turnManager.CurrentPlayerSlot);
+            // More players need to shoot. Reset tallies to 0 for the next player,
+            // swap to them, and redirect BattleController back to AWAITING_SHOT.
 
-            // After swapping deck state, ensure the battle deck is usable.
+            if (bc != null)
+            {
+                pegTallyField?.SetValue(bc, 0);
+                critField?.SetValue(null, 0); // static field
+                numPegsField?.SetValue(bc, 0);
+                cactusField?.SetValue(bc, 0);
+            }
+
+            _coopStateManager.SwapToPlayer(_turnManager.CurrentPlayerSlot);
             EnsureBattleDeckPopulated("shot complete swap");
 
-            // CRITICAL: The BattleController already set _battleState to
-            // PRE_ATTACK_SPAWN_CHECK (or DO_ATTACK) before firing OnShotComplete.
-            // Override it back to AWAITING_SHOT so the state machine re-enters
-            // the aiming phase instead of proceeding to the attack/damage phase.
+            // Override BattleState back to AWAITING_SHOT so the state machine
+            // re-enters the aiming phase instead of proceeding to attack.
             BattleController.CurrentBattleState = BattleController.BattleState.AWAITING_SHOT;
 
-            // Manually trigger DrawBall since we bypassed the normal
-            // AWAITING_ENEMY_CLEANUP → ChooseShuffleOrDrawAtEndOfTurn flow
-            // that would normally create the PachinkoBall.
+            // Manually trigger DrawBall since we bypassed the normal flow.
             try
             {
-                var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
                 if (bc != null)
                 {
                     var drawBallMethod = AccessTools.Method(typeof(BattleController), "DrawBall");
@@ -255,18 +293,51 @@ public sealed class CoopSubscriptions
                     }
                 }
             }
-            catch (System.Exception ex)
+            catch (Exception ex)
             {
                 _log.LogWarning($"[CoopSubs] DrawBall call failed: {ex.Message}");
             }
 
+            BroadcastTurnChange();
+
             _log.LogInfo($"[CoopSubs] Swapped to player slot {_turnManager.CurrentPlayerSlot}, " +
                 $"redirected BattleState -> AWAITING_SHOT");
         }
+        else if (_turnManager.Phase == TurnPhase.ALL_DONE)
+        {
+            // All players have shot. Combine accumulated damage and write back
+            // to BattleController so the normal attack phase uses the total.
 
-        BroadcastTurnChange();
+            int totalPegTally = 0, totalCrits = 0, totalPegsHit = 0, totalCactus = 0;
+            foreach (var data in _accumulatedShotData.Values)
+            {
+                totalPegTally += data.PegMultiplierDamageTally;
+                totalCrits += data.CriticalHitCount;
+                totalPegsHit += data.NumPegsHit;
+                totalCactus += data.CactusDamageTally;
+            }
 
-        _log.LogInfo($"[CoopSubs] Shot complete — advanced turn. Phase={_turnManager.Phase}, slot={_turnManager.CurrentPlayerSlot}");
+            if (bc != null)
+            {
+                pegTallyField?.SetValue(bc, totalPegTally);
+                critField?.SetValue(null, totalCrits); // static field
+                numPegsField?.SetValue(bc, totalPegsHit);
+                cactusField?.SetValue(bc, totalCactus);
+            }
+
+            _log.LogInfo($"[CoopSubs] Combined damage: pegTally={totalPegTally}, crits={totalCrits}, pegsHit={totalPegsHit}, cactus={totalCactus}");
+            _accumulatedShotData.Clear();
+
+            // DO NOT redirect state — let PRE_ATTACK_SPAWN_CHECK -> DO_ATTACK proceed normally
+            BroadcastTurnChange();
+
+            _log.LogInfo($"[CoopSubs] All players shot — letting attack phase proceed. Phase={_turnManager.Phase}");
+        }
+        else
+        {
+            BroadcastTurnChange();
+            _log.LogInfo($"[CoopSubs] Shot complete — Phase={_turnManager.Phase}, slot={_turnManager.CurrentPlayerSlot}");
+        }
     }
 
     // =========================================================================

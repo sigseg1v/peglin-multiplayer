@@ -193,11 +193,28 @@ public class CoopRewardUI : MonoBehaviour
             var relic = choices.Choices[i];
             float xPos = startX + i * (buttonWidth + spacing);
 
+            // Try to resolve relic description via localization as a fallback
+            string desc = relic.LocKey ?? "";
+            try
+            {
+                // If LocKey looks like a raw loc key (no spaces, starts with lowercase),
+                // try to resolve it via the localization system
+                if (!string.IsNullOrEmpty(desc) && !desc.Contains(" "))
+                {
+                    string resolved = I2.Loc.LocalizationManager.GetTranslation("Relics/" + desc + "_desc");
+                    if (string.IsNullOrEmpty(resolved))
+                        resolved = I2.Loc.LocalizationManager.GetTranslation(desc);
+                    if (!string.IsNullOrEmpty(resolved))
+                        desc = resolved;
+                }
+            }
+            catch { /* localization not available, use as-is */ }
+
             var btn = CreateChoiceButton(
                 _buttonContainer.transform,
                 $"RelicBtn_{i}",
                 relic.EffectName ?? $"Relic {relic.Effect}",
-                relic.LocKey ?? "",
+                desc,
                 new Color(0.25f, 0.2f, 0.45f),
                 new Vector2(xPos, 0),
                 new Vector2(buttonWidth, 260));

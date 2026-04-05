@@ -2,6 +2,7 @@ using System;
 using Battle;
 using Data;
 using HarmonyLib;
+using I2.Loc;
 using Loading;
 using Map;
 using PeglinMods.Multiplayer.Events;
@@ -477,11 +478,29 @@ public static class MultiplayerClientPatches
                             var relics = rm.GetMultipleRelicsOffOfQueue(3, Relics.RelicRarity.COMMON);
                             foreach (var relic in relics)
                             {
+                                string displayName = "";
+                                try
+                                {
+                                    displayName = LocalizationManager.GetTranslation(relic.nameKey);
+                                    if (string.IsNullOrEmpty(displayName))
+                                        displayName = relic.englishDisplayName ?? relic.locKey ?? "Unknown";
+                                }
+                                catch { displayName = relic.englishDisplayName ?? relic.locKey ?? "Unknown"; }
+
+                                string description = "";
+                                try
+                                {
+                                    description = LocalizationManager.GetTranslation(relic.descKey);
+                                    if (string.IsNullOrEmpty(description))
+                                        description = relic.locKey ?? "";
+                                }
+                                catch { description = relic.locKey ?? ""; }
+
                                 choices.Add(new GameState.Snapshots.RelicEntry
                                 {
                                     Effect = (int)relic.effect,
-                                    EffectName = relic.englishDisplayName ?? relic.locKey ?? "Unknown",
-                                    LocKey = relic.locKey ?? "",
+                                    EffectName = displayName,
+                                    LocKey = description,
                                     Rarity = (int)relic.globalRarity,
                                     IsEnabled = true,
                                 });
@@ -510,11 +529,29 @@ public static class MultiplayerClientPatches
                         var relics2 = rm.GetMultipleRelicsOffOfQueue(3, Relics.RelicRarity.COMMON);
                         foreach (var relic in relics2)
                         {
+                            string displayName2 = "";
+                            try
+                            {
+                                displayName2 = LocalizationManager.GetTranslation(relic.nameKey);
+                                if (string.IsNullOrEmpty(displayName2))
+                                    displayName2 = relic.englishDisplayName ?? relic.locKey ?? "Unknown";
+                            }
+                            catch { displayName2 = relic.englishDisplayName ?? relic.locKey ?? "Unknown"; }
+
+                            string description2 = "";
+                            try
+                            {
+                                description2 = LocalizationManager.GetTranslation(relic.descKey);
+                                if (string.IsNullOrEmpty(description2))
+                                    description2 = relic.locKey ?? "";
+                            }
+                            catch { description2 = relic.locKey ?? ""; }
+
                             hostChoices.Add(new GameState.Snapshots.RelicEntry
                             {
                                 Effect = (int)relic.effect,
-                                EffectName = relic.englishDisplayName ?? relic.locKey ?? "Unknown",
-                                LocKey = relic.locKey ?? "",
+                                EffectName = displayName2,
+                                LocKey = description2,
                                 Rarity = (int)relic.globalRarity,
                                 IsEnabled = true,
                             });
