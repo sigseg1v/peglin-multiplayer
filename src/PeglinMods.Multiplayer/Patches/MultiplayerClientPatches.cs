@@ -332,59 +332,44 @@ public static class MultiplayerClientPatches
                 return;
             }
 
-            // If ball is still in WAITING state (scale animation from DrawBall
-            // hasn't completed), kill the animation and arm the ball via
-            // BattleController.ArmBallForShot() so it enters AIMING state properly.
-            // DrawBall already called Init() with the correct managers for the
-            // swapped-in player, so ArmBallForShot should work.
+            // Kill any scale animation and force the ball ready
             if (activeBall.CurrentState == PachinkoBall.FireballState.WAITING)
             {
                 DG.Tweening.DOTween.Kill(activeBallGO.transform);
-                activeBallGO.transform.localScale = activeBallGO.transform.localScale;
-                try
-                {
-                    bc.ArmBallForShot();
-                    MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Armed ball via ArmBallForShot for {pending.PlayerName}");
-                }
-                catch (System.Exception armEx)
-                {
-                    MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] ArmBallForShot failed: {armEx.Message}");
-                    // Fallback: directly set to AIMING
-                    var stateProp = HarmonyLib.AccessTools.Property(typeof(PachinkoBall), "CurrentState");
-                    stateProp?.GetSetMethod(true)?.Invoke(activeBall, new object[] { PachinkoBall.FireballState.AIMING });
-                }
-            }
-
-            // Ball must be in AIMING state for Fire() to work correctly
-            if (activeBall.CurrentState != PachinkoBall.FireballState.AIMING)
-            {
-                MultiplayerPlugin.Logger?.LogWarning(
-                    $"[ClientPatches] Ball not in AIMING state (state={activeBall.CurrentState}), cannot fire for {pending.PlayerName}");
-                return;
             }
 
             // Set aim direction on the ball
             var aimField = HarmonyLib.AccessTools.Field(typeof(PachinkoBall), "_aimVector");
+            var aimVec = new UnityEngine.Vector2(pending.AimDirectionX, pending.AimDirectionY).normalized;
             if (aimField != null)
             {
-                var aimDir = new UnityEngine.Vector2(pending.AimDirectionX, pending.AimDirectionY);
-                aimField.SetValue(activeBall, aimDir);
-                activeBall.transform.right = aimDir;
+                aimField.SetValue(activeBall, aimVec);
+                activeBallGO.transform.right = aimVec;
             }
 
-            // Fire using the game's own Fire() method. DrawBall created this ball
-            // with Init() called using the correct player's managers (deck, relics),
-            // so all internal references should be valid.
-            ExecutingPendingShot = true;
-            try
+            // Manual fire: PachinkoBall.Fire() NREs on internal null references
+            // (_playerStatusEffectController, _wallbounceAudioSource, etc.) after
+            // state swaps. Instead, replicate essential fire physics inline.
+            var stateProp = HarmonyLib.AccessTools.Property(typeof(PachinkoBall), "CurrentState");
+            stateProp?.GetSetMethod(true)?.Invoke(activeBall, new object[] { PachinkoBall.FireballState.FIRING });
+
+            var rigid = activeBallGO.GetComponent<UnityEngine.Rigidbody2D>();
+            if (rigid != null)
             {
-                activeBall.Fire();
-            }
-            finally
-            {
-                ExecutingPendingShot = false;
+                rigid.simulated = true;
+                rigid.gravityScale = activeBall.GravityScale;
+                rigid.AddForce(aimVec * activeBall.FireForce);
             }
 
+            // Invoke OnShotFired to trigger BattleController.ShotFired() which
+            // sets _remainingPachinkoBalls=1 and processes relic effects.
+            try { PachinkoBall.OnShotFired?.Invoke(aimVec); }
+            catch (System.Exception shotEx)
+            {
+                MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] OnShotFired delegate error (non-fatal): {shotEx.Message}");
+            }
+
+            // Always consume — even if something above failed partially
             Events.Handlers.Coop.ShootRequestClientHandler.ConsumePendingShot();
 
             MultiplayerPlugin.Logger?.LogInfo(
@@ -530,6 +515,32 @@ public static class MultiplayerClientPatches
                 playerState.IsInitialized = true;
                 MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Built slot {player.SlotIndex} state from ClassLoadoutData: " +
                     $"hp={playerState.CurrentHealth}/{playerState.MaxHealth}, deck={playerState.CompleteDeck.Count}, relics={playerState.OwnedRelics.Count}");
+
+                // On the CLIENT: if this is our slot, add the starting class relics
+                // to the local RelicManager so they show in the UI. The host side
+                // stores them in CoopPlayerState and loads them via LoadRelicState
+                // during battle, but the client needs them in its own RelicManager too.
+                if (!IsHosting && loadout?.StartingRelics != null)
+                {
+                    try
+                    {
+                        var clientRelicMgrs = UnityEngine.Resources.FindObjectsOfTypeAll<Relics.RelicManager>();
+                        if (clientRelicMgrs != null && clientRelicMgrs.Length > 0)
+                        {
+                            foreach (var relic in loadout.StartingRelics)
+                            {
+                                if (relic == null) continue;
+                                try
+                                {
+                                    clientRelicMgrs[0].AddRelic(relic);
+                                    MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Client: added starting class relic {relic.effect} ({relic.locKey})");
+                                }
+                                catch { }
+                            }
+                        }
+                    }
+                    catch { }
+                }
             }
         }
 

@@ -389,10 +389,9 @@ public class CoopPlayerVisuals : MonoBehaviour
                 if (_hostLabel.NameText != null)
                 {
                     string className = Events.Handlers.Lobby.LobbyHelper.GetClassName(hostSummary.ChosenClass);
-                    string turnMarker = (activeSlot == 0) ? " [TURN]" : "";
+                    string turnMarker = (activeSlot == 0) ? "  <" : "";
                     _hostLabel.NameText.text = $"{hostSummary.PlayerName} ({className}){turnMarker}";
-                    _hostLabel.NameText.color = (activeSlot == 0)
-                        ? new Color(1f, 1f, 0.6f) : Color.white;
+                    _hostLabel.NameText.color = new Color(0.9f, 0.5f, 0.1f); // dark orange
                 }
                 // Position screen-space label below the player sprite
                 PositionLabelAtWorldPoint(_hostLabel, basePos + new Vector3(0, 1.5f, 0), cam);
@@ -411,24 +410,22 @@ public class CoopPlayerVisuals : MonoBehaviour
             }
             if (summary == null) continue;
 
-            // Position: offset left and slightly down per slot
-            var offset = new Vector3(-1.5f * visual.SlotIndex, -0.3f * visual.SlotIndex, 0);
+            // Position: offset further left and spaced out more per slot
+            var offset = new Vector3(-2.5f * visual.SlotIndex, -0.2f * visual.SlotIndex, 0);
             visual.SpriteClone.transform.position = basePos + offset;
 
             // Update HP text
             if (visual.HpText != null)
                 visual.HpText.text = $"{summary.CurrentHealth:F0} / {summary.MaxHealth:F0}";
 
-            // Update name text with class and turn indicator
+            // Update name text with class and turn indicator arrow
             if (visual.NameText != null)
             {
                 string playerName = summary.PlayerName ?? $"Player {summary.SlotIndex}";
                 string className = LobbyHelper.GetClassName(summary.ChosenClass);
-                string turnMarker = (activeSlot == visual.SlotIndex) ? " [YOUR TURN]" : "";
+                string turnMarker = (activeSlot == visual.SlotIndex) ? "  <" : "";
                 visual.NameText.text = $"{playerName} ({className}){turnMarker}";
-                visual.NameText.color = (activeSlot == visual.SlotIndex)
-                    ? new Color(1f, 1f, 0.6f) // yellow-ish for active
-                    : Color.white;
+                visual.NameText.color = new Color(0.9f, 0.5f, 0.1f); // dark orange
             }
 
             // Position screen-space label below the clone sprite
