@@ -43,6 +43,12 @@ public class CoopPlayerVisuals : MonoBehaviour
     private GameObject _playerRef; // The original player GameObject
     private PlayerVisual _hostLabel; // Label attached to the real player (slot 0)
 
+    // Shared screen-space overlay canvas for all player labels.
+    // This guarantees labels render on top of ALL game sprites.
+    private static GameObject _overlayCanvasObj;
+    private static Canvas _overlayCanvas;
+    private static RectTransform _overlayCanvasRect;
+
     private void Update()
     {
         try
@@ -197,75 +203,80 @@ public class CoopPlayerVisuals : MonoBehaviour
         }
     }
 
-    /// <summary>Create just a name/HP label attached to an existing GameObject (for the host player).</summary>
+    private void EnsureOverlayCanvas()
+    {
+        if (_overlayCanvasObj != null) return;
+        _overlayCanvasObj = new GameObject("CoopPlayerLabelsOverlay");
+        DontDestroyOnLoad(_overlayCanvasObj);
+        _overlayCanvas = _overlayCanvasObj.AddComponent<Canvas>();
+        _overlayCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        _overlayCanvas.sortingOrder = 9000;
+        var scaler = _overlayCanvasObj.AddComponent<UnityEngine.UI.CanvasScaler>();
+        scaler.uiScaleMode = UnityEngine.UI.CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920, 1080);
+        scaler.matchWidthOrHeight = 0.5f;
+        _overlayCanvasRect = _overlayCanvasObj.GetComponent<RectTransform>();
+    }
+
+    /// <summary>Create a screen-space label panel for a player.</summary>
+    private GameObject CreateScreenLabel(CoopPlayerSummary summary, out TextMeshProUGUI nameText, out TextMeshProUGUI hpText)
+    {
+        EnsureOverlayCanvas();
+
+        var panel = new GameObject($"CoopLabel_Slot{summary.SlotIndex}");
+        panel.transform.SetParent(_overlayCanvasObj.transform, false);
+
+        var panelRect = panel.AddComponent<RectTransform>();
+        panelRect.sizeDelta = new Vector2(200, 60);
+
+        nameText = null;
+        hpText = null;
+
+        var nameObj = new GameObject("NameText");
+        nameObj.transform.SetParent(panel.transform, false);
+        nameText = nameObj.AddComponent<TextMeshProUGUI>();
+        nameText.text = summary.PlayerName ?? $"Player {summary.SlotIndex}";
+        nameText.fontSize = 22;
+        nameText.alignment = TextAlignmentOptions.Center;
+        nameText.color = Color.white;
+        nameText.outlineWidth = 0.25f;
+        nameText.outlineColor = Color.black;
+        var nameRect = nameText.rectTransform;
+        nameRect.anchorMin = new Vector2(0, 0.5f);
+        nameRect.anchorMax = new Vector2(1, 1);
+        nameRect.offsetMin = Vector2.zero;
+        nameRect.offsetMax = Vector2.zero;
+
+        var hpObj = new GameObject("HpText");
+        hpObj.transform.SetParent(panel.transform, false);
+        hpText = hpObj.AddComponent<TextMeshProUGUI>();
+        hpText.text = $"{summary.CurrentHealth:F0} / {summary.MaxHealth:F0}";
+        hpText.fontSize = 18;
+        hpText.alignment = TextAlignmentOptions.Center;
+        hpText.color = new Color(0.8f, 1f, 0.8f);
+        hpText.outlineWidth = 0.2f;
+        hpText.outlineColor = Color.black;
+        var hpRect = hpText.rectTransform;
+        hpRect.anchorMin = new Vector2(0, 0);
+        hpRect.anchorMax = new Vector2(1, 0.5f);
+        hpRect.offsetMin = Vector2.zero;
+        hpRect.offsetMax = Vector2.zero;
+
+        return panel;
+    }
+
+    /// <summary>Create just a name/HP label for the host player (slot 0).</summary>
     private PlayerVisual CreateLabel(GameObject parent, CoopPlayerSummary summary)
     {
         try
         {
-            var canvasObj = new GameObject($"CoopPlayerLabel_Slot{summary.SlotIndex}");
-            canvasObj.transform.SetParent(parent.transform, false);
-
-            var canvas = canvasObj.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.WorldSpace;
-            // Copy sorting layer from the actual player sprite — string names fail
-            // silently if the layer doesn't exist in the project's sorting layer list.
-            var playerSr = parent.GetComponentInChildren<SpriteRenderer>();
-            if (playerSr != null)
-            {
-                canvas.sortingLayerID = playerSr.sortingLayerID;
-                canvas.sortingOrder = playerSr.sortingOrder + 50;
-            }
-            else
-            {
-                canvas.sortingOrder = 500;
-            }
-
-            var canvasRect = canvasObj.GetComponent<RectTransform>();
-            canvasRect.sizeDelta = new Vector2(4f, 1.5f);
-            canvasRect.localPosition = new Vector3(0, -1.2f, 0);
-            canvasRect.localScale = new Vector3(0.015f, 0.015f, 0.015f);
-
-            var nameObj = new GameObject("NameText");
-            nameObj.transform.SetParent(canvasObj.transform, false);
-            var nameText = nameObj.AddComponent<TextMeshProUGUI>();
-            nameText.text = summary.PlayerName ?? $"Player {summary.SlotIndex}";
-            nameText.fontSize = 32;
-            nameText.alignment = TextAlignmentOptions.Center;
-            nameText.color = Color.white;
-            nameText.outlineWidth = 0.3f;
-            nameText.outlineColor = Color.black;
-            var nameRect = nameText.rectTransform;
-            nameRect.anchorMin = new Vector2(0.5f, 1);
-            nameRect.anchorMax = new Vector2(0.5f, 1);
-            nameRect.pivot = new Vector2(0.5f, 1);
-            nameRect.anchoredPosition = Vector2.zero;
-            nameRect.sizeDelta = new Vector2(300, 40);
-
-            var hpObj = new GameObject("HpText");
-            hpObj.transform.SetParent(canvasObj.transform, false);
-            var hpText = hpObj.AddComponent<TextMeshProUGUI>();
-            hpText.text = $"{summary.CurrentHealth:F0} / {summary.MaxHealth:F0}";
-            hpText.fontSize = 26;
-            hpText.alignment = TextAlignmentOptions.Center;
-            hpText.color = new Color(0.8f, 1f, 0.8f);
-            hpText.outlineWidth = 0.3f;
-            hpText.outlineColor = Color.black;
-            var hpRect = hpText.rectTransform;
-            hpRect.anchorMin = new Vector2(0.5f, 1);
-            hpRect.anchorMax = new Vector2(0.5f, 1);
-            hpRect.pivot = new Vector2(0.5f, 1);
-            hpRect.anchoredPosition = new Vector2(0, -40);
-            hpRect.sizeDelta = new Vector2(300, 34);
-
-            Log?.LogInfo($"[CoopPlayerVisuals] Created label for slot {summary.SlotIndex} ({summary.PlayerName}), " +
-                $"sortingLayer={canvas.sortingLayerID}, sortingOrder={canvas.sortingOrder}, " +
-                $"pos={canvasObj.transform.position}, scale={canvasObj.transform.localScale}");
+            var panel = CreateScreenLabel(summary, out var nameText, out var hpText);
 
             return new PlayerVisual
             {
                 SlotIndex = summary.SlotIndex,
                 SpriteClone = null,
-                LabelCanvas = canvasObj,
+                LabelCanvas = panel,
                 NameText = nameText,
                 HpText = hpText,
             };
@@ -299,62 +310,14 @@ public class CoopPlayerVisuals : MonoBehaviour
                 sr.color = GetSlotColor(summary.SlotIndex);
             }
 
-            // Create a world-space canvas for labels
-            var canvasObj = new GameObject($"CoopPlayerLabel_Slot{summary.SlotIndex}");
-            canvasObj.transform.SetParent(clone.transform, false);
-
-            var canvas = canvasObj.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.WorldSpace;
-            if (originalRenderer != null)
-            {
-                canvas.sortingLayerID = originalRenderer.sortingLayerID;
-                canvas.sortingOrder = originalRenderer.sortingOrder + 50;
-            }
-            else
-            {
-                canvas.sortingOrder = 500;
-            }
-
-            var canvasRect = canvasObj.GetComponent<RectTransform>();
-            canvasRect.sizeDelta = new Vector2(4f, 1.5f);
-            canvasRect.localPosition = new Vector3(0, -1.2f, 0);
-            canvasRect.localScale = new Vector3(0.015f, 0.015f, 0.015f);
-
-            // Player name text
-            var nameObj = new GameObject("NameText");
-            nameObj.transform.SetParent(canvasObj.transform, false);
-            var nameText = nameObj.AddComponent<TextMeshProUGUI>();
-            nameText.text = summary.PlayerName ?? $"Player {summary.SlotIndex}";
-            nameText.fontSize = 28;
-            nameText.alignment = TextAlignmentOptions.Center;
-            nameText.color = Color.white;
-            var nameRect = nameText.rectTransform;
-            nameRect.anchorMin = new Vector2(0.5f, 1);
-            nameRect.anchorMax = new Vector2(0.5f, 1);
-            nameRect.pivot = new Vector2(0.5f, 1);
-            nameRect.anchoredPosition = new Vector2(0, 0);
-            nameRect.sizeDelta = new Vector2(300, 36);
-
-            // HP text
-            var hpObj = new GameObject("HpText");
-            hpObj.transform.SetParent(canvasObj.transform, false);
-            var hpText = hpObj.AddComponent<TextMeshProUGUI>();
-            hpText.text = $"{summary.CurrentHealth:F0} / {summary.MaxHealth:F0}";
-            hpText.fontSize = 24;
-            hpText.alignment = TextAlignmentOptions.Center;
-            hpText.color = new Color(0.8f, 1f, 0.8f);
-            var hpRect = hpText.rectTransform;
-            hpRect.anchorMin = new Vector2(0.5f, 1);
-            hpRect.anchorMax = new Vector2(0.5f, 1);
-            hpRect.pivot = new Vector2(0.5f, 1);
-            hpRect.anchoredPosition = new Vector2(0, -36);
-            hpRect.sizeDelta = new Vector2(300, 30);
+            // Create screen-space label (separate from clone so it renders on top)
+            var panel = CreateScreenLabel(summary, out var nameText, out var hpText);
 
             return new PlayerVisual
             {
                 SlotIndex = summary.SlotIndex,
                 SpriteClone = clone,
-                LabelCanvas = canvasObj,
+                LabelCanvas = panel,
                 NameText = nameText,
                 HpText = hpText,
             };
@@ -384,6 +347,8 @@ public class CoopPlayerVisuals : MonoBehaviour
         }
         catch { }
 
+        var cam = Camera.main;
+
         // Update host label (slot 0)
         if (_hostLabel != null)
         {
@@ -403,6 +368,8 @@ public class CoopPlayerVisuals : MonoBehaviour
                     _hostLabel.NameText.color = (activeSlot == 0)
                         ? new Color(1f, 1f, 0.6f) : Color.white;
                 }
+                // Position screen-space label below the player sprite
+                PositionLabelAtWorldPoint(_hostLabel, basePos + new Vector3(0, -1.2f, 0), cam);
             }
         }
 
@@ -438,6 +405,10 @@ public class CoopPlayerVisuals : MonoBehaviour
                     : Color.white;
             }
 
+            // Position screen-space label below the clone sprite
+            var clonePos = visual.SpriteClone.transform.position;
+            PositionLabelAtWorldPoint(visual, clonePos + new Vector3(0, -1.2f, 0), cam);
+
             // Active player highlight
             float targetScale = (activeSlot == visual.SlotIndex) ? 1.15f : 1f;
             visual.SpriteClone.transform.localScale = Vector3.Lerp(
@@ -455,6 +426,18 @@ public class CoopPlayerVisuals : MonoBehaviour
                     : Color.Lerp(sr.color, baseColor, Time.deltaTime * 3f);
             }
         }
+    }
+
+    /// <summary>Position a screen-space label at a world-space point.</summary>
+    private void PositionLabelAtWorldPoint(PlayerVisual visual, Vector3 worldPos, Camera cam)
+    {
+        if (visual?.LabelCanvas == null || cam == null) return;
+        var screenPos = cam.WorldToScreenPoint(worldPos);
+        if (screenPos.z < 0) { visual.LabelCanvas.SetActive(false); return; }
+        visual.LabelCanvas.SetActive(true);
+        var rect = visual.LabelCanvas.GetComponent<RectTransform>();
+        if (rect != null)
+            rect.position = screenPos;
     }
 
     private void CleanupVisuals()

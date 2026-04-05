@@ -364,36 +364,35 @@ public static class MultiplayerClientPatches
                 activeBall.transform.right = aimDir;
             }
 
-            // Fire the ball manually instead of calling Fire() which NREs on
-            // _predictionManager and multiball handlers after state swaps.
-            // Replicate the essential fire logic: set state, enable physics, apply force.
+            // Ensure the ball has valid internal references before firing.
+            // DrawBall sets these during Init(), but _predictionManager can be null
+            // if the ball was created after a state swap where managers were stale.
+            var predMgrField = HarmonyLib.AccessTools.Field(typeof(PachinkoBall), "_predictionManager");
+            if (predMgrField != null && predMgrField.GetValue(activeBall) == null)
             {
-                var aimVec = new UnityEngine.Vector2(pending.AimDirectionX, pending.AimDirectionY).normalized;
+                // Find the PredictionManager from the scene
+                var predMgr = UnityEngine.Object.FindObjectOfType<PredictionManager>();
+                if (predMgr != null)
+                    predMgrField.SetValue(activeBall, predMgr);
+            }
+            var relMgrField = HarmonyLib.AccessTools.Field(typeof(PachinkoBall), "_relicManager");
+            if (relMgrField != null)
+            {
+                var relMgrs = UnityEngine.Resources.FindObjectsOfTypeAll<Relics.RelicManager>();
+                if (relMgrs.Length > 0)
+                    relMgrField.SetValue(activeBall, relMgrs[0]);
+            }
 
-                // Set state to FIRING
-                var stateProp = HarmonyLib.AccessTools.Property(typeof(PachinkoBall), "CurrentState");
-                var stateSetter = stateProp?.GetSetMethod(true);
-                stateSetter?.Invoke(activeBall, new object[] { PachinkoBall.FireballState.FIRING });
-
-                // Enable physics and apply force
-                var rigid = activeBallGO.GetComponent<UnityEngine.Rigidbody2D>();
-                if (rigid != null)
-                {
-                    rigid.simulated = true;
-                    var gravField = HarmonyLib.AccessTools.Field(typeof(PachinkoBall), "GravityScale");
-                    float gravity = gravField != null ? (float)gravField.GetValue(activeBall) : 1f;
-                    rigid.gravityScale = gravity;
-
-                    var forceField = HarmonyLib.AccessTools.Field(typeof(PachinkoBall), "FireForce");
-                    float force = forceField != null ? (float)forceField.GetValue(activeBall) : 15f;
-                    rigid.AddForce(aimVec * force);
-                }
-
-                // Set BattleController state to AWAITING_SHOT_COMPLETION
-                BattleController.CurrentBattleState = BattleController.BattleState.AWAITING_SHOT_COMPLETION;
-
-                // Notify delegates (ShotFired for sync)
-                try { PachinkoBall.OnShotFired?.Invoke(aimVec); } catch { }
+            // Fire the ball using the game's own Fire() method.
+            // This ensures all delegates (ShotFired, etc.) and physics are set up correctly.
+            ExecutingPendingShot = true;
+            try
+            {
+                activeBall.Fire();
+            }
+            finally
+            {
+                ExecutingPendingShot = false;
             }
 
             Events.Handlers.Coop.ShootRequestClientHandler.ConsumePendingShot();
