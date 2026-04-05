@@ -207,8 +207,18 @@ public class CoopPlayerVisuals : MonoBehaviour
 
             var canvas = canvasObj.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.WorldSpace;
-            canvas.sortingLayerName = "PegboardMain";
-            canvas.sortingOrder = 500;
+            // Copy sorting layer from the actual player sprite — string names fail
+            // silently if the layer doesn't exist in the project's sorting layer list.
+            var playerSr = parent.GetComponentInChildren<SpriteRenderer>();
+            if (playerSr != null)
+            {
+                canvas.sortingLayerID = playerSr.sortingLayerID;
+                canvas.sortingOrder = playerSr.sortingOrder + 50;
+            }
+            else
+            {
+                canvas.sortingOrder = 500;
+            }
 
             var canvasRect = canvasObj.GetComponent<RectTransform>();
             canvasRect.sizeDelta = new Vector2(4f, 1.5f);
@@ -246,6 +256,10 @@ public class CoopPlayerVisuals : MonoBehaviour
             hpRect.pivot = new Vector2(0.5f, 1);
             hpRect.anchoredPosition = new Vector2(0, -40);
             hpRect.sizeDelta = new Vector2(300, 34);
+
+            Log?.LogInfo($"[CoopPlayerVisuals] Created label for slot {summary.SlotIndex} ({summary.PlayerName}), " +
+                $"sortingLayer={canvas.sortingLayerID}, sortingOrder={canvas.sortingOrder}, " +
+                $"pos={canvasObj.transform.position}, scale={canvasObj.transform.localScale}");
 
             return new PlayerVisual
             {
@@ -291,8 +305,15 @@ public class CoopPlayerVisuals : MonoBehaviour
 
             var canvas = canvasObj.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.WorldSpace;
-            canvas.sortingLayerName = "PegboardMain";
-            canvas.sortingOrder = 500;
+            if (originalRenderer != null)
+            {
+                canvas.sortingLayerID = originalRenderer.sortingLayerID;
+                canvas.sortingOrder = originalRenderer.sortingOrder + 50;
+            }
+            else
+            {
+                canvas.sortingOrder = 500;
+            }
 
             var canvasRect = canvasObj.GetComponent<RectTransform>();
             canvasRect.sizeDelta = new Vector2(4f, 1.5f);
