@@ -194,7 +194,28 @@ public sealed class CoopSubscriptions
             // New round: swap to first player (host, slot 0)
             _turnManager.StartNewRound();
             if (_turnManager.CurrentPlayerSlot >= 0)
+            {
                 _coopStateManager.SwapToPlayer(_turnManager.CurrentPlayerSlot);
+
+                // Ensure battle deck is populated after swap
+                try
+                {
+                    var dms = UnityEngine.Resources.FindObjectsOfTypeAll<DeckManager>();
+                    if (dms != null && dms.Length > 0)
+                    {
+                        var dm = dms[0];
+                        if ((dm.battleDeck == null || dm.battleDeck.Count == 0) ||
+                            (dm.shuffledDeck == null || dm.shuffledDeck.Count == 0))
+                        {
+                            dm.ShuffleBattleDeck();
+                        }
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    _log.LogWarning($"[CoopSubs] Failed to shuffle battle deck on new round: {ex.Message}");
+                }
+            }
             BroadcastTurnChange();
         }
     }
@@ -225,6 +246,31 @@ public sealed class CoopSubscriptions
         if (_turnManager.Phase == TurnPhase.PLAYER_AIMING && _turnManager.CurrentPlayerSlot >= 0)
         {
             _coopStateManager.SwapToPlayer(_turnManager.CurrentPlayerSlot);
+
+            // After swapping deck state, the battleDeck/shuffledDeck may be empty
+            // (first time this player shoots). Ensure the battle deck is populated.
+            try
+            {
+                var dms = UnityEngine.Resources.FindObjectsOfTypeAll<DeckManager>();
+                if (dms != null && dms.Length > 0)
+                {
+                    var dm = dms[0];
+                    if (dm.battleDeck == null || dm.battleDeck.Count == 0)
+                    {
+                        _log.LogInfo("[CoopSubs] Battle deck empty after swap — shuffling from complete deck");
+                        dm.ShuffleBattleDeck();
+                    }
+                    else if (dm.shuffledDeck == null || dm.shuffledDeck.Count == 0)
+                    {
+                        _log.LogInfo("[CoopSubs] Shuffled deck empty after swap — re-shuffling");
+                        dm.ShuffleBattleDeck();
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                _log.LogWarning($"[CoopSubs] Failed to shuffle battle deck after swap: {ex.Message}");
+            }
 
             // CRITICAL: The BattleController already set _battleState to
             // PRE_ATTACK_SPAWN_CHECK (or DO_ATTACK) before firing OnShotComplete.
