@@ -42,22 +42,10 @@ public sealed class TurnChangeClientHandler : IClientHandler<TurnChangeEvent>
                 // Host processes turns locally via TurnManager, but still updates static state
                 mySlot = 0;
             }
-            else
+            else if (registry.LocalSlot != null)
             {
-                // Client: find our slot from the registry using our local peer info
-                // On the client side, peerId -1 represents us (we are the local peer)
-                var hostSlot = registry.GetHostSlot();
-                // Clients are not the host, so check all non-host slots
-                foreach (var slot in registry.GetAllSlots())
-                {
-                    if (!slot.IsHost)
-                    {
-                        // On the client, there's only one non-host slot that is "us"
-                        // The client only knows about itself and the host
-                        mySlot = slot.SlotIndex;
-                        break;
-                    }
-                }
+                // Client: use the LocalSlot set during GameStartClientHandler
+                mySlot = registry.LocalSlot.SlotIndex;
             }
         }
 

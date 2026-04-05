@@ -344,6 +344,68 @@ public static class MultiplayerClientPatches
             MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Coop: captured host initial state, ActivePlayerSlot=0, " +
                 $"{gameStartEvent.FinalPlayers.Count} players, hp={hostState?.CurrentHealth}/{hostState?.MaxHealth}, " +
                 $"deck={hostState?.CompleteDeck.Count}");
+
+            // Build starting state for non-host players from ClassLoadoutData.
+            // The host's singletons contain the host's data, so we can't use
+            // CaptureInitialState for other slots. Instead, directly populate
+            // each non-host player's CoopPlayerState from their class loadout.
+            foreach (var player in gameStartEvent.FinalPlayers)
+            {
+                if (player.IsHost) continue;
+
+                var playerState = coopState.GetPlayerState(player.SlotIndex);
+                if (playerState == null) continue;
+
+                // All players start with the same max HP as the host
+                float maxHp = hostState?.MaxHealth ?? (__instance.maxPlayerHealth?.Value ?? 0);
+                playerState.CurrentHealth = maxHp; // Full health at start
+                playerState.MaxHealth = maxHp;
+
+                // Build starting deck from ClassLoadoutData
+                var classLoadouts = StaticGameData.classLoadouts;
+                Peglin.ClassSystem.ClassLoadoutData loadout = null;
+                if (classLoadouts != null)
+                {
+                    foreach (var pair in classLoadouts)
+                    {
+                        if (pair.Class == (Peglin.ClassSystem.Class)player.ChosenClass)
+                        { loadout = pair.Loadout; break; }
+                    }
+                }
+
+                if (loadout?.StartingOrbs != null)
+                {
+                    playerState.CompleteDeck.Clear();
+                    foreach (var orb in loadout.StartingOrbs)
+                    {
+                        if (orb == null) continue;
+                        playerState.CompleteDeck.Add(new GameState.SerializedOrb
+                        {
+                            PrefabName = orb.name,
+                            Level = 0,
+                        });
+                    }
+                }
+
+                if (loadout?.StartingRelics != null)
+                {
+                    playerState.OwnedRelics.Clear();
+                    foreach (var relic in loadout.StartingRelics)
+                    {
+                        if (relic == null) continue;
+                        playerState.OwnedRelics.Add(new GameState.SerializedRelic
+                        {
+                            Effect = (int)relic.effect,
+                            LocKey = relic.locKey ?? "",
+                            Rarity = (int)relic.globalRarity,
+                        });
+                    }
+                }
+
+                playerState.IsInitialized = true;
+                MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Built slot {player.SlotIndex} state from ClassLoadoutData: " +
+                    $"hp={playerState.CurrentHealth}/{playerState.MaxHealth}, deck={playerState.CompleteDeck.Count}, relics={playerState.OwnedRelics.Count}");
+            }
         }
 
         // Skip the relic selection screen — in coop mode, starting relics come from

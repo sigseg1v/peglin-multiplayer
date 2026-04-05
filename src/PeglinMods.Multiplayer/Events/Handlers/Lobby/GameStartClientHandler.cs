@@ -37,13 +37,27 @@ public sealed class GameStartClientHandler : IClientHandler<GameStartEvent>
                     Patches.MultiplayerClientPatches.SetStartingLoadoutFromClass(chosenClass);
                 }
 
-                // Also set PlayerRegistry.LocalSlot if available
+                // Set PlayerRegistry.LocalSlot so other handlers can identify this client's slot.
+                // GetSlotByIndex may return null on the client (the client doesn't register
+                // itself), so create a PlayerSlot directly from the GameStartEvent data.
                 var services = MultiplayerPlugin.Services;
                 if (services?.TryResolve<PlayerRegistry>(out var registry) == true && myEntry != null)
                 {
                     var slot = registry.GetSlotByIndex(myEntry.SlotIndex);
-                    if (slot != null)
-                        registry.LocalSlot = slot;
+                    if (slot == null)
+                    {
+                        slot = new PlayerSlot
+                        {
+                            SlotIndex = myEntry.SlotIndex,
+                            PeerId = -1,
+                            PlayerName = myEntry.PlayerName,
+                            IsHost = false,
+                            ChosenClass = myEntry.ChosenClass,
+                            IsReady = true,
+                        };
+                    }
+                    registry.LocalSlot = slot;
+                    MultiplayerPlugin.Logger?.LogInfo($"[GameStart] Set LocalSlot: index={slot.SlotIndex}, name={slot.PlayerName}");
                 }
             }
 

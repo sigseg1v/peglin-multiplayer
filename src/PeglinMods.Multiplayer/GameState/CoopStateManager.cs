@@ -437,13 +437,14 @@ public class CoopStateManager
 
                 if (healthVar != null)
                 {
-                    var valProp = healthVar.GetType().GetProperty("Value");
-                    valProp?.SetValue(healthVar, state.CurrentHealth);
+                    // FloatVariable.Value is read-only; use the Set(float) method instead
+                    var setMethod = healthVar.GetType().GetMethod("Set", new[] { typeof(float) });
+                    setMethod?.Invoke(healthVar, new object[] { state.CurrentHealth });
                 }
                 if (maxVar != null)
                 {
-                    var valProp = maxVar.GetType().GetProperty("Value");
-                    valProp?.SetValue(maxVar, state.MaxHealth);
+                    var setMethod = maxVar.GetType().GetMethod("Set", new[] { typeof(float) });
+                    setMethod?.Invoke(maxVar, new object[] { state.MaxHealth });
                 }
                 return;
             }
