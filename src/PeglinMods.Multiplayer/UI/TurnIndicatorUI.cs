@@ -54,7 +54,7 @@ public class TurnIndicatorUI : MonoBehaviour
 
         var canvas = _canvasObj.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 150; // Above game UI, below multiplayer overlay
+        canvas.sortingOrder = 10000; // Must be on top of all game UI
 
         var scaler = _canvasObj.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
