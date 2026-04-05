@@ -248,8 +248,21 @@ public class CoopRewardUI : MonoBehaviour
     private void ShowWaiting()
     {
         ClearButtons();
-        _titleText.text = "Waiting...";
-        _statusText.text = "Waiting for other players to choose...";
+
+        // Use context-specific messages
+        if (CoopRewardState.HostRelicSelectionActive)
+        {
+            var services = MultiplayerPlugin.Services;
+            bool isHost = services?.TryResolve<IMultiplayerMode>(out var m) == true && m.IsHosting;
+            _titleText.text = isHost
+                ? "Waiting for all players to choose their initial relic..."
+                : "Other players are choosing their initial relics...";
+        }
+        else
+        {
+            _titleText.text = "Waiting...";
+        }
+        _statusText.text = "";
         _overlayPanel.SetActive(true);
         _currentState = DisplayState.Waiting;
     }

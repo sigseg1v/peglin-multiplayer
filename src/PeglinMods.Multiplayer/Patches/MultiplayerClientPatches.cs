@@ -437,14 +437,25 @@ public static class MultiplayerClientPatches
             }
         }
 
-        // Skip the relic selection screen — in coop mode, starting relics come from
-        // ClassLoadoutData (already applied by GameInit). Go straight to the map.
+        // Coop relic selection: both host and clients choose a starting relic.
+        // The host sees the game's native relic canvas; clients see CoopRewardUI.
+        // LoadMapScene is blocked until all players have chosen.
         if (IsHosting)
         {
-            MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Coop host: skipping relic selection, calling LoadMapScene");
-            var loadMapMethod = typeof(GameInit).GetMethod("LoadMapScene",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            loadMapMethod?.Invoke(__instance, null);
+            // Initialize relic selection tracking state
+            int nonHostCount = 0;
+            if (gameStartEvent?.FinalPlayers != null)
+            {
+                foreach (var p in gameStartEvent.FinalPlayers)
+                    if (!p.IsHost) nonHostCount++;
+            }
+            Events.Handlers.Coop.CoopRewardState.HostRelicSelectionActive = true;
+            Events.Handlers.Coop.CoopRewardState.HostHasChosenRelic = false;
+            Events.Handlers.Coop.CoopRewardState.TotalClientsExpected = nonHostCount;
+            Events.Handlers.Coop.CoopRewardState.ClientRelicChoicesReceived.Clear();
+            Events.Handlers.Coop.CoopRewardState.PendingGameInitInstance = __instance;
+
+            MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Coop host: entering relic selection phase, waiting for {nonHostCount} client(s)");
 
             // Generate starting relic choices for each non-host player and send
             if (services.TryResolve<IGameEventRegistry>(out var registry) && gameStartEvent?.FinalPlayers != null)
@@ -490,7 +501,73 @@ public static class MultiplayerClientPatches
                     }
                 }
             }
+
+            // The game's native relic canvas will show for the host — do NOT call LoadMapScene.
+            // LoadMapScene will be called by ChooseRelic -> SkipRelic -> LoadMapScene,
+            // where our GameInit_LoadMapScene_Prefix will gate on all clients being done.
         }
+        else if (!IsHosting)
+        {
+            // Client: hide the game's native relic canvas — the client uses CoopRewardUI instead
+            try
+            {
+                var canvasField = typeof(GameInit).GetField("_chooseRelicCanvas",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                var canvasObj = canvasField?.GetValue(__instance) as GameObject;
+                if (canvasObj != null)
+                {
+                    canvasObj.SetActive(false);
+                    MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Coop client: hid native relic canvas, using CoopRewardUI");
+                }
+            }
+            catch (Exception ex3)
+            {
+                MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] Failed to hide relic canvas: {ex3.Message}");
+            }
+        }
+    }
+
+    // =========================================================================
+    // GATE LoadMapScene ON ALL RELIC CHOICES — host waits for clients
+    // =========================================================================
+
+    /// <summary>
+    /// Intercept GameInit.LoadMapScene during coop relic selection.
+    /// When the host chooses their relic, the game calls LoadMapScene via the
+    /// SkipRelic tween callback. We block it until all clients have also chosen.
+    /// </summary>
+    [HarmonyPatch(typeof(GameInit), "LoadMapScene")]
+    [HarmonyPrefix]
+    public static bool GameInit_LoadMapScene_Prefix()
+    {
+        // Only intercept during coop relic selection
+        if (!Events.Handlers.Coop.CoopRewardState.HostRelicSelectionActive) return true;
+        if (!IsHosting) return true;
+
+        // Host has chosen their relic -- mark it
+        Events.Handlers.Coop.CoopRewardState.HostHasChosenRelic = true;
+
+        // Check if all clients have also chosen
+        if (Events.Handlers.Coop.CoopRewardState.AllClientRelicChoicesReceived)
+        {
+            // Everyone done -- allow LoadMapScene to proceed
+            Events.Handlers.Coop.CoopRewardState.HostRelicSelectionActive = false;
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] All relic choices received -- proceeding to map");
+
+            // Dispatch AllChoicesCompleteEvent
+            var services = MultiplayerPlugin.Services;
+            if (services?.TryResolve<IGameEventRegistry>(out var registry) == true)
+            {
+                registry.Dispatch(new Events.Network.Coop.AllChoicesCompleteEvent { Phase = "starting_relic" });
+            }
+            return true; // Allow LoadMapScene
+        }
+
+        // Not all clients have chosen yet -- block and show waiting
+        MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Host chose relic, waiting for " +
+            $"{Events.Handlers.Coop.CoopRewardState.TotalClientsExpected - Events.Handlers.Coop.CoopRewardState.ClientRelicChoicesReceived.Count} more client(s)");
+        Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = true;
+        return false; // Block LoadMapScene until all done
     }
 
     // =========================================================================
