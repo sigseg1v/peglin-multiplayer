@@ -31,7 +31,7 @@ public class CoopPlayerVisuals : MonoBehaviour
     private class PlayerVisual
     {
         public int SlotIndex;
-        public GameObject SpriteClone;
+        public GameObject SpriteClone; // null for slot 0 (host uses real player)
         public GameObject LabelCanvas;
         public TextMeshProUGUI NameText;
         public TextMeshProUGUI HpText;
@@ -41,6 +41,7 @@ public class CoopPlayerVisuals : MonoBehaviour
     private bool _inBattle;
     private string _lastScene = "";
     private GameObject _playerRef; // The original player GameObject
+    private PlayerVisual _hostLabel; // Label attached to the real player (slot 0)
 
     private void Update()
     {
@@ -167,6 +168,18 @@ public class CoopPlayerVisuals : MonoBehaviour
         }
 
         // Create visuals for new players (skip slot 0 -- that's the main player sprite)
+        // Create label for host player (slot 0) attached to the real player GO
+        if (_hostLabel == null && _playerRef != null)
+        {
+            CoopPlayerSummary hostSummary = null;
+            foreach (var s in summaries)
+                if (s.SlotIndex == 0) { hostSummary = s; break; }
+
+            if (hostSummary != null)
+                _hostLabel = CreateLabel(_playerRef, hostSummary);
+        }
+
+        // Create clones + labels for non-host players
         foreach (var summary in summaries)
         {
             if (summary.SlotIndex == 0) continue; // Host uses the real player sprite
@@ -181,6 +194,71 @@ public class CoopPlayerVisuals : MonoBehaviour
             var visual = CreatePlayerVisual(summary);
             if (visual != null)
                 _visuals.Add(visual);
+        }
+    }
+
+    /// <summary>Create just a name/HP label attached to an existing GameObject (for the host player).</summary>
+    private PlayerVisual CreateLabel(GameObject parent, CoopPlayerSummary summary)
+    {
+        try
+        {
+            var canvasObj = new GameObject($"CoopPlayerLabel_Slot{summary.SlotIndex}");
+            canvasObj.transform.SetParent(parent.transform, false);
+
+            var canvas = canvasObj.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.WorldSpace;
+            canvas.sortingOrder = 200;
+
+            var canvasRect = canvasObj.GetComponent<RectTransform>();
+            canvasRect.sizeDelta = new Vector2(4f, 1.5f);
+            canvasRect.localPosition = new Vector3(0, -1.2f, 0);
+            canvasRect.localScale = new Vector3(0.015f, 0.015f, 0.015f);
+
+            var nameObj = new GameObject("NameText");
+            nameObj.transform.SetParent(canvasObj.transform, false);
+            var nameText = nameObj.AddComponent<TextMeshProUGUI>();
+            nameText.text = summary.PlayerName ?? $"Player {summary.SlotIndex}";
+            nameText.fontSize = 32;
+            nameText.alignment = TextAlignmentOptions.Center;
+            nameText.color = Color.white;
+            nameText.outlineWidth = 0.3f;
+            nameText.outlineColor = Color.black;
+            var nameRect = nameText.rectTransform;
+            nameRect.anchorMin = new Vector2(0.5f, 1);
+            nameRect.anchorMax = new Vector2(0.5f, 1);
+            nameRect.pivot = new Vector2(0.5f, 1);
+            nameRect.anchoredPosition = Vector2.zero;
+            nameRect.sizeDelta = new Vector2(300, 40);
+
+            var hpObj = new GameObject("HpText");
+            hpObj.transform.SetParent(canvasObj.transform, false);
+            var hpText = hpObj.AddComponent<TextMeshProUGUI>();
+            hpText.text = $"{summary.CurrentHealth:F0} / {summary.MaxHealth:F0}";
+            hpText.fontSize = 26;
+            hpText.alignment = TextAlignmentOptions.Center;
+            hpText.color = new Color(0.8f, 1f, 0.8f);
+            hpText.outlineWidth = 0.3f;
+            hpText.outlineColor = Color.black;
+            var hpRect = hpText.rectTransform;
+            hpRect.anchorMin = new Vector2(0.5f, 1);
+            hpRect.anchorMax = new Vector2(0.5f, 1);
+            hpRect.pivot = new Vector2(0.5f, 1);
+            hpRect.anchoredPosition = new Vector2(0, -40);
+            hpRect.sizeDelta = new Vector2(300, 34);
+
+            return new PlayerVisual
+            {
+                SlotIndex = summary.SlotIndex,
+                SpriteClone = null,
+                LabelCanvas = canvasObj,
+                NameText = nameText,
+                HpText = hpText,
+            };
+        }
+        catch (Exception ex)
+        {
+            Log?.LogError($"[CoopPlayerVisuals] CreateLabel failed for slot {summary.SlotIndex}: {ex.Message}");
+            return null;
         }
     }
 
@@ -215,9 +293,9 @@ public class CoopPlayerVisuals : MonoBehaviour
             canvas.sortingOrder = 200;
 
             var canvasRect = canvasObj.GetComponent<RectTransform>();
-            canvasRect.sizeDelta = new Vector2(3f, 1f);
-            canvasRect.localPosition = new Vector3(0, -0.8f, 0);
-            canvasRect.localScale = new Vector3(0.01f, 0.01f, 0.01f);
+            canvasRect.sizeDelta = new Vector2(4f, 1.5f);
+            canvasRect.localPosition = new Vector3(0, -1.2f, 0);
+            canvasRect.localScale = new Vector3(0.015f, 0.015f, 0.015f);
 
             // Player name text
             var nameObj = new GameObject("NameText");
@@ -283,6 +361,28 @@ public class CoopPlayerVisuals : MonoBehaviour
         }
         catch { }
 
+        // Update host label (slot 0)
+        if (_hostLabel != null)
+        {
+            CoopPlayerSummary hostSummary = null;
+            foreach (var s in summaries)
+                if (s.SlotIndex == 0) { hostSummary = s; break; }
+
+            if (hostSummary != null)
+            {
+                if (_hostLabel.HpText != null)
+                    _hostLabel.HpText.text = $"{hostSummary.CurrentHealth:F0} / {hostSummary.MaxHealth:F0}";
+                if (_hostLabel.NameText != null)
+                {
+                    string className = Events.Handlers.Lobby.LobbyHelper.GetClassName(hostSummary.ChosenClass);
+                    string turnMarker = (activeSlot == 0) ? " [TURN]" : "";
+                    _hostLabel.NameText.text = $"{hostSummary.PlayerName} ({className}){turnMarker}";
+                    _hostLabel.NameText.color = (activeSlot == 0)
+                        ? new Color(1f, 1f, 0.6f) : Color.white;
+                }
+            }
+        }
+
         foreach (var visual in _visuals)
         {
             if (visual.SpriteClone == null) continue;
@@ -339,6 +439,12 @@ public class CoopPlayerVisuals : MonoBehaviour
         foreach (var v in _visuals)
             DestroyVisual(v);
         _visuals.Clear();
+
+        if (_hostLabel != null)
+        {
+            if (_hostLabel.LabelCanvas != null) Destroy(_hostLabel.LabelCanvas);
+            _hostLabel = null;
+        }
     }
 
     private void DestroyVisual(PlayerVisual v)
