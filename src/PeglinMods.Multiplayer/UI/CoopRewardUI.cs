@@ -348,6 +348,23 @@ public class CoopRewardUI : MonoBehaviour
                 // Client: send to host via network
                 if (services?.TryResolve<IMessageSender>(out var sender) == true)
                     sender.Send(new RelicChoiceEvent { ChosenRelicEffect = relicEffect });
+
+                // Also add the relic to the CLIENT's local RelicManager so it shows in the UI.
+                // The host tracks it in CoopPlayerState; the client needs it in RelicManager for display.
+                var clientRelicMgrs = UnityEngine.Resources.FindObjectsOfTypeAll<Relics.RelicManager>();
+                if (clientRelicMgrs != null && clientRelicMgrs.Length > 0)
+                {
+                    var allRelics = UnityEngine.Resources.FindObjectsOfTypeAll<Relics.Relic>();
+                    foreach (var relic in allRelics)
+                    {
+                        if ((int)relic.effect == relicEffect)
+                        {
+                            clientRelicMgrs[0].AddRelic(relic);
+                            Log?.LogInfo($"[CoopRewardUI] Client added relic locally: {relic.effect}");
+                            break;
+                        }
+                    }
+                }
             }
         }
         catch (Exception ex)
