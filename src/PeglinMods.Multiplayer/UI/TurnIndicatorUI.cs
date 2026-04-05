@@ -122,12 +122,19 @@ public class TurnIndicatorUI : MonoBehaviour
                 Show(currentMessage, TurnChangeClientHandler.IsMyTurn);
             }
 
-            // Fade logic
-            if (_showTimer > 0)
+            // Fade logic: keep visible while spectating another player's turn,
+            // only auto-fade for "YOUR TURN" (you're actively playing)
+            bool keepVisible = !TurnChangeClientHandler.IsMyTurn &&
+                               !string.IsNullOrEmpty(currentMessage);
+
+            if (keepVisible)
+            {
+                _canvasGroup.alpha = 1f;
+            }
+            else if (_showTimer > 0)
             {
                 _showTimer -= Time.unscaledDeltaTime;
-                float targetAlpha = (_showTimer > 0) ? 1f : 0f;
-                _canvasGroup.alpha = Mathf.MoveTowards(_canvasGroup.alpha, targetAlpha, Time.unscaledDeltaTime * FadeSpeed);
+                _canvasGroup.alpha = Mathf.MoveTowards(_canvasGroup.alpha, (_showTimer > 0) ? 1f : 0f, Time.unscaledDeltaTime * FadeSpeed);
             }
             else if (_canvasGroup.alpha > 0)
             {
