@@ -310,23 +310,36 @@ public static class MultiplayerClientPatches
 
         try
         {
-            // Find the active PachinkoBall (the one drawn for aiming)
-            var balls = UnityEngine.Object.FindObjectsOfType<PachinkoBall>();
-            PachinkoBall activeBall = null;
-            foreach (var ball in balls)
+            // Get BattleController's _activePachinkoBall directly via reflection.
+            // DrawBall creates the ball with a scale animation — ArmBallForShot only
+            // fires when the animation completes, setting state to AIMING. Scanning
+            // for AIMING balls would miss it during the animation.
+            var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
+            if (bc == null) return;
+
+            var activeBallField = HarmonyLib.AccessTools.Field(typeof(BattleController), "_activePachinkoBall");
+            var activeBallGO = activeBallField?.GetValue(bc) as UnityEngine.GameObject;
+            if (activeBallGO == null)
             {
-                if (ball.IsDummy) continue;
-                if (ball.CurrentState == PachinkoBall.FireballState.AIMING)
-                {
-                    activeBall = ball;
-                    break;
-                }
+                MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] PendingShot from {pending.PlayerName} but _activePachinkoBall is null");
+                return;
             }
 
+            var activeBall = activeBallGO.GetComponent<PachinkoBall>();
             if (activeBall == null)
             {
-                MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] PendingShot from {pending.PlayerName} but no aiming PachinkoBall found");
+                MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] PendingShot from {pending.PlayerName} but _activePachinkoBall has no PachinkoBall component");
                 return;
+            }
+
+            // If ball is still in WAITING state (scale animation hasn't completed),
+            // force-arm it so Fire() works.
+            if (activeBall.CurrentState == PachinkoBall.FireballState.WAITING)
+            {
+                // Kill the scale animation and arm the ball immediately
+                DG.Tweening.DOTween.Kill(activeBallGO.transform);
+                bc.ArmBallForShot();
+                MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Force-armed ball for {pending.PlayerName} (was WAITING)");
             }
 
             // Set aim direction on the ball

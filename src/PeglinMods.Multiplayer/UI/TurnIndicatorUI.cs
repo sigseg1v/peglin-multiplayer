@@ -64,27 +64,36 @@ public class TurnIndicatorUI : MonoBehaviour
         _canvasGroup = _canvasObj.AddComponent<CanvasGroup>();
         _canvasGroup.alpha = 0f;
 
-        // Banner background at top of screen
+        // Banner in upper-center of screen, below the game's top bar
         _bannerObj = new GameObject("TurnBanner");
         _bannerObj.transform.SetParent(_canvasObj.transform, false);
         _bannerBg = _bannerObj.AddComponent<Image>();
         _bannerBg.color = new Color(0, 0, 0, 0.7f);
 
         var bannerRect = _bannerObj.GetComponent<RectTransform>();
-        bannerRect.anchorMin = new Vector2(0.25f, 1f);
-        bannerRect.anchorMax = new Vector2(0.75f, 1f);
-        bannerRect.pivot = new Vector2(0.5f, 1f);
-        bannerRect.anchoredPosition = new Vector2(0, 0);
-        bannerRect.sizeDelta = new Vector2(0, 64);
+        bannerRect.anchorMin = new Vector2(0.25f, 0.82f);
+        bannerRect.anchorMax = new Vector2(0.75f, 0.82f);
+        bannerRect.pivot = new Vector2(0.5f, 0.5f);
+        bannerRect.anchoredPosition = Vector2.zero;
+        bannerRect.sizeDelta = new Vector2(0, 80);
+
+        // Ensure banner sorts above everything by adding its own canvas
+        var bannerCanvas = _bannerObj.AddComponent<Canvas>();
+        bannerCanvas.overrideSorting = true;
+        bannerCanvas.sortingOrder = 32000;
+        _bannerObj.AddComponent<GraphicRaycaster>();
 
         // Banner text
         var textObj = new GameObject("TurnText");
         textObj.transform.SetParent(_bannerObj.transform, false);
         _bannerText = textObj.AddComponent<TextMeshProUGUI>();
         _bannerText.text = "";
-        _bannerText.fontSize = 36;
+        _bannerText.fontSize = 42;
+        _bannerText.fontStyle = TMPro.FontStyles.Bold;
         _bannerText.alignment = TextAlignmentOptions.Center;
         _bannerText.color = Color.white;
+        _bannerText.outlineWidth = 0.15f;
+        _bannerText.outlineColor = Color.black;
 
         var textRect = _bannerText.rectTransform;
         textRect.anchorMin = Vector2.zero;
