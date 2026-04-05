@@ -227,7 +227,8 @@ public class CoopPlayerVisuals : MonoBehaviour
         panel.transform.SetParent(_overlayCanvasObj.transform, false);
 
         var panelRect = panel.AddComponent<RectTransform>();
-        panelRect.sizeDelta = new Vector2(200, 60);
+        panelRect.sizeDelta = new Vector2(400, 100);
+        panelRect.pivot = new Vector2(0.5f, 0f); // pivot at bottom-center (label grows upward from player)
 
         nameText = null;
         hpText = null;
@@ -236,10 +237,10 @@ public class CoopPlayerVisuals : MonoBehaviour
         nameObj.transform.SetParent(panel.transform, false);
         nameText = nameObj.AddComponent<TextMeshProUGUI>();
         nameText.text = summary.PlayerName ?? $"Player {summary.SlotIndex}";
-        nameText.fontSize = 22;
+        nameText.fontSize = 36;
         nameText.alignment = TextAlignmentOptions.Center;
         nameText.color = Color.white;
-        nameText.outlineWidth = 0.25f;
+        nameText.outlineWidth = 0.3f;
         nameText.outlineColor = Color.black;
         var nameRect = nameText.rectTransform;
         nameRect.anchorMin = new Vector2(0, 0.5f);
@@ -251,10 +252,10 @@ public class CoopPlayerVisuals : MonoBehaviour
         hpObj.transform.SetParent(panel.transform, false);
         hpText = hpObj.AddComponent<TextMeshProUGUI>();
         hpText.text = $"{summary.CurrentHealth:F0} / {summary.MaxHealth:F0}";
-        hpText.fontSize = 18;
+        hpText.fontSize = 30;
         hpText.alignment = TextAlignmentOptions.Center;
         hpText.color = new Color(0.8f, 1f, 0.8f);
-        hpText.outlineWidth = 0.2f;
+        hpText.outlineWidth = 0.25f;
         hpText.outlineColor = Color.black;
         var hpRect = hpText.rectTransform;
         hpRect.anchorMin = new Vector2(0, 0);
@@ -369,7 +370,7 @@ public class CoopPlayerVisuals : MonoBehaviour
                         ? new Color(1f, 1f, 0.6f) : Color.white;
                 }
                 // Position screen-space label below the player sprite
-                PositionLabelAtWorldPoint(_hostLabel, basePos + new Vector3(0, -1.2f, 0), cam);
+                PositionLabelAtWorldPoint(_hostLabel, basePos + new Vector3(0, 1.5f, 0), cam);
             }
         }
 
@@ -407,7 +408,7 @@ public class CoopPlayerVisuals : MonoBehaviour
 
             // Position screen-space label below the clone sprite
             var clonePos = visual.SpriteClone.transform.position;
-            PositionLabelAtWorldPoint(visual, clonePos + new Vector3(0, -1.2f, 0), cam);
+            PositionLabelAtWorldPoint(visual, clonePos + new Vector3(0, 1.5f, 0), cam);
 
             // Active player highlight
             float targetScale = (activeSlot == visual.SlotIndex) ? 1.15f : 1f;
