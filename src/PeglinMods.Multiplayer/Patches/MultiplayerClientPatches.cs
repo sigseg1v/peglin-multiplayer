@@ -333,13 +333,26 @@ public static class MultiplayerClientPatches
             }
 
             // If ball is still in WAITING state (scale animation hasn't completed),
-            // force-arm it so Fire() works.
+            // force it to AIMING so Fire() works. We set CurrentState directly via
+            // reflection instead of calling Arm() or ArmBallForShot() — both access
+            // _predictionManager and _relicManager which may be null after state swaps.
             if (activeBall.CurrentState == PachinkoBall.FireballState.WAITING)
             {
-                // Kill the scale animation and arm the ball immediately
+                // Kill the scale animation
                 DG.Tweening.DOTween.Kill(activeBallGO.transform);
-                bc.ArmBallForShot();
-                MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Force-armed ball for {pending.PlayerName} (was WAITING)");
+                activeBallGO.transform.localScale = activeBallGO.transform.localScale; // snap to current
+
+                // Directly set state to AIMING (property with protected setter)
+                var stateProp = HarmonyLib.AccessTools.Property(typeof(PachinkoBall), "CurrentState");
+                var stateSetter = stateProp?.GetSetMethod(true);
+                stateSetter?.Invoke(activeBall, new object[] { PachinkoBall.FireballState.AIMING });
+
+                // Enable physics
+                var rigid = activeBallGO.GetComponent<UnityEngine.Rigidbody2D>();
+                if (rigid != null)
+                    rigid.simulated = false; // AIMING balls should not be simulated
+
+                MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Force-armed ball for {pending.PlayerName} (was WAITING, set to AIMING directly)");
             }
 
             // Set aim direction on the ball
@@ -371,7 +384,7 @@ public static class MultiplayerClientPatches
         }
         catch (System.Exception ex)
         {
-            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] PendingShot execution failed: {ex.Message}");
+            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] PendingShot execution failed: {ex}");
         }
     }
 

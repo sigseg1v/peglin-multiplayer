@@ -207,7 +207,8 @@ public class CoopPlayerVisuals : MonoBehaviour
 
             var canvas = canvasObj.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.WorldSpace;
-            canvas.sortingOrder = 200;
+            canvas.sortingLayerName = "PegboardMain";
+            canvas.sortingOrder = 500;
 
             var canvasRect = canvasObj.GetComponent<RectTransform>();
             canvasRect.sizeDelta = new Vector2(4f, 1.5f);
@@ -290,7 +291,8 @@ public class CoopPlayerVisuals : MonoBehaviour
 
             var canvas = canvasObj.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.WorldSpace;
-            canvas.sortingOrder = 200;
+            canvas.sortingLayerName = "PegboardMain";
+            canvas.sortingOrder = 500;
 
             var canvasRect = canvasObj.GetComponent<RectTransform>();
             canvasRect.sizeDelta = new Vector2(4f, 1.5f);
