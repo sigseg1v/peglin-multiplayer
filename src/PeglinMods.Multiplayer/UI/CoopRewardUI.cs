@@ -4,7 +4,9 @@ using BepInEx.Logging;
 using PeglinMods.Multiplayer.Events;
 using PeglinMods.Multiplayer.Events.Handlers.Coop;
 using PeglinMods.Multiplayer.Events.Network.Coop;
+using PeglinMods.Multiplayer.GameState;
 using PeglinMods.Multiplayer.Multiplayer;
+using PeglinMods.Multiplayer.Network;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -181,7 +183,7 @@ public class CoopRewardUI : MonoBehaviour
         _currentState = DisplayState.RelicChoices;
         _displayedRelicCount = choices.Choices.Count;
 
-        float buttonWidth = 260;
+        float buttonWidth = 340;
         float spacing = 20;
         float totalWidth = choices.Choices.Count * buttonWidth + (choices.Choices.Count - 1) * spacing;
         float startX = -totalWidth / 2f + buttonWidth / 2f;
@@ -198,7 +200,7 @@ public class CoopRewardUI : MonoBehaviour
                 relic.LocKey ?? "",
                 new Color(0.25f, 0.2f, 0.45f),
                 new Vector2(xPos, 0),
-                new Vector2(buttonWidth, 200));
+                new Vector2(buttonWidth, 260));
 
             int capturedEffect = relic.Effect;
             btn.onClick.AddListener(() => OnRelicChosen(capturedEffect));
@@ -283,12 +285,56 @@ public class CoopRewardUI : MonoBehaviour
         try
         {
             var services = MultiplayerPlugin.Services;
-            var registry = services?.Resolve<IGameEventRegistry>();
-            registry?.Dispatch(new RelicChoiceEvent { ChosenRelicEffect = relicEffect });
+            if (services?.TryResolve<IMultiplayerMode>(out var mode) == true && mode.IsHosting)
+            {
+                // Host: apply the relic directly via RelicManager, then mark as chosen
+                var relicMgrs = UnityEngine.Resources.FindObjectsOfTypeAll<Relics.RelicManager>();
+                if (relicMgrs != null && relicMgrs.Length > 0)
+                {
+                    foreach (var relic in relicMgrs[0].CommonRelicPool)
+                    {
+                        if ((int)relic.effect == relicEffect)
+                        {
+                            relicMgrs[0].AddRelic(relic);
+                            Log?.LogInfo($"[CoopRewardUI] Host added relic: {relic.effect}");
+                            break;
+                        }
+                    }
+                }
+                // Mark host as chosen - same logic as GameInit_LoadMapScene_Prefix
+                CoopRewardState.HostHasChosenRelic = true;
+
+                // Save host state with the new relic
+                if (services.TryResolve<CoopStateManager>(out var coopState))
+                    coopState.SaveActivePlayerState();
+
+                // Check if all clients have also chosen
+                if (CoopRewardState.AllClientRelicChoicesReceived)
+                {
+                    Log?.LogInfo("[CoopRewardUI] All relic choices received — proceeding to map");
+                    CoopRewardState.HostRelicSelectionActive = false;
+                    if (services.TryResolve<IGameEventRegistry>(out var reg))
+                        reg.Dispatch(new AllChoicesCompleteEvent { Phase = "starting_relic" });
+
+                    var gameInit = CoopRewardState.PendingGameInitInstance as GameInit;
+                    if (gameInit != null)
+                    {
+                        var loadMapMethod = typeof(GameInit).GetMethod("LoadMapScene",
+                            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                        loadMapMethod?.Invoke(gameInit, null);
+                    }
+                }
+            }
+            else
+            {
+                // Client: send to host via network
+                if (services?.TryResolve<IMessageSender>(out var sender) == true)
+                    sender.Send(new RelicChoiceEvent { ChosenRelicEffect = relicEffect });
+            }
         }
         catch (Exception ex)
         {
-            Log?.LogError($"[CoopRewardUI] Failed to dispatch relic choice: {ex.Message}");
+            Log?.LogError($"[CoopRewardUI] Failed to process relic choice: {ex.Message}");
         }
 
         CoopRewardState.PendingRelicChoices = null;
@@ -303,12 +349,12 @@ public class CoopRewardUI : MonoBehaviour
         try
         {
             var services = MultiplayerPlugin.Services;
-            var registry = services?.Resolve<IGameEventRegistry>();
-            registry?.Dispatch(new RewardChoiceEvent { ChosenOptionIndex = optionIndex });
+            if (services?.TryResolve<IMessageSender>(out var sender) == true)
+                sender.Send(new RewardChoiceEvent { ChosenOptionIndex = optionIndex });
         }
         catch (Exception ex)
         {
-            Log?.LogError($"[CoopRewardUI] Failed to dispatch reward choice: {ex.Message}");
+            Log?.LogError($"[CoopRewardUI] Failed to send reward choice: {ex.Message}");
         }
 
         CoopRewardState.PendingRewardChoices = null;
@@ -348,7 +394,7 @@ public class CoopRewardUI : MonoBehaviour
         titleObj.transform.SetParent(obj.transform, false);
         var titleTmp = titleObj.AddComponent<TextMeshProUGUI>();
         titleTmp.text = title;
-        titleTmp.fontSize = 26;
+        titleTmp.fontSize = 42;
         titleTmp.fontStyle = FontStyles.Bold;
         titleTmp.alignment = TextAlignmentOptions.Center;
         titleTmp.color = Color.white;
@@ -366,7 +412,7 @@ public class CoopRewardUI : MonoBehaviour
             descObj.transform.SetParent(obj.transform, false);
             var descTmp = descObj.AddComponent<TextMeshProUGUI>();
             descTmp.text = description;
-            descTmp.fontSize = 18;
+            descTmp.fontSize = 30;
             descTmp.alignment = TextAlignmentOptions.Center;
             descTmp.color = new Color(0.8f, 0.8f, 0.8f);
             descTmp.enableWordWrapping = true;

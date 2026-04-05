@@ -499,12 +499,53 @@ public static class MultiplayerClientPatches
                             MultiplayerPlugin.Logger?.LogInfo($"[GameInit] Sent {choices.Count} relic choices to slot {player.SlotIndex}");
                         }
                     }
+
+                    // Also generate relic choices for the host and display via CoopRewardUI
+                    try
+                    {
+                        var hostChoices = new System.Collections.Generic.List<GameState.Snapshots.RelicEntry>();
+                        var relics2 = rm.GetMultipleRelicsOffOfQueue(3, Relics.RelicRarity.COMMON);
+                        foreach (var relic in relics2)
+                        {
+                            hostChoices.Add(new GameState.Snapshots.RelicEntry
+                            {
+                                Effect = (int)relic.effect,
+                                EffectName = relic.englishDisplayName ?? relic.locKey ?? "Unknown",
+                                LocKey = relic.locKey ?? "",
+                                Rarity = (int)relic.globalRarity,
+                                IsEnabled = true,
+                            });
+                        }
+                        Events.Handlers.Coop.CoopRewardState.PendingRelicChoices = new Events.Network.Coop.RelicChoicesEvent
+                        {
+                            TargetSlotIndex = 0,
+                            Choices = hostChoices,
+                        };
+                        MultiplayerPlugin.Logger?.LogInfo($"[GameInit] Generated {hostChoices.Count} relic choices for host (slot 0)");
+                    }
+                    catch (Exception ex4)
+                    {
+                        MultiplayerPlugin.Logger?.LogWarning($"[GameInit] Failed to generate host relic choices: {ex4.Message}");
+                    }
                 }
             }
 
-            // The game's native relic canvas will show for the host — do NOT call LoadMapScene.
-            // LoadMapScene will be called by ChooseRelic -> SkipRelic -> LoadMapScene,
-            // where our GameInit_LoadMapScene_Prefix will gate on all clients being done.
+            // Hide the native relic canvas — host uses CoopRewardUI like clients
+            try
+            {
+                var canvasField = typeof(GameInit).GetField("_chooseRelicCanvas",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                var canvasObj = canvasField?.GetValue(__instance) as GameObject;
+                if (canvasObj != null)
+                {
+                    canvasObj.SetActive(false);
+                    MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Coop host: hid native relic canvas, using CoopRewardUI");
+                }
+            }
+            catch (Exception ex5)
+            {
+                MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] Failed to hide host relic canvas: {ex5.Message}");
+            }
         }
         else if (!IsHosting)
         {
