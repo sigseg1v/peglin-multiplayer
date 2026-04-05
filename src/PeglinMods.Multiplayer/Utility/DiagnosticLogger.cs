@@ -48,9 +48,9 @@ public static class DiagnosticLogger
                 var rm = rms.Length > 0 ? rms[0] : null;
                 if (rm != null)
                 {
-                    var relicCount = HarmonyLib.AccessTools.Field(typeof(Relics.RelicManager), "_ownedRelics")
-                        ?.GetValue(rm) as System.Collections.IList;
-                    Log?.LogInfo($"  Relics: {relicCount?.Count ?? 0} owned");
+                    var relicDict = HarmonyLib.AccessTools.Field(typeof(Relics.RelicManager), "_ownedRelics")
+                        ?.GetValue(rm) as System.Collections.IDictionary;
+                    Log?.LogInfo($"  Relics: {relicDict?.Count ?? 0} owned");
                 }
             }
             catch { }

@@ -337,13 +337,18 @@ public class CoopStateManager
             // Find all available Relic ScriptableObject assets
             var allRelicAssets = Resources.FindObjectsOfTypeAll<Relic>();
 
+            // Add relics directly to the _ownedRelics dictionary via reflection
+            // instead of calling AddRelic(). AddRelic fires OnRelicAdded which triggers
+            // StateSyncSubscriptions.SyncRelics, broadcasting the swapped-in player's
+            // relics to the client and overwriting the client's own relics. It also
+            // modifies PersistentPlayerData (save corruption), removes from relic pools,
+            // and applies effects (already applied when originally chosen).
             int added = 0;
             foreach (var entry in state.OwnedRelics)
             {
                 var effect = (RelicEffect)entry.Effect;
                 if (effect == RelicEffect.NONE) continue;
 
-                // Find the relic asset by effect or locKey
                 var relicAsset = allRelicAssets.FirstOrDefault(r => r.effect == effect)
                     ?? allRelicAssets.FirstOrDefault(r => r.locKey == entry.LocKey);
 
@@ -351,12 +356,16 @@ public class CoopStateManager
                 {
                     try
                     {
-                        relicMgr.AddRelic(relicAsset);
-                        added++;
+                        var owned = ownedField.GetValue(relicMgr) as Dictionary<RelicEffect, Relic>;
+                        if (owned != null && !owned.ContainsKey(effect))
+                        {
+                            owned[effect] = relicAsset;
+                            added++;
+                        }
                     }
                     catch (Exception ex)
                     {
-                        _log.LogWarning($"[CoopState] AddRelic failed for {effect}: {ex.Message}");
+                        _log.LogWarning($"[CoopState] Direct relic add failed for {effect}: {ex.Message}");
                     }
                 }
                 else

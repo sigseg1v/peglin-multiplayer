@@ -205,18 +205,75 @@ public static class MultiplayerClientPatches
         }
     }
 
+    /// <summary>
+    /// Tracks whether the client has already sent a ShootRequest this turn.
+    /// Reset when TurnChangeClientHandler receives a new turn change.
+    /// </summary>
+    internal static bool ClientShotSentThisTurn;
+
     [HarmonyPatch(typeof(BattleController), "Update")]
     [HarmonyPrefix]
-    public static bool BattleController_Update_Prefix()
+    public static bool BattleController_Update_Prefix(BattleController __instance)
     {
         if (!ShouldSuppressClientLogic) return true;
 
-        // In co-op: allow BattleController.Update when it's this client's turn
-        // so they can aim and shoot. TurnChangeClientHandler tracks whose turn it is.
-        if (Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn)
-            return true;
+        // In co-op: handle aiming input ourselves instead of running BattleController.Update.
+        // BattleController.Update in AWAITING_SHOT fires OnStartedAwaitingShot, increments
+        // round count, resets per-shot relics, etc. — side effects that corrupt client state.
+        // Instead, we read mouse position, update the aimer visual, and send a ShootRequest
+        // to the host when the client clicks.
+        if (Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn && !ClientShotSentThisTurn)
+        {
+            HandleClientAiming(__instance);
+        }
 
-        return false;
+        return false; // Always block BattleController.Update on the client
+    }
+
+    /// <summary>
+    /// Handles client-side aiming input during the client's turn.
+    /// Reads mouse position, updates the ClientBallRenderer aim direction,
+    /// and sends a ShootRequestEvent to the host when the player clicks.
+    /// </summary>
+    private static void HandleClientAiming(BattleController bc)
+    {
+        var cam = Camera.main;
+        if (cam == null) return;
+
+        // Get the ball spawn position from BattleController
+        var spawnPos = bc.pachinkoBallSpawnLocation;
+
+        // Get mouse world position
+        var mouseScreenPos = Input.mousePosition;
+        mouseScreenPos.z = -cam.transform.position.z; // distance from camera
+        var mouseWorld = (Vector2)cam.ScreenToWorldPoint(mouseScreenPos);
+
+        // Compute aim direction from spawn to mouse
+        var aimDir = (mouseWorld - spawnPos).normalized;
+
+        // Update the ClientBallRenderer's aim direction for visual orb rotation
+        var cbr = GameState.ClientBallRenderer.Instance;
+        if (cbr != null)
+        {
+            cbr.UpdateAimDirection(aimDir.x, aimDir.y);
+        }
+
+        // On mouse click, send shoot request to host
+        if (Input.GetMouseButtonDown(0))
+        {
+            var services = MultiplayerPlugin.Services;
+            if (services?.TryResolve<Network.IMessageSender>(out var sender) == true)
+            {
+                sender.Send(new Events.Network.Coop.ShootRequestEvent
+                {
+                    AimDirectionX = aimDir.x,
+                    AimDirectionY = aimDir.y,
+                });
+                ClientShotSentThisTurn = true;
+                MultiplayerPlugin.Logger?.LogInfo(
+                    $"[ClientPatches] Sent ShootRequest from client aiming: aim=({aimDir.x:F2},{aimDir.y:F2})");
+            }
+        }
     }
 
     /// <summary>
@@ -1347,32 +1404,13 @@ public static class MultiplayerClientPatches
             }
         }
 
-        // CLIENT-SIDE: only intercept on spectating client during their coop turn
-        if (!ShouldSuppressClientLogic) return true; // Host or non-multiplayer: allow
-        if (!UI.LobbyUI.GameStartReceived) return true; // Not coop
-        if (!Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn) return false; // Not my turn: block
+        // CLIENT-SIDE: always block PachinkoBall.Fire on the client.
+        // The client handles aiming input via HandleClientAiming in the
+        // BattleController.Update prefix, which sends ShootRequestEvent directly
+        // without needing a PachinkoBall.
+        if (ShouldSuppressClientLogic) return false;
 
-        // It's the client's turn — capture aim and send to host, then allow local fire
-        try
-        {
-            var aimVec = __instance.aimVector;
-            var services = MultiplayerPlugin.Services;
-            if (services?.TryResolve<Network.IMessageSender>(out var sender) == true)
-            {
-                sender.Send(new Events.Network.Coop.ShootRequestEvent
-                {
-                    AimDirectionX = aimVec.x,
-                    AimDirectionY = aimVec.y,
-                });
-                MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Sent ShootRequest: aim=({aimVec.x:F2},{aimVec.y:F2})");
-            }
-        }
-        catch (System.Exception ex)
-        {
-            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] ShootRequest send failed: {ex.Message}");
-        }
-
-        return false; // Suppress local fire — host will execute this shot
+        return true; // Non-multiplayer: allow
     }
 
     // =========================================================================

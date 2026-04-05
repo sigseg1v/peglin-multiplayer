@@ -54,17 +54,13 @@ public sealed class TurnChangeClientHandler : IClientHandler<TurnChangeEvent>
                    networkEvent.ActiveSlotIndex == mySlot &&
                    networkEvent.TurnPhase == nameof(GameState.TurnPhase.PLAYER_AIMING);
 
+        // Reset the client shot flag on any turn change so the client can shoot
+        // again when their next turn comes around.
+        Patches.MultiplayerClientPatches.ClientShotSentThisTurn = false;
+
         if (IsMyTurn)
         {
             TurnMessage = "Your turn! Aim and shoot.";
-
-            // Set the client's BattleState to AWAITING_SHOT so the aiming code
-            // runs in BattleController.Update. Without this, the client's state
-            // machine is frozen at whatever state it was in when the battle loaded.
-            if (mySlot > 0) // Non-host client
-            {
-                BattleCtrl.CurrentBattleState = BattleCtrl.BattleState.AWAITING_SHOT;
-            }
         }
         else if (networkEvent.TurnPhase == nameof(GameState.TurnPhase.PLAYER_AIMING))
         {
