@@ -51,6 +51,8 @@ public class GameStateSyncService : IGameStateSyncService
 
         try
         {
+            var activeSlot = _coopStateManager?.ActivePlayerSlot ?? 0;
+
             var snapshot = new FullGameStateSnapshot
             {
                 TimestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
@@ -61,6 +63,15 @@ public class GameStateSyncService : IGameStateSyncService
                 Enemies = _enemyProvider.Capture(),
                 Pegboard = _pegboardProvider.Capture(),
             };
+
+            // Tag per-player snapshots with the active slot so the client knows
+            // whose data this is and can avoid applying another player's state.
+            if (snapshot.Player != null)
+                snapshot.Player.ActiveSlotIndex = activeSlot;
+            if (snapshot.Deck != null)
+                snapshot.Deck.ActiveSlotIndex = activeSlot;
+            if (snapshot.Relics != null)
+                snapshot.Relics.ActiveSlotIndex = activeSlot;
 
             // Add co-op multi-player data if available
             if (_coopStateManager != null && _coopStateManager.TotalPlayerCount > 0)

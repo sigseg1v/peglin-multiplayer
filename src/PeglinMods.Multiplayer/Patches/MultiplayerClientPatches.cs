@@ -229,6 +229,20 @@ public static class MultiplayerClientPatches
         var pending = Events.Handlers.Coop.ShootRequestClientHandler.ConsumePendingShot();
         if (pending == null) return;
 
+        // Verify the pending shot is for the currently active player slot.
+        // In coop, turns rotate between players — a stale shot from a previous
+        // turn must not fire during the wrong player's turn.
+        var services = MultiplayerPlugin.Services;
+        if (services?.TryResolve<GameState.TurnManager>(out var tm) == true)
+        {
+            if (pending.SlotIndex != tm.CurrentPlayerSlot)
+            {
+                MultiplayerPlugin.Logger?.LogWarning(
+                    $"[ClientPatches] PendingShot slot mismatch: shot.slot={pending.SlotIndex} current={tm.CurrentPlayerSlot} — discarding");
+                return;
+            }
+        }
+
         try
         {
             // Find the active PachinkoBall (the one drawn for aiming)

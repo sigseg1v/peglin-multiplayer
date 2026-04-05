@@ -171,9 +171,8 @@ public class GameStateApplyService
                 _mapApplier.Apply(snapshot.Map);
             }
 
-            // Apply player state (works on any scene)
-            if (snapshot.Player != null)
-                SafeApply("Player", () => _playerApplier.Apply(snapshot.Player));
+            // Apply player state (works on any scene) — use coop-aware path
+            ApplyPlayerFromSnapshot(snapshot);
         }
         catch (Exception ex)
         {
@@ -314,11 +313,48 @@ public class GameStateApplyService
     {
         var currentScene = SceneManager.GetActiveScene().name;
 
-        if (snapshot.Player != null)
-            SafeApply("Player", () => _playerApplier.Apply(snapshot.Player));
-
         // In coop mode, each player has their own deck/relics — don't overwrite with host's
         var isCoop = UI.LobbyUI.GameStartReceived;
+
+        // In coop, the Player snapshot contains the host's active player's data, which
+        // may not be this client's player. Use PlayerSummaries to find our own health/gold.
+        if (isCoop && snapshot.PlayerSummaries != null && snapshot.PlayerSummaries.Count > 0)
+        {
+            int mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
+            bool found = false;
+            foreach (var summary in snapshot.PlayerSummaries)
+            {
+                if (summary.SlotIndex == mySlot)
+                {
+                    var myPlayerState = new PlayerStateSnapshot
+                    {
+                        ActiveSlotIndex = mySlot,
+                        CurrentHealth = summary.CurrentHealth,
+                        MaxHealth = summary.MaxHealth,
+                        Gold = summary.Gold,
+                    };
+                    // Preserve status effects and speedup from the generic snapshot if available
+                    if (snapshot.Player != null)
+                    {
+                        myPlayerState.StatusEffects = snapshot.Player.StatusEffects;
+                        myPlayerState.IsSpedUp = snapshot.Player.IsSpedUp;
+                        myPlayerState.SpeedupLevel = snapshot.Player.SpeedupLevel;
+                    }
+                    SafeApply("Player(coop)", () => _playerApplier.Apply(myPlayerState));
+                    found = true;
+                    break;
+                }
+            }
+            if (!found && snapshot.Player != null)
+            {
+                _log.LogWarning($"[ApplyService] Coop: could not find slot {mySlot} in PlayerSummaries, falling back to generic Player snapshot");
+                SafeApply("Player", () => _playerApplier.Apply(snapshot.Player));
+            }
+        }
+        else if (snapshot.Player != null)
+        {
+            SafeApply("Player", () => _playerApplier.Apply(snapshot.Player));
+        }
 
         // Battle-specific state
         if (currentScene == "Battle")
@@ -538,6 +574,44 @@ public class GameStateApplyService
         {
             _log.LogWarning($"[ApplyService] TriggerNavigation failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Apply player state from a full snapshot, using PlayerSummaries in coop mode
+    /// to find this client's own health/gold instead of the host's active player.
+    /// </summary>
+    private void ApplyPlayerFromSnapshot(FullGameStateSnapshot snapshot)
+    {
+        var isCoop = UI.LobbyUI.GameStartReceived;
+
+        if (isCoop && snapshot.PlayerSummaries != null && snapshot.PlayerSummaries.Count > 0)
+        {
+            int mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
+            foreach (var summary in snapshot.PlayerSummaries)
+            {
+                if (summary.SlotIndex == mySlot)
+                {
+                    var myPlayerState = new PlayerStateSnapshot
+                    {
+                        ActiveSlotIndex = mySlot,
+                        CurrentHealth = summary.CurrentHealth,
+                        MaxHealth = summary.MaxHealth,
+                        Gold = summary.Gold,
+                    };
+                    if (snapshot.Player != null)
+                    {
+                        myPlayerState.StatusEffects = snapshot.Player.StatusEffects;
+                        myPlayerState.IsSpedUp = snapshot.Player.IsSpedUp;
+                        myPlayerState.SpeedupLevel = snapshot.Player.SpeedupLevel;
+                    }
+                    SafeApply("Player(coop-xscene)", () => _playerApplier.Apply(myPlayerState));
+                    return;
+                }
+            }
+        }
+
+        if (snapshot.Player != null)
+            SafeApply("Player", () => _playerApplier.Apply(snapshot.Player));
     }
 
     private void SafeApply(string name, Action action)
