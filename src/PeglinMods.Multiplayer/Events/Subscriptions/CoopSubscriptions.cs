@@ -1,6 +1,7 @@
 using System;
 using Battle;
 using BepInEx.Logging;
+using HarmonyLib;
 using PeglinMods.Multiplayer.Events;
 using PeglinMods.Multiplayer.Events.Network.Coop;
 using PeglinMods.Multiplayer.GameState;
@@ -354,9 +355,38 @@ public sealed class CoopSubscriptions
             }
             else if (!hasBattle && DeckManager.completeDeck != null && DeckManager.completeDeck.Count > 0)
             {
-                // No battle deck loaded but complete deck exists — initialize battle deck
+                // No battle deck loaded but complete deck exists — initialize battle deck.
+                // CRITICAL: ShuffleBattleDeck() calls ShuffleCompleteDeck(fromComplete: false)
+                // which reads from the EMPTY battleDeck and does nothing.
+                // We must call ShuffleCompleteDeck(fromComplete: true) to build battleDeck
+                // from completeDeck and populate shuffledDeck.
                 _log.LogInfo($"[CoopSubs] {context}: battleDeck empty, initializing from completeDeck ({DeckManager.completeDeck.Count} orbs)");
-                dm.ShuffleBattleDeck();
+
+                var shuffleMethod = AccessTools.Method(typeof(DeckManager), "ShuffleCompleteDeck", new[] { typeof(bool) });
+                if (shuffleMethod != null)
+                {
+                    shuffleMethod.Invoke(dm, new object[] { true });
+                    _log.LogInfo($"[CoopSubs] {context}: after ShuffleCompleteDeck(true): battleDeck={dm.battleDeck?.Count ?? 0}, shuffledDeck={dm.shuffledDeck?.Count ?? 0}");
+                }
+                else
+                {
+                    // Fallback: manually copy completeDeck into battleDeck, then shuffle
+                    _log.LogWarning($"[CoopSubs] {context}: ShuffleCompleteDeck not found, manually copying completeDeck to battleDeck");
+                    if (dm.battleDeck == null)
+                        dm.battleDeck = new System.Collections.Generic.List<GameObject>();
+                    foreach (var orb in DeckManager.completeDeck)
+                    {
+                        if (orb != null)
+                        {
+                            var instance = UnityEngine.Object.Instantiate(orb);
+                            instance.name = orb.name;
+                            instance.SetActive(false);
+                            dm.battleDeck.Add(instance);
+                        }
+                    }
+                    dm.ShuffleBattleDeck();
+                    _log.LogInfo($"[CoopSubs] {context}: after fallback shuffle: battleDeck={dm.battleDeck?.Count ?? 0}, shuffledDeck={dm.shuffledDeck?.Count ?? 0}");
+                }
             }
             // else: both empty — nothing to do, likely pre-battle state
         }

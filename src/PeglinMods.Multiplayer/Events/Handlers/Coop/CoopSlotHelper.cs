@@ -24,7 +24,11 @@ public static class CoopSlotHelper
         if (transport.IsHost)
             return 0;
 
-        // Client: find our slot -- on the client side, the first non-host slot is us
+        // Client: check LocalSlot first (set by GameStartClientHandler)
+        if (registry.LocalSlot != null)
+            return registry.LocalSlot.SlotIndex;
+
+        // Fallback: iterate registered slots
         foreach (var slot in registry.GetAllSlots())
         {
             if (!slot.IsHost)

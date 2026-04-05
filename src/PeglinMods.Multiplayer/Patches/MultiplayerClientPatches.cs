@@ -72,6 +72,13 @@ public static class MultiplayerClientPatches
         }
     }
 
+    /// <summary>
+    /// Set to true by BattleController_Update_Postfix just before calling
+    /// PachinkoBall.Fire() to execute a client's pending shot. This prevents
+    /// PachinkoBall_Fire_Prefix from blocking the programmatic fire.
+    /// </summary>
+    internal static bool ExecutingPendingShot;
+
     // =========================================================================
     // DISABLE TUTORIAL IN MULTIPLAYER — both host and client
     // =========================================================================
@@ -273,8 +280,16 @@ public static class MultiplayerClientPatches
                 activeBall.transform.right = aimDir;
             }
 
-            // Fire the ball
-            activeBall.Fire();
+            // Fire the ball — set flag so PachinkoBall_Fire_Prefix doesn't block it
+            ExecutingPendingShot = true;
+            try
+            {
+                activeBall.Fire();
+            }
+            finally
+            {
+                ExecutingPendingShot = false;
+            }
 
             MultiplayerPlugin.Logger?.LogInfo(
                 $"[ClientPatches] Executed PendingShot from {pending.PlayerName} (slot {pending.SlotIndex}): " +
@@ -1162,7 +1177,19 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool PachinkoBall_Fire_Prefix(PachinkoBall __instance)
     {
-        // Only intercept on spectating client during their coop turn
+        // HOST-SIDE: block the host player from firing during a client's turn.
+        // Only allow Fire() when ExecutingPendingShot is set (our postfix programmatic fire).
+        if (IsHosting && UI.LobbyUI.GameStartReceived && !ExecutingPendingShot)
+        {
+            var services = MultiplayerPlugin.Services;
+            if (services?.TryResolve<GameState.TurnManager>(out var tm) == true
+                && tm.CurrentPlayerSlot > 0) // slot 0 = host, >0 = client's turn
+            {
+                return false; // Silently block — host can't fire during client turns
+            }
+        }
+
+        // CLIENT-SIDE: only intercept on spectating client during their coop turn
         if (!ShouldSuppressClientLogic) return true; // Host or non-multiplayer: allow
         if (!UI.LobbyUI.GameStartReceived) return true; // Not coop
         if (!Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn) return false; // Not my turn: block
