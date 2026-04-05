@@ -233,7 +233,7 @@ public static class MultiplayerClientPatches
         // Only fire when BattleController is in AWAITING_SHOT and there's a pending shot
         if (BattleController.CurrentBattleState != BattleController.BattleState.AWAITING_SHOT) return;
 
-        var pending = Events.Handlers.Coop.ShootRequestClientHandler.ConsumePendingShot();
+        var pending = Events.Handlers.Coop.ShootRequestClientHandler.PeekPendingShot();
         if (pending == null) return;
 
         // Verify the pending shot is for the currently active player slot.
@@ -290,6 +290,9 @@ public static class MultiplayerClientPatches
             {
                 ExecutingPendingShot = false;
             }
+
+            // Only consume the shot after successful fire
+            Events.Handlers.Coop.ShootRequestClientHandler.ConsumePendingShot();
 
             MultiplayerPlugin.Logger?.LogInfo(
                 $"[ClientPatches] Executed PendingShot from {pending.PlayerName} (slot {pending.SlotIndex}): " +

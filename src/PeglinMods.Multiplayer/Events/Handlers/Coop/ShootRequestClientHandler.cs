@@ -61,6 +61,15 @@ public sealed class ShootRequestClientHandler : IClientHandler<ShootRequestEvent
     }
 
     /// <summary>
+    /// Peek at the pending shot without clearing it.
+    /// Returns the shot or null if none pending.
+    /// </summary>
+    public static PendingShot PeekPendingShot()
+    {
+        return LatestPendingShot;
+    }
+
+    /// <summary>
     /// Consume the pending shot (called by the battle integration patch).
     /// Returns the shot and clears it, or null if none pending.
     /// </summary>

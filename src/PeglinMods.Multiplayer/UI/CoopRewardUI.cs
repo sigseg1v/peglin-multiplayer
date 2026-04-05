@@ -289,16 +289,17 @@ public class CoopRewardUI : MonoBehaviour
             {
                 // Host: apply the relic directly via RelicManager, then mark as chosen
                 var relicMgrs = UnityEngine.Resources.FindObjectsOfTypeAll<Relics.RelicManager>();
-                if (relicMgrs != null && relicMgrs.Length > 0)
+                // Find the Relic asset by effect — can't use CommonRelicPool because
+                // GetMultipleRelicsOffOfQueue already dequeued the relics from the pool.
+                var allRelics = UnityEngine.Resources.FindObjectsOfTypeAll<Relics.Relic>();
+                foreach (var relic in allRelics)
                 {
-                    foreach (var relic in relicMgrs[0].CommonRelicPool)
+                    if ((int)relic.effect == relicEffect)
                     {
-                        if ((int)relic.effect == relicEffect)
-                        {
+                        if (relicMgrs != null && relicMgrs.Length > 0)
                             relicMgrs[0].AddRelic(relic);
-                            Log?.LogInfo($"[CoopRewardUI] Host added relic: {relic.effect}");
-                            break;
-                        }
+                        Log?.LogInfo($"[CoopRewardUI] Host added relic: {relic.effect} ({relic.locKey})");
+                        break;
                     }
                 }
                 // Mark host as chosen - same logic as GameInit_LoadMapScene_Prefix

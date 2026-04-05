@@ -44,17 +44,15 @@ public sealed class RelicChoiceClientHandler : IClientHandler<RelicChoiceEvent>
                 var playerState = coopState.GetPlayerState(slot.SlotIndex);
                 if (playerState != null)
                 {
-                    // Find the relic data to get display info
-                    var relicMgrs = Resources.FindObjectsOfTypeAll<Relics.RelicManager>();
+                    // Find the relic data to get display info — can't use CommonRelicPool
+                    // because GetMultipleRelicsOffOfQueue already dequeued relics from the pool.
                     string locKey = "";
                     int rarity = 0;
-                    if (relicMgrs != null && relicMgrs.Length > 0)
+                    var allRelics = Resources.FindObjectsOfTypeAll<Relics.Relic>();
+                    foreach (var r in allRelics)
                     {
-                        foreach (var r in relicMgrs[0].CommonRelicPool)
-                        {
-                            if ((int)r.effect == networkEvent.ChosenRelicEffect)
-                            { locKey = r.locKey; rarity = (int)r.globalRarity; break; }
-                        }
+                        if ((int)r.effect == networkEvent.ChosenRelicEffect)
+                        { locKey = r.locKey; rarity = (int)r.globalRarity; break; }
                     }
 
                     playerState.OwnedRelics.Add(new SerializedRelic

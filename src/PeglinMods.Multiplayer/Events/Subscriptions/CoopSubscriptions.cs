@@ -239,6 +239,27 @@ public sealed class CoopSubscriptions
             // the aiming phase instead of proceeding to the attack/damage phase.
             BattleController.CurrentBattleState = BattleController.BattleState.AWAITING_SHOT;
 
+            // Manually trigger DrawBall since we bypassed the normal
+            // AWAITING_ENEMY_CLEANUP → ChooseShuffleOrDrawAtEndOfTurn flow
+            // that would normally create the PachinkoBall.
+            try
+            {
+                var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
+                if (bc != null)
+                {
+                    var drawBallMethod = AccessTools.Method(typeof(BattleController), "DrawBall");
+                    if (drawBallMethod != null)
+                    {
+                        drawBallMethod.Invoke(bc, null);
+                        _log.LogInfo($"[CoopSubs] Manually called DrawBall for slot {_turnManager.CurrentPlayerSlot}");
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                _log.LogWarning($"[CoopSubs] DrawBall call failed: {ex.Message}");
+            }
+
             _log.LogInfo($"[CoopSubs] Swapped to player slot {_turnManager.CurrentPlayerSlot}, " +
                 $"redirected BattleState -> AWAITING_SHOT");
         }
