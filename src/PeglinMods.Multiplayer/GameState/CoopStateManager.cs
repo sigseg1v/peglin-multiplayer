@@ -324,8 +324,15 @@ public class CoopStateManager
             var relicMgr = Resources.FindObjectsOfTypeAll<RelicManager>()?.FirstOrDefault();
             if (relicMgr == null) return;
 
-            // Reset the relic manager to clear all owned relics
-            relicMgr.Reset();
+            // Clear owned relics directly via reflection instead of calling Reset().
+            // Reset() fires OnRelicsReset, clears disabled relics, order tracking, usage
+            // counters, and relic pools — side effects that can break the game state.
+            var ownedField = AccessTools.Field(typeof(RelicManager), "_ownedRelics");
+            if (ownedField != null)
+            {
+                var owned = ownedField.GetValue(relicMgr) as Dictionary<RelicEffect, Relic>;
+                owned?.Clear();
+            }
 
             // Find all available Relic ScriptableObject assets
             var allRelicAssets = Resources.FindObjectsOfTypeAll<Relic>();
