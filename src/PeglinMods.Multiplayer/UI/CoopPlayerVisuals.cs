@@ -233,11 +233,34 @@ public class CoopPlayerVisuals : MonoBehaviour
         nameText = null;
         hpText = null;
 
+        // Find the game's TMP font from an existing enemy HP bar for consistent look
+        TMP_FontAsset gameFont = null;
+        try
+        {
+            var existingTmps = UnityEngine.Object.FindObjectsOfType<TextMeshProUGUI>();
+            foreach (var tmp in existingTmps)
+            {
+                if (tmp.font != null && tmp.gameObject.name.Contains("Health"))
+                { gameFont = tmp.font; break; }
+            }
+            // Fallback: use any game TMP font
+            if (gameFont == null)
+            {
+                foreach (var tmp in existingTmps)
+                {
+                    if (tmp.font != null) { gameFont = tmp.font; break; }
+                }
+            }
+        }
+        catch { }
+
         var nameObj = new GameObject("NameText");
         nameObj.transform.SetParent(panel.transform, false);
         nameText = nameObj.AddComponent<TextMeshProUGUI>();
         nameText.text = summary.PlayerName ?? $"Player {summary.SlotIndex}";
         nameText.fontSize = 36;
+        nameText.fontStyle = FontStyles.Bold;
+        if (gameFont != null) nameText.font = gameFont;
         nameText.alignment = TextAlignmentOptions.Center;
         nameText.color = Color.white;
         nameText.outlineWidth = 0.3f;
@@ -253,6 +276,8 @@ public class CoopPlayerVisuals : MonoBehaviour
         hpText = hpObj.AddComponent<TextMeshProUGUI>();
         hpText.text = $"{summary.CurrentHealth:F0} / {summary.MaxHealth:F0}";
         hpText.fontSize = 30;
+        hpText.fontStyle = FontStyles.Bold;
+        if (gameFont != null) hpText.font = gameFont;
         hpText.alignment = TextAlignmentOptions.Center;
         hpText.color = new Color(0.8f, 1f, 0.8f);
         hpText.outlineWidth = 0.25f;

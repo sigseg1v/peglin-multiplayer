@@ -85,20 +85,27 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
                 }
             }
 
-            // Remove relics that host doesn't have
-            var hostEffects = new HashSet<RelicEffect>();
-            if (snapshot.OwnedRelics != null)
-                foreach (var e in snapshot.OwnedRelics)
-                    hostEffects.Add((RelicEffect)e.Effect);
-
-            var toRemove = owned.Keys.Where(k => !hostEffects.Contains(k)).ToList();
-            foreach (var key in toRemove)
+            // In coop mode, do NOT remove the client's own relics. The heartbeat
+            // sends the active player's relics which may differ from the client's.
+            // Each player keeps their own relics; the sync only adds missing ones.
+            bool isCoop = UI.LobbyUI.GameStartReceived;
+            if (!isCoop)
             {
-                owned.Remove(key);
-                _log.LogInfo($"[RelicApplier] Removed extra relic: {key}");
+                // Non-coop (spectator mode): remove relics that host doesn't have
+                var hostEffects = new HashSet<RelicEffect>();
+                if (snapshot.OwnedRelics != null)
+                    foreach (var e in snapshot.OwnedRelics)
+                        hostEffects.Add((RelicEffect)e.Effect);
+
+                var toRemove = owned.Keys.Where(k => !hostEffects.Contains(k)).ToList();
+                foreach (var key in toRemove)
+                {
+                    owned.Remove(key);
+                    _log.LogInfo($"[RelicApplier] Removed extra relic: {key}");
+                }
             }
 
-            _log.LogInfo($"[RelicApplier] Result: added={added}, alreadyOwned={alreadyOwned}, removed={toRemove.Count}, total={owned.Count}");
+            _log.LogInfo($"[RelicApplier] Result: added={added}, alreadyOwned={alreadyOwned}, total={owned.Count}");
 
             // Ensure relic UI is up to date — RelicUI subscribes to OnRelicAdded,
             // but relics added before the battle scene loads won't have icons.
@@ -109,7 +116,7 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
             // so damage displays reflect relic modifiers (e.g., "Suffer the Sling" +1/+2).
             // Without SoftInit, Attack._relicManager is null and CalculateStaticDamageBuffs
             // skips all relic checks → orbs show base damage instead of modified damage.
-            if (added > 0 || toRemove.Count > 0)
+            if (added > 0)
                 ReinitOrbDamageDisplays(rm);
         }
         catch (Exception ex)
