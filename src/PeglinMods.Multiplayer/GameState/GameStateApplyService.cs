@@ -366,6 +366,13 @@ public class GameStateApplyService
                 if (snapshot.Deck != null) SafeApply("Deck", () => _deckApplier.Apply(snapshot.Deck));
                 if (snapshot.Relics != null) SafeApply("Relics", () => _relicApplier.Apply(snapshot.Relics));
             }
+            else if (snapshot.Deck != null)
+            {
+                // In coop, don't sync the full deck (each player has their own).
+                // But DO sync the active orb display so the client sees the correct
+                // orb at the aimer position during the host's (or other player's) turn.
+                SafeApply("Deck(coop-orb-only)", () => _deckApplier.ApplyActiveOrbOnly(snapshot.Deck));
+            }
             VerifyConsistency(snapshot);
 
             // Post-battle navigation: trigger the game's own setup on the client

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Battle.Attacks;
 using BepInEx.Logging;
 using DG.Tweening;
@@ -130,6 +131,27 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
         catch (Exception ex)
         {
             _log.LogError($"[DeckApplier] Apply failed: {ex.Message}\n{ex.StackTrace}");
+        }
+    }
+
+    /// <summary>
+    /// In coop mode, sync only the active orb display without touching the deck contents.
+    /// Each player has their own deck, but the aimer should show whichever orb the
+    /// current active player (on the host) is about to fire.
+    /// </summary>
+    public void ApplyActiveOrbOnly(DeckStateSnapshot snapshot)
+    {
+        if (snapshot == null || string.IsNullOrEmpty(snapshot.CurrentOrb)) return;
+        var scene = SceneManager.GetActiveScene().name;
+        if (scene != "Battle") return;
+
+        try
+        {
+            EnsureAimerOrbShown(snapshot.CurrentOrb);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[DeckApplier] ApplyActiveOrbOnly failed: {ex.Message}");
         }
     }
 
