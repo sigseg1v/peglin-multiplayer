@@ -386,6 +386,11 @@ public static class MultiplayerClientPatches
                 stateProp?.GetSetMethod(true)?.Invoke(activeBall, new object[] { PachinkoBall.FireballState.AIMING });
             }
 
+            // InitializeMembers() sets _rigid, _wallbounceAudioSource, _mainCamera etc.
+            // It normally runs in Start() (next frame) but we need it NOW before Fire().
+            // DrawBall calls Init() but not InitializeMembers(), so Fire() NREs without this.
+            activeBall.InitializeMembers();
+
             // Use the real PachinkoBall.Fire() so all internal state (collision layers,
             // wall bounce tracking, shot timeout, etc.) is set up correctly.
             // ExecutingPendingShot bypasses PachinkoBall_Fire_Prefix's block.
@@ -397,18 +402,7 @@ public static class MultiplayerClientPatches
             }
             catch (System.Exception fireEx)
             {
-                // Fire() may NRE on some internal refs — fall back to manual fire
-                MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] Fire() failed ({fireEx.Message}), using manual fire");
-                var stateProp = HarmonyLib.AccessTools.Property(typeof(PachinkoBall), "CurrentState");
-                stateProp?.GetSetMethod(true)?.Invoke(activeBall, new object[] { PachinkoBall.FireballState.FIRING });
-                var rigid = activeBallGO.GetComponent<UnityEngine.Rigidbody2D>();
-                if (rigid != null)
-                {
-                    rigid.simulated = true;
-                    rigid.gravityScale = activeBall.GravityScale;
-                    rigid.AddForce(aimVec * activeBall.FireForce);
-                }
-                try { PachinkoBall.OnShotFired?.Invoke(aimVec); } catch { }
+                MultiplayerPlugin.Logger?.LogError($"[ClientPatches] Fire() failed even after InitializeMembers(): {fireEx}");
             }
             finally
             {
