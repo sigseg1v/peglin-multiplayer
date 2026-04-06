@@ -344,11 +344,12 @@ public static class MultiplayerClientPatches
             // DrawBall starts a DOScale FROM 0.05 TO the ball's natural scale.
             // If we fire mid-animation, the ball is tiny and its collider passes
             // through pegs without triggering OnCollisionEnter2D.
-            if (activeBall.CurrentState == PachinkoBall.FireballState.WAITING)
+            // Do this regardless of CurrentState — ArmBallForShot may have already
+            // changed it to AIMING, but the scale tween could still be running.
             {
-                // Read the target scale before killing — DOTween's endValue
                 var tweens = DG.Tweening.DOTween.TweensByTarget(activeBallGO.transform);
                 UnityEngine.Vector3 targetScale = activeBallGO.transform.localScale;
+                bool hadTween = false;
                 if (tweens != null)
                 {
                     foreach (var t in tweens)
@@ -356,13 +357,17 @@ public static class MultiplayerClientPatches
                         if (t is DG.Tweening.Core.TweenerCore<UnityEngine.Vector3, UnityEngine.Vector3, DG.Tweening.Plugins.Options.VectorOptions> scaleTween)
                         {
                             targetScale = scaleTween.endValue;
+                            hadTween = true;
                             break;
                         }
                     }
                 }
                 DG.Tweening.DOTween.Kill(activeBallGO.transform);
+                // If no tween found but scale is tiny (< 0.1), force to reasonable scale
+                if (!hadTween && targetScale.x < 0.1f)
+                    targetScale = new UnityEngine.Vector3(0.32f, 0.32f, 0.32f);
                 activeBallGO.transform.localScale = targetScale;
-                MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Killed scale tween, set scale to ({targetScale.x:F2},{targetScale.y:F2})");
+                MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Scale snap: ({targetScale.x:F2},{targetScale.y:F2}) hadTween={hadTween} state={activeBall.CurrentState}");
             }
 
             // Set aim direction on the ball

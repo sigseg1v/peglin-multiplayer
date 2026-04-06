@@ -273,21 +273,21 @@ public class CoopPlayerVisuals : MonoBehaviour
 
             var namePanel = CreateTextPanel(
                 $"CoopName_Slot{summary.SlotIndex}",
-                160, twoLines ? 56 : 32,
-                formattedName, 26, nameColor, bgColor,
+                220, twoLines ? 90 : 50,
+                formattedName, 45, nameColor, bgColor,
                 out var nameText);
 
             var hpPanel = CreateTextPanel(
                 $"CoopHP_Slot{summary.SlotIndex}",
-                120, 28,
+                160, 45,
                 $"{summary.CurrentHealth:F0}/{summary.MaxHealth:F0}",
-                22, hpColor, bgColor,
+                38, hpColor, bgColor,
                 out var hpText);
 
             var arrowPanel = CreateTextPanel(
                 $"CoopArrow_Slot{summary.SlotIndex}",
-                30, 30,
-                "<", 28, arrowColor, new Color(0, 0, 0, 0),
+                40, 40,
+                "<", 42, arrowColor, new Color(0, 0, 0, 0),
                 out var arrowText);
             arrowPanel.SetActive(false); // only visible for active player
 
@@ -413,7 +413,7 @@ public class CoopPlayerVisuals : MonoBehaviour
 
         // Position name above character, HP below, arrow to the right-middle
         PositionPanelAtWorld(visual.NamePanel, charPos + new Vector3(0, 2.0f, 0), cam);
-        PositionPanelAtWorld(visual.HpPanel, charPos + new Vector3(0, -1.2f, 0), cam);
+        PositionPanelAtWorld(visual.HpPanel, charPos + new Vector3(0, -0.6f, 0), cam);
 
         bool isActive = (activeSlot == visual.SlotIndex);
         if (visual.ArrowPanel != null)
