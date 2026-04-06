@@ -332,10 +332,29 @@ public static class MultiplayerClientPatches
                 return;
             }
 
-            // Kill any scale animation and force the ball ready
+            // Kill any scale animation and snap to full size.
+            // DrawBall starts a DOScale FROM 0.05 TO the ball's natural scale.
+            // If we fire mid-animation, the ball is tiny and its collider passes
+            // through pegs without triggering OnCollisionEnter2D.
             if (activeBall.CurrentState == PachinkoBall.FireballState.WAITING)
             {
+                // Read the target scale before killing — DOTween's endValue
+                var tweens = DG.Tweening.DOTween.TweensByTarget(activeBallGO.transform);
+                UnityEngine.Vector3 targetScale = activeBallGO.transform.localScale;
+                if (tweens != null)
+                {
+                    foreach (var t in tweens)
+                    {
+                        if (t is DG.Tweening.Core.TweenerCore<UnityEngine.Vector3, UnityEngine.Vector3, DG.Tweening.Plugins.Options.VectorOptions> scaleTween)
+                        {
+                            targetScale = scaleTween.endValue;
+                            break;
+                        }
+                    }
+                }
                 DG.Tweening.DOTween.Kill(activeBallGO.transform);
+                activeBallGO.transform.localScale = targetScale;
+                MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Killed scale tween, set scale to ({targetScale.x:F2},{targetScale.y:F2})");
             }
 
             // Set aim direction on the ball

@@ -227,64 +227,76 @@ public class CoopPlayerVisuals : MonoBehaviour
         panel.transform.SetParent(_overlayCanvasObj.transform, false);
 
         var panelRect = panel.AddComponent<RectTransform>();
-        panelRect.sizeDelta = new Vector2(400, 100);
-        panelRect.pivot = new Vector2(0.5f, 0f); // pivot at bottom-center (label grows upward from player)
+        panelRect.sizeDelta = new Vector2(160, 50);
+        panelRect.pivot = new Vector2(0.5f, 0.5f);
 
         nameText = null;
         hpText = null;
 
-        // Find the game's TMP font from an existing enemy HP bar for consistent look
+        // Find the game's TMP font
         TMP_FontAsset gameFont = null;
         try
         {
-            var existingTmps = UnityEngine.Object.FindObjectsOfType<TextMeshProUGUI>();
-            foreach (var tmp in existingTmps)
-            {
-                if (tmp.font != null && tmp.gameObject.name.Contains("Health"))
-                { gameFont = tmp.font; break; }
-            }
-            // Fallback: use any game TMP font
-            if (gameFont == null)
-            {
-                foreach (var tmp in existingTmps)
-                {
-                    if (tmp.font != null) { gameFont = tmp.font; break; }
-                }
-            }
+            foreach (var tmp in UnityEngine.Object.FindObjectsOfType<TextMeshProUGUI>())
+                if (tmp.font != null) { gameFont = tmp.font; break; }
         }
         catch { }
 
+        // --- Name label (above character) ---
+        var nameBg = new GameObject("NameBg");
+        nameBg.transform.SetParent(panel.transform, false);
+        var nameBgImg = nameBg.AddComponent<UnityEngine.UI.Image>();
+        nameBgImg.color = new Color(0, 0, 0, 0.3f);
+        var nameBgRect = nameBg.GetComponent<RectTransform>();
+        nameBgRect.anchorMin = new Vector2(0, 0.5f);
+        nameBgRect.anchorMax = new Vector2(1, 1);
+        nameBgRect.offsetMin = Vector2.zero;
+        nameBgRect.offsetMax = Vector2.zero;
+
         var nameObj = new GameObject("NameText");
-        nameObj.transform.SetParent(panel.transform, false);
+        nameObj.transform.SetParent(nameBg.transform, false);
         nameText = nameObj.AddComponent<TextMeshProUGUI>();
-        nameText.text = summary.PlayerName ?? $"Player {summary.SlotIndex}";
-        nameText.fontSize = 36;
+        string truncName = summary.PlayerName ?? $"P{summary.SlotIndex}";
+        if (truncName.Length > 9) truncName = truncName.Substring(0, 9);
+        nameText.text = truncName;
+        nameText.fontSize = 28;
         nameText.fontStyle = FontStyles.Bold;
         if (gameFont != null) nameText.font = gameFont;
         nameText.alignment = TextAlignmentOptions.Center;
-        nameText.color = Color.white;
+        nameText.color = new Color(0.9f, 0.5f, 0.1f);
         nameText.outlineWidth = 0.3f;
         nameText.outlineColor = Color.black;
         var nameRect = nameText.rectTransform;
-        nameRect.anchorMin = new Vector2(0, 0.5f);
-        nameRect.anchorMax = new Vector2(1, 1);
+        nameRect.anchorMin = Vector2.zero;
+        nameRect.anchorMax = Vector2.one;
         nameRect.offsetMin = Vector2.zero;
         nameRect.offsetMax = Vector2.zero;
 
+        // --- HP label (below character) ---
+        var hpBg = new GameObject("HpBg");
+        hpBg.transform.SetParent(panel.transform, false);
+        var hpBgImg = hpBg.AddComponent<UnityEngine.UI.Image>();
+        hpBgImg.color = new Color(0, 0, 0, 0.3f);
+        var hpBgRect = hpBg.GetComponent<RectTransform>();
+        hpBgRect.anchorMin = new Vector2(0, 0);
+        hpBgRect.anchorMax = new Vector2(1, 0.5f);
+        hpBgRect.offsetMin = Vector2.zero;
+        hpBgRect.offsetMax = Vector2.zero;
+
         var hpObj = new GameObject("HpText");
-        hpObj.transform.SetParent(panel.transform, false);
+        hpObj.transform.SetParent(hpBg.transform, false);
         hpText = hpObj.AddComponent<TextMeshProUGUI>();
-        hpText.text = $"{summary.CurrentHealth:F0} / {summary.MaxHealth:F0}";
-        hpText.fontSize = 30;
+        hpText.text = $"{summary.CurrentHealth:F0}/{summary.MaxHealth:F0}";
+        hpText.fontSize = 24;
         hpText.fontStyle = FontStyles.Bold;
         if (gameFont != null) hpText.font = gameFont;
         hpText.alignment = TextAlignmentOptions.Center;
-        hpText.color = new Color(0.8f, 1f, 0.8f);
-        hpText.outlineWidth = 0.25f;
+        hpText.color = new Color(0.6f, 1f, 0.6f);
+        hpText.outlineWidth = 0.2f;
         hpText.outlineColor = Color.black;
         var hpRect = hpText.rectTransform;
-        hpRect.anchorMin = new Vector2(0, 0);
-        hpRect.anchorMax = new Vector2(1, 0.5f);
+        hpRect.anchorMin = Vector2.zero;
+        hpRect.anchorMax = Vector2.one;
         hpRect.offsetMin = Vector2.zero;
         hpRect.offsetMax = Vector2.zero;
 
@@ -385,16 +397,16 @@ public class CoopPlayerVisuals : MonoBehaviour
             if (hostSummary != null)
             {
                 if (_hostLabel.HpText != null)
-                    _hostLabel.HpText.text = $"{hostSummary.CurrentHealth:F0} / {hostSummary.MaxHealth:F0}";
+                    _hostLabel.HpText.text = $"{hostSummary.CurrentHealth:F0}/{hostSummary.MaxHealth:F0}";
                 if (_hostLabel.NameText != null)
                 {
-                    string className = Events.Handlers.Lobby.LobbyHelper.GetClassName(hostSummary.ChosenClass);
-                    string turnMarker = (activeSlot == 0) ? "  <" : "";
-                    _hostLabel.NameText.text = $"{hostSummary.PlayerName} ({className}){turnMarker}";
-                    _hostLabel.NameText.color = new Color(0.9f, 0.5f, 0.1f); // dark orange
+                    string hostName = hostSummary.PlayerName ?? "Host";
+                    if (hostName.Length > 9) hostName = hostName.Substring(0, 9);
+                    string turnMarker = (activeSlot == 0) ? " <" : "";
+                    _hostLabel.NameText.text = $"{hostName}{turnMarker}";
                 }
                 // Position screen-space label below the player sprite
-                PositionLabelAtWorldPoint(_hostLabel, basePos + new Vector3(0, 1.5f, 0), cam);
+                PositionLabelAtWorldPoint(_hostLabel, basePos + new Vector3(0, 0.5f, 0), cam);
             }
         }
 
@@ -416,21 +428,20 @@ public class CoopPlayerVisuals : MonoBehaviour
 
             // Update HP text
             if (visual.HpText != null)
-                visual.HpText.text = $"{summary.CurrentHealth:F0} / {summary.MaxHealth:F0}";
+                visual.HpText.text = $"{summary.CurrentHealth:F0}/{summary.MaxHealth:F0}";
 
-            // Update name text with class and turn indicator arrow
+            // Update name text — truncated, no class
             if (visual.NameText != null)
             {
-                string playerName = summary.PlayerName ?? $"Player {summary.SlotIndex}";
-                string className = LobbyHelper.GetClassName(summary.ChosenClass);
-                string turnMarker = (activeSlot == visual.SlotIndex) ? "  <" : "";
-                visual.NameText.text = $"{playerName} ({className}){turnMarker}";
-                visual.NameText.color = new Color(0.9f, 0.5f, 0.1f); // dark orange
+                string playerName = summary.PlayerName ?? $"P{summary.SlotIndex}";
+                if (playerName.Length > 9) playerName = playerName.Substring(0, 9);
+                string turnMarker = (activeSlot == visual.SlotIndex) ? " <" : "";
+                visual.NameText.text = $"{playerName}{turnMarker}";
             }
 
             // Position screen-space label below the clone sprite
             var clonePos = visual.SpriteClone.transform.position;
-            PositionLabelAtWorldPoint(visual, clonePos + new Vector3(0, 1.5f, 0), cam);
+            PositionLabelAtWorldPoint(visual, clonePos + new Vector3(0, 0.5f, 0), cam);
 
             // Active player highlight
             float targetScale = (activeSlot == visual.SlotIndex) ? 1.15f : 1f;
