@@ -240,8 +240,16 @@ public static class MultiplayerClientPatches
         var cam = Camera.main;
         if (cam == null) return;
 
-        // Get the ball spawn position from BattleController
+        // Get the ball spawn position. On the client, bc.pachinkoBallSpawnLocation
+        // may be (0,0) if BattleController.Awake crashed during _pegLayout init.
+        // Fall back to the Player tag's position (player stands at the launch point).
         var spawnPos = bc.pachinkoBallSpawnLocation;
+        if (spawnPos == Vector2.zero)
+        {
+            var player = GameObject.FindGameObjectWithTag("Player");
+            if (player != null)
+                spawnPos = (Vector2)player.transform.position;
+        }
 
         // Get mouse world position
         var mouseScreenPos = Input.mousePosition;
