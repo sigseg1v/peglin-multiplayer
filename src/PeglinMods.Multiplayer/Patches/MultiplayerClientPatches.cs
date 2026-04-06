@@ -379,26 +379,40 @@ public static class MultiplayerClientPatches
                 activeBallGO.transform.right = aimVec;
             }
 
-            // Manual fire: PachinkoBall.Fire() NREs on internal null references
-            // (_playerStatusEffectController, _wallbounceAudioSource, etc.) after
-            // state swaps. Instead, replicate essential fire physics inline.
-            var stateProp = HarmonyLib.AccessTools.Property(typeof(PachinkoBall), "CurrentState");
-            stateProp?.GetSetMethod(true)?.Invoke(activeBall, new object[] { PachinkoBall.FireballState.FIRING });
-
-            var rigid = activeBallGO.GetComponent<UnityEngine.Rigidbody2D>();
-            if (rigid != null)
+            // Ensure ball is in AIMING state so Fire() works
+            if (activeBall.CurrentState != PachinkoBall.FireballState.AIMING)
             {
-                rigid.simulated = true;
-                rigid.gravityScale = activeBall.GravityScale;
-                rigid.AddForce(aimVec * activeBall.FireForce);
+                var stateProp = HarmonyLib.AccessTools.Property(typeof(PachinkoBall), "CurrentState");
+                stateProp?.GetSetMethod(true)?.Invoke(activeBall, new object[] { PachinkoBall.FireballState.AIMING });
             }
 
-            // Invoke OnShotFired to trigger BattleController.ShotFired() which
-            // sets _remainingPachinkoBalls=1 and processes relic effects.
-            try { PachinkoBall.OnShotFired?.Invoke(aimVec); }
-            catch (System.Exception shotEx)
+            // Use the real PachinkoBall.Fire() so all internal state (collision layers,
+            // wall bounce tracking, shot timeout, etc.) is set up correctly.
+            // ExecutingPendingShot bypasses PachinkoBall_Fire_Prefix's block.
+            ExecutingPendingShot = true;
+            try
             {
-                MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] OnShotFired delegate error (non-fatal): {shotEx.Message}");
+                activeBall.Fire();
+                MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] PachinkoBall.Fire() succeeded");
+            }
+            catch (System.Exception fireEx)
+            {
+                // Fire() may NRE on some internal refs — fall back to manual fire
+                MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] Fire() failed ({fireEx.Message}), using manual fire");
+                var stateProp = HarmonyLib.AccessTools.Property(typeof(PachinkoBall), "CurrentState");
+                stateProp?.GetSetMethod(true)?.Invoke(activeBall, new object[] { PachinkoBall.FireballState.FIRING });
+                var rigid = activeBallGO.GetComponent<UnityEngine.Rigidbody2D>();
+                if (rigid != null)
+                {
+                    rigid.simulated = true;
+                    rigid.gravityScale = activeBall.GravityScale;
+                    rigid.AddForce(aimVec * activeBall.FireForce);
+                }
+                try { PachinkoBall.OnShotFired?.Invoke(aimVec); } catch { }
+            }
+            finally
+            {
+                ExecutingPendingShot = false;
             }
 
             // Always consume — even if something above failed partially

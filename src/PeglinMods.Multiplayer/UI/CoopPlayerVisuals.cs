@@ -248,6 +248,7 @@ public class CoopPlayerVisuals : MonoBehaviour
         tmpText.outlineColor = Color.black;
         tmpText.enableWordWrapping = false;
         tmpText.overflowMode = TextOverflowModes.Overflow;
+        tmpText.lineSpacing = -25f; // tighter line spacing for 2-line names
 
         var textRect = tmpText.rectTransform;
         textRect.anchorMin = Vector2.zero;
@@ -273,7 +274,7 @@ public class CoopPlayerVisuals : MonoBehaviour
 
             var namePanel = CreateTextPanel(
                 $"CoopName_Slot{summary.SlotIndex}",
-                220, twoLines ? 90 : 50,
+                187, twoLines ? 80 : 50,
                 formattedName, 45, nameColor, bgColor,
                 out var nameText);
 
