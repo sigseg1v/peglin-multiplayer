@@ -208,6 +208,22 @@ public sealed class CoopSubscriptions
             {
                 _coopStateManager.SwapToPlayer(_turnManager.CurrentPlayerSlot);
                 EnsureBattleDeckPopulated("new round");
+
+                // After swapping, the DeckInfoManager UI flow may not trigger DrawBall
+                // automatically. Force a DrawBall so the host gets an armed ball.
+                try
+                {
+                    var bc = UnityEngine.Object.FindObjectOfType<Battle.BattleController>();
+                    if (bc != null)
+                    {
+                        var drawBallMethod = AccessTools.Method(typeof(Battle.BattleController), "DrawBall");
+                        drawBallMethod?.Invoke(bc, null);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning($"[CoopSubs] DrawBall in OnAwaitingShot failed: {ex.Message}");
+                }
             }
             BroadcastTurnChange();
         }
