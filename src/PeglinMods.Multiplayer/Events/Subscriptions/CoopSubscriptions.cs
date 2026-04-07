@@ -122,49 +122,59 @@ public sealed class CoopSubscriptions
 
         try
         {
+            // --- Distribute enemy damage to all players ---
             var phc = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
-            if (phc == null) return;
-
-            float currentHealth = phc.CurrentHealth;
-            float damage = _healthBeforeAttack - currentHealth;
-
-            if (damage <= 0f) return;
-
-            // Save the active player's state so it reflects the damage already taken
-            _coopStateManager.SaveActivePlayerState();
-
-            // Apply the same damage to all non-active players
-            int activeSlot = _coopStateManager.ActivePlayerSlot;
-            foreach (var state in _coopStateManager.PlayerStates.Values)
+            if (phc != null)
             {
-                if (state.SlotIndex == activeSlot) continue;
+                float currentHealth = phc.CurrentHealth;
+                float damage = _healthBeforeAttack - currentHealth;
 
-                float oldHp = state.CurrentHealth;
-                state.CurrentHealth = Mathf.Max(0f, state.CurrentHealth - damage);
-                _log.LogInfo($"[CoopSubs] Slot {state.SlotIndex} ({state.PlayerName}): " +
-                    $"hp {oldHp} -> {state.CurrentHealth} (damage={damage})");
+                if (damage > 0f)
+                {
+                    // Save the active player's state so it reflects the damage already taken
+                    _coopStateManager.SaveActivePlayerState();
+
+                    // Apply the same damage to all non-active players
+                    int activeSlot = _coopStateManager.ActivePlayerSlot;
+                    foreach (var state in _coopStateManager.PlayerStates.Values)
+                    {
+                        if (state.SlotIndex == activeSlot) continue;
+
+                        float oldHp = state.CurrentHealth;
+                        state.CurrentHealth = Mathf.Max(0f, state.CurrentHealth - damage);
+                        _log.LogInfo($"[CoopSubs] Slot {state.SlotIndex} ({state.PlayerName}): " +
+                            $"hp {oldHp} -> {state.CurrentHealth} (damage={damage})");
+                    }
+
+                    // Check if any player died
+                    if (_coopStateManager.AnyPlayerDead)
+                    {
+                        _log.LogWarning("[CoopSubs] A co-op player has died! Triggering defeat.");
+                        if (currentHealth > 0f)
+                        {
+                            _log.LogInfo("[CoopSubs] Active player alive but another player died. " +
+                                "Setting active player health to 0 to trigger game over.");
+                            phc.Damage(currentHealth, false);
+                        }
+                    }
+                }
             }
 
-            // Check if any player died
-            if (_coopStateManager.AnyPlayerDead)
+            // --- Swap to host for next round's DrawBall ---
+            // OnTurnComplete fires from DoEndOfTurnBattleCleanup, which runs RIGHT BEFORE
+            // ChooseShuffleOrDrawAtEndOfTurn → DrawBall. By swapping to the host now,
+            // DrawBall will use the host's deck for round 2. This avoids the broken
+            // DOTween flow that occurred when we tried to call DrawBall manually later.
+            if (_turnManager.Phase == TurnPhase.ALL_DONE)
             {
-                _log.LogWarning("[CoopSubs] A co-op player has died! Triggering defeat.");
-                // The game's defeat flow is driven by PlayerHealthController.OnDefeat
-                // which fires when the active player's health reaches 0.
-                // For non-active players dying, we need to trigger it manually.
-                // Check if the active player is still alive -- if so, the game
-                // won't trigger defeat on its own.
-                if (currentHealth > 0f)
-                {
-                    _log.LogInfo("[CoopSubs] Active player alive but another player died. " +
-                        "Setting active player health to 0 to trigger game over.");
-                    phc.Damage(currentHealth, false);
-                }
+                _coopStateManager.SwapToPlayer(0);
+                EnsureBattleDeckPopulated("post-attack swap to host");
+                _log.LogInfo($"[CoopSubs] Post-attack: swapped to host (slot 0) for next round's DrawBall");
             }
         }
         catch (Exception ex)
         {
-            _log.LogWarning($"[CoopSubs] OnTurnComplete damage distribution failed: {ex.Message}");
+            _log.LogWarning($"[CoopSubs] OnTurnComplete failed: {ex.Message}\n{ex.StackTrace}");
         }
     }
 
@@ -201,61 +211,14 @@ public sealed class CoopSubscriptions
 
         // After a full turn cycle (all players shot + attack + enemy turn),
         // the game naturally reaches AWAITING_SHOT. Start a new round.
+        // The host's deck was already swapped in OnTurnComplete (before DrawBall),
+        // so the game's natural DrawBall → DOTween → ArmBallForShot flow works.
         if (_turnManager.Phase == TurnPhase.ALL_DONE || _turnManager.Phase == TurnPhase.DAMAGE_PHASE)
         {
             _turnManager.StartNewRound();
-            if (_turnManager.CurrentPlayerSlot >= 0)
-            {
-                _coopStateManager.SwapToPlayer(_turnManager.CurrentPlayerSlot);
-                EnsureBattleDeckPopulated("new round");
-
-                // The DOTween → ArmBallForShot flow is broken after a deck swap.
-                // Force DrawBall + fully initialize the ball for aiming.
-                try
-                {
-                    var bc = UnityEngine.Object.FindObjectOfType<Battle.BattleController>();
-                    if (bc != null)
-                    {
-                        // Create ball from the swapped-in deck
-                        var drawBallMethod = AccessTools.Method(typeof(Battle.BattleController), "DrawBall");
-                        drawBallMethod?.Invoke(bc, null);
-
-                        var activeBallField = AccessTools.Field(typeof(Battle.BattleController), "_activePachinkoBall");
-                        var ballGO = activeBallField?.GetValue(bc) as UnityEngine.GameObject;
-                        if (ballGO != null)
-                        {
-                            // Kill DOTween (it won't complete after swap) and snap scale
-                            DG.Tweening.DOTween.Kill(ballGO.transform);
-                            ballGO.transform.localScale = UnityEngine.Vector3.one * 0.32f;
-
-                            var ball = ballGO.GetComponent<PachinkoBall>();
-                            if (ball != null)
-                            {
-                                // InitializeMembers sets _player, _rigid, _mainCamera etc.
-                                // Without this, PachinkoBall.Update() can't read mouse input.
-                                ball.InitializeMembers();
-
-                                // Set AIMING state (Arm() NREs on _predictionManager)
-                                var stateProp = AccessTools.Property(typeof(PachinkoBall), "CurrentState");
-                                stateProp?.GetSetMethod(true)?.Invoke(ball, new object[] { PachinkoBall.FireballState.AIMING });
-                            }
-
-                            // Ensure ball is active (same deactivation issue as client shots)
-                            if (!ballGO.activeInHierarchy)
-                                ballGO.SetActive(true);
-
-                            _log.LogInfo($"[CoopSubs] DrawBall + Init + AIMING for round {_turnManager.RoundNumber}");
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _log.LogWarning($"[CoopSubs] Round swap ball setup failed: {ex.Message}\n{ex.StackTrace}");
-                }
-            }
-            BroadcastTurnChange();
+            _log.LogInfo($"[CoopSubs] New round {_turnManager.RoundNumber} started, slot {_turnManager.CurrentPlayerSlot}");
         }
-        // If we're already in PLAYER_AIMING, do nothing — OnShotComplete handles player swaps
+        BroadcastTurnChange();
     }
 
     /// <summary>
