@@ -265,8 +265,11 @@ public static class MultiplayerClientPatches
         mouseScreenPos.z = -cam.transform.position.z;
         var mouseWorld = (Vector2)cam.ScreenToWorldPoint(mouseScreenPos);
 
-        // Compute aim direction from spawn to mouse
-        var aimDir = (mouseWorld - spawnPos).normalized;
+        // Compute aim direction from spawn to mouse.
+        // Clamp so client always aims into the board (positive X from spawn).
+        var rawDir = mouseWorld - spawnPos;
+        if (rawDir.x < 0.1f) rawDir.x = 0.1f; // force rightward into board
+        var aimDir = rawDir.normalized;
 
         // Draw a visible aim line from spawn point in the aim direction
         if (_clientAimLine == null)
@@ -407,6 +410,15 @@ public static class MultiplayerClientPatches
             // which overwrites _aimVector with a default value.
             activeBall.InitializeMembers();
 
+            // The ball created by DrawBall is marked as Dummy (for trajectory prediction).
+            // Dummy balls don't process peg collisions in OnCollisionEnter2D.
+            // Force it to be a real ball so it bounces and hits pegs properly.
+            if (activeBall.IsDummy)
+            {
+                activeBall.IsDummy = false;
+                MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Cleared IsDummy flag on ball");
+            }
+
             // Set aim direction AFTER InitializeMembers (which overwrites _aimVector)
             var aimField = HarmonyLib.AccessTools.Field(typeof(PachinkoBall), "_aimVector");
             var aimVec = new UnityEngine.Vector2(pending.AimDirectionX, pending.AimDirectionY).normalized;
@@ -430,7 +442,11 @@ public static class MultiplayerClientPatches
             try
             {
                 activeBall.Fire();
-                MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] PachinkoBall.Fire() succeeded, aim=({aimVec.x:F2},{aimVec.y:F2})");
+                MultiplayerPlugin.Logger?.LogInfo(
+                    $"[ClientPatches] PachinkoBall.Fire() succeeded, aim=({aimVec.x:F2},{aimVec.y:F2}), " +
+                    $"pos=({activeBallGO.transform.position.x:F1},{activeBallGO.transform.position.y:F1}), " +
+                    $"isDummy={activeBall.IsDummy}, scale=({activeBallGO.transform.localScale.x:F2}), " +
+                    $"layer={LayerMask.LayerToName(activeBallGO.layer)}");
             }
             catch (System.Exception fireEx)
             {
