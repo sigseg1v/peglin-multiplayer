@@ -80,6 +80,11 @@ public static class MultiplayerClientPatches
     /// </summary>
     internal static bool ExecutingPendingShot;
 
+    // Track fired ball for position diagnostics
+    private static UnityEngine.GameObject _firedBallGO;
+    private static float _firedBallTimer;
+    private static int _firedBallLogCount;
+
     // =========================================================================
     // DISABLE TUTORIAL IN MULTIPLAYER — both host and client
     // =========================================================================
@@ -325,8 +330,8 @@ public static class MultiplayerClientPatches
                 UnityEngine.Object.DontDestroyOnLoad(_clientTrajectoryGO);
                 _clientTrajectoryLR = _clientTrajectoryGO.AddComponent<UnityEngine.LineRenderer>();
                 _clientTrajectoryLR.material = new UnityEngine.Material(UnityEngine.Shader.Find("Sprites/Default"));
-                _clientTrajectoryLR.startColor = new UnityEngine.Color(1f, 0f, 0f, 0.9f);
-                _clientTrajectoryLR.endColor = new UnityEngine.Color(1f, 0f, 0f, 0f);
+                _clientTrajectoryLR.startColor = new UnityEngine.Color(1f, 1f, 1f, 0.9f);
+                _clientTrajectoryLR.endColor = new UnityEngine.Color(1f, 1f, 1f, 0f);
                 _clientTrajectoryLR.startWidth = 0.15f;
                 _clientTrajectoryLR.endWidth = 0.15f;
                 _clientTrajectoryLR.useWorldSpace = true;
@@ -416,6 +421,30 @@ public static class MultiplayerClientPatches
     {
         if (!IsHosting) return;
         if (!UI.LobbyUI.GameStartReceived) return;
+
+        // Track fired ball position to diagnose collision issues
+        if (_firedBallGO != null && _firedBallLogCount < 5)
+        {
+            _firedBallTimer += UnityEngine.Time.deltaTime;
+            if (_firedBallTimer >= 0.5f * (_firedBallLogCount + 1))
+            {
+                _firedBallLogCount++;
+                var rb = _firedBallGO.GetComponent<UnityEngine.Rigidbody2D>();
+                var ball = _firedBallGO.GetComponent<PachinkoBall>();
+                if (rb != null)
+                {
+                    MultiplayerPlugin.Logger?.LogInfo(
+                        $"[BallTrack] t={_firedBallTimer:F1}s pos=({_firedBallGO.transform.position.x:F1},{_firedBallGO.transform.position.y:F1}), " +
+                        $"vel=({rb.velocity.x:F1},{rb.velocity.y:F1}), sim={rb.simulated}, bodyType={rb.bodyType}, " +
+                        $"state={ball?.CurrentState}, active={_firedBallGO.activeInHierarchy}");
+                }
+                else
+                {
+                    MultiplayerPlugin.Logger?.LogInfo($"[BallTrack] t={_firedBallTimer:F1}s ball destroyed or rb null");
+                    _firedBallGO = null;
+                }
+            }
+        }
 
         // Only fire when BattleController is in AWAITING_SHOT and there's a pending shot
         if (BattleController.CurrentBattleState != BattleController.BattleState.AWAITING_SHOT) return;
@@ -539,6 +568,10 @@ public static class MultiplayerClientPatches
                     $"state={activeBall.CurrentState}, " +
                     $"rb.sim={rbAfter?.simulated}, rb.grav={rbAfter?.gravityScale:F1}, rb.mass={rbAfter?.mass:F2}, " +
                     $"collider={collider != null && collider.enabled}, radius={collider?.radius:F3}");
+                // Start tracking ball position
+                _firedBallGO = activeBallGO;
+                _firedBallTimer = 0f;
+                _firedBallLogCount = 0;
             }
             catch (System.Exception fireEx)
             {
