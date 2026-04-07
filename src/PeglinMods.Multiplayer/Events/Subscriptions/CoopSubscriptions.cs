@@ -209,27 +209,48 @@ public sealed class CoopSubscriptions
                 _coopStateManager.SwapToPlayer(_turnManager.CurrentPlayerSlot);
                 EnsureBattleDeckPopulated("new round");
 
-                // Force BattleController to re-enter AWAITING_SHOT fresh by resetting
-                // _prevBattleState. Without this, BattleController.Update sees
-                // _prevBattleState == AWAITING_SHOT and skips OnStartedAwaitingShot,
-                // which means the deck animation → DrawBall → ArmBallForShot flow
-                // doesn't trigger for the new round.
+                // The DOTween → ArmBallForShot flow is broken after a deck swap.
+                // Force DrawBall + fully initialize the ball for aiming.
                 try
                 {
                     var bc = UnityEngine.Object.FindObjectOfType<Battle.BattleController>();
                     if (bc != null)
                     {
-                        var prevStateField = AccessTools.Field(typeof(Battle.BattleController), "_prevBattleState");
-                        if (prevStateField != null)
+                        // Create ball from the swapped-in deck
+                        var drawBallMethod = AccessTools.Method(typeof(Battle.BattleController), "DrawBall");
+                        drawBallMethod?.Invoke(bc, null);
+
+                        var activeBallField = AccessTools.Field(typeof(Battle.BattleController), "_activePachinkoBall");
+                        var ballGO = activeBallField?.GetValue(bc) as UnityEngine.GameObject;
+                        if (ballGO != null)
                         {
-                            prevStateField.SetValue(bc, Battle.BattleController.BattleState.SPAWNING);
-                            _log.LogInfo($"[CoopSubs] Reset _prevBattleState for round {_turnManager.RoundNumber}");
+                            // Kill DOTween (it won't complete after swap) and snap scale
+                            DG.Tweening.DOTween.Kill(ballGO.transform);
+                            ballGO.transform.localScale = UnityEngine.Vector3.one * 0.32f;
+
+                            var ball = ballGO.GetComponent<PachinkoBall>();
+                            if (ball != null)
+                            {
+                                // InitializeMembers sets _player, _rigid, _mainCamera etc.
+                                // Without this, PachinkoBall.Update() can't read mouse input.
+                                ball.InitializeMembers();
+
+                                // Set AIMING state (Arm() NREs on _predictionManager)
+                                var stateProp = AccessTools.Property(typeof(PachinkoBall), "CurrentState");
+                                stateProp?.GetSetMethod(true)?.Invoke(ball, new object[] { PachinkoBall.FireballState.AIMING });
+                            }
+
+                            // Ensure ball is active (same deactivation issue as client shots)
+                            if (!ballGO.activeInHierarchy)
+                                ballGO.SetActive(true);
+
+                            _log.LogInfo($"[CoopSubs] DrawBall + Init + AIMING for round {_turnManager.RoundNumber}");
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    _log.LogWarning($"[CoopSubs] _prevBattleState reset failed: {ex.Message}");
+                    _log.LogWarning($"[CoopSubs] Round swap ball setup failed: {ex.Message}\n{ex.StackTrace}");
                 }
             }
             BroadcastTurnChange();
