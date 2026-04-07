@@ -366,12 +366,30 @@ public class GameStateApplyService
                 if (snapshot.Deck != null) SafeApply("Deck", () => _deckApplier.Apply(snapshot.Deck));
                 if (snapshot.Relics != null) SafeApply("Relics", () => _relicApplier.Apply(snapshot.Relics));
             }
-            else if (snapshot.Deck != null)
+            else
             {
-                // In coop, don't sync the full deck (each player has their own).
-                // But DO sync the active orb display so the client sees the correct
-                // orb at the aimer position during the host's (or other player's) turn.
-                SafeApply("Deck(coop-orb-only)", () => _deckApplier.ApplyActiveOrbOnly(snapshot.Deck));
+                // In coop, apply this client's own deck from AllDecks.
+                // The host sends per-player deck data; we pick our slot.
+                Snapshots.DeckStateSnapshot myDeck = null;
+                if (snapshot.AllDecks != null)
+                {
+                    var services = MultiplayerPlugin.Services;
+                    if (services?.TryResolve<Multiplayer.PlayerRegistry>(out var registry) == true
+                        && registry.LocalSlot != null)
+                    {
+                        snapshot.AllDecks.TryGetValue(registry.LocalSlot.SlotIndex, out myDeck);
+                    }
+                }
+
+                if (myDeck != null)
+                {
+                    SafeApply("Deck(coop-own)", () => _deckApplier.Apply(myDeck));
+                }
+                else if (snapshot.Deck != null)
+                {
+                    // Fallback: just show the active orb
+                    SafeApply("Deck(coop-orb-only)", () => _deckApplier.ApplyActiveOrbOnly(snapshot.Deck));
+                }
             }
             VerifyConsistency(snapshot);
 

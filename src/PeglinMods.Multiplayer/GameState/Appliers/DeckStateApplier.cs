@@ -22,16 +22,6 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
     {
         try
         {
-            // In coop mode, each player has their own deck managed by CoopStateManager.
-            // The heartbeat sends the active player's deck (from host singletons),
-            // which would overwrite the client's own deck. Skip full sync; only
-            // update the aimer orb visual.
-            if (UI.LobbyUI.GameStartReceived)
-            {
-                ApplyActiveOrbOnly(snapshot);
-                return;
-            }
-
             _log.LogInfo($"[DeckApplier] Syncing deck: {snapshot.DeckSize} complete, {snapshot.BattleDeck?.Count ?? 0} battle orbs");
 
             // Find DeckManager (ScriptableObject — not in scene hierarchy)

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using BepInEx.Logging;
 using PeglinMods.Multiplayer.Events;
 using PeglinMods.Multiplayer.GameState.Providers;
@@ -80,6 +81,8 @@ public class GameStateSyncService : IGameStateSyncService
                 snapshot.TotalPlayerCount = _coopStateManager.TotalPlayerCount;
                 snapshot.PlayerSummaries = new List<CoopPlayerSummary>();
 
+                snapshot.AllDecks = new Dictionary<int, Snapshots.DeckStateSnapshot>();
+
                 foreach (var kvp in _coopStateManager.PlayerStates)
                 {
                     var ps = kvp.Value;
@@ -95,6 +98,27 @@ public class GameStateSyncService : IGameStateSyncService
                         Gold = isActive ? (snapshot.Player?.Gold ?? ps.Gold) : ps.Gold,
                         HasShotThisRound = ps.HasShotThisRound,
                     });
+
+                    // Per-player deck: active player from singletons, others from CoopPlayerState
+                    if (isActive)
+                    {
+                        snapshot.AllDecks[kvp.Key] = snapshot.Deck;
+                    }
+                    else
+                    {
+                        snapshot.AllDecks[kvp.Key] = new Snapshots.DeckStateSnapshot
+                        {
+                            ActiveSlotIndex = kvp.Key,
+                            DeckSize = ps.CompleteDeck?.Count ?? 0,
+                            CompleteDeck = ps.CompleteDeck?.Select(o => new Snapshots.OrbEntry { Name = o.PrefabName, Level = o.Level }).ToList()
+                                ?? new List<Snapshots.OrbEntry>(),
+                            BattleDeck = ps.BattleDeck?.Select(o => new Snapshots.OrbEntry { Name = o.PrefabName, Level = o.Level }).ToList()
+                                ?? new List<Snapshots.OrbEntry>(),
+                            ShuffledOrder = ps.ShuffledOrder ?? new List<string>(),
+                            CurrentOrb = ps.CurrentOrb,
+                            CurrentOrbLevel = ps.CurrentOrbLevel,
+                        };
+                    }
                 }
             }
 

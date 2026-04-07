@@ -10,6 +10,10 @@ public sealed class OrbDiscardedClientHandler : IClientHandler<OrbDiscardedEvent
     {
         try
         {
+            // In coop mode, discards only affect the active player's deck on the host.
+            // Don't invoke on the client — it would discard from the CLIENT's own deck.
+            if (UI.LobbyUI.GameStartReceived) return;
+
             BattleController.OnOrbDiscarded?.Invoke();
         }
         catch (Exception e)
