@@ -220,15 +220,26 @@ public sealed class CoopSubscriptions
                         var drawBallMethod = AccessTools.Method(typeof(Battle.BattleController), "DrawBall");
                         drawBallMethod?.Invoke(bc, null);
 
-                        // Kill any scale animation and arm the ball immediately
+                        // Kill any scale animation and arm the ball manually.
+                        // ArmBallForShot() calls Arm() which NREs on _predictionManager.
                         var activeBallField = AccessTools.Field(typeof(Battle.BattleController), "_activePachinkoBall");
-                        var ball = activeBallField?.GetValue(bc) as UnityEngine.GameObject;
-                        if (ball != null)
+                        var ballGO = activeBallField?.GetValue(bc) as UnityEngine.GameObject;
+                        if (ballGO != null)
                         {
-                            DG.Tweening.DOTween.Kill(ball.transform);
-                            ball.transform.localScale = UnityEngine.Vector3.one * 0.32f;
-                            bc.ArmBallForShot();
-                            _log.LogInfo($"[CoopSubs] Forced DrawBall + ArmBallForShot for round {_turnManager.RoundNumber}");
+                            DG.Tweening.DOTween.Kill(ballGO.transform);
+                            ballGO.transform.localScale = UnityEngine.Vector3.one * 0.32f;
+
+                            // Set AIMING state directly instead of calling Arm() which NREs
+                            var ball = ballGO.GetComponent<PachinkoBall>();
+                            if (ball != null)
+                            {
+                                var stateProp = AccessTools.Property(typeof(PachinkoBall), "CurrentState");
+                                stateProp?.GetSetMethod(true)?.Invoke(ball, new object[] { PachinkoBall.FireballState.AIMING });
+                                try { ball.SetTrajectorySimulationRadius(); } catch { }
+                                var ts = ballGO.GetComponent<TrajectorySimulation>();
+                                if (ts != null) ts.enabled = true;
+                            }
+                            _log.LogInfo($"[CoopSubs] Forced DrawBall + manual Arm for round {_turnManager.RoundNumber}");
                         }
                     }
                 }
