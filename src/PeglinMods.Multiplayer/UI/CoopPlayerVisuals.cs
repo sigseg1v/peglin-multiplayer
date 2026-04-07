@@ -287,8 +287,8 @@ public class CoopPlayerVisuals : MonoBehaviour
 
             var arrowPanel = CreateTextPanel(
                 $"CoopArrow_Slot{summary.SlotIndex}",
-                40, 40,
-                "<", 42, arrowColor, new Color(0, 0, 0, 0),
+                80, 80,
+                "<", 72, arrowColor, new Color(0, 0, 0, 0),
                 out var arrowText);
             arrowPanel.SetActive(false); // only visible for active player
 

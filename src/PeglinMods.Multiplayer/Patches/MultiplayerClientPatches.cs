@@ -226,6 +226,11 @@ public static class MultiplayerClientPatches
         {
             HandleClientAiming(__instance);
         }
+        else
+        {
+            // Hide aim line when not aiming
+            if (_clientAimLR != null) _clientAimLR.enabled = false;
+        }
 
         return false; // Always block BattleController.Update on the client
     }
@@ -235,6 +240,10 @@ public static class MultiplayerClientPatches
     /// Reads mouse position, updates the ClientBallRenderer aim direction,
     /// and sends a ShootRequestEvent to the host when the player clicks.
     /// </summary>
+    // Persistent aim line for the client
+    private static GameObject _clientAimLine;
+    private static LineRenderer _clientAimLR;
+
     private static void HandleClientAiming(BattleController bc)
     {
         var cam = Camera.main;
@@ -253,11 +262,31 @@ public static class MultiplayerClientPatches
 
         // Get mouse world position
         var mouseScreenPos = Input.mousePosition;
-        mouseScreenPos.z = -cam.transform.position.z; // distance from camera
+        mouseScreenPos.z = -cam.transform.position.z;
         var mouseWorld = (Vector2)cam.ScreenToWorldPoint(mouseScreenPos);
 
         // Compute aim direction from spawn to mouse
         var aimDir = (mouseWorld - spawnPos).normalized;
+
+        // Draw a visible aim line from spawn point in the aim direction
+        if (_clientAimLine == null)
+        {
+            _clientAimLine = new GameObject("ClientAimLine");
+            _clientAimLine.hideFlags = HideFlags.HideAndDontSave;
+            _clientAimLR = _clientAimLine.AddComponent<LineRenderer>();
+            _clientAimLR.startWidth = 0.08f;
+            _clientAimLR.endWidth = 0.02f;
+            _clientAimLR.positionCount = 2;
+            _clientAimLR.material = new Material(Shader.Find("Sprites/Default"));
+            _clientAimLR.startColor = new Color(1f, 1f, 0.3f, 0.8f);
+            _clientAimLR.endColor = new Color(1f, 1f, 0.3f, 0.1f);
+            _clientAimLR.sortingOrder = 200;
+        }
+        _clientAimLR.enabled = true;
+        var start = new Vector3(spawnPos.x, spawnPos.y, -1f);
+        var end = start + (Vector3)(aimDir * 4f);
+        _clientAimLR.SetPosition(0, start);
+        _clientAimLR.SetPosition(1, end);
 
         // Update the ClientBallRenderer's aim direction for visual orb rotation
         var cbr = GameState.ClientBallRenderer.Instance;
@@ -278,6 +307,8 @@ public static class MultiplayerClientPatches
                     AimDirectionY = aimDir.y,
                 });
                 ClientShotSentThisTurn = true;
+                // Hide aim line after shot
+                if (_clientAimLR != null) _clientAimLR.enabled = false;
                 MultiplayerPlugin.Logger?.LogInfo(
                     $"[ClientPatches] Sent ShootRequest from client aiming: aim=({aimDir.x:F2},{aimDir.y:F2})");
             }
@@ -370,7 +401,13 @@ public static class MultiplayerClientPatches
                 MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Scale snap: ({targetScale.x:F2},{targetScale.y:F2}) hadTween={hadTween} state={activeBall.CurrentState}");
             }
 
-            // Set aim direction on the ball
+            // InitializeMembers() sets _rigid, _wallbounceAudioSource, _mainCamera etc.
+            // It normally runs in Start() (next frame) but we need it NOW before Fire().
+            // MUST be called BEFORE setting _aimVector because it calls InitAimVector()
+            // which overwrites _aimVector with a default value.
+            activeBall.InitializeMembers();
+
+            // Set aim direction AFTER InitializeMembers (which overwrites _aimVector)
             var aimField = HarmonyLib.AccessTools.Field(typeof(PachinkoBall), "_aimVector");
             var aimVec = new UnityEngine.Vector2(pending.AimDirectionX, pending.AimDirectionY).normalized;
             if (aimField != null)
@@ -386,11 +423,6 @@ public static class MultiplayerClientPatches
                 stateProp?.GetSetMethod(true)?.Invoke(activeBall, new object[] { PachinkoBall.FireballState.AIMING });
             }
 
-            // InitializeMembers() sets _rigid, _wallbounceAudioSource, _mainCamera etc.
-            // It normally runs in Start() (next frame) but we need it NOW before Fire().
-            // DrawBall calls Init() but not InitializeMembers(), so Fire() NREs without this.
-            activeBall.InitializeMembers();
-
             // Use the real PachinkoBall.Fire() so all internal state (collision layers,
             // wall bounce tracking, shot timeout, etc.) is set up correctly.
             // ExecutingPendingShot bypasses PachinkoBall_Fire_Prefix's block.
@@ -398,7 +430,7 @@ public static class MultiplayerClientPatches
             try
             {
                 activeBall.Fire();
-                MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] PachinkoBall.Fire() succeeded");
+                MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] PachinkoBall.Fire() succeeded, aim=({aimVec.x:F2},{aimVec.y:F2})");
             }
             catch (System.Exception fireEx)
             {
