@@ -58,10 +58,28 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                 try
                 {
                     bool needsRebuild = dm.shuffledDeck.Count == 0 || deckChanged;
-                    // In coop, always rebuild from host's authoritative shuffled order
-                    bool isCoop = UI.LobbyUI.GameStartReceived;
-                    if (isCoop && snapshot.ShuffledOrder != null && snapshot.ShuffledOrder.Count > 0)
-                        needsRebuild = true;
+                    // In coop, rebuild if the shuffled order actually differs from what we have
+                    if (!needsRebuild && UI.LobbyUI.GameStartReceived &&
+                        snapshot.ShuffledOrder != null && snapshot.ShuffledOrder.Count > 0)
+                    {
+                        var currentArr = dm.shuffledDeck.ToArray();
+                        if (currentArr.Length != snapshot.ShuffledOrder.Count)
+                        {
+                            needsRebuild = true;
+                        }
+                        else
+                        {
+                            for (int k = 0; k < currentArr.Length; k++)
+                            {
+                                var currentName = currentArr[k]?.name ?? "";
+                                if (currentName != snapshot.ShuffledOrder[k])
+                                {
+                                    needsRebuild = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
 
                     // Use host's shuffled order if available
                     if (needsRebuild && snapshot.ShuffledOrder != null && snapshot.ShuffledOrder.Count > 0)
