@@ -262,11 +262,20 @@ public static class MultiplayerClientPatches
     /// </summary>
     private static void CleanupClientAiming()
     {
-        // Clear BattleController._activePachinkoBall if it's our client ball
+        // Clean up prediction visuals and clear _activePachinkoBall
         if (_clientBallGO != null)
         {
             try
             {
+                // Tell PredictionManager to clean up trajectory dots/lines
+                var ball = _clientBallGO.GetComponent<PachinkoBall>();
+                if (ball != null)
+                {
+                    var pmField = HarmonyLib.AccessTools.Field(typeof(PachinkoBall), "_predictionManager");
+                    var pm = pmField?.GetValue(ball) as PredictionManager;
+                    try { pm?.PlayerFired(); } catch { }
+                }
+
                 var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
                 if (bc != null)
                 {
@@ -1771,6 +1780,13 @@ public static class MultiplayerClientPatches
                         AimDirectionY = aimVec.y,
                     });
                     ClientShotSentThisTurn = true;
+
+                    // Clean up prediction visuals — Fire() normally calls
+                    // _predictionManager.PlayerFired() but we're blocking Fire().
+                    var pmField = HarmonyLib.AccessTools.Field(typeof(PachinkoBall), "_predictionManager");
+                    var pm = pmField?.GetValue(__instance) as PredictionManager;
+                    try { pm?.PlayerFired(); } catch { }
+
                     MultiplayerPlugin.Logger?.LogInfo(
                         $"[ClientPatches] Fire intercepted → ShootRequest: aim=({aimVec.x:F2},{aimVec.y:F2})");
                 }
