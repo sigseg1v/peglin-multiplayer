@@ -267,6 +267,12 @@ public class CoopStateManager
                 }
             }
 
+            // Rebuild DeckInfoManager's visual display stack to match the new shuffledDeck.
+            // DeckInfoManager._displayOrbs mirrors shuffledDeck for the deck tube UI.
+            // Without this, DrawNextOrb (called by onBallUsed delegate) pops from an
+            // empty/stale stack and throws "Stack empty".
+            RebuildDeckInfoDisplay(deckMgr);
+
             _log.LogInfo($"[CoopState] LoadDeckState for slot {state.SlotIndex}: " +
                 $"complete={DeckManager.completeDeck.Count}, battle={deckMgr.battleDeck.Count}, " +
                 $"shuffled={deckMgr.shuffledDeck.Count}");
@@ -274,6 +280,52 @@ public class CoopStateManager
         catch (Exception ex)
         {
             _log.LogWarning($"[CoopState] LoadDeckState failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Rebuild DeckInfoManager._displayOrbs to match the current shuffledDeck.
+    /// The game's PlungerPlungeComplete does this after a shuffle animation,
+    /// but we need it immediately after a deck swap.
+    /// </summary>
+    private void RebuildDeckInfoDisplay(DeckManager deckMgr)
+    {
+        try
+        {
+            var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
+            if (dim == null) return;
+
+            // Clear existing display orbs
+            var displayOrbsField = HarmonyLib.AccessTools.Field(typeof(DeckInfoManager), "_displayOrbs");
+            var displayOrbs = displayOrbsField?.GetValue(dim) as System.Collections.Generic.Stack<GameObject>;
+            if (displayOrbs == null) return;
+
+            foreach (var go in displayOrbs)
+                if (go != null) UnityEngine.Object.Destroy(go);
+            displayOrbs.Clear();
+
+            // Recreate display orbs from shuffledDeck (same logic as PlungerPlungeComplete)
+            var createMethod = HarmonyLib.AccessTools.Method(typeof(DeckInfoManager), "CreatePreviewSprite",
+                new[] { typeof(GameObject), typeof(float) });
+            if (createMethod == null) return;
+
+            var plungerParent = HarmonyLib.AccessTools.Field(typeof(DeckInfoManager), "_plungerParent")?.GetValue(dim) as Transform;
+            if (plungerParent == null) return;
+
+            var arr = deckMgr.shuffledDeck.ToArray();
+            for (int i = arr.Length - 1; i >= 0; i--)
+            {
+                var previewGO = createMethod.Invoke(dim, new object[] { arr[i], (float)i * 0.01f }) as GameObject;
+                if (previewGO != null)
+                {
+                    previewGO.transform.parent = plungerParent;
+                    displayOrbs.Push(previewGO);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[CoopState] RebuildDeckInfoDisplay failed: {ex.Message}");
         }
     }
 
