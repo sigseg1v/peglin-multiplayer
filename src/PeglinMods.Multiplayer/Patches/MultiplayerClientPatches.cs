@@ -222,13 +222,17 @@ public static class MultiplayerClientPatches
     {
         if (!ShouldSuppressClientLogic) return true;
 
-        // Block BattleController.Update on the client to prevent game logic side effects
-        // (OnStartedAwaitingShot, round count increment, relic resets, etc.).
-        // Native PachinkoBall.Update() runs independently and handles aiming visuals.
-        // Fire interception happens in PachinkoBall_Fire_Prefix.
-        if (!Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn || ClientShotSentThisTurn)
+        // In co-op: handle aiming input ourselves instead of running BattleController.Update.
+        // BattleController.Update in AWAITING_SHOT fires OnStartedAwaitingShot, increments
+        // round count, resets per-shot relics, etc. — side effects that corrupt client state.
+        // HandleClientAiming creates the ball visual needed for the native prediction aimer.
+        if (Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn && !ClientShotSentThisTurn)
         {
-            // Not aiming — clean up any leftover client ball and trajectory
+            HandleClientAiming(__instance);
+        }
+        else
+        {
+            // Not aiming — clean up client ball and trajectory
             if (_clientBallInitialized)
                 CleanupClientAiming();
         }
@@ -319,19 +323,20 @@ public static class MultiplayerClientPatches
                 var ts = _clientBallGO.GetComponent<TrajectorySimulation>();
                 if (ts != null) ts.enabled = false;
 
-                // Create our own trajectory LineRenderer with guaranteed-to-work material
-                _clientTrajectoryGO = new UnityEngine.GameObject("ClientTrajectory");
-                _clientTrajectoryGO.hideFlags = UnityEngine.HideFlags.HideAndDontSave;
-                UnityEngine.Object.DontDestroyOnLoad(_clientTrajectoryGO);
-                _clientTrajectoryLR = _clientTrajectoryGO.AddComponent<UnityEngine.LineRenderer>();
-                _clientTrajectoryLR.material = new UnityEngine.Material(UnityEngine.Shader.Find("Sprites/Default"));
-                _clientTrajectoryLR.startColor = new UnityEngine.Color(1f, 1f, 1f, 0.9f);
-                _clientTrajectoryLR.endColor = new UnityEngine.Color(1f, 1f, 1f, 0f);
-                _clientTrajectoryLR.startWidth = 0.15f;
-                _clientTrajectoryLR.endWidth = 0.15f;
-                _clientTrajectoryLR.useWorldSpace = true;
-                _clientTrajectoryLR.sortingLayerName = "Default";
-                _clientTrajectoryLR.sortingOrder = 200;
+                // Custom trajectory LineRenderer disabled — native aimer works now.
+                // Kept for reference in case we want it back later.
+                // _clientTrajectoryGO = new UnityEngine.GameObject("ClientTrajectory");
+                // _clientTrajectoryGO.hideFlags = UnityEngine.HideFlags.HideAndDontSave;
+                // UnityEngine.Object.DontDestroyOnLoad(_clientTrajectoryGO);
+                // _clientTrajectoryLR = _clientTrajectoryGO.AddComponent<UnityEngine.LineRenderer>();
+                // _clientTrajectoryLR.material = new UnityEngine.Material(UnityEngine.Shader.Find("Sprites/Default"));
+                // _clientTrajectoryLR.startColor = new UnityEngine.Color(1f, 1f, 1f, 0.9f);
+                // _clientTrajectoryLR.endColor = new UnityEngine.Color(1f, 1f, 1f, 0f);
+                // _clientTrajectoryLR.startWidth = 0.15f;
+                // _clientTrajectoryLR.endWidth = 0.15f;
+                // _clientTrajectoryLR.useWorldSpace = true;
+                // _clientTrajectoryLR.sortingLayerName = "Default";
+                // _clientTrajectoryLR.sortingOrder = 200;
 
                 MultiplayerPlugin.Logger?.LogInfo(
                     $"[ClientAim] Created ball at ({spawnPos.x:F1},{spawnPos.y:F1}), " +
@@ -343,8 +348,8 @@ public static class MultiplayerClientPatches
             }
         }
 
-        // Drive aiming each frame: read mouse, update ball rotation, draw trajectory
-        if (_clientBallGO == null || _clientTrajectoryLR == null) return;
+        // Drive aiming each frame: read mouse, update ball rotation
+        if (_clientBallGO == null) return;
         var cam = Camera.main;
         if (cam == null) return;
 
@@ -356,8 +361,8 @@ public static class MultiplayerClientPatches
 
         _clientBallGO.transform.right = aimDir;
 
-        // Draw trajectory using same physics formula as TrajectorySimulation.simulatePath()
-        DrawClientTrajectory(ballPos, aimDir);
+        // Custom trajectory disabled — native PachinkoBall prediction renders the aimer
+        // DrawClientTrajectory(ballPos, aimDir);
 
         // On click, send shoot request
         if (Input.GetMouseButtonDown(0))

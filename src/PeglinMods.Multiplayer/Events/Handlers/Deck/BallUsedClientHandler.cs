@@ -13,6 +13,10 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
     {
         try
         {
+            // In coop mode, BallUsed events reflect the HOST's active player's deck actions.
+            // Don't pop from the client's own deck — the heartbeat sync handles deck state.
+            if (UI.LobbyUI.GameStartReceived) return;
+
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
             if (mode == null || !mode.IsSpectating) return;
 
