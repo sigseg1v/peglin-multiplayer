@@ -628,6 +628,26 @@ public static class MultiplayerClientPatches
         }
     }
 
+    /// <summary>
+    /// Block the host from discarding/skipping orbs during a client's turn.
+    /// Without this, right-click discard operates on the client's deck
+    /// (loaded in singletons for their turn) instead of the host's.
+    /// </summary>
+    [HarmonyPatch(typeof(BattleController), "AttemptOrbDiscard")]
+    [HarmonyPrefix]
+    public static bool BattleController_AttemptOrbDiscard_Prefix()
+    {
+        if (!IsHosting || !UI.LobbyUI.GameStartReceived) return true;
+
+        var services = MultiplayerPlugin.Services;
+        if (services?.TryResolve<GameState.TurnManager>(out var tm) == true
+            && tm.CurrentPlayerSlot > 0) // client's turn
+        {
+            return false; // block discard
+        }
+        return true;
+    }
+
     [HarmonyPatch(typeof(SaveManager), "SaveRun")]
     [HarmonyPrefix]
     public static bool SaveManager_SaveRun_Prefix() => !ShouldSuppressClientLogic;
