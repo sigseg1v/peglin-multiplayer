@@ -146,6 +146,20 @@ public class CoopStateManager
             var deckMgr = Resources.FindObjectsOfTypeAll<DeckManager>()?.FirstOrDefault();
             if (deckMgr == null) return;
 
+            // Guard: if all completeDeck objects are destroyed (Unity-null from scene unload),
+            // don't overwrite CoopPlayerState with empty data.
+            if (DeckManager.completeDeck != null && DeckManager.completeDeck.Count > 0)
+            {
+                bool anyValid = false;
+                foreach (var orb in DeckManager.completeDeck)
+                    if (orb != null) { anyValid = true; break; }
+                if (!anyValid && state.CompleteDeck.Count > 0)
+                {
+                    _log.LogInfo($"[CoopState] SaveDeckState: singleton orbs are destroyed, preserving {state.CompleteDeck.Count} existing orbs");
+                    return;
+                }
+            }
+
             state.CompleteDeck.Clear();
             if (DeckManager.completeDeck != null)
             {
@@ -185,6 +199,17 @@ public class CoopStateManager
                     state.ShuffledOrder.Add(orb.name.Replace("(Clone)", "").Trim());
                 }
             }
+
+            // Save current/next orb for display in AllDecks
+            if (deckMgr.shuffledDeck != null && deckMgr.shuffledDeck.Count > 0)
+            {
+                var top = deckMgr.shuffledDeck.Peek();
+                state.CurrentOrb = top?.name ?? "";
+            }
+            else
+            {
+                state.CurrentOrb = "";
+            }
         }
         catch (Exception ex)
         {
@@ -216,6 +241,7 @@ public class CoopStateManager
                     var instance = UnityEngine.Object.Instantiate(prefab);
                     instance.name = orb.PrefabName;
                     instance.SetActive(false);
+                    UnityEngine.Object.DontDestroyOnLoad(instance);
                     DeckManager.completeDeck.Add(instance);
                 }
                 else
@@ -240,6 +266,7 @@ public class CoopStateManager
                     var instance = UnityEngine.Object.Instantiate(prefab);
                     instance.name = orb.PrefabName;
                     instance.SetActive(false);
+                    UnityEngine.Object.DontDestroyOnLoad(instance);
                     deckMgr.battleDeck.Add(instance);
                 }
             }
@@ -315,15 +342,19 @@ public class CoopStateManager
             if (plungerParent == null) return;
 
             var arr = deckMgr.shuffledDeck.ToArray();
+            int created = 0;
             for (int i = arr.Length - 1; i >= 0; i--)
             {
+                if (arr[i] == null) continue;
                 var previewGO = createMethod.Invoke(dim, new object[] { arr[i], (float)i * 0.01f }) as GameObject;
                 if (previewGO != null)
                 {
                     previewGO.transform.parent = plungerParent;
                     displayOrbs.Push(previewGO);
+                    created++;
                 }
             }
+            _log.LogInfo($"[CoopState] RebuildDeckInfoDisplay: {created}/{arr.Length} display orbs from shuffledDeck");
         }
         catch (Exception ex)
         {

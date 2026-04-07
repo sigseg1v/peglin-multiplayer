@@ -58,6 +58,10 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                 try
                 {
                     bool needsRebuild = dm.shuffledDeck.Count == 0 || deckChanged;
+                    // In coop, always rebuild from host's authoritative shuffled order
+                    bool isCoop = UI.LobbyUI.GameStartReceived;
+                    if (isCoop && snapshot.ShuffledOrder != null && snapshot.ShuffledOrder.Count > 0)
+                        needsRebuild = true;
 
                     // Use host's shuffled order if available
                     if (needsRebuild && snapshot.ShuffledOrder != null && snapshot.ShuffledOrder.Count > 0)
@@ -360,6 +364,7 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                     var instance = UnityEngine.Object.Instantiate(orbGo);
                     instance.name = entry.Name;
                     instance.SetActive(false);
+                    UnityEngine.Object.DontDestroyOnLoad(instance);
                     newDeck.Add(instance);
                     loaded++;
                 }
@@ -394,8 +399,21 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             dm.battleDeck = new List<GameObject>();
         }
 
-        // Only rebuild if counts differ
-        if (dm.battleDeck.Count == hostBattleDeck.Count) return false;
+        // Check if deck matches (compare both count AND orb names)
+        if (dm.battleDeck.Count == hostBattleDeck.Count)
+        {
+            bool match = true;
+            for (int i = 0; i < hostBattleDeck.Count; i++)
+            {
+                if (i >= dm.battleDeck.Count || dm.battleDeck[i] == null ||
+                    dm.battleDeck[i].name != hostBattleDeck[i].Name)
+                {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) return false;
+        }
 
         int loaded = 0;
         var newBattleDeck = new List<GameObject>();
@@ -409,6 +427,7 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                     var instance = UnityEngine.Object.Instantiate(orbGo);
                     instance.name = entry.Name;
                     instance.SetActive(false);
+                    UnityEngine.Object.DontDestroyOnLoad(instance);
                     newBattleDeck.Add(instance);
                     loaded++;
                 }
