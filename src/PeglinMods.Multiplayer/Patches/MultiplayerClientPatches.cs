@@ -228,7 +228,16 @@ public static class MultiplayerClientPatches
         }
         else
         {
-            _clientBallInitialized = false;
+            // Not aiming — clean up client ball
+            if (_clientBallInitialized)
+            {
+                if (_clientBallGO != null)
+                {
+                    UnityEngine.Object.Destroy(_clientBallGO);
+                    _clientBallGO = null;
+                }
+                _clientBallInitialized = false;
+            }
         }
 
         return false; // Always block BattleController.Update on the client
@@ -242,74 +251,101 @@ public static class MultiplayerClientPatches
     // Track whether we've initialized the ball for client aiming this turn
     private static bool _clientBallInitialized;
 
+    // The client-created PachinkoBall for aiming during client's turn
+    private static UnityEngine.GameObject _clientBallGO;
+
     /// <summary>
-    /// Activate the actual PachinkoBall from BattleController._activePachinkoBall
-    /// on the client and let its native Update() handle aiming. This gives the
-    /// exact same aimer graphic as the host sees.
+    /// Create a real PachinkoBall on the client from the deck prefab, just like
+    /// BattleController.DrawBall does. Set it to AIMING state and let its native
+    /// Update() handle everything: mouse input, rotation, TrajectorySimulation.
+    /// When the player clicks, Fire() is intercepted by PachinkoBall_Fire_Prefix.
     /// </summary>
     private static void HandleClientAiming(BattleController bc)
     {
-        // Get the ball from BattleController._activePachinkoBall — this is the
-        // specific ball drawn for the current turn, not a stale one
-        var activeBallField = HarmonyLib.AccessTools.Field(typeof(BattleController), "_activePachinkoBall");
-        var activeBallGO = activeBallField?.GetValue(bc) as UnityEngine.GameObject;
-        if (activeBallGO == null) return;
-
-        var ball = activeBallGO.GetComponent<PachinkoBall>();
-        if (ball == null) return;
-
-        // Activate the ball's GO so PachinkoBall.Update() runs
-        if (!activeBallGO.activeSelf)
-            activeBallGO.SetActive(true);
-
-        // One-time initialization per turn
         if (!_clientBallInitialized)
         {
-            // Move ball to spawn point if it's not there
+            // Destroy previous client ball if any
+            if (_clientBallGO != null)
+            {
+                UnityEngine.Object.Destroy(_clientBallGO);
+                _clientBallGO = null;
+            }
+
+            // Get spawn position
             var spawnPos = bc.pachinkoBallSpawnLocation;
             if (spawnPos == UnityEngine.Vector2.zero)
             {
                 var player = UnityEngine.GameObject.FindGameObjectWithTag("Player");
                 if (player != null) spawnPos = (UnityEngine.Vector2)player.transform.position;
             }
-            if (spawnPos != UnityEngine.Vector2.zero)
-                activeBallGO.transform.position = new UnityEngine.Vector3(spawnPos.x, spawnPos.y, activeBallGO.transform.position.z);
 
-            ball.InitializeMembers();
-
-            // Set AIMING state
-            if (ball.CurrentState != PachinkoBall.FireballState.AIMING)
+            // Get the orb prefab from the deck — same as what DeckManager.DrawBall returns
+            try
             {
-                var stateProp = HarmonyLib.AccessTools.Property(typeof(PachinkoBall), "CurrentState");
-                stateProp?.GetSetMethod(true)?.Invoke(ball, new object[] { PachinkoBall.FireballState.AIMING });
-            }
+                var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
+                var dm = dms.Length > 0 ? dms[0] : null;
+                if (dm == null) { MultiplayerPlugin.Logger?.LogWarning("[ClientAim] No DeckManager"); return; }
 
-            // Enable the TrajectorySimulation and set its playerFire reference
-            var trajSim = activeBallGO.GetComponent<TrajectorySimulation>();
-            if (trajSim != null)
+                // Peek at the top of shuffled deck to get the prefab
+                var shuffledField = HarmonyLib.AccessTools.Field(typeof(DeckManager), "shuffledDeck");
+                var shuffled = shuffledField?.GetValue(dm) as System.Collections.Generic.Stack<UnityEngine.GameObject>;
+                UnityEngine.GameObject prefab = null;
+                if (shuffled != null && shuffled.Count > 0)
+                    prefab = shuffled.Peek();
+
+                // Fallback: use any orb from completeDeck
+                if (prefab == null && DeckManager.completeDeck != null && DeckManager.completeDeck.Count > 0)
+                    prefab = DeckManager.completeDeck[0];
+
+                if (prefab == null) { MultiplayerPlugin.Logger?.LogWarning("[ClientAim] No orb prefab found"); return; }
+
+                // Instantiate the ball at the spawn point — same as BattleController.DrawBall
+                _clientBallGO = UnityEngine.Object.Instantiate(prefab, spawnPos, UnityEngine.Quaternion.identity);
+
+                var ball = _clientBallGO.GetComponent<PachinkoBall>();
+                if (ball == null) { MultiplayerPlugin.Logger?.LogWarning("[ClientAim] Instantiated prefab has no PachinkoBall"); return; }
+
+                // Init the ball (with null-safe params — client may not have all managers)
+                var rms = Resources.FindObjectsOfTypeAll<Relics.RelicManager>();
+                var rm = rms.Length > 0 ? rms[0] : null;
+                ball.Init(rm, dm, UnityEngine.Vector2.down, null, null);
+                ball.InitializeMembers();
+                ball.IsDummy = true; // Dummy so it doesn't process peg collisions on client
+
+                // Arm the ball — sets state to AIMING
+                ball.Arm();
+                ball.SetTrajectorySimulationRadius();
+
+                // Enable trajectory simulation
+                var trajSim = _clientBallGO.GetComponent<TrajectorySimulation>();
+                if (trajSim != null)
+                {
+                    trajSim.playerFire = _clientBallGO;
+                    trajSim.enabled = true;
+                }
+
+                // Disable physics so the ball doesn't fall
+                var rb = _clientBallGO.GetComponent<UnityEngine.Rigidbody2D>();
+                if (rb != null) rb.simulated = false;
+
+                _clientBallInitialized = true;
+                MultiplayerPlugin.Logger?.LogInfo(
+                    $"[ClientAim] Created aiming ball at ({spawnPos.x:F1},{spawnPos.y:F1}), " +
+                    $"prefab={prefab.name}, state={ball.CurrentState}, " +
+                    $"trajSim={trajSim != null}, sightLine={trajSim?.sightLine != null}");
+            }
+            catch (System.Exception ex)
             {
-                trajSim.playerFire = activeBallGO;
-                trajSim.fireForce = ball.FireForce;
-                trajSim.gravityMod = ball.GravityScale;
-                trajSim.enabled = true;
+                MultiplayerPlugin.Logger?.LogError($"[ClientAim] Failed to create ball: {ex}");
             }
-
-            // Make the ball visible (ensure renderer is on)
-            var renderer = activeBallGO.GetComponentInChildren<UnityEngine.SpriteRenderer>();
-            if (renderer != null) renderer.enabled = true;
-
-            _clientBallInitialized = true;
-            MultiplayerPlugin.Logger?.LogInfo(
-                $"[ClientPatches] Activated client ball for aiming: pos=({activeBallGO.transform.position.x:F1},{activeBallGO.transform.position.y:F1}), " +
-                $"state={ball.CurrentState}, trajSim={trajSim != null}, sightLine={trajSim?.sightLine != null}");
         }
 
-        // PachinkoBall.Update() runs naturally and handles:
+        // PachinkoBall.Update() runs natively every frame and handles:
         // - Mouse input → aim direction
         // - Ball rotation (transform.right = aimDir)
-        // - TrajectorySimulation rendering (red dotted arc)
+        // - TrajectorySimulation rendering
         // - Fire detection (mouse click → calls Fire())
-        // Fire() is intercepted by PachinkoBall_Fire_Prefix which sends ShootRequest
+        // Fire() is intercepted by PachinkoBall_Fire_Prefix → ShootRequest
     }
 
     /// <summary>
