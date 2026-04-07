@@ -365,12 +365,48 @@ public static class MultiplayerClientPatches
             }
         }
 
-        // PachinkoBall.Update() runs natively every frame and handles:
-        // - Mouse input → aim direction
-        // - Ball rotation (transform.right = aimDir)
-        // - TrajectorySimulation rendering
-        // - Fire detection (mouse click → calls Fire())
-        // Fire() is intercepted by PachinkoBall_Fire_Prefix → ShootRequest
+        // PachinkoBall.Update() silently fails due to internal NREs.
+        // Drive aiming manually: read mouse, update ball rotation, call simulatePath().
+        if (_clientBallGO == null) return;
+        var cam = Camera.main;
+        if (cam == null) return;
+
+        var mouseScreen = Input.mousePosition;
+        mouseScreen.z = -cam.transform.position.z;
+        var mouseWorld = cam.ScreenToWorldPoint(mouseScreen);
+        var ballPos = _clientBallGO.transform.position;
+        var aimDir = ((UnityEngine.Vector2)(mouseWorld - ballPos)).normalized;
+
+        _clientBallGO.transform.right = aimDir;
+
+        // Call simulatePath() on TrajectorySimulation via reflection to draw trajectory
+        var ts = _clientBallGO.GetComponent<TrajectorySimulation>();
+        if (ts != null && ts.enabled)
+        {
+            try
+            {
+                var simMethod = HarmonyLib.AccessTools.Method(typeof(TrajectorySimulation), "simulatePath");
+                simMethod?.Invoke(ts, null);
+            }
+            catch { }
+        }
+
+        // On click, send shoot request
+        if (Input.GetMouseButtonDown(0))
+        {
+            var services = MultiplayerPlugin.Services;
+            if (services?.TryResolve<Network.IMessageSender>(out var sender) == true)
+            {
+                sender.Send(new Events.Network.Coop.ShootRequestEvent
+                {
+                    AimDirectionX = aimDir.x,
+                    AimDirectionY = aimDir.y,
+                });
+                ClientShotSentThisTurn = true;
+                MultiplayerPlugin.Logger?.LogInfo(
+                    $"[ClientAim] Sent ShootRequest: aim=({aimDir.x:F2},{aimDir.y:F2})");
+            }
+        }
     }
 
     /// <summary>
