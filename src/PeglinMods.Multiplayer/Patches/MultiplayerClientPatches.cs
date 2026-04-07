@@ -308,10 +308,30 @@ public static class MultiplayerClientPatches
                 var ball = _clientBallGO.GetComponent<PachinkoBall>();
                 if (ball == null) { MultiplayerPlugin.Logger?.LogWarning("[ClientAim] Instantiated prefab has no PachinkoBall"); return; }
 
-                // Init the ball (with null-safe params — client may not have all managers)
+                // Get managers from scene for Init
                 var rms = Resources.FindObjectsOfTypeAll<Relics.RelicManager>();
                 var rm = rms.Length > 0 ? rms[0] : null;
-                ball.Init(rm, dm, UnityEngine.Vector2.down, null, null);
+
+                // Get PredictionManager from BattleController — needed for trajectory rendering
+                PredictionManager predMgr = null;
+                try
+                {
+                    var predField = HarmonyLib.AccessTools.Field(typeof(Battle.BattleController), "_predictionManager");
+                    predMgr = predField?.GetValue(bc) as PredictionManager;
+                }
+                catch { }
+
+                // Get PlayerStatusEffectController from player transform
+                Battle.StatusEffects.PlayerStatusEffectController psec = null;
+                try
+                {
+                    var playerGO = UnityEngine.GameObject.FindGameObjectWithTag("Player");
+                    if (playerGO != null)
+                        psec = playerGO.GetComponentInChildren<Battle.StatusEffects.PlayerStatusEffectController>();
+                }
+                catch { }
+
+                ball.Init(rm, dm, UnityEngine.Vector2.down, predMgr, psec);
                 ball.InitializeMembers();
                 ball.IsDummy = true; // Dummy so it doesn't process peg collisions on client
 
