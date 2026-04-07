@@ -222,18 +222,13 @@ public static class MultiplayerClientPatches
     {
         if (!ShouldSuppressClientLogic) return true;
 
-        // In co-op: handle aiming input ourselves instead of running BattleController.Update.
-        // BattleController.Update in AWAITING_SHOT fires OnStartedAwaitingShot, increments
-        // round count, resets per-shot relics, etc. — side effects that corrupt client state.
-        // Instead, we read mouse position, update the aimer visual, and send a ShootRequest
-        // to the host when the client clicks.
-        if (Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn && !ClientShotSentThisTurn)
+        // Block BattleController.Update on the client to prevent game logic side effects
+        // (OnStartedAwaitingShot, round count increment, relic resets, etc.).
+        // Native PachinkoBall.Update() runs independently and handles aiming visuals.
+        // Fire interception happens in PachinkoBall_Fire_Prefix.
+        if (!Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn || ClientShotSentThisTurn)
         {
-            HandleClientAiming(__instance);
-        }
-        else
-        {
-            // Not aiming — clean up client ball and trajectory
+            // Not aiming — clean up any leftover client ball and trajectory
             if (_clientBallInitialized)
                 CleanupClientAiming();
         }
@@ -684,13 +679,35 @@ public static class MultiplayerClientPatches
         var gameStartEvent = UI.LobbyUI.LatestGameStartEvent;
         if (gameStartEvent?.FinalPlayers != null)
         {
-            foreach (var player in gameStartEvent.FinalPlayers)
+            // Initialize players only on the first run. On subsequent GameInit.Start()
+            // calls (new runs), re-initialize to reset accumulated state.
+            // Check if players already exist and match the expected count.
+            bool needsInit = coopState.TotalPlayerCount != gameStartEvent.FinalPlayers.Count;
+            if (!needsInit)
             {
-                coopState.InitializePlayer(player.SlotIndex, player.ChosenClass, player.PlayerName);
-                MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Initialized coop player: slot={player.SlotIndex}, name={player.PlayerName}, class={player.ChosenClass}");
+                foreach (var player in gameStartEvent.FinalPlayers)
+                {
+                    var existing = coopState.GetPlayerState(player.SlotIndex);
+                    if (existing == null || !existing.IsInitialized)
+                    { needsInit = true; break; }
+                }
             }
 
-            // Capture host's initial state (slot 0) after GameInit has set up deck/relics/health
+            if (needsInit)
+            {
+                foreach (var player in gameStartEvent.FinalPlayers)
+                {
+                    coopState.InitializePlayer(player.SlotIndex, player.ChosenClass, player.PlayerName);
+                    MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Initialized coop player: slot={player.SlotIndex}, name={player.PlayerName}, class={player.ChosenClass}");
+                }
+            }
+            else
+            {
+                MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Players already initialized ({coopState.TotalPlayerCount}), re-capturing state");
+            }
+
+            // Capture/re-capture host's state (slot 0) after GameInit has set up deck/relics/health.
+            // This runs on every GameInit.Start() so the host's deck is always current.
             coopState.CaptureInitialState(0);
             coopState.ActivePlayerSlot = 0;
 
@@ -725,12 +742,20 @@ public static class MultiplayerClientPatches
             // The host's singletons contain the host's data, so we can't use
             // CaptureInitialState for other slots. Instead, directly populate
             // each non-host player's CoopPlayerState from their class loadout.
+            // Only on first initialization — skip if player already has state.
             foreach (var player in gameStartEvent.FinalPlayers)
             {
                 if (player.IsHost) continue;
 
                 var playerState = coopState.GetPlayerState(player.SlotIndex);
                 if (playerState == null) continue;
+
+                // Skip if player already has initialized state (re-capture, not re-init)
+                if (playerState.IsInitialized && playerState.CompleteDeck.Count > 0)
+                {
+                    MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Slot {player.SlotIndex} already initialized with {playerState.CompleteDeck.Count} orbs, skipping re-init");
+                    continue;
+                }
 
                 // All players start with the same max HP as the host
                 float maxHp = hostState?.MaxHealth ?? (__instance.maxPlayerHealth?.Value ?? 0);

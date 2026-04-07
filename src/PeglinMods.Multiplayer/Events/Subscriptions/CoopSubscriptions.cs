@@ -199,6 +199,45 @@ public sealed class CoopSubscriptions
         BroadcastTurnChange();
 
         _log.LogInfo($"[CoopSubs] Battle started — turn order built, round 1 started, slot {_turnManager.CurrentPlayerSlot} is up");
+
+        // Re-capture host state from singletons so deck/relics reflect any
+        // changes made between battles (rewards, new orbs, relic picks).
+        // Without this, CoopPlayerState for the host holds stale data from
+        // the previous battle and heartbeat sends empty decks.
+        try
+        {
+            _coopStateManager.SaveActivePlayerState();
+            _log.LogInfo($"[CoopSubs] Battle init: saved host (slot {_coopStateManager.ActivePlayerSlot}) state from singletons");
+
+            // Ensure non-host players have populated BattleDeck/ShuffledOrder.
+            // Their CompleteDeck is set from ClassLoadoutData or rewards, but
+            // battleDeck and shuffledDeck are only populated when singletons are
+            // loaded for them. Swap to each, populate, save, then swap back.
+            int hostSlot = _coopStateManager.ActivePlayerSlot;
+            foreach (var kvp in _coopStateManager.PlayerStates)
+            {
+                if (kvp.Key == hostSlot) continue;
+                var state = kvp.Value;
+                if (state.CompleteDeck.Count > 0 && state.BattleDeck.Count == 0)
+                {
+                    _log.LogInfo($"[CoopSubs] Battle init: slot {kvp.Key} has completeDeck ({state.CompleteDeck.Count}) but empty battleDeck — populating");
+                    _coopStateManager.SwapToPlayer(kvp.Key);
+                    EnsureBattleDeckPopulated($"battle init slot {kvp.Key}");
+                    _coopStateManager.SaveActivePlayerState();
+                }
+            }
+
+            // Swap back to host for the first turn
+            if (_coopStateManager.ActivePlayerSlot != hostSlot)
+            {
+                _coopStateManager.SwapToPlayer(hostSlot);
+                _log.LogInfo($"[CoopSubs] Battle init: swapped back to host (slot {hostSlot})");
+            }
+        }
+        catch (System.Exception ex)
+        {
+            _log.LogWarning($"[CoopSubs] Battle init state capture failed: {ex.Message}\n{ex.StackTrace}");
+        }
     }
 
     /// <summary>

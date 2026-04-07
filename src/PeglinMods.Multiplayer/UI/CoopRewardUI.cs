@@ -9,6 +9,7 @@ using PeglinMods.Multiplayer.Multiplayer;
 using PeglinMods.Multiplayer.Network;
 using TMPro;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 namespace PeglinMods.Multiplayer.UI;
@@ -35,6 +36,9 @@ public class CoopRewardUI : MonoBehaviour
     private DisplayState _currentState = DisplayState.Hidden;
     private int _displayedRelicCount;
     private int _displayedRewardCount;
+
+    // Track scene changes to auto-hide the overlay when leaving a battle
+    private string _lastSceneName;
 
     private void Start()
     {
@@ -119,6 +123,20 @@ public class CoopRewardUI : MonoBehaviour
         try
         {
             if (_overlayPanel == null) return;
+
+            // Hide overlay on scene change — reward/relic selection is tied to a
+            // specific battle or game init; if the scene changes, the context is gone.
+            var currentScene = SceneManager.GetActiveScene().name;
+            if (_lastSceneName != null && _lastSceneName != currentScene)
+            {
+                if (_currentState != DisplayState.Hidden)
+                {
+                    Log?.LogInfo($"[CoopRewardUI] Scene changed ({_lastSceneName} -> {currentScene}), hiding overlay");
+                    HideOverlay();
+                    CoopRewardState.Reset();
+                }
+            }
+            _lastSceneName = currentScene;
 
             // Only active in multiplayer
             var services = MultiplayerPlugin.Services;
@@ -392,9 +410,10 @@ public class CoopRewardUI : MonoBehaviour
             Log?.LogError($"[CoopRewardUI] Failed to send reward choice: {ex.Message}");
         }
 
+        // Post-battle reward selection is per-player — no need to wait for others.
+        // Hide the overlay immediately after the choice is sent to the host.
         CoopRewardState.PendingRewardChoices = null;
-        CoopRewardState.WaitingForOtherPlayers = true;
-        ShowWaiting();
+        CoopRewardState.AllChoicesComplete = true;
     }
 
     // --- UI Factory Helpers ---
