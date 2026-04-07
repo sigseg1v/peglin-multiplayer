@@ -243,29 +243,38 @@ public static class MultiplayerClientPatches
     private static bool _clientBallInitialized;
 
     /// <summary>
-    /// Instead of custom aimer graphics, activate the actual PachinkoBall on the
-    /// client and let its native Update() handle aiming (mouse input, rotation,
-    /// TrajectorySimulation rendering). This gives the exact same aimer as the host.
+    /// Activate the actual PachinkoBall from BattleController._activePachinkoBall
+    /// on the client and let its native Update() handle aiming. This gives the
+    /// exact same aimer graphic as the host sees.
     /// </summary>
     private static void HandleClientAiming(BattleController bc)
     {
-        // Find the PachinkoBall on the client — it exists from DrawBall but may be
-        // on an inactive GO or in wrong state
-        PachinkoBall ball = null;
-        foreach (var b in UnityEngine.Object.FindObjectsOfType<PachinkoBall>(true))
-        {
-            ball = b;
-            break;
-        }
+        // Get the ball from BattleController._activePachinkoBall — this is the
+        // specific ball drawn for the current turn, not a stale one
+        var activeBallField = HarmonyLib.AccessTools.Field(typeof(BattleController), "_activePachinkoBall");
+        var activeBallGO = activeBallField?.GetValue(bc) as UnityEngine.GameObject;
+        if (activeBallGO == null) return;
+
+        var ball = activeBallGO.GetComponent<PachinkoBall>();
         if (ball == null) return;
 
         // Activate the ball's GO so PachinkoBall.Update() runs
-        if (!ball.gameObject.activeSelf)
-            ball.gameObject.SetActive(true);
+        if (!activeBallGO.activeSelf)
+            activeBallGO.SetActive(true);
 
         // One-time initialization per turn
         if (!_clientBallInitialized)
         {
+            // Move ball to spawn point if it's not there
+            var spawnPos = bc.pachinkoBallSpawnLocation;
+            if (spawnPos == UnityEngine.Vector2.zero)
+            {
+                var player = UnityEngine.GameObject.FindGameObjectWithTag("Player");
+                if (player != null) spawnPos = (UnityEngine.Vector2)player.transform.position;
+            }
+            if (spawnPos != UnityEngine.Vector2.zero)
+                activeBallGO.transform.position = new UnityEngine.Vector3(spawnPos.x, spawnPos.y, activeBallGO.transform.position.z);
+
             ball.InitializeMembers();
 
             // Set AIMING state
@@ -275,14 +284,24 @@ public static class MultiplayerClientPatches
                 stateProp?.GetSetMethod(true)?.Invoke(ball, new object[] { PachinkoBall.FireballState.AIMING });
             }
 
-            // Enable the TrajectorySimulation for the visual aimer
-            var trajSim = ball.GetComponent<TrajectorySimulation>();
+            // Enable the TrajectorySimulation and set its playerFire reference
+            var trajSim = activeBallGO.GetComponent<TrajectorySimulation>();
             if (trajSim != null)
+            {
+                trajSim.playerFire = activeBallGO;
+                trajSim.fireForce = ball.FireForce;
+                trajSim.gravityMod = ball.GravityScale;
                 trajSim.enabled = true;
+            }
+
+            // Make the ball visible (ensure renderer is on)
+            var renderer = activeBallGO.GetComponentInChildren<UnityEngine.SpriteRenderer>();
+            if (renderer != null) renderer.enabled = true;
 
             _clientBallInitialized = true;
             MultiplayerPlugin.Logger?.LogInfo(
-                $"[ClientPatches] Activated client ball for aiming: pos=({ball.transform.position.x:F1},{ball.transform.position.y:F1}), state={ball.CurrentState}");
+                $"[ClientPatches] Activated client ball for aiming: pos=({activeBallGO.transform.position.x:F1},{activeBallGO.transform.position.y:F1}), " +
+                $"state={ball.CurrentState}, trajSim={trajSim != null}, sightLine={trajSim?.sightLine != null}");
         }
 
         // PachinkoBall.Update() runs naturally and handles:
