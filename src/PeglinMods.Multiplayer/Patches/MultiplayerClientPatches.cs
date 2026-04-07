@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Battle;
 using Data;
 using HarmonyLib;
@@ -261,7 +262,23 @@ public static class MultiplayerClientPatches
     /// </summary>
     private static void CleanupClientAiming()
     {
-        if (_clientBallGO != null) { UnityEngine.Object.Destroy(_clientBallGO); _clientBallGO = null; }
+        // Clear BattleController._activePachinkoBall if it's our client ball
+        if (_clientBallGO != null)
+        {
+            try
+            {
+                var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
+                if (bc != null)
+                {
+                    var field = HarmonyLib.AccessTools.Field(typeof(BattleController), "_activePachinkoBall");
+                    if (field?.GetValue(bc) == _clientBallGO)
+                        field.SetValue(bc, null);
+                }
+            }
+            catch { }
+            UnityEngine.Object.Destroy(_clientBallGO);
+            _clientBallGO = null;
+        }
         if (_clientTrajectoryGO != null) { UnityEngine.Object.Destroy(_clientTrajectoryGO); _clientTrajectoryGO = null; }
         _clientTrajectoryLR = null;
         _clientBallInitialized = false;
@@ -317,11 +334,28 @@ public static class MultiplayerClientPatches
 
                 // Disable physics so ball doesn't fall
                 if (rb != null) rb.simulated = false;
-                // Disable PachinkoBall to prevent Update() NREs (Rewired, PredictionManager, etc.)
-                if (ball != null) { ball.IsDummy = true; ball.enabled = false; }
-                // Disable game's TrajectorySimulation (we use our own)
-                var ts = _clientBallGO.GetComponent<TrajectorySimulation>();
-                if (ts != null) ts.enabled = false;
+
+                // Set as BattleController._activePachinkoBall so the native prediction
+                // system can find it. Init + Arm set up PredictionManager for the aimer line.
+                var activeBallField = HarmonyLib.AccessTools.Field(typeof(BattleController), "_activePachinkoBall");
+                activeBallField?.SetValue(bc, _clientBallGO);
+
+                if (ball != null)
+                {
+                    // Initialize the ball with game systems for prediction rendering
+                    var rm = Resources.FindObjectsOfTypeAll<Relics.RelicManager>()?.FirstOrDefault();
+                    var pm = bc.PredictionManager;
+                    var psec = UnityEngine.Object.FindObjectOfType<Battle.StatusEffects.PlayerStatusEffectController>();
+                    ball.Init(rm, dm, UnityEngine.Vector2.right, pm, psec);
+                    ball.InitializeMembers();
+
+                    // Arm the ball — this enables TrajectorySimulation and prediction line
+                    try { ball.Arm(); } catch { }
+
+                    // Set AIMING state for proper mouse input handling in PachinkoBall.Update
+                    var stateProp = HarmonyLib.AccessTools.Property(typeof(PachinkoBall), "CurrentState");
+                    stateProp?.GetSetMethod(true)?.Invoke(ball, new object[] { PachinkoBall.FireballState.AIMING });
+                }
 
                 // Custom trajectory LineRenderer disabled — native aimer works now.
                 // Kept for reference in case we want it back later.
@@ -348,38 +382,10 @@ public static class MultiplayerClientPatches
             }
         }
 
-        // Drive aiming each frame: read mouse, update ball rotation
-        if (_clientBallGO == null) return;
-        var cam = Camera.main;
-        if (cam == null) return;
-
-        var mouseScreen = Input.mousePosition;
-        mouseScreen.z = -cam.transform.position.z;
-        var mouseWorld = cam.ScreenToWorldPoint(mouseScreen);
-        var ballPos = _clientBallGO.transform.position;
-        var aimDir = ((UnityEngine.Vector2)(mouseWorld - ballPos)).normalized;
-
-        _clientBallGO.transform.right = aimDir;
-
-        // Custom trajectory disabled — native PachinkoBall prediction renders the aimer
-        // DrawClientTrajectory(ballPos, aimDir);
-
-        // On click, send shoot request
-        if (Input.GetMouseButtonDown(0))
-        {
-            var services = MultiplayerPlugin.Services;
-            if (services?.TryResolve<Network.IMessageSender>(out var sender) == true)
-            {
-                sender.Send(new Events.Network.Coop.ShootRequestEvent
-                {
-                    AimDirectionX = aimDir.x,
-                    AimDirectionY = aimDir.y,
-                });
-                ClientShotSentThisTurn = true;
-                MultiplayerPlugin.Logger?.LogInfo(
-                    $"[ClientAim] Sent ShootRequest: aim=({aimDir.x:F2},{aimDir.y:F2})");
-            }
-        }
+        // PachinkoBall.Update() runs natively — handles mouse aiming + trajectory rendering.
+        // When the player clicks, PachinkoBall calls Fire() which is intercepted by
+        // PachinkoBall_Fire_Prefix, which sends the ShootRequest to the host.
+        // No manual mouse tracking needed here.
     }
 
     /// <summary>

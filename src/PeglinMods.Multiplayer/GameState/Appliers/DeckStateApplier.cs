@@ -108,6 +108,17 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                         while (dm.shuffledDeck.Count > hostCount && dm.shuffledDeck.Count > 0)
                             dm.shuffledDeck.Pop();
                     }
+
+                    // Rebuild DeckInfoManager visual display to match the new shuffledDeck.
+                    // The deck tube UI is driven by _displayOrbs, not by DeckManager directly.
+                    // Without this, the visual deck goes stale after turn changes.
+                    try
+                    {
+                        var services = MultiplayerPlugin.Services;
+                        if (services?.TryResolve<GameState.CoopStateManager>(out var csm) == true)
+                            csm.RebuildDeckInfoDisplay(dm);
+                    }
+                    catch { }
                 }
                 catch (Exception shuffleEx)
                 {
