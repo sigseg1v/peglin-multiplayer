@@ -320,7 +320,7 @@ public static class ServiceRegistration
 
         // Co-op damage distribution + turn system - enemy damage applies to all players,
         // TurnManager drives turn order during co-op battles
-        new CoopSubscriptions(multiplayerMode, coopStateManager, turnManager, log).Subscribe();
+        new CoopSubscriptions(multiplayerMode, coopStateManager, turnManager, syncService, log).Subscribe();
 
         // State sync subscriptions - triggers full/partial state capture on key events
         new StateSyncSubscriptions(syncService, multiplayerMode, log).Subscribe();

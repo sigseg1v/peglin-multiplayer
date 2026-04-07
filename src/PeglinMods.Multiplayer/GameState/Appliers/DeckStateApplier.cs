@@ -109,10 +109,11 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                             dm.shuffledDeck.Pop();
                     }
 
-                    // Rebuild DeckInfoManager visual display only when deck actually changed.
-                    // Rebuilding every heartbeat destroys/recreates display orbs constantly,
-                    // which causes visual spam and breaks the aimer.
-                    if (needsRebuild)
+                    // Rebuild DeckInfoManager visual display to match the new shuffledDeck.
+                    // The deck tube UI is driven by _displayOrbs, not by DeckManager directly.
+                    // Without this, the visual deck goes stale after turn changes.
+                    // Only rebuild when deck data actually changed to avoid visual spam.
+                    if (deckChanged || needsRebuild)
                     {
                         try
                         {

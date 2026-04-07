@@ -34,6 +34,7 @@ public sealed class CoopSubscriptions
     private readonly IMultiplayerMode _mode;
     private readonly CoopStateManager _coopStateManager;
     private readonly TurnManager _turnManager;
+    private readonly GameState.IGameStateSyncService _syncService;
     private readonly ManualLogSource _log;
 
     private readonly Dictionary<int, ShotDamageData> _accumulatedShotData = new Dictionary<int, ShotDamageData>();
@@ -50,11 +51,12 @@ public sealed class CoopSubscriptions
     /// </summary>
     internal static CoopSubscriptions Instance { get; private set; }
 
-    public CoopSubscriptions(IMultiplayerMode mode, CoopStateManager coopStateManager, TurnManager turnManager, ManualLogSource log)
+    public CoopSubscriptions(IMultiplayerMode mode, CoopStateManager coopStateManager, TurnManager turnManager, GameState.IGameStateSyncService syncService, ManualLogSource log)
     {
         _mode = mode;
         _coopStateManager = coopStateManager;
         _turnManager = turnManager;
+        _syncService = syncService;
         _log = log;
         Instance = this;
     }
@@ -232,6 +234,20 @@ public sealed class CoopSubscriptions
             {
                 _coopStateManager.SwapToPlayer(hostSlot);
                 _log.LogInfo($"[CoopSubs] Battle init: swapped back to host (slot {hostSlot})");
+            }
+
+            // Send an immediate SyncAll so the client gets the correctly populated
+            // AllDecks BEFORE the first round starts. Without this, the first SyncAll
+            // (from StateSyncSubscriptions.OnBattleStarted) fires BEFORE we populate
+            // the client's BattleDeck, so the client receives empty deck data.
+            try
+            {
+                _syncService.SyncAll("BattleInit-DeckPopulated");
+                _log.LogInfo("[CoopSubs] Battle init: sent immediate SyncAll with populated decks");
+            }
+            catch (System.Exception syncEx)
+            {
+                _log.LogWarning($"[CoopSubs] Battle init SyncAll failed: {syncEx.Message}");
             }
         }
         catch (System.Exception ex)
