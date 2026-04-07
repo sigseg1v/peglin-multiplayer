@@ -98,21 +98,47 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                         _log.LogInfo($"[DeckApplier] Built shuffledDeck (fallback order): {dm.shuffledDeck.Count} orbs");
                     }
 
-                    // Silently adjust shuffledDeck count to match host (no onBallUsed here —
-                    // real-time BallUsedClientHandler drives the visual updates via onBallUsed).
+                    // Adjust shuffledDeck count to match host, and keep _displayOrbs in sync.
                     // Only trim when host sent actual shuffled data (Count > 0). An empty
                     // ShuffledOrder means "no data" (not "deck is empty"), so don't wipe.
                     if (snapshot.ShuffledOrder != null && snapshot.ShuffledOrder.Count > 0)
                     {
                         int hostCount = snapshot.ShuffledOrder.Count;
+                        int popped = 0;
+
+                        // Also trim _displayOrbs to stay in sync with shuffledDeck.
+                        // Without this, the deck tube visual stays full while data shrinks.
+                        Stack<GameObject> displayOrbs = null;
+                        try
+                        {
+                            var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
+                            if (dim != null)
+                            {
+                                var displayOrbsField = AccessTools.Field(typeof(DeckInfoManager), "_displayOrbs");
+                                displayOrbs = displayOrbsField?.GetValue(dim) as Stack<GameObject>;
+                            }
+                        }
+                        catch { }
+
                         while (dm.shuffledDeck.Count > hostCount && dm.shuffledDeck.Count > 0)
+                        {
                             dm.shuffledDeck.Pop();
+                            // Pop corresponding display orb and destroy it
+                            if (displayOrbs != null && displayOrbs.Count > 0)
+                            {
+                                var displayOrb = displayOrbs.Pop();
+                                if (displayOrb != null)
+                                    UnityEngine.Object.Destroy(displayOrb);
+                            }
+                            popped++;
+                        }
+                        if (popped > 0)
+                            _log.LogInfo($"[DeckApplier] Trimmed {popped} orbs from shuffledDeck+displayOrbs to match host count {hostCount}");
                     }
 
                     // Rebuild DeckInfoManager visual display to match the new shuffledDeck.
                     // The deck tube UI is driven by _displayOrbs, not by DeckManager directly.
                     // Without this, the visual deck goes stale after turn changes.
-                    // Only rebuild when deck data actually changed to avoid visual spam.
                     if (deckChanged || needsRebuild)
                     {
                         try

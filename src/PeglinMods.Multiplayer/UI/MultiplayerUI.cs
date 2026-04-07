@@ -59,6 +59,10 @@ public class MultiplayerUI : MonoBehaviour
     private GameObject _waitingPanel;
     private TextMeshProUGUI _waitingText;
 
+    // Coop turn indicator (small banner at top of screen)
+    private GameObject _turnIndicatorPanel;
+    private TextMeshProUGUI _turnIndicatorText;
+
     // Static access for menu button and player name
     private static MultiplayerUI _instance;
     public static string LocalPlayerName { get; private set; } = "";
@@ -126,6 +130,9 @@ public class MultiplayerUI : MonoBehaviour
         {
             _waitingPanel.SetActive(false);
         }
+
+        // Coop turn indicator — shown during Battle for both host and client
+        UpdateTurnIndicator();
     }
 
     private void OnDestroy()
@@ -424,6 +431,54 @@ public class MultiplayerUI : MonoBehaviour
         rect.sizeDelta = new Vector2(800, 200);
 
         _waitingPanel.SetActive(false);
+    }
+
+    private void UpdateTurnIndicator()
+    {
+        var scene = SceneManager.GetActiveScene().name;
+        var turnMsg = Events.Handlers.Coop.TurnChangeClientHandler.TurnMessage;
+
+        bool shouldShow = scene == "Battle"
+            && _transport != null && _transport.IsConnected
+            && LobbyUI.GameStartReceived
+            && !string.IsNullOrEmpty(turnMsg);
+
+        if (shouldShow)
+        {
+            if (_turnIndicatorPanel == null)
+                CreateTurnIndicator();
+            _turnIndicatorPanel.SetActive(true);
+            _turnIndicatorText.text = turnMsg;
+        }
+        else if (_turnIndicatorPanel != null)
+        {
+            _turnIndicatorPanel.SetActive(false);
+        }
+    }
+
+    private void CreateTurnIndicator()
+    {
+        _turnIndicatorPanel = new GameObject("TurnIndicatorPanel");
+        _turnIndicatorPanel.transform.SetParent(_canvasObj.transform, false);
+        var bg = _turnIndicatorPanel.AddComponent<Image>();
+        bg.color = new Color(0.05f, 0.05f, 0.15f, 0.75f);
+        bg.raycastTarget = false;
+        var panelRect = _turnIndicatorPanel.GetComponent<RectTransform>();
+        panelRect.anchorMin = new Vector2(0.25f, 0.92f);
+        panelRect.anchorMax = new Vector2(0.75f, 1f);
+        panelRect.offsetMin = Vector2.zero;
+        panelRect.offsetMax = Vector2.zero;
+
+        _turnIndicatorText = CreateText(_turnIndicatorPanel.transform, "TurnText", "", 28);
+        _turnIndicatorText.alignment = TextAlignmentOptions.Center;
+        _turnIndicatorText.raycastTarget = false;
+        var textRect = _turnIndicatorText.rectTransform;
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = new Vector2(10, 2);
+        textRect.offsetMax = new Vector2(-10, -2);
+
+        _turnIndicatorPanel.SetActive(false);
     }
 
     private void ShowMultiplayerView()

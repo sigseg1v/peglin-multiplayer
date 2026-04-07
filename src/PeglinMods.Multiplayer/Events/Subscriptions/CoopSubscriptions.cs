@@ -345,10 +345,11 @@ public sealed class CoopSubscriptions
             // re-enters the aiming phase instead of proceeding to attack.
             BattleController.CurrentBattleState = BattleController.BattleState.AWAITING_SHOT;
 
-            // Rebuild DeckInfoManager display AFTER all deck modifications
-            // (LoadDeckState + EnsureBattleDeckPopulated) are complete.
-            // Must be right before DrawBall or the display stack is stale.
-            _coopStateManager.RebuildDeckInfoDisplay();
+            // NOTE: Do NOT call RebuildDeckInfoDisplay here. The host should
+            // always show its own deck in the tube UI, even during another
+            // player's turn. Rebuilding here would replace the host's visual
+            // deck with the next player's deck. The display is only rebuilt
+            // when swapping BACK to the host (in OnTurnComplete).
 
             // Manually trigger DrawBall since we bypassed the normal flow.
             try

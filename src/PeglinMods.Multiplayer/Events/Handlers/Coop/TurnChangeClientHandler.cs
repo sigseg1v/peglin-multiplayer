@@ -13,18 +13,18 @@ public sealed class TurnChangeClientHandler : IClientHandler<TurnChangeEvent>
     /// The most recent turn change event received from the host.
     /// UI code can read this to show turn indicators.
     /// </summary>
-    public static TurnChangeEvent LatestTurnState { get; private set; }
+    public static TurnChangeEvent LatestTurnState { get; internal set; }
 
     /// <summary>
     /// Whether it is the local (client) player's turn to aim.
     /// Set by comparing ActiveSlotIndex against the local player's slot.
     /// </summary>
-    public static bool IsMyTurn { get; private set; }
+    public static bool IsMyTurn { get; internal set; }
 
     /// <summary>
     /// Human-readable message for UI overlay (e.g. "Waiting for Player2...").
     /// </summary>
-    public static string TurnMessage { get; private set; } = "";
+    public static string TurnMessage { get; internal set; } = "";
 
     public void Handle(TurnChangeEvent networkEvent)
     {

@@ -325,7 +325,7 @@ public class CoopStateManager
             if (dim == null) return;
 
             // Clear existing display orbs
-            var displayOrbsField = HarmonyLib.AccessTools.Field(typeof(DeckInfoManager), "_displayOrbs");
+            var displayOrbsField = AccessTools.Field(typeof(DeckInfoManager), "_displayOrbs");
             var displayOrbs = displayOrbsField?.GetValue(dim) as System.Collections.Generic.Stack<GameObject>;
             if (displayOrbs == null) return;
 
@@ -333,15 +333,30 @@ public class CoopStateManager
                 if (go != null) UnityEngine.Object.Destroy(go);
             displayOrbs.Clear();
 
-            // Recreate display orbs from shuffledDeck (same logic as PlungerPlungeComplete)
-            var createMethod = HarmonyLib.AccessTools.Method(typeof(DeckInfoManager), "CreatePreviewSprite",
+            // Recreate display orbs from shuffledDeck, replicating the positioning
+            // logic from PlungerPlungeComplete so orbs are vertically stacked correctly.
+            var createMethod = AccessTools.Method(typeof(DeckInfoManager), "CreatePreviewSprite",
                 new[] { typeof(GameObject), typeof(float) });
             if (createMethod == null) return;
 
-            var plungerParent = HarmonyLib.AccessTools.Field(typeof(DeckInfoManager), "_plungerParent")?.GetValue(dim) as Transform;
+            var plungerParent = AccessTools.Field(typeof(DeckInfoManager), "_plungerParent")?.GetValue(dim) as Transform;
             if (plungerParent == null) return;
 
+            var plungerGraphic = AccessTools.Field(typeof(DeckInfoManager), "_plungerGraphic")?.GetValue(dim) as Transform;
+            var startPosField = AccessTools.Field(typeof(DeckInfoManager), "_startingPlungerGraphicPosition");
+            var startPos = startPosField != null ? (UnityEngine.Vector3)startPosField.GetValue(dim) : UnityEngine.Vector3.zero;
+            var topTransform = AccessTools.Field(typeof(DeckInfoManager), "_topTransform")?.GetValue(dim) as Transform;
+
+            float orbSpriteOffset = 0.875f; // DeckInfoManager.ORB_SPRITE_OFFSET
+            float fudge = dim.upcomingDisplayOrbFudgeFactor;
+
             var arr = deckMgr.shuffledDeck.ToArray();
+            float yAccum = (float)arr.Length * -orbSpriteOffset;
+
+            // Position the plunger graphic to the starting offset
+            if (plungerGraphic != null)
+                plungerGraphic.localPosition = new UnityEngine.Vector3(startPos.x, yAccum + startPos.y);
+
             int created = 0;
             for (int i = arr.Length - 1; i >= 0; i--)
             {
@@ -350,10 +365,22 @@ public class CoopStateManager
                 if (previewGO != null)
                 {
                     previewGO.transform.parent = plungerParent;
+                    var sr = previewGO.GetComponent<UnityEngine.SpriteRenderer>();
+                    float spriteHeight = sr != null ? sr.bounds.size.y : 0f;
+                    previewGO.transform.localPosition = UnityEngine.Vector3.up * (yAccum + fudge + spriteHeight * 0.5f);
+                    yAccum += spriteHeight;
                     displayOrbs.Push(previewGO);
                     created++;
                 }
             }
+
+            // Move plunger parent to the top position (skip animation, just snap)
+            if (topTransform != null)
+                plungerParent.position = new UnityEngine.Vector3(
+                    plungerParent.position.x,
+                    topTransform.position.y - yAccum,
+                    plungerParent.position.z);
+
             _log.LogInfo($"[CoopState] RebuildDeckInfoDisplay: {created}/{arr.Length} display orbs from shuffledDeck");
         }
         catch (Exception ex)
