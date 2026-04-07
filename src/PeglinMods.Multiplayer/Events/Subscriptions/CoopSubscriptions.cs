@@ -208,10 +208,34 @@ public sealed class CoopSubscriptions
             {
                 _coopStateManager.SwapToPlayer(_turnManager.CurrentPlayerSlot);
                 EnsureBattleDeckPopulated("new round");
-                // Don't call DrawBall here — BattleController.Update's AWAITING_SHOT
-                // flow will naturally trigger DrawBall through DeckInfoManager callbacks.
-                // Calling DrawBall manually during OnStartedAwaitingShot interferes with
-                // the ball arming flow (DOTween onComplete → ArmBallForShot never fires).
+
+                // After swapping decks, the DeckInfoManager animation flow doesn't
+                // properly arm the ball for round 2+. Force DrawBall + ArmBallForShot
+                // directly, bypassing the DOTween animation that gets stuck.
+                try
+                {
+                    var bc = UnityEngine.Object.FindObjectOfType<Battle.BattleController>();
+                    if (bc != null)
+                    {
+                        var drawBallMethod = AccessTools.Method(typeof(Battle.BattleController), "DrawBall");
+                        drawBallMethod?.Invoke(bc, null);
+
+                        // Kill any scale animation and arm the ball immediately
+                        var activeBallField = AccessTools.Field(typeof(Battle.BattleController), "_activePachinkoBall");
+                        var ball = activeBallField?.GetValue(bc) as UnityEngine.GameObject;
+                        if (ball != null)
+                        {
+                            DG.Tweening.DOTween.Kill(ball.transform);
+                            ball.transform.localScale = UnityEngine.Vector3.one * 0.32f;
+                            bc.ArmBallForShot();
+                            _log.LogInfo($"[CoopSubs] Forced DrawBall + ArmBallForShot for round {_turnManager.RoundNumber}");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning($"[CoopSubs] DrawBall+Arm in OnAwaitingShot failed: {ex.Message}");
+                }
             }
             BroadcastTurnChange();
         }
