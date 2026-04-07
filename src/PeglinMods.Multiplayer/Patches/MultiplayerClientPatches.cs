@@ -228,8 +228,7 @@ public static class MultiplayerClientPatches
         }
         else
         {
-            // Hide aim line when not aiming
-            if (_clientAimLR != null) _clientAimLR.enabled = false;
+            _clientBallInitialized = false;
         }
 
         return false; // Always block BattleController.Update on the client
@@ -240,97 +239,58 @@ public static class MultiplayerClientPatches
     /// Reads mouse position, updates the ClientBallRenderer aim direction,
     /// and sends a ShootRequestEvent to the host when the player clicks.
     /// </summary>
-    // Persistent trajectory line for the client — replicates the game's
-    // TrajectorySimulation with the same physics (20 segments, gravity curve, red fade)
-    private static GameObject _clientAimLine;
-    private static LineRenderer _clientAimLR;
-    private const int AimSegments = 20;
-    private const float AimFireForce = 600f; // TrajectorySimulation.fireForce
-    private const float AimGravityMod = 1.2f;
-    private const float AimSegmentScale = 1f;
-    private const float AimBallRadius = 0.25f;
+    // Track whether we've initialized the ball for client aiming this turn
+    private static bool _clientBallInitialized;
 
+    /// <summary>
+    /// Instead of custom aimer graphics, activate the actual PachinkoBall on the
+    /// client and let its native Update() handle aiming (mouse input, rotation,
+    /// TrajectorySimulation rendering). This gives the exact same aimer as the host.
+    /// </summary>
     private static void HandleClientAiming(BattleController bc)
     {
-        var cam = Camera.main;
-        if (cam == null) return;
-
-        // Get the ball spawn position
-        var spawnPos = bc.pachinkoBallSpawnLocation;
-        if (spawnPos == Vector2.zero)
+        // Find the PachinkoBall on the client — it exists from DrawBall but may be
+        // on an inactive GO or in wrong state
+        PachinkoBall ball = null;
+        foreach (var b in UnityEngine.Object.FindObjectsOfType<PachinkoBall>(true))
         {
-            var player = GameObject.FindGameObjectWithTag("Player");
-            if (player != null)
-                spawnPos = (Vector2)player.transform.position;
+            ball = b;
+            break;
         }
+        if (ball == null) return;
 
-        // Get mouse world position
-        var mouseScreenPos = Input.mousePosition;
-        mouseScreenPos.z = -cam.transform.position.z;
-        var mouseWorld = (Vector2)cam.ScreenToWorldPoint(mouseScreenPos);
+        // Activate the ball's GO so PachinkoBall.Update() runs
+        if (!ball.gameObject.activeSelf)
+            ball.gameObject.SetActive(true);
 
-        // Compute aim direction, clamped rightward into the board
-        var rawDir = mouseWorld - spawnPos;
-        if (rawDir.x < 0.1f) rawDir.x = 0.1f;
-        var aimDir = rawDir.normalized;
-
-        // Create or update the trajectory LineRenderer
-        if (_clientAimLine == null)
+        // One-time initialization per turn
+        if (!_clientBallInitialized)
         {
-            _clientAimLine = new GameObject("ClientAimTrajectory");
-            _clientAimLine.hideFlags = HideFlags.HideAndDontSave;
-            _clientAimLR = _clientAimLine.AddComponent<LineRenderer>();
-            _clientAimLR.positionCount = AimSegments;
-            _clientAimLR.material = new Material(Shader.Find("Sprites/Default"));
-            float w = AimBallRadius * 2f * 0.6f;
-            _clientAimLR.startWidth = w;
-            _clientAimLR.endWidth = w;
-            _clientAimLR.sortingOrder = 200;
-            _clientAimLR.textureMode = LineTextureMode.Tile;
-        }
-        _clientAimLR.enabled = true;
+            ball.InitializeMembers();
 
-        // Colors: red with alpha fade (matches game's TrajectorySimulation)
-        _clientAimLR.startColor = new Color(1f, 0f, 0f, 1f);
-        _clientAimLR.endColor = new Color(1f, 0f, 0f, 0f);
-
-        // Simulate trajectory — same physics as TrajectorySimulation.simulatePath()
-        var positions = new Vector3[AimSegments];
-        positions[0] = new Vector3(spawnPos.x, spawnPos.y, -1f);
-        var velocity = (Vector3)(aimDir * (AimFireForce * Time.deltaTime));
-
-        for (int i = 1; i < AimSegments; i++)
-        {
-            float num = (velocity.sqrMagnitude != 0f) ? (AimSegmentScale / velocity.magnitude) : 0f;
-            velocity += Physics.gravity * (AimGravityMod * num);
-            positions[i] = positions[i - 1] + velocity * num;
-        }
-
-        _clientAimLR.positionCount = AimSegments;
-        _clientAimLR.SetPositions(positions);
-
-        // Update the ClientBallRenderer's aim direction
-        var cbr = GameState.ClientBallRenderer.Instance;
-        if (cbr != null)
-            cbr.UpdateAimDirection(aimDir.x, aimDir.y);
-
-        // On mouse click, send shoot request to host
-        if (Input.GetMouseButtonDown(0))
-        {
-            var services = MultiplayerPlugin.Services;
-            if (services?.TryResolve<Network.IMessageSender>(out var sender) == true)
+            // Set AIMING state
+            if (ball.CurrentState != PachinkoBall.FireballState.AIMING)
             {
-                sender.Send(new Events.Network.Coop.ShootRequestEvent
-                {
-                    AimDirectionX = aimDir.x,
-                    AimDirectionY = aimDir.y,
-                });
-                ClientShotSentThisTurn = true;
-                if (_clientAimLR != null) _clientAimLR.enabled = false;
-                MultiplayerPlugin.Logger?.LogInfo(
-                    $"[ClientPatches] Sent ShootRequest from client aiming: aim=({aimDir.x:F2},{aimDir.y:F2})");
+                var stateProp = HarmonyLib.AccessTools.Property(typeof(PachinkoBall), "CurrentState");
+                stateProp?.GetSetMethod(true)?.Invoke(ball, new object[] { PachinkoBall.FireballState.AIMING });
             }
+
+            // Enable the TrajectorySimulation for the visual aimer
+            var trajSim = ball.GetComponent<TrajectorySimulation>();
+            if (trajSim != null)
+                trajSim.enabled = true;
+
+            _clientBallInitialized = true;
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[ClientPatches] Activated client ball for aiming: pos=({ball.transform.position.x:F1},{ball.transform.position.y:F1}), state={ball.CurrentState}");
         }
+
+        // PachinkoBall.Update() runs naturally and handles:
+        // - Mouse input → aim direction
+        // - Ball rotation (transform.right = aimDir)
+        // - TrajectorySimulation rendering (red dotted arc)
+        // - Fire detection (mouse click → calls Fire())
+        // Fire() is intercepted by PachinkoBall_Fire_Prefix which sends ShootRequest
     }
 
     /// <summary>
@@ -1553,11 +1513,31 @@ public static class MultiplayerClientPatches
             }
         }
 
-        // CLIENT-SIDE: always block PachinkoBall.Fire on the client.
-        // The client handles aiming input via HandleClientAiming in the
-        // BattleController.Update prefix, which sends ShootRequestEvent directly
-        // without needing a PachinkoBall.
-        if (ShouldSuppressClientLogic) return false;
+        // CLIENT-SIDE: intercept Fire() to capture aim and send ShootRequest to host.
+        // PachinkoBall.Update() runs natively on client for aiming. When the player
+        // clicks, it calls Fire(). We capture the aim direction and send it to host.
+        if (ShouldSuppressClientLogic)
+        {
+            if (UI.LobbyUI.GameStartReceived
+                && Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn
+                && !ClientShotSentThisTurn)
+            {
+                var aimVec = __instance.aimVector;
+                var services = MultiplayerPlugin.Services;
+                if (services?.TryResolve<Network.IMessageSender>(out var sender) == true)
+                {
+                    sender.Send(new Events.Network.Coop.ShootRequestEvent
+                    {
+                        AimDirectionX = aimVec.x,
+                        AimDirectionY = aimVec.y,
+                    });
+                    ClientShotSentThisTurn = true;
+                    MultiplayerPlugin.Logger?.LogInfo(
+                        $"[ClientPatches] Fire intercepted → ShootRequest: aim=({aimVec.x:F2},{aimVec.y:F2})");
+                }
+            }
+            return false;
+        }
 
         return true; // Non-multiplayer: allow
     }
