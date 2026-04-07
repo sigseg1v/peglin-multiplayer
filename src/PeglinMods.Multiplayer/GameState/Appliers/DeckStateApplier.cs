@@ -58,28 +58,6 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                 try
                 {
                     bool needsRebuild = dm.shuffledDeck.Count == 0 || deckChanged;
-                    // In coop, rebuild if the shuffled order actually differs from what we have
-                    if (!needsRebuild && UI.LobbyUI.GameStartReceived &&
-                        snapshot.ShuffledOrder != null && snapshot.ShuffledOrder.Count > 0)
-                    {
-                        var currentArr = dm.shuffledDeck.ToArray();
-                        if (currentArr.Length != snapshot.ShuffledOrder.Count)
-                        {
-                            needsRebuild = true;
-                        }
-                        else
-                        {
-                            for (int k = 0; k < currentArr.Length; k++)
-                            {
-                                var currentName = currentArr[k]?.name ?? "";
-                                if (currentName != snapshot.ShuffledOrder[k])
-                                {
-                                    needsRebuild = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
 
                     // Use host's shuffled order if available
                     if (needsRebuild && snapshot.ShuffledOrder != null && snapshot.ShuffledOrder.Count > 0)
@@ -131,16 +109,19 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                             dm.shuffledDeck.Pop();
                     }
 
-                    // Rebuild DeckInfoManager visual display to match the new shuffledDeck.
-                    // The deck tube UI is driven by _displayOrbs, not by DeckManager directly.
-                    // Without this, the visual deck goes stale after turn changes.
-                    try
+                    // Rebuild DeckInfoManager visual display only when deck actually changed.
+                    // Rebuilding every heartbeat destroys/recreates display orbs constantly,
+                    // which causes visual spam and breaks the aimer.
+                    if (needsRebuild)
                     {
-                        var services = MultiplayerPlugin.Services;
-                        if (services?.TryResolve<GameState.CoopStateManager>(out var csm) == true)
-                            csm.RebuildDeckInfoDisplay(dm);
+                        try
+                        {
+                            var services = MultiplayerPlugin.Services;
+                            if (services?.TryResolve<GameState.CoopStateManager>(out var csm) == true)
+                                csm.RebuildDeckInfoDisplay(dm);
+                        }
+                        catch { }
                     }
-                    catch { }
                 }
                 catch (Exception shuffleEx)
                 {
@@ -417,21 +398,8 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             dm.battleDeck = new List<GameObject>();
         }
 
-        // Check if deck matches (compare both count AND orb names)
-        if (dm.battleDeck.Count == hostBattleDeck.Count)
-        {
-            bool match = true;
-            for (int i = 0; i < hostBattleDeck.Count; i++)
-            {
-                if (i >= dm.battleDeck.Count || dm.battleDeck[i] == null ||
-                    dm.battleDeck[i].name != hostBattleDeck[i].Name)
-                {
-                    match = false;
-                    break;
-                }
-            }
-            if (match) return false;
-        }
+        // Only rebuild if counts differ
+        if (dm.battleDeck.Count == hostBattleDeck.Count) return false;
 
         int loaded = 0;
         var newBattleDeck = new List<GameObject>();
