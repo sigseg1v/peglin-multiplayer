@@ -169,6 +169,9 @@ public sealed class CoopSubscriptions
             {
                 _coopStateManager.SwapToPlayer(0);
                 EnsureBattleDeckPopulated("post-attack swap to host");
+                // Rebuild DeckInfoManager display AFTER swap+reshuffle, right before
+                // ChooseShuffleOrDrawAtEndOfTurn → DrawBall (called next by the game).
+                _coopStateManager.RebuildDeckInfoDisplay();
                 _log.LogInfo($"[CoopSubs] Post-attack: swapped to host (slot 0) for next round's DrawBall");
             }
         }
@@ -286,6 +289,11 @@ public sealed class CoopSubscriptions
             // Override BattleState back to AWAITING_SHOT so the state machine
             // re-enters the aiming phase instead of proceeding to attack.
             BattleController.CurrentBattleState = BattleController.BattleState.AWAITING_SHOT;
+
+            // Rebuild DeckInfoManager display AFTER all deck modifications
+            // (LoadDeckState + EnsureBattleDeckPopulated) are complete.
+            // Must be right before DrawBall or the display stack is stale.
+            _coopStateManager.RebuildDeckInfoDisplay();
 
             // Manually trigger DrawBall since we bypassed the normal flow.
             try
@@ -479,6 +487,7 @@ public sealed class CoopSubscriptions
                         {
                             var instance = UnityEngine.Object.Instantiate(orb);
                             instance.name = orb.name;
+                            instance.SetActive(false);
                             dm.battleDeck.Add(instance);
                         }
                     }

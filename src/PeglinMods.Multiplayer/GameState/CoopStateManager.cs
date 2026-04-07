@@ -215,9 +215,7 @@ public class CoopStateManager
                 {
                     var instance = UnityEngine.Object.Instantiate(prefab);
                     instance.name = orb.PrefabName;
-                    // Keep active — Instantiate copies the prefab's active state.
-                    // Inactive deck objects cause DrawBall to create inactive balls
-                    // that can't aim/fire, and trigger exceptions in delegates.
+                    instance.SetActive(false);
                     DeckManager.completeDeck.Add(instance);
                 }
                 else
@@ -241,6 +239,7 @@ public class CoopStateManager
                 {
                     var instance = UnityEngine.Object.Instantiate(prefab);
                     instance.name = orb.PrefabName;
+                    instance.SetActive(false);
                     deckMgr.battleDeck.Add(instance);
                 }
             }
@@ -267,12 +266,6 @@ public class CoopStateManager
                 }
             }
 
-            // Rebuild DeckInfoManager's visual display stack to match the new shuffledDeck.
-            // DeckInfoManager._displayOrbs mirrors shuffledDeck for the deck tube UI.
-            // Without this, DrawNextOrb (called by onBallUsed delegate) pops from an
-            // empty/stale stack and throws "Stack empty".
-            RebuildDeckInfoDisplay(deckMgr);
-
             _log.LogInfo($"[CoopState] LoadDeckState for slot {state.SlotIndex}: " +
                 $"complete={DeckManager.completeDeck.Count}, battle={deckMgr.battleDeck.Count}, " +
                 $"shuffled={deckMgr.shuffledDeck.Count}");
@@ -288,10 +281,19 @@ public class CoopStateManager
     /// The game's PlungerPlungeComplete does this after a shuffle animation,
     /// but we need it immediately after a deck swap.
     /// </summary>
-    private void RebuildDeckInfoDisplay(DeckManager deckMgr)
+    /// <summary>
+    /// Call AFTER all deck modifications (LoadDeckState + EnsureBattleDeckPopulated)
+    /// are complete, right before DrawBall. Must be called at the last moment because
+    /// EnsureBattleDeckPopulated may reshuffle and invalidate the display.
+    /// </summary>
+    public void RebuildDeckInfoDisplay(DeckManager deckMgr = null)
     {
         try
         {
+            if (deckMgr == null)
+                deckMgr = Resources.FindObjectsOfTypeAll<DeckManager>()?.FirstOrDefault();
+            if (deckMgr == null) return;
+
             var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
             if (dim == null) return;
 
