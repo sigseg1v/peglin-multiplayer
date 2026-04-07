@@ -209,43 +209,27 @@ public sealed class CoopSubscriptions
                 _coopStateManager.SwapToPlayer(_turnManager.CurrentPlayerSlot);
                 EnsureBattleDeckPopulated("new round");
 
-                // After swapping decks, the DeckInfoManager animation flow doesn't
-                // properly arm the ball for round 2+. Force DrawBall + ArmBallForShot
-                // directly, bypassing the DOTween animation that gets stuck.
+                // Force BattleController to re-enter AWAITING_SHOT fresh by resetting
+                // _prevBattleState. Without this, BattleController.Update sees
+                // _prevBattleState == AWAITING_SHOT and skips OnStartedAwaitingShot,
+                // which means the deck animation → DrawBall → ArmBallForShot flow
+                // doesn't trigger for the new round.
                 try
                 {
                     var bc = UnityEngine.Object.FindObjectOfType<Battle.BattleController>();
                     if (bc != null)
                     {
-                        var drawBallMethod = AccessTools.Method(typeof(Battle.BattleController), "DrawBall");
-                        drawBallMethod?.Invoke(bc, null);
-
-                        // Kill any scale animation and arm the ball manually.
-                        // ArmBallForShot() calls Arm() which NREs on _predictionManager.
-                        var activeBallField = AccessTools.Field(typeof(Battle.BattleController), "_activePachinkoBall");
-                        var ballGO = activeBallField?.GetValue(bc) as UnityEngine.GameObject;
-                        if (ballGO != null)
+                        var prevStateField = AccessTools.Field(typeof(Battle.BattleController), "_prevBattleState");
+                        if (prevStateField != null)
                         {
-                            DG.Tweening.DOTween.Kill(ballGO.transform);
-                            ballGO.transform.localScale = UnityEngine.Vector3.one * 0.32f;
-
-                            // Set AIMING state directly instead of calling Arm() which NREs
-                            var ball = ballGO.GetComponent<PachinkoBall>();
-                            if (ball != null)
-                            {
-                                var stateProp = AccessTools.Property(typeof(PachinkoBall), "CurrentState");
-                                stateProp?.GetSetMethod(true)?.Invoke(ball, new object[] { PachinkoBall.FireballState.AIMING });
-                                try { ball.SetTrajectorySimulationRadius(); } catch { }
-                                var ts = ballGO.GetComponent<TrajectorySimulation>();
-                                if (ts != null) ts.enabled = true;
-                            }
-                            _log.LogInfo($"[CoopSubs] Forced DrawBall + manual Arm for round {_turnManager.RoundNumber}");
+                            prevStateField.SetValue(bc, Battle.BattleController.BattleState.SPAWNING);
+                            _log.LogInfo($"[CoopSubs] Reset _prevBattleState for round {_turnManager.RoundNumber}");
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    _log.LogWarning($"[CoopSubs] DrawBall+Arm in OnAwaitingShot failed: {ex.Message}");
+                    _log.LogWarning($"[CoopSubs] _prevBattleState reset failed: {ex.Message}");
                 }
             }
             BroadcastTurnChange();
