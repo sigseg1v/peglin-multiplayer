@@ -228,51 +228,53 @@ public static class MultiplayerClientPatches
         }
         else
         {
-            // Not aiming — clean up client ball
+            // Not aiming — clean up client ball and trajectory
             if (_clientBallInitialized)
-            {
-                if (_clientBallGO != null)
-                {
-                    UnityEngine.Object.Destroy(_clientBallGO);
-                    _clientBallGO = null;
-                }
-                _clientBallInitialized = false;
-            }
+                CleanupClientAiming();
         }
 
         return false; // Always block BattleController.Update on the client
     }
 
-    /// <summary>
-    /// Handles client-side aiming input during the client's turn.
-    /// Reads mouse position, updates the ClientBallRenderer aim direction,
-    /// and sends a ShootRequestEvent to the host when the player clicks.
-    /// </summary>
     // Track whether we've initialized the ball for client aiming this turn
     private static bool _clientBallInitialized;
 
-    // The client-created PachinkoBall for aiming during client's turn
+    // The client-created ball GO for the orb visual at spawn point
     private static UnityEngine.GameObject _clientBallGO;
 
+    // Our own trajectory LineRenderer (separate from the ball's TrajectorySimulation)
+    private static UnityEngine.GameObject _clientTrajectoryGO;
+    private static UnityEngine.LineRenderer _clientTrajectoryLR;
+
+    // Physics parameters read from the ball prefab for trajectory calculation
+    private static float _clientFireForce;
+    private static float _clientBallMass;
+    private static float _clientGravityScale;
+
     /// <summary>
-    /// Create a real PachinkoBall on the client from the deck prefab, just like
-    /// BattleController.DrawBall does. Set it to AIMING state and let its native
-    /// Update() handle everything: mouse input, rotation, TrajectorySimulation.
-    /// When the player clicks, Fire() is intercepted by PachinkoBall_Fire_Prefix.
+    /// Clean up client aiming objects (ball visual + trajectory line).
+    /// Called when the turn ends or aiming is no longer active.
+    /// </summary>
+    private static void CleanupClientAiming()
+    {
+        if (_clientBallGO != null) { UnityEngine.Object.Destroy(_clientBallGO); _clientBallGO = null; }
+        if (_clientTrajectoryGO != null) { UnityEngine.Object.Destroy(_clientTrajectoryGO); _clientTrajectoryGO = null; }
+        _clientTrajectoryLR = null;
+        _clientBallInitialized = false;
+    }
+
+    /// <summary>
+    /// Create a ball visual at the spawn point and a custom trajectory LineRenderer.
+    /// The game's PredictionManager (which normally renders trajectories) requires too
+    /// many dependencies to work on the client. Instead we build our own LineRenderer
+    /// using the same physics formula as TrajectorySimulation.simulatePath().
     /// </summary>
     private static void HandleClientAiming(BattleController bc)
     {
         if (!_clientBallInitialized)
         {
-            // Destroy previous client ball if any
-            if (_clientBallGO != null)
-            {
-                UnityEngine.Object.Destroy(_clientBallGO);
-                _clientBallGO = null;
-            }
-
-            // Only try once per turn — don't spam on failure
-            _clientBallInitialized = true;
+            CleanupClientAiming();
+            _clientBallInitialized = true; // Only try once per turn
 
             // Get spawn position
             var spawnPos = bc.pachinkoBallSpawnLocation;
@@ -282,82 +284,58 @@ public static class MultiplayerClientPatches
                 if (player != null) spawnPos = (UnityEngine.Vector2)player.transform.position;
             }
 
-            // Get the orb prefab from the deck — same as what DeckManager.DrawBall returns
             try
             {
+                // Get the orb prefab from the deck
                 var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
                 var dm = dms.Length > 0 ? dms[0] : null;
                 if (dm == null) { MultiplayerPlugin.Logger?.LogWarning("[ClientAim] No DeckManager"); return; }
 
-                // Peek at the top of shuffled deck to get the prefab
                 var shuffledField = HarmonyLib.AccessTools.Field(typeof(DeckManager), "shuffledDeck");
                 var shuffled = shuffledField?.GetValue(dm) as System.Collections.Generic.Stack<UnityEngine.GameObject>;
                 UnityEngine.GameObject prefab = null;
                 if (shuffled != null && shuffled.Count > 0)
                     prefab = shuffled.Peek();
-
-                // Fallback: use any orb from completeDeck
                 if (prefab == null && DeckManager.completeDeck != null && DeckManager.completeDeck.Count > 0)
                     prefab = DeckManager.completeDeck[0];
-
                 if (prefab == null) { MultiplayerPlugin.Logger?.LogWarning("[ClientAim] No orb prefab found"); return; }
 
-                // Instantiate the ball at the spawn point — same as BattleController.DrawBall
+                // Instantiate ball for the orb visual at spawn point
                 _clientBallGO = UnityEngine.Object.Instantiate(prefab, spawnPos, UnityEngine.Quaternion.identity);
 
+                // Read physics parameters for trajectory calculation
                 var ball = _clientBallGO.GetComponent<PachinkoBall>();
-                if (ball == null) { MultiplayerPlugin.Logger?.LogWarning("[ClientAim] Instantiated prefab has no PachinkoBall"); return; }
-
-                // Get managers from scene for Init
-                var rms = Resources.FindObjectsOfTypeAll<Relics.RelicManager>();
-                var rm = rms.Length > 0 ? rms[0] : null;
-
-                // Get PredictionManager from BattleController — needed for trajectory rendering
-                PredictionManager predMgr = null;
-                try
-                {
-                    var predField = HarmonyLib.AccessTools.Field(typeof(Battle.BattleController), "_predictionManager");
-                    predMgr = predField?.GetValue(bc) as PredictionManager;
-                }
-                catch { }
-
-                // Get PlayerStatusEffectController from player transform
-                Battle.StatusEffects.PlayerStatusEffectController psec = null;
-                try
-                {
-                    var playerGO = UnityEngine.GameObject.FindGameObjectWithTag("Player");
-                    if (playerGO != null)
-                        psec = playerGO.GetComponentInChildren<Battle.StatusEffects.PlayerStatusEffectController>();
-                }
-                catch { }
-
-                ball.Init(rm, dm, UnityEngine.Vector2.down, predMgr, psec);
-                ball.InitializeMembers();
-                ball.IsDummy = true; // Dummy so it doesn't process peg collisions on client
-
-                // Set AIMING state manually — Arm() NREs because _predictionManager is null
-                var stateProp = HarmonyLib.AccessTools.Property(typeof(PachinkoBall), "CurrentState");
-                stateProp?.GetSetMethod(true)?.Invoke(ball, new object[] { PachinkoBall.FireballState.AIMING });
-
-                // Set trajectory radius from collider
-                try { ball.SetTrajectorySimulationRadius(); } catch { }
-
-                // Enable trajectory simulation
-                var trajSim = _clientBallGO.GetComponent<TrajectorySimulation>();
-                if (trajSim != null)
-                {
-                    trajSim.playerFire = _clientBallGO;
-                    trajSim.enabled = true;
-                }
-
-                // Disable physics so the ball doesn't fall
                 var rb = _clientBallGO.GetComponent<UnityEngine.Rigidbody2D>();
+                _clientFireForce = ball != null ? ball.FireForce : 400f;
+                _clientBallMass = rb != null ? rb.mass : 1f;
+                _clientGravityScale = ball != null ? ball.GravityScale : 1.2f;
+                if (_clientGravityScale < 0) _clientGravityScale = -_clientGravityScale;
+
+                // Disable physics so ball doesn't fall
                 if (rb != null) rb.simulated = false;
+                // Disable PachinkoBall to prevent Update() NREs (Rewired, PredictionManager, etc.)
+                if (ball != null) { ball.IsDummy = true; ball.enabled = false; }
+                // Disable game's TrajectorySimulation (we use our own)
+                var ts = _clientBallGO.GetComponent<TrajectorySimulation>();
+                if (ts != null) ts.enabled = false;
+
+                // Create our own trajectory LineRenderer with guaranteed-to-work material
+                _clientTrajectoryGO = new UnityEngine.GameObject("ClientTrajectory");
+                _clientTrajectoryGO.hideFlags = UnityEngine.HideFlags.HideAndDontSave;
+                UnityEngine.Object.DontDestroyOnLoad(_clientTrajectoryGO);
+                _clientTrajectoryLR = _clientTrajectoryGO.AddComponent<UnityEngine.LineRenderer>();
+                _clientTrajectoryLR.material = new UnityEngine.Material(UnityEngine.Shader.Find("Sprites/Default"));
+                _clientTrajectoryLR.startColor = new UnityEngine.Color(1f, 0f, 0f, 0.9f);
+                _clientTrajectoryLR.endColor = new UnityEngine.Color(1f, 0f, 0f, 0f);
+                _clientTrajectoryLR.startWidth = 0.15f;
+                _clientTrajectoryLR.endWidth = 0.15f;
+                _clientTrajectoryLR.useWorldSpace = true;
+                _clientTrajectoryLR.sortingLayerName = "Default";
+                _clientTrajectoryLR.sortingOrder = 200;
 
                 MultiplayerPlugin.Logger?.LogInfo(
-                    $"[ClientAim] Created aiming ball at ({spawnPos.x:F1},{spawnPos.y:F1}), " +
-                    $"prefab={prefab.name}, state={ball.CurrentState}, " +
-                    $"trajSim={trajSim != null}, sightLine={trajSim?.sightLine != null}");
+                    $"[ClientAim] Created ball at ({spawnPos.x:F1},{spawnPos.y:F1}), " +
+                    $"fireForce={_clientFireForce}, mass={_clientBallMass}, gravity={_clientGravityScale}");
             }
             catch (System.Exception ex)
             {
@@ -365,9 +343,8 @@ public static class MultiplayerClientPatches
             }
         }
 
-        // PachinkoBall.Update() silently fails due to internal NREs.
-        // Drive aiming manually: read mouse, update ball rotation, call simulatePath().
-        if (_clientBallGO == null) return;
+        // Drive aiming each frame: read mouse, update ball rotation, draw trajectory
+        if (_clientBallGO == null || _clientTrajectoryLR == null) return;
         var cam = Camera.main;
         if (cam == null) return;
 
@@ -379,17 +356,8 @@ public static class MultiplayerClientPatches
 
         _clientBallGO.transform.right = aimDir;
 
-        // Call simulatePath() on TrajectorySimulation via reflection to draw trajectory
-        var ts = _clientBallGO.GetComponent<TrajectorySimulation>();
-        if (ts != null && ts.enabled)
-        {
-            try
-            {
-                var simMethod = HarmonyLib.AccessTools.Method(typeof(TrajectorySimulation), "simulatePath");
-                simMethod?.Invoke(ts, null);
-            }
-            catch { }
-        }
+        // Draw trajectory using same physics formula as TrajectorySimulation.simulatePath()
+        DrawClientTrajectory(ballPos, aimDir);
 
         // On click, send shoot request
         if (Input.GetMouseButtonDown(0))
@@ -407,6 +375,34 @@ public static class MultiplayerClientPatches
                     $"[ClientAim] Sent ShootRequest: aim=({aimDir.x:F2},{aimDir.y:F2})");
             }
         }
+    }
+
+    /// <summary>
+    /// Compute and draw a trajectory arc using the same formula as
+    /// TrajectorySimulation.simulatePath(). Uses fixedDeltaTime for
+    /// frame-rate independence instead of the game's Time.deltaTime.
+    /// </summary>
+    private static void DrawClientTrajectory(UnityEngine.Vector3 start, UnityEngine.Vector2 aimDir)
+    {
+        const int segments = 20;
+        const float segmentScale = 1f;
+
+        var positions = new UnityEngine.Vector3[segments];
+        positions[0] = start;
+
+        // Initial velocity: matches TrajectorySimulation line 61
+        // Original uses Time.deltaTime which varies per frame; we use fixedDeltaTime for stability
+        UnityEngine.Vector3 vel = (UnityEngine.Vector3)(aimDir * (_clientFireForce * UnityEngine.Time.fixedDeltaTime) / _clientBallMass);
+
+        for (int i = 1; i < segments; i++)
+        {
+            float dt = vel.sqrMagnitude > 0f ? segmentScale / vel.magnitude : 0f;
+            vel += UnityEngine.Physics.gravity * (_clientGravityScale * dt);
+            positions[i] = positions[i - 1] + vel * dt;
+        }
+
+        _clientTrajectoryLR.positionCount = segments;
+        _clientTrajectoryLR.SetPositions(positions);
     }
 
     /// <summary>
@@ -533,11 +529,16 @@ public static class MultiplayerClientPatches
             try
             {
                 activeBall.Fire();
+                var rbAfter = activeBallGO.GetComponent<UnityEngine.Rigidbody2D>();
+                var collider = activeBallGO.GetComponent<UnityEngine.CircleCollider2D>();
                 MultiplayerPlugin.Logger?.LogInfo(
                     $"[ClientPatches] PachinkoBall.Fire() succeeded, aim=({aimVec.x:F2},{aimVec.y:F2}), " +
                     $"pos=({activeBallGO.transform.position.x:F1},{activeBallGO.transform.position.y:F1}), " +
                     $"isDummy={activeBall.IsDummy}, scale=({activeBallGO.transform.localScale.x:F2}), " +
-                    $"layer={LayerMask.LayerToName(activeBallGO.layer)}");
+                    $"layer={LayerMask.LayerToName(activeBallGO.layer)}, " +
+                    $"state={activeBall.CurrentState}, " +
+                    $"rb.sim={rbAfter?.simulated}, rb.grav={rbAfter?.gravityScale:F1}, rb.mass={rbAfter?.mass:F2}, " +
+                    $"collider={collider != null && collider.enabled}, radius={collider?.radius:F3}");
             }
             catch (System.Exception fireEx)
             {
