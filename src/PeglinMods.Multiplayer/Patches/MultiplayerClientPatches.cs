@@ -271,6 +271,9 @@ public static class MultiplayerClientPatches
                 _clientBallGO = null;
             }
 
+            // Only try once per turn — don't spam on failure
+            _clientBallInitialized = true;
+
             // Get spawn position
             var spawnPos = bc.pachinkoBallSpawnLocation;
             if (spawnPos == UnityEngine.Vector2.zero)
@@ -312,9 +315,12 @@ public static class MultiplayerClientPatches
                 ball.InitializeMembers();
                 ball.IsDummy = true; // Dummy so it doesn't process peg collisions on client
 
-                // Arm the ball — sets state to AIMING
-                ball.Arm();
-                ball.SetTrajectorySimulationRadius();
+                // Set AIMING state manually — Arm() NREs because _predictionManager is null
+                var stateProp = HarmonyLib.AccessTools.Property(typeof(PachinkoBall), "CurrentState");
+                stateProp?.GetSetMethod(true)?.Invoke(ball, new object[] { PachinkoBall.FireballState.AIMING });
+
+                // Set trajectory radius from collider
+                try { ball.SetTrajectorySimulationRadius(); } catch { }
 
                 // Enable trajectory simulation
                 var trajSim = _clientBallGO.GetComponent<TrajectorySimulation>();
@@ -328,7 +334,6 @@ public static class MultiplayerClientPatches
                 var rb = _clientBallGO.GetComponent<UnityEngine.Rigidbody2D>();
                 if (rb != null) rb.simulated = false;
 
-                _clientBallInitialized = true;
                 MultiplayerPlugin.Logger?.LogInfo(
                     $"[ClientAim] Created aiming ball at ({spawnPos.x:F1},{spawnPos.y:F1}), " +
                     $"prefab={prefab.name}, state={ball.CurrentState}, " +
