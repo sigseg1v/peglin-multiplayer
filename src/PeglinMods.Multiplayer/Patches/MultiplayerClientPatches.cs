@@ -551,6 +551,15 @@ public static class MultiplayerClientPatches
                 stateProp?.GetSetMethod(true)?.Invoke(activeBall, new object[] { PachinkoBall.FireballState.AIMING });
             }
 
+            // Ensure ball is active BEFORE Fire() — something deactivates it between
+            // DrawBall and our postfix. AddForce on an inactive object is silently ignored,
+            // causing the ball to drop straight down with zero horizontal velocity.
+            if (!activeBallGO.activeInHierarchy)
+            {
+                activeBallGO.SetActive(true);
+                MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Pre-activated ball before Fire()");
+            }
+
             // Use the real PachinkoBall.Fire() so all internal state (collision layers,
             // wall bounce tracking, shot timeout, etc.) is set up correctly.
             // ExecutingPendingShot bypasses PachinkoBall_Fire_Prefix's block.
@@ -568,12 +577,6 @@ public static class MultiplayerClientPatches
                     $"state={activeBall.CurrentState}, " +
                     $"rb.sim={rbAfter?.simulated}, rb.grav={rbAfter?.gravityScale:F1}, rb.mass={rbAfter?.mass:F2}, " +
                     $"collider={collider != null && collider.enabled}, radius={collider?.radius:F3}");
-                // Ensure ball is active — DOTween.Kill or other callbacks may deactivate it
-                if (!activeBallGO.activeInHierarchy)
-                {
-                    activeBallGO.SetActive(true);
-                    MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Re-activated ball after Fire()");
-                }
                 // Start tracking ball position
                 _firedBallGO = activeBallGO;
                 _firedBallTimer = 0f;
