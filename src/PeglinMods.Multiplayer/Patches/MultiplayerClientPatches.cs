@@ -568,6 +568,12 @@ public static class MultiplayerClientPatches
                     $"state={activeBall.CurrentState}, " +
                     $"rb.sim={rbAfter?.simulated}, rb.grav={rbAfter?.gravityScale:F1}, rb.mass={rbAfter?.mass:F2}, " +
                     $"collider={collider != null && collider.enabled}, radius={collider?.radius:F3}");
+                // Ensure ball is active — DOTween.Kill or other callbacks may deactivate it
+                if (!activeBallGO.activeInHierarchy)
+                {
+                    activeBallGO.SetActive(true);
+                    MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Re-activated ball after Fire()");
+                }
                 // Start tracking ball position
                 _firedBallGO = activeBallGO;
                 _firedBallTimer = 0f;
