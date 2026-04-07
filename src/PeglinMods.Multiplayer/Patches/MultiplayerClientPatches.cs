@@ -604,6 +604,30 @@ public static class MultiplayerClientPatches
         }
     }
 
+    /// <summary>
+    /// After DrawBall creates the active ball, ensure it's active.
+    /// CoopStateManager.LoadDeckState stores deck objects with SetActive(false).
+    /// Instantiate copies that inactive state, so the ball is inactive and can't
+    /// be aimed or fired. This postfix activates it.
+    /// </summary>
+    [HarmonyPatch(typeof(BattleController), "DrawBall")]
+    [HarmonyPostfix]
+    public static void BattleController_DrawBall_Postfix()
+    {
+        if (!UI.LobbyUI.GameStartReceived) return;
+
+        var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
+        if (bc == null) return;
+
+        var activeBallField = HarmonyLib.AccessTools.Field(typeof(BattleController), "_activePachinkoBall");
+        var ballGO = activeBallField?.GetValue(bc) as UnityEngine.GameObject;
+        if (ballGO != null && !ballGO.activeInHierarchy)
+        {
+            ballGO.SetActive(true);
+            MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] DrawBall postfix: activated ball '{ballGO.name}'");
+        }
+    }
+
     [HarmonyPatch(typeof(SaveManager), "SaveRun")]
     [HarmonyPrefix]
     public static bool SaveManager_SaveRun_Prefix() => !ShouldSuppressClientLogic;
