@@ -215,7 +215,9 @@ public class CoopStateManager
                 {
                     var instance = UnityEngine.Object.Instantiate(prefab);
                     instance.name = orb.PrefabName;
-                    instance.SetActive(false);
+                    // Keep active — Instantiate copies the prefab's active state.
+                    // Inactive deck objects cause DrawBall to create inactive balls
+                    // that can't aim/fire, and trigger exceptions in delegates.
                     DeckManager.completeDeck.Add(instance);
                 }
                 else
@@ -239,7 +241,6 @@ public class CoopStateManager
                 {
                     var instance = UnityEngine.Object.Instantiate(prefab);
                     instance.name = orb.PrefabName;
-                    instance.SetActive(false);
                     deckMgr.battleDeck.Add(instance);
                 }
             }

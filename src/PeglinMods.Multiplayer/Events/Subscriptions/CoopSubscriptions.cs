@@ -302,7 +302,7 @@ public sealed class CoopSubscriptions
             }
             catch (Exception ex)
             {
-                _log.LogWarning($"[CoopSubs] DrawBall call failed: {ex.Message}");
+                _log.LogWarning($"[CoopSubs] DrawBall call failed: {ex.InnerException?.Message ?? ex.Message}\n{ex.InnerException?.StackTrace ?? ex.StackTrace}");
             }
 
             BroadcastTurnChange();
@@ -479,7 +479,6 @@ public sealed class CoopSubscriptions
                         {
                             var instance = UnityEngine.Object.Instantiate(orb);
                             instance.name = orb.name;
-                            instance.SetActive(false);
                             dm.battleDeck.Add(instance);
                         }
                     }
