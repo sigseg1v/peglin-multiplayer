@@ -240,18 +240,22 @@ public static class MultiplayerClientPatches
     /// Reads mouse position, updates the ClientBallRenderer aim direction,
     /// and sends a ShootRequestEvent to the host when the player clicks.
     /// </summary>
-    // Persistent aim line for the client
+    // Persistent trajectory line for the client — replicates the game's
+    // TrajectorySimulation with the same physics (20 segments, gravity curve, red fade)
     private static GameObject _clientAimLine;
     private static LineRenderer _clientAimLR;
+    private const int AimSegments = 20;
+    private const float AimFireForce = 600f; // TrajectorySimulation.fireForce
+    private const float AimGravityMod = 1.2f;
+    private const float AimSegmentScale = 1f;
+    private const float AimBallRadius = 0.25f;
 
     private static void HandleClientAiming(BattleController bc)
     {
         var cam = Camera.main;
         if (cam == null) return;
 
-        // Get the ball spawn position. On the client, bc.pachinkoBallSpawnLocation
-        // may be (0,0) if BattleController.Awake crashed during _pegLayout init.
-        // Fall back to the Player tag's position (player stands at the launch point).
+        // Get the ball spawn position
         var spawnPos = bc.pachinkoBallSpawnLocation;
         if (spawnPos == Vector2.zero)
         {
@@ -265,38 +269,50 @@ public static class MultiplayerClientPatches
         mouseScreenPos.z = -cam.transform.position.z;
         var mouseWorld = (Vector2)cam.ScreenToWorldPoint(mouseScreenPos);
 
-        // Compute aim direction from spawn to mouse.
-        // Clamp so client always aims into the board (positive X from spawn).
+        // Compute aim direction, clamped rightward into the board
         var rawDir = mouseWorld - spawnPos;
-        if (rawDir.x < 0.1f) rawDir.x = 0.1f; // force rightward into board
+        if (rawDir.x < 0.1f) rawDir.x = 0.1f;
         var aimDir = rawDir.normalized;
 
-        // Draw a visible aim line from spawn point in the aim direction
+        // Create or update the trajectory LineRenderer
         if (_clientAimLine == null)
         {
-            _clientAimLine = new GameObject("ClientAimLine");
+            _clientAimLine = new GameObject("ClientAimTrajectory");
             _clientAimLine.hideFlags = HideFlags.HideAndDontSave;
             _clientAimLR = _clientAimLine.AddComponent<LineRenderer>();
-            _clientAimLR.startWidth = 0.08f;
-            _clientAimLR.endWidth = 0.02f;
-            _clientAimLR.positionCount = 2;
+            _clientAimLR.positionCount = AimSegments;
             _clientAimLR.material = new Material(Shader.Find("Sprites/Default"));
-            _clientAimLR.startColor = new Color(1f, 1f, 0.3f, 0.8f);
-            _clientAimLR.endColor = new Color(1f, 1f, 0.3f, 0.1f);
+            float w = AimBallRadius * 2f * 0.6f;
+            _clientAimLR.startWidth = w;
+            _clientAimLR.endWidth = w;
             _clientAimLR.sortingOrder = 200;
+            _clientAimLR.textureMode = LineTextureMode.Tile;
         }
         _clientAimLR.enabled = true;
-        var start = new Vector3(spawnPos.x, spawnPos.y, -1f);
-        var end = start + (Vector3)(aimDir * 4f);
-        _clientAimLR.SetPosition(0, start);
-        _clientAimLR.SetPosition(1, end);
 
-        // Update the ClientBallRenderer's aim direction for visual orb rotation
+        // Colors: red with alpha fade (matches game's TrajectorySimulation)
+        _clientAimLR.startColor = new Color(1f, 0f, 0f, 1f);
+        _clientAimLR.endColor = new Color(1f, 0f, 0f, 0f);
+
+        // Simulate trajectory — same physics as TrajectorySimulation.simulatePath()
+        var positions = new Vector3[AimSegments];
+        positions[0] = new Vector3(spawnPos.x, spawnPos.y, -1f);
+        var velocity = (Vector3)(aimDir * (AimFireForce * Time.deltaTime));
+
+        for (int i = 1; i < AimSegments; i++)
+        {
+            float num = (velocity.sqrMagnitude != 0f) ? (AimSegmentScale / velocity.magnitude) : 0f;
+            velocity += Physics.gravity * (AimGravityMod * num);
+            positions[i] = positions[i - 1] + velocity * num;
+        }
+
+        _clientAimLR.positionCount = AimSegments;
+        _clientAimLR.SetPositions(positions);
+
+        // Update the ClientBallRenderer's aim direction
         var cbr = GameState.ClientBallRenderer.Instance;
         if (cbr != null)
-        {
             cbr.UpdateAimDirection(aimDir.x, aimDir.y);
-        }
 
         // On mouse click, send shoot request to host
         if (Input.GetMouseButtonDown(0))
@@ -310,7 +326,6 @@ public static class MultiplayerClientPatches
                     AimDirectionY = aimDir.y,
                 });
                 ClientShotSentThisTurn = true;
-                // Hide aim line after shot
                 if (_clientAimLR != null) _clientAimLR.enabled = false;
                 MultiplayerPlugin.Logger?.LogInfo(
                     $"[ClientPatches] Sent ShootRequest from client aiming: aim=({aimDir.x:F2},{aimDir.y:F2})");
