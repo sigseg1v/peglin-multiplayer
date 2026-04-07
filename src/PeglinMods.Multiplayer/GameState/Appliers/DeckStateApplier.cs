@@ -99,8 +99,10 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                     }
 
                     // Silently adjust shuffledDeck count to match host (no onBallUsed here —
-                    // real-time BallUsedClientHandler drives the visual updates via onBallUsed)
-                    if (snapshot.ShuffledOrder != null)
+                    // real-time BallUsedClientHandler drives the visual updates via onBallUsed).
+                    // Only trim when host sent actual shuffled data (Count > 0). An empty
+                    // ShuffledOrder means "no data" (not "deck is empty"), so don't wipe.
+                    if (snapshot.ShuffledOrder != null && snapshot.ShuffledOrder.Count > 0)
                     {
                         int hostCount = snapshot.ShuffledOrder.Count;
                         while (dm.shuffledDeck.Count > hostCount && dm.shuffledDeck.Count > 0)
