@@ -133,7 +133,31 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                             popped++;
                         }
                         if (popped > 0)
+                        {
                             _log.LogInfo($"[DeckApplier] Trimmed {popped} orbs from shuffledDeck+displayOrbs to match host count {hostCount}");
+
+                            // Move the plunger parent up to fill the visual gap left by
+                            // destroyed display orbs. Each orb slot is ~0.875 units tall.
+                            try
+                            {
+                                var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
+                                if (dim != null)
+                                {
+                                    var plungerField = AccessTools.Field(typeof(DeckInfoManager), "_plungerParent");
+                                    var plungerParent = plungerField?.GetValue(dim) as Transform;
+                                    if (plungerParent != null)
+                                    {
+                                        const float ORB_SPRITE_OFFSET = 0.875f;
+                                        plungerParent.position += Vector3.up * (popped * ORB_SPRITE_OFFSET);
+                                        _log.LogInfo($"[DeckApplier] Moved plunger parent up by {popped * ORB_SPRITE_OFFSET:F3} to fill gap");
+                                    }
+                                }
+                            }
+                            catch (Exception plungerEx)
+                            {
+                                _log.LogWarning($"[DeckApplier] Failed to adjust plunger position: {plungerEx.Message}");
+                            }
+                        }
                     }
 
                     // Rebuild DeckInfoManager visual display to match the new shuffledDeck.

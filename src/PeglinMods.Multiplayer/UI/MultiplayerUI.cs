@@ -63,6 +63,13 @@ public class MultiplayerUI : MonoBehaviour
     private GameObject _turnIndicatorPanel;
     private TextMeshProUGUI _turnIndicatorText;
 
+    // Coop turn change notification (temporary lower notification)
+    private GameObject _turnNotificationPanel;
+    private TextMeshProUGUI _turnNotificationText;
+    private CanvasGroup _turnNotificationCanvasGroup;
+    private float _turnNotificationTimer;
+    private string _lastTurnMessage = "";
+
     // Static access for menu button and player name
     private static MultiplayerUI _instance;
     public static string LocalPlayerName { get; private set; } = "";
@@ -111,11 +118,16 @@ public class MultiplayerUI : MonoBehaviour
 
         // Mirror mode waiting overlay — shows when host is on a non-followable scene
         // BUT NOT while the lobby is active (before game starts)
+        // AND NOT during Battle scene when the turn indicator is active (avoids duplicate text)
         if (_multiplayerMode.IsSpectating && _multiplayerMode.ClientMode == ClientMode.Mirror
             && LobbyUI.GameStartReceived)
         {
+            var currentScene = SceneManager.GetActiveScene().name;
             var waitMsg = MapStateApplier.ClientWaitingMessage;
-            if (!string.IsNullOrEmpty(waitMsg))
+            bool suppressForBattle = currentScene == "Battle"
+                && _turnIndicatorPanel != null && _turnIndicatorPanel.activeSelf;
+
+            if (!string.IsNullOrEmpty(waitMsg) && !suppressForBattle)
             {
                 if (_waitingPanel == null) CreateWaitingPanel();
                 _waitingPanel.SetActive(true);
@@ -367,6 +379,12 @@ public class MultiplayerUI : MonoBehaviour
             _multiplayerPanel.SetActive(false);
         if (_waitingPanel != null)
             _waitingPanel.SetActive(false);
+        if (_turnIndicatorPanel != null)
+            _turnIndicatorPanel.SetActive(false);
+        if (_turnNotificationPanel != null)
+            _turnNotificationPanel.SetActive(false);
+        _turnNotificationTimer = 0f;
+        _lastTurnMessage = "";
         _overlayPanel.SetActive(true);
         ShowMainPanel();
     }
@@ -449,10 +467,47 @@ public class MultiplayerUI : MonoBehaviour
                 CreateTurnIndicator();
             _turnIndicatorPanel.SetActive(true);
             _turnIndicatorText.text = turnMsg;
+
+            // Detect turn message change and trigger temporary notification
+            if (turnMsg != _lastTurnMessage)
+            {
+                _lastTurnMessage = turnMsg;
+                _turnNotificationTimer = 5f;
+            }
         }
         else if (_turnIndicatorPanel != null)
         {
             _turnIndicatorPanel.SetActive(false);
+        }
+
+        // Update temporary notification panel
+        UpdateTurnNotification();
+    }
+
+    private void UpdateTurnNotification()
+    {
+        if (_turnNotificationTimer > 0f)
+        {
+            _turnNotificationTimer -= Time.deltaTime;
+
+            if (_turnNotificationPanel == null)
+                CreateTurnNotification();
+
+            _turnNotificationPanel.SetActive(true);
+            _turnNotificationText.text = _lastTurnMessage;
+
+            // Fade out during the last 1 second
+            float alpha = _turnNotificationTimer >= 1f ? 1f : Mathf.Clamp01(_turnNotificationTimer);
+            _turnNotificationCanvasGroup.alpha = alpha;
+
+            if (_turnNotificationTimer <= 0f)
+            {
+                _turnNotificationPanel.SetActive(false);
+            }
+        }
+        else if (_turnNotificationPanel != null)
+        {
+            _turnNotificationPanel.SetActive(false);
         }
     }
 
@@ -479,6 +534,36 @@ public class MultiplayerUI : MonoBehaviour
         textRect.offsetMax = new Vector2(-10, -2);
 
         _turnIndicatorPanel.SetActive(false);
+    }
+
+    private void CreateTurnNotification()
+    {
+        _turnNotificationPanel = new GameObject("TurnNotificationPanel");
+        _turnNotificationPanel.transform.SetParent(_canvasObj.transform, false);
+        var bg = _turnNotificationPanel.AddComponent<Image>();
+        bg.color = new Color(0.08f, 0.08f, 0.2f, 0.85f);
+        bg.raycastTarget = false;
+        var panelRect = _turnNotificationPanel.GetComponent<RectTransform>();
+        // Centered horizontally, positioned at ~82-88% vertical (below the top banner)
+        panelRect.anchorMin = new Vector2(0.3f, 0.82f);
+        panelRect.anchorMax = new Vector2(0.7f, 0.88f);
+        panelRect.offsetMin = Vector2.zero;
+        panelRect.offsetMax = Vector2.zero;
+
+        _turnNotificationCanvasGroup = _turnNotificationPanel.AddComponent<CanvasGroup>();
+        _turnNotificationCanvasGroup.blocksRaycasts = false;
+        _turnNotificationCanvasGroup.interactable = false;
+
+        _turnNotificationText = CreateText(_turnNotificationPanel.transform, "NotificationText", "", 26);
+        _turnNotificationText.alignment = TextAlignmentOptions.Center;
+        _turnNotificationText.raycastTarget = false;
+        var textRect = _turnNotificationText.rectTransform;
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = new Vector2(10, 2);
+        textRect.offsetMax = new Vector2(-10, -2);
+
+        _turnNotificationPanel.SetActive(false);
     }
 
     private void ShowMultiplayerView()
@@ -699,6 +784,12 @@ public class MultiplayerUI : MonoBehaviour
             _multiplayerPanel.SetActive(false);
         if (_waitingPanel != null)
             _waitingPanel.SetActive(false);
+        if (_turnIndicatorPanel != null)
+            _turnIndicatorPanel.SetActive(false);
+        if (_turnNotificationPanel != null)
+            _turnNotificationPanel.SetActive(false);
+        _turnNotificationTimer = 0f;
+        _lastTurnMessage = "";
         _overlayPanel?.SetActive(true);
         ShowMainPanel();
     }
