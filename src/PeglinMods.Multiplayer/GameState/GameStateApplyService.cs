@@ -646,7 +646,11 @@ public class GameStateApplyService
 
     private void SafeApply(string name, Action action)
     {
-        try { action(); }
+        try
+        {
+            action();
+            _log.LogInfo($"[ApplyService] {name} OK");
+        }
         catch (Exception ex) { _log.LogError($"[ApplyService] {name} failed: {ex.Message}"); }
     }
 }

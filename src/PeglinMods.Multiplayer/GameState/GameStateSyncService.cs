@@ -122,7 +122,12 @@ public class GameStateSyncService : IGameStateSyncService
                 }
             }
 
-            // Log per-slot deck contents for debugging coop deck sync issues
+            // Log per-slot player info and deck contents for debugging coop sync
+            if (snapshot.PlayerSummaries != null)
+            {
+                foreach (var s in snapshot.PlayerSummaries)
+                    _log.LogInfo($"{tag}Player slot={s.SlotIndex} name={s.PlayerName} class={s.ChosenClass} hp={s.CurrentHealth}/{s.MaxHealth} gold={s.Gold} isHost={s.SlotIndex == 0}");
+            }
             if (snapshot.AllDecks != null)
             {
                 foreach (var dk in snapshot.AllDecks)
