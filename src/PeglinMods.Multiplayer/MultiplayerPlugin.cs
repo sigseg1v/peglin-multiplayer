@@ -60,7 +60,7 @@ public class MultiplayerPlugin : BaseUnityPlugin
             _modObject.AddComponent<ClientAimRenderer>();
             _modObject.AddComponent<ClientAttackProjectile>();
             _modObject.AddComponent<CoopPlayerVisuals>();
-            _modObject.AddComponent<TurnIndicatorUI>();
+
             _modObject.AddComponent<CoopRewardUI>();
 
             _harmony = new Harmony(MultiplayerPluginInfo.GUID);
