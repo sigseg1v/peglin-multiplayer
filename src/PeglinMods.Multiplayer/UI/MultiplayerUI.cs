@@ -63,6 +63,12 @@ public class MultiplayerUI : MonoBehaviour
     private GameObject _turnIndicatorPanel;
     private TextMeshProUGUI _turnIndicatorText;
 
+    // Coop turn notification (temporary colored notification, middle of screen)
+    private GameObject _turnNotificationPanel;
+    private TextMeshProUGUI _turnNotificationText;
+    private CanvasGroup _turnNotificationCanvasGroup;
+    private float _turnNotificationTimer;
+    private string _lastNotificationMessage = "";
 
     // Static access for menu button and player name
     private static MultiplayerUI _instance;
@@ -375,6 +381,9 @@ public class MultiplayerUI : MonoBehaviour
             _waitingPanel.SetActive(false);
         if (_turnIndicatorPanel != null)
             _turnIndicatorPanel.SetActive(false);
+        if (_turnNotificationPanel != null)
+            _turnNotificationPanel.SetActive(false);
+        _turnNotificationTimer = 0f;
         _overlayPanel.SetActive(true);
         ShowMainPanel();
     }
@@ -458,10 +467,36 @@ public class MultiplayerUI : MonoBehaviour
             _turnIndicatorPanel.SetActive(true);
             _turnIndicatorText.text = turnMsg;
 
+            // Only trigger the temporary colored notification for turn-start messages.
+            // Rapid phase transitions (shot_in_flight → all_done → damage) would
+            // reset the timer continuously and prevent fading. Only "Your turn!" and
+            // "Waiting for X..." are stable enough for a notification.
+            bool isTurnStart = turnMsg.StartsWith("Your turn") || turnMsg.StartsWith("Waiting for");
+            if (isTurnStart && turnMsg != _lastNotificationMessage)
+            {
+                _lastNotificationMessage = turnMsg;
+                _turnNotificationTimer = 3f;
+            }
         }
         else if (_turnIndicatorPanel != null)
         {
             _turnIndicatorPanel.SetActive(false);
+        }
+
+        // Update temporary notification
+        if (_turnNotificationTimer > 0f)
+        {
+            _turnNotificationTimer -= Time.deltaTime;
+            if (_turnNotificationPanel == null) CreateTurnNotification();
+            _turnNotificationPanel.SetActive(true);
+            _turnNotificationText.text = _lastNotificationMessage;
+            _turnNotificationCanvasGroup.alpha = _turnNotificationTimer >= 0.5f ? 1f : Mathf.Clamp01(_turnNotificationTimer / 0.5f);
+            if (_turnNotificationTimer <= 0f)
+                _turnNotificationPanel.SetActive(false);
+        }
+        else if (_turnNotificationPanel != null)
+        {
+            _turnNotificationPanel.SetActive(false);
         }
     }
 
@@ -488,6 +523,35 @@ public class MultiplayerUI : MonoBehaviour
         textRect.offsetMax = new Vector2(-10, -2);
 
         _turnIndicatorPanel.SetActive(false);
+    }
+
+    private void CreateTurnNotification()
+    {
+        _turnNotificationPanel = new GameObject("TurnNotificationPanel");
+        _turnNotificationPanel.transform.SetParent(_canvasObj.transform, false);
+        var bg = _turnNotificationPanel.AddComponent<Image>();
+        bg.color = new Color(0.15f, 0.08f, 0.25f, 0.9f);
+        bg.raycastTarget = false;
+        var panelRect = _turnNotificationPanel.GetComponent<RectTransform>();
+        panelRect.anchorMin = new Vector2(0.3f, 0.82f);
+        panelRect.anchorMax = new Vector2(0.7f, 0.88f);
+        panelRect.offsetMin = Vector2.zero;
+        panelRect.offsetMax = Vector2.zero;
+
+        _turnNotificationCanvasGroup = _turnNotificationPanel.AddComponent<CanvasGroup>();
+        _turnNotificationCanvasGroup.blocksRaycasts = false;
+        _turnNotificationCanvasGroup.interactable = false;
+
+        _turnNotificationText = CreateText(_turnNotificationPanel.transform, "NotificationText", "", 26);
+        _turnNotificationText.alignment = TextAlignmentOptions.Center;
+        _turnNotificationText.raycastTarget = false;
+        var textRect = _turnNotificationText.rectTransform;
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = new Vector2(10, 2);
+        textRect.offsetMax = new Vector2(-10, -2);
+
+        _turnNotificationPanel.SetActive(false);
     }
 
     private void ShowMultiplayerView()
