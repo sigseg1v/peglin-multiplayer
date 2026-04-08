@@ -171,13 +171,14 @@ public sealed class CoopSubscriptions
             if (_turnManager.Phase == TurnPhase.ALL_DONE)
             {
                 _coopStateManager.SwapToPlayer(0);
-                EnsureBattleDeckPopulated("post-attack swap to host");
-                // Don't call RebuildDeckInfoDisplay here. The game's own
-                // ChooseShuffleOrDrawAtEndOfTurn → ResetField → ShuffleBattleDeck
-                // → PlungerPlungeComplete will rebuild _displayOrbs natively from
-                // the host's shuffledDeck (which we just loaded via SwapToPlayer).
-                // Calling RebuildDeckInfoDisplay would create orbs that the game
-                // immediately destroys via its own animation callback.
+                // Do NOT call EnsureBattleDeckPopulated here. If the host's
+                // shuffledDeck is empty (all orbs fired), the game's native
+                // ChooseShuffleOrDrawAtEndOfTurn → ShuffleBattleDeck →
+                // onDeckShuffled → StartShuffleAnimation → PlungerPlungeComplete
+                // handles the reshuffle with proper animation timing. Calling
+                // EnsureBattleDeckPopulated would trigger the reshuffle too
+                // early (before DrawBall), causing DrawNextOrb to pop from
+                // _displayOrbs before PlungerPlungeComplete rebuilds them.
                 _log.LogInfo($"[CoopSubs] Post-attack: swapped to host (slot 0) for next round's DrawBall");
             }
         }
@@ -212,17 +213,26 @@ public sealed class CoopSubscriptions
         // the previous battle and heartbeat sends empty decks.
         try
         {
+            // The host is ALWAYS slot 0. Force swap before saving so we
+            // don't accidentally overwrite the client's CoopPlayerState
+            // with the host's singleton data (the singletons always hold
+            // the host's data between battles).
+            if (_coopStateManager.ActivePlayerSlot != 0)
+            {
+                _log.LogWarning($"[CoopSubs] Battle init: ActivePlayerSlot was {_coopStateManager.ActivePlayerSlot}, forcing swap to host (slot 0)");
+                _coopStateManager.SwapToPlayer(0);
+            }
+
             _coopStateManager.SaveActivePlayerState();
-            _log.LogInfo($"[CoopSubs] Battle init: saved host (slot {_coopStateManager.ActivePlayerSlot}) state from singletons");
+            _log.LogInfo("[CoopSubs] Battle init: saved host (slot 0) state from singletons");
 
             // Ensure non-host players have populated BattleDeck/ShuffledOrder.
             // Their CompleteDeck is set from ClassLoadoutData or rewards, but
             // battleDeck and shuffledDeck are only populated when singletons are
             // loaded for them. Swap to each, populate, save, then swap back.
-            int hostSlot = _coopStateManager.ActivePlayerSlot;
             foreach (var kvp in _coopStateManager.PlayerStates)
             {
-                if (kvp.Key == hostSlot) continue;
+                if (kvp.Key == 0) continue; // Always skip host (slot 0)
                 var state = kvp.Value;
                 if (state.CompleteDeck.Count > 0 && state.BattleDeck.Count == 0)
                 {
@@ -233,11 +243,11 @@ public sealed class CoopSubscriptions
                 }
             }
 
-            // Swap back to host for the first turn
-            if (_coopStateManager.ActivePlayerSlot != hostSlot)
+            // Always swap back to host (slot 0) for the first turn
+            if (_coopStateManager.ActivePlayerSlot != 0)
             {
-                _coopStateManager.SwapToPlayer(hostSlot);
-                _log.LogInfo($"[CoopSubs] Battle init: swapped back to host (slot {hostSlot})");
+                _coopStateManager.SwapToPlayer(0);
+                _log.LogInfo("[CoopSubs] Battle init: swapped back to host (slot 0)");
             }
 
             // Send an immediate SyncAll so the client gets the correctly populated
@@ -343,27 +353,28 @@ public sealed class CoopSubscriptions
             }
 
             _coopStateManager.SwapToPlayer(_turnManager.CurrentPlayerSlot);
-            EnsureBattleDeckPopulated("shot complete swap");
 
-            // Override BattleState back to AWAITING_SHOT so the state machine
-            // re-enters the aiming phase instead of proceeding to attack.
-            BattleController.CurrentBattleState = BattleController.BattleState.AWAITING_SHOT;
-
-            // Temporarily disconnect DeckInfoManager from deck events so
-            // DrawBall for a non-host player doesn't destroy the host's
-            // deck tube display. The host should always see its own deck.
-            // This is robust regardless of timing — we simply prevent the
-            // game's DeckInfoManager callbacks from firing during the swap.
+            // Disconnect DeckInfoManager callbacks BEFORE EnsureBattleDeckPopulated.
+            // If the non-host player's deck needs reshuffling,
+            // ShuffleBattleDeck fires onDeckShuffled which would trigger the
+            // host's DeckInfoManager animation and corrupt the host's deck
+            // tube display. By disconnecting first, the reshuffle is silent.
             DeckManager.BallDrawn savedOnBallUsed = null;
             DeckManager.Shuffled savedOnDeckShuffled = null;
             try
             {
                 savedOnBallUsed = DeckManager.onBallUsed;
                 savedOnDeckShuffled = DeckManager.onDeckShuffled;
-                DeckManager.onBallUsed = _ => { }; // no-op during non-host DrawBall
+                DeckManager.onBallUsed = _ => { }; // no-op during non-host operations
                 DeckManager.onDeckShuffled = _ => { }; // no-op during non-host shuffle
             }
             catch { }
+
+            EnsureBattleDeckPopulated("shot complete swap");
+
+            // Override BattleState back to AWAITING_SHOT so the state machine
+            // re-enters the aiming phase instead of proceeding to attack.
+            BattleController.CurrentBattleState = BattleController.BattleState.AWAITING_SHOT;
 
             // Manually trigger DrawBall since we bypassed the normal flow.
             try
@@ -395,6 +406,10 @@ public sealed class CoopSubscriptions
             }
 
             BroadcastTurnChange();
+
+            // Push updated AllDecks to client immediately so the client
+            // sees its own deck rather than waiting for the next heartbeat.
+            try { _syncService.SyncAll("TurnSwap"); } catch { }
 
             _log.LogInfo($"[CoopSubs] Swapped to player slot {_turnManager.CurrentPlayerSlot}, " +
                 $"redirected BattleState -> AWAITING_SHOT");
