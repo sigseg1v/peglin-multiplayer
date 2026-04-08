@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Battle;
 using BepInEx.Logging;
 using HarmonyLib;
@@ -348,9 +349,49 @@ public sealed class CoopSubscriptions
             // Rebuild the deck tube display for the swapped-in player's deck.
             // This is required because DrawBall calls DeckInfoManager.DrawNextOrb
             // which pops from _displayOrbs — if we skip the rebuild, the stack
-            // is empty and DrawBall crashes with "Stack empty". The host's deck
-            // tube will temporarily show the other player's deck, which is acceptable.
+            // is empty and DrawBall crashes with "Stack empty".
             _coopStateManager.RebuildDeckInfoDisplay();
+
+            // Defensive: if _displayOrbs is STILL empty after rebuild (rebuild can
+            // fail silently), push a dummy display orb from shuffledDeck to prevent
+            // DrawBall from crashing. Without at least 1 entry, DrawNextOrb throws.
+            try
+            {
+                var deckMgr = Resources.FindObjectsOfTypeAll<DeckManager>()?.FirstOrDefault();
+                var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
+                if (dim != null && deckMgr != null)
+                {
+                    var displayOrbsField = AccessTools.Field(typeof(DeckInfoManager), "_displayOrbs");
+                    var displayOrbs = displayOrbsField?.GetValue(dim) as System.Collections.Generic.Stack<UnityEngine.GameObject>;
+                    if (displayOrbs != null && displayOrbs.Count == 0 && deckMgr.shuffledDeck.Count > 0)
+                    {
+                        _log.LogWarning($"[CoopSubs] _displayOrbs empty after rebuild — adding fallback entry");
+                        // Use game's own CreatePreviewSprite to create a valid display orb
+                        var createMethod = AccessTools.Method(typeof(DeckInfoManager), "CreatePreviewSprite",
+                            new[] { typeof(UnityEngine.GameObject), typeof(float) });
+                        if (createMethod != null)
+                        {
+                            foreach (var orb in deckMgr.shuffledDeck)
+                            {
+                                if (orb == null) continue;
+                                var preview = createMethod.Invoke(dim, new object[] { orb, 0f }) as UnityEngine.GameObject;
+                                if (preview != null)
+                                {
+                                    var plungerParent = AccessTools.Field(typeof(DeckInfoManager), "_plungerParent")?.GetValue(dim) as UnityEngine.Transform;
+                                    if (plungerParent != null)
+                                        preview.transform.parent = plungerParent;
+                                    displayOrbs.Push(preview);
+                                }
+                            }
+                            _log.LogInfo($"[CoopSubs] Fallback: pushed {displayOrbs.Count} display orbs");
+                        }
+                    }
+                }
+            }
+            catch (Exception fallbackEx)
+            {
+                _log.LogWarning($"[CoopSubs] Fallback displayOrbs failed: {fallbackEx.Message}");
+            }
 
             // Manually trigger DrawBall since we bypassed the normal flow.
             try

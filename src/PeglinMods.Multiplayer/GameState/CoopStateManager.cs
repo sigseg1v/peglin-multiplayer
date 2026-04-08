@@ -319,15 +319,15 @@ public class CoopStateManager
         {
             if (deckMgr == null)
                 deckMgr = Resources.FindObjectsOfTypeAll<DeckManager>()?.FirstOrDefault();
-            if (deckMgr == null) return;
+            if (deckMgr == null) { _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: DeckManager null"); return; }
 
             var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
-            if (dim == null) return;
+            if (dim == null) { _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: DeckInfoManager null"); return; }
 
             // Clear existing display orbs
             var displayOrbsField = AccessTools.Field(typeof(DeckInfoManager), "_displayOrbs");
             var displayOrbs = displayOrbsField?.GetValue(dim) as System.Collections.Generic.Stack<GameObject>;
-            if (displayOrbs == null) return;
+            if (displayOrbs == null) { _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: _displayOrbs null"); return; }
 
             foreach (var go in displayOrbs)
                 if (go != null) UnityEngine.Object.Destroy(go);
@@ -337,10 +337,10 @@ public class CoopStateManager
             // logic from PlungerPlungeComplete so orbs are vertically stacked correctly.
             var createMethod = AccessTools.Method(typeof(DeckInfoManager), "CreatePreviewSprite",
                 new[] { typeof(GameObject), typeof(float) });
-            if (createMethod == null) return;
+            if (createMethod == null) { _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: CreatePreviewSprite method null"); return; }
 
             var plungerParent = AccessTools.Field(typeof(DeckInfoManager), "_plungerParent")?.GetValue(dim) as Transform;
-            if (plungerParent == null) return;
+            if (plungerParent == null) { _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: _plungerParent null"); return; }
 
             var plungerGraphic = AccessTools.Field(typeof(DeckInfoManager), "_plungerGraphic")?.GetValue(dim) as Transform;
             var startPosField = AccessTools.Field(typeof(DeckInfoManager), "_startingPlungerGraphicPosition");
