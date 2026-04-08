@@ -172,9 +172,12 @@ public sealed class CoopSubscriptions
             {
                 _coopStateManager.SwapToPlayer(0);
                 EnsureBattleDeckPopulated("post-attack swap to host");
-                // Rebuild DeckInfoManager display AFTER swap+reshuffle, right before
-                // ChooseShuffleOrDrawAtEndOfTurn → DrawBall (called next by the game).
-                _coopStateManager.RebuildDeckInfoDisplay();
+                // Don't call RebuildDeckInfoDisplay here. The game's own
+                // ChooseShuffleOrDrawAtEndOfTurn → ResetField → ShuffleBattleDeck
+                // → PlungerPlungeComplete will rebuild _displayOrbs natively from
+                // the host's shuffledDeck (which we just loaded via SwapToPlayer).
+                // Calling RebuildDeckInfoDisplay would create orbs that the game
+                // immediately destroys via its own animation callback.
                 _log.LogInfo($"[CoopSubs] Post-attack: swapped to host (slot 0) for next round's DrawBall");
             }
         }
@@ -346,52 +349,21 @@ public sealed class CoopSubscriptions
             // re-enters the aiming phase instead of proceeding to attack.
             BattleController.CurrentBattleState = BattleController.BattleState.AWAITING_SHOT;
 
-            // Rebuild the deck tube display for the swapped-in player's deck.
-            // This is required because DrawBall calls DeckInfoManager.DrawNextOrb
-            // which pops from _displayOrbs — if we skip the rebuild, the stack
-            // is empty and DrawBall crashes with "Stack empty".
-            _coopStateManager.RebuildDeckInfoDisplay();
-
-            // Defensive: if _displayOrbs is STILL empty after rebuild (rebuild can
-            // fail silently), push a dummy display orb from shuffledDeck to prevent
-            // DrawBall from crashing. Without at least 1 entry, DrawNextOrb throws.
+            // Temporarily disconnect DeckInfoManager from deck events so
+            // DrawBall for a non-host player doesn't destroy the host's
+            // deck tube display. The host should always see its own deck.
+            // This is robust regardless of timing — we simply prevent the
+            // game's DeckInfoManager callbacks from firing during the swap.
+            DeckManager.BallDrawn savedOnBallUsed = null;
+            DeckManager.Shuffled savedOnDeckShuffled = null;
             try
             {
-                var deckMgr = Resources.FindObjectsOfTypeAll<DeckManager>()?.FirstOrDefault();
-                var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
-                if (dim != null && deckMgr != null)
-                {
-                    var displayOrbsField = AccessTools.Field(typeof(DeckInfoManager), "_displayOrbs");
-                    var displayOrbs = displayOrbsField?.GetValue(dim) as System.Collections.Generic.Stack<UnityEngine.GameObject>;
-                    if (displayOrbs != null && displayOrbs.Count == 0 && deckMgr.shuffledDeck.Count > 0)
-                    {
-                        _log.LogWarning($"[CoopSubs] _displayOrbs empty after rebuild — adding fallback entry");
-                        // Use game's own CreatePreviewSprite to create a valid display orb
-                        var createMethod = AccessTools.Method(typeof(DeckInfoManager), "CreatePreviewSprite",
-                            new[] { typeof(UnityEngine.GameObject), typeof(float) });
-                        if (createMethod != null)
-                        {
-                            foreach (var orb in deckMgr.shuffledDeck)
-                            {
-                                if (orb == null) continue;
-                                var preview = createMethod.Invoke(dim, new object[] { orb, 0f }) as UnityEngine.GameObject;
-                                if (preview != null)
-                                {
-                                    var plungerParent = AccessTools.Field(typeof(DeckInfoManager), "_plungerParent")?.GetValue(dim) as UnityEngine.Transform;
-                                    if (plungerParent != null)
-                                        preview.transform.parent = plungerParent;
-                                    displayOrbs.Push(preview);
-                                }
-                            }
-                            _log.LogInfo($"[CoopSubs] Fallback: pushed {displayOrbs.Count} display orbs");
-                        }
-                    }
-                }
+                savedOnBallUsed = DeckManager.onBallUsed;
+                savedOnDeckShuffled = DeckManager.onDeckShuffled;
+                DeckManager.onBallUsed = _ => { }; // no-op during non-host DrawBall
+                DeckManager.onDeckShuffled = _ => { }; // no-op during non-host shuffle
             }
-            catch (Exception fallbackEx)
-            {
-                _log.LogWarning($"[CoopSubs] Fallback displayOrbs failed: {fallbackEx.Message}");
-            }
+            catch { }
 
             // Manually trigger DrawBall since we bypassed the normal flow.
             try
@@ -409,6 +381,17 @@ public sealed class CoopSubscriptions
             catch (Exception ex)
             {
                 _log.LogWarning($"[CoopSubs] DrawBall call failed: {ex.InnerException?.Message ?? ex.Message}\n{ex.InnerException?.StackTrace ?? ex.StackTrace}");
+            }
+            finally
+            {
+                // Restore DeckInfoManager's callbacks so the host's own
+                // deck tube continues to work normally for host shots.
+                try
+                {
+                    if (savedOnBallUsed != null) DeckManager.onBallUsed = savedOnBallUsed;
+                    if (savedOnDeckShuffled != null) DeckManager.onDeckShuffled = savedOnDeckShuffled;
+                }
+                catch { }
             }
 
             BroadcastTurnChange();
