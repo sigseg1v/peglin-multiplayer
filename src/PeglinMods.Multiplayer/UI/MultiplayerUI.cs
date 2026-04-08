@@ -467,34 +467,37 @@ public class MultiplayerUI : MonoBehaviour
             _turnIndicatorPanel.SetActive(true);
             _turnIndicatorText.text = turnMsg;
 
-            // Only trigger the temporary colored notification for turn-start messages.
-            // Rapid phase transitions (shot_in_flight → all_done → damage) would
-            // reset the timer continuously and prevent fading. Only "Your turn!" and
-            // "Waiting for X..." are stable enough for a notification.
+            // Trigger the colored notification for turn-start messages only.
+            // Use a timestamp-based approach so the timer cannot be reset by
+            // repeated events — once triggered, it shows for exactly 3 seconds.
             bool isTurnStart = turnMsg.StartsWith("Your turn") || turnMsg.StartsWith("Waiting for");
             if (isTurnStart && turnMsg != _lastNotificationMessage)
             {
                 _lastNotificationMessage = turnMsg;
                 _turnNotificationTimer = 3f;
             }
+            // Any non-turn-start message (phase transitions) forces immediate fade
+            if (!isTurnStart && _turnNotificationTimer > 0.5f)
+                _turnNotificationTimer = 0.5f;
         }
         else if (_turnIndicatorPanel != null)
         {
             _turnIndicatorPanel.SetActive(false);
+            // Not in battle → kill notification immediately
+            _turnNotificationTimer = 0f;
         }
 
-        // Update temporary notification
+        // Update temporary notification — countdown only, never reset upward
         if (_turnNotificationTimer > 0f)
         {
             _turnNotificationTimer -= Time.deltaTime;
             if (_turnNotificationPanel == null) CreateTurnNotification();
             _turnNotificationPanel.SetActive(true);
             _turnNotificationText.text = _lastNotificationMessage;
-            _turnNotificationCanvasGroup.alpha = _turnNotificationTimer >= 0.5f ? 1f : Mathf.Clamp01(_turnNotificationTimer / 0.5f);
-            if (_turnNotificationTimer <= 0f)
-                _turnNotificationPanel.SetActive(false);
+            float alpha = _turnNotificationTimer >= 0.5f ? 1f : Mathf.Clamp01(_turnNotificationTimer / 0.5f);
+            _turnNotificationCanvasGroup.alpha = alpha;
         }
-        else if (_turnNotificationPanel != null)
+        if (_turnNotificationTimer <= 0f && _turnNotificationPanel != null)
         {
             _turnNotificationPanel.SetActive(false);
         }
