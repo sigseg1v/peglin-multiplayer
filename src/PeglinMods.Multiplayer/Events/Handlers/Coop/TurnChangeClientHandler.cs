@@ -70,13 +70,10 @@ public sealed class TurnChangeClientHandler : IClientHandler<TurnChangeEvent>
         {
             TurnMessage = $"{networkEvent.ActivePlayerName}'s shot in flight...";
         }
-        else if (networkEvent.TurnPhase == nameof(GameState.TurnPhase.ALL_DONE))
+        else if (networkEvent.TurnPhase == nameof(GameState.TurnPhase.ALL_DONE)
+              || networkEvent.TurnPhase == nameof(GameState.TurnPhase.DAMAGE_PHASE))
         {
-            TurnMessage = "All players have shot.";
-        }
-        else if (networkEvent.TurnPhase == nameof(GameState.TurnPhase.DAMAGE_PHASE))
-        {
-            TurnMessage = "Enemies attacking...";
+            TurnMessage = "";
         }
         else
         {
