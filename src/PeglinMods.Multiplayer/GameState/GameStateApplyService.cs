@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Linq;
 using BepInEx.Logging;
 using HarmonyLib;
 using Loading;
@@ -371,23 +372,27 @@ public class GameStateApplyService
                 // In coop, apply this client's own deck from AllDecks.
                 // The host sends per-player deck data; we pick our slot.
                 Snapshots.DeckStateSnapshot myDeck = null;
+                int mySlotIdx = -1;
                 if (snapshot.AllDecks != null)
                 {
                     var services = MultiplayerPlugin.Services;
                     if (services?.TryResolve<Multiplayer.PlayerRegistry>(out var registry) == true
                         && registry.LocalSlot != null)
                     {
-                        snapshot.AllDecks.TryGetValue(registry.LocalSlot.SlotIndex, out myDeck);
+                        mySlotIdx = registry.LocalSlot.SlotIndex;
+                        snapshot.AllDecks.TryGetValue(mySlotIdx, out myDeck);
                     }
                 }
 
                 if (myDeck != null)
                 {
+                    var deckOrbs = myDeck.CompleteDeck != null ? string.Join(", ", myDeck.CompleteDeck.Select(o => o.Name)) : "NULL";
+                    _log.LogInfo($"[ApplyService] Coop deck for mySlot={mySlotIdx}: {myDeck.CompleteDeck?.Count ?? 0} orbs [{deckOrbs}] shuffled={myDeck.ShuffledOrder?.Count ?? 0}");
                     SafeApply("Deck(coop-own)", () => _deckApplier.Apply(myDeck));
                 }
                 else if (snapshot.Deck != null)
                 {
-                    // Fallback: just show the active orb
+                    _log.LogWarning($"[ApplyService] Coop: AllDecks missing slot {mySlotIdx}, falling back to orb-only");
                     SafeApply("Deck(coop-orb-only)", () => _deckApplier.ApplyActiveOrbOnly(snapshot.Deck));
                 }
             }

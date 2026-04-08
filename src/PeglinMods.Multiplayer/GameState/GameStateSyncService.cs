@@ -122,6 +122,17 @@ public class GameStateSyncService : IGameStateSyncService
                 }
             }
 
+            // Log per-slot deck contents for debugging coop deck sync issues
+            if (snapshot.AllDecks != null)
+            {
+                foreach (var dk in snapshot.AllDecks)
+                {
+                    var orbs = dk.Value?.CompleteDeck;
+                    var names = orbs != null ? string.Join(", ", orbs.Select(o => o.Name)) : "NULL";
+                    _log.LogInfo($"{tag}AllDecks[{dk.Key}]: {orbs?.Count ?? 0} orbs [{names}] shuffled={dk.Value?.ShuffledOrder?.Count ?? 0} active={dk.Key == snapshot.ActivePlayerSlot}");
+                }
+            }
+
             _registry.Dispatch(snapshot);
             _log.LogInfo($"{tag}SyncAll: sent full state (map={snapshot.Map?.ActiveScene}, enemies={snapshot.Enemies?.Enemies?.Count ?? 0}, pegs={snapshot.Pegboard?.TotalPegCount ?? 0}, players={snapshot.TotalPlayerCount})");
 

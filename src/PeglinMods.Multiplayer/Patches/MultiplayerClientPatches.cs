@@ -783,15 +783,22 @@ public static class MultiplayerClientPatches
                 playerState.MaxHealth = maxHp;
 
                 // Build starting deck from ClassLoadoutData
+                var targetClass = (Peglin.ClassSystem.Class)player.ChosenClass;
                 var classLoadouts = StaticGameData.classLoadouts;
                 Peglin.ClassSystem.ClassLoadoutData loadout = null;
                 if (classLoadouts != null)
                 {
+                    MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Slot {player.SlotIndex}: searching {classLoadouts.Length} classLoadouts for class {targetClass} (int={player.ChosenClass})");
                     foreach (var pair in classLoadouts)
                     {
-                        if (pair.Class == (Peglin.ClassSystem.Class)player.ChosenClass)
+                        MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches]   classLoadout: {pair.Class} orbs={pair.Loadout?.StartingOrbs?.Count ?? 0}");
+                        if (pair.Class == targetClass)
                         { loadout = pair.Loadout; break; }
                     }
+                }
+                else
+                {
+                    MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] Slot {player.SlotIndex}: StaticGameData.classLoadouts is NULL — cannot look up {targetClass}");
                 }
 
                 if (loadout?.StartingOrbs != null)
@@ -806,6 +813,12 @@ public static class MultiplayerClientPatches
                             Level = 0,
                         });
                     }
+                    var deckNames = string.Join(", ", playerState.CompleteDeck.Select(o => o.PrefabName));
+                    MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Slot {player.SlotIndex}: built deck from {targetClass} ClassLoadoutData: [{deckNames}]");
+                }
+                else
+                {
+                    MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] Slot {player.SlotIndex}: ClassLoadoutData for {targetClass} has NO StartingOrbs (loadout={loadout != null})");
                 }
 
                 if (loadout?.StartingRelics != null)
