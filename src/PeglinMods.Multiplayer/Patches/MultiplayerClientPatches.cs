@@ -1611,11 +1611,18 @@ public static class MultiplayerClientPatches
         return __instance.RoomType != RoomType.NONE;
     }
 
-    // ShuffleCompleteDeck is NOT blocked — it triggers onDeckShuffled which
-    // triggers StartShuffleAnimation which populates _displayOrbs for the
-    // deck UI. The client shuffles with wrong RNG order, but DeckApplier
-    // overwrites shuffledDeck with the correct host order immediately after.
-    // Without this, the entire deck UI is dead (no orbs visible).
+    /// <summary>
+    /// Block StartShuffleAnimation on client — prevents the plunger reload animation
+    /// from playing every time onDeckShuffled fires. RebuildDeckInfoDisplay handles
+    /// the deck tube visuals directly without animation.
+    /// </summary>
+    [HarmonyPatch(typeof(DeckInfoManager), "StartShuffleAnimation")]
+    [HarmonyPrefix]
+    public static bool DeckInfoManager_StartShuffleAnimation_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        return false;
+    }
 
     /// <summary>
     /// Block gold coin placement on client pegs. BattleController.Start() calls

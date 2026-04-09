@@ -471,8 +471,19 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             dm.battleDeck = new List<GameObject>();
         }
 
-        // Only rebuild if counts differ
-        if (dm.battleDeck.Count == hostBattleDeck.Count) return false;
+        // Rebuild if counts differ OR if GUIDs don't match (stale instances from previous battle)
+        if (dm.battleDeck.Count == hostBattleDeck.Count)
+        {
+            bool guidsMatch = true;
+            for (int i = 0; i < hostBattleDeck.Count; i++)
+            {
+                var hostGuid = hostBattleDeck[i].Guid;
+                if (string.IsNullOrEmpty(hostGuid)) continue;
+                var clientGuid = _orbId.GetGuid(dm.battleDeck[i]);
+                if (clientGuid != hostGuid) { guidsMatch = false; break; }
+            }
+            if (guidsMatch) return false;
+        }
 
         int loaded = 0;
         var newBattleDeck = new List<GameObject>();
