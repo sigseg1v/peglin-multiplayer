@@ -44,6 +44,7 @@ public class CoopPlayerState
 public class SerializedOrb
 {
     public string PrefabName { get; set; }
+    public string Guid { get; set; }
     public int Level { get; set; }
 }
 

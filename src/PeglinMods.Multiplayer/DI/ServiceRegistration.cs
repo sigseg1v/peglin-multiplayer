@@ -123,6 +123,7 @@ public static class ServiceRegistration
 
         // Co-op state manager (host-side per-player state)
         var coopStateManager = new CoopStateManager(log, playerRegistry);
+        coopStateManager.SetOrbIdentifier(orbId);
         container.RegisterSingleton(coopStateManager);
 
         // Turn manager (host-side turn order tracking)

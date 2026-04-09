@@ -110,9 +110,9 @@ public class GameStateSyncService : IGameStateSyncService
                         {
                             ActiveSlotIndex = kvp.Key,
                             DeckSize = ps.CompleteDeck?.Count ?? 0,
-                            CompleteDeck = ps.CompleteDeck?.Select(o => new Snapshots.OrbEntry { Name = o.PrefabName, Level = o.Level }).ToList()
+                            CompleteDeck = ps.CompleteDeck?.Select(o => new Snapshots.OrbEntry { Name = o.PrefabName, Guid = o.Guid, Level = o.Level }).ToList()
                                 ?? new List<Snapshots.OrbEntry>(),
-                            BattleDeck = ps.BattleDeck?.Select(o => new Snapshots.OrbEntry { Name = o.PrefabName, Level = o.Level }).ToList()
+                            BattleDeck = ps.BattleDeck?.Select(o => new Snapshots.OrbEntry { Name = o.PrefabName, Guid = o.Guid, Level = o.Level }).ToList()
                                 ?? new List<Snapshots.OrbEntry>(),
                             ShuffledOrder = ps.ShuffledOrder ?? new List<string>(),
                             CurrentOrb = ps.CurrentOrb,

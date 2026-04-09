@@ -4,6 +4,7 @@ using System.Linq;
 using BepInEx.Logging;
 using HarmonyLib;
 using PeglinMods.Multiplayer.Multiplayer;
+using PeglinMods.Multiplayer.Utility;
 using Relics;
 using UnityEngine;
 
@@ -17,6 +18,7 @@ public class CoopStateManager
 {
     private readonly ManualLogSource _log;
     private readonly PlayerRegistry _playerRegistry;
+    private OrbIdentifier _orbId;
 
     public Dictionary<int, CoopPlayerState> PlayerStates { get; } = new Dictionary<int, CoopPlayerState>();
     public int ActivePlayerSlot { get; internal set; } = -1;
@@ -27,6 +29,12 @@ public class CoopStateManager
         _log = log;
         _playerRegistry = playerRegistry;
     }
+
+    /// <summary>
+    /// Late-inject OrbIdentifier (avoids circular DI dependency since CoopStateManager
+    /// is created before OrbIdentifier in the registration order).
+    /// </summary>
+    public void SetOrbIdentifier(OrbIdentifier orbId) => _orbId = orbId;
 
     /// <summary>
     /// Initialize a player's starting state from their chosen class.
@@ -170,6 +178,7 @@ public class CoopStateManager
                     state.CompleteDeck.Add(new SerializedOrb
                     {
                         PrefabName = orb.name.Replace("(Clone)", "").Trim(),
+                        Guid = _orbId?.GetGuid(orb),
                         Level = attack?.Level ?? 0,
                     });
                 }
@@ -185,6 +194,7 @@ public class CoopStateManager
                     state.BattleDeck.Add(new SerializedOrb
                     {
                         PrefabName = orb.name.Replace("(Clone)", "").Trim(),
+                        Guid = _orbId?.GetGuid(orb),
                         Level = attack?.Level ?? 0,
                     });
                 }
@@ -196,7 +206,9 @@ public class CoopStateManager
                 foreach (var orb in deckMgr.shuffledDeck)
                 {
                     if (orb == null) continue;
-                    state.ShuffledOrder.Add(orb.name.Replace("(Clone)", "").Trim());
+                    // Save GUID if available, otherwise fall back to prefab name
+                    var guid = _orbId?.GetGuid(orb);
+                    state.ShuffledOrder.Add(guid ?? orb.name.Replace("(Clone)", "").Trim());
                 }
             }
 
@@ -242,6 +254,8 @@ public class CoopStateManager
                     instance.name = orb.PrefabName;
                     instance.SetActive(false);
                     UnityEngine.Object.DontDestroyOnLoad(instance);
+                    if (!string.IsNullOrEmpty(orb.Guid) && _orbId != null)
+                        _orbId.Register(instance, orb.Guid);
                     DeckManager.completeDeck.Add(instance);
                 }
                 else
@@ -267,27 +281,40 @@ public class CoopStateManager
                     instance.name = orb.PrefabName;
                     instance.SetActive(false);
                     UnityEngine.Object.DontDestroyOnLoad(instance);
+                    if (!string.IsNullOrEmpty(orb.Guid) && _orbId != null)
+                        _orbId.Register(instance, orb.Guid);
                     deckMgr.battleDeck.Add(instance);
                 }
             }
 
-            // Rebuild shuffledDeck from shuffled order
+            // Rebuild shuffledDeck from shuffled order (GUIDs or prefab names)
             deckMgr.shuffledDeck.Clear();
             if (state.ShuffledOrder != null)
             {
                 // Push in reverse — stack is LIFO, index 0 = top = first draw
                 for (int i = state.ShuffledOrder.Count - 1; i >= 0; i--)
                 {
-                    var orbName = state.ShuffledOrder[i];
+                    var entry = state.ShuffledOrder[i];
                     GameObject match = null;
-                    foreach (var go in deckMgr.battleDeck)
+
+                    // Try GUID lookup first
+                    if (_orbId != null)
+                        match = _orbId.Find(entry);
+
+                    // Fall back to name matching
+                    if (match == null)
                     {
-                        if (go != null && go.name == orbName)
+                        var name = entry.Replace("(Clone)", "").Trim();
+                        foreach (var go in deckMgr.battleDeck)
                         {
-                            match = go;
-                            break;
+                            if (go != null && go.name.Replace("(Clone)", "").Trim() == name)
+                            {
+                                match = go;
+                                break;
+                            }
                         }
                     }
+
                     if (match != null)
                         deckMgr.shuffledDeck.Push(match);
                 }
