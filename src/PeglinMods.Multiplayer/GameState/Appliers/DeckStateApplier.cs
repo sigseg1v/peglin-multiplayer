@@ -57,7 +57,11 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             {
                 try
                 {
-                    bool needsRebuild = dm.shuffledDeck.Count == 0 || deckChanged;
+                    // Always rebuild shuffledDeck from host data on every heartbeat.
+                    // The client is a dumb canvas — the host's ShuffledOrder is authoritative.
+                    // Previous logic (count==0 || deckChanged) broke after trim logic reduced
+                    // the count during a round and it never grew back on reshuffle.
+                    bool needsRebuild = true;
 
                     // Use host's shuffled order if available
                     if (needsRebuild && snapshot.ShuffledOrder != null && snapshot.ShuffledOrder.Count > 0)
