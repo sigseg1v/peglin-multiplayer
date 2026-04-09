@@ -10,6 +10,7 @@ using PeglinMods.Multiplayer.Events;
 using PeglinMods.Multiplayer.Events.Network.Map;
 using PeglinMods.Multiplayer.Events.Subscriptions;
 using PeglinMods.Multiplayer.Multiplayer;
+using PeglinUI;
 using Tutorial;
 using UnityEngine;
 using Worldmap;
@@ -217,18 +218,31 @@ public static class MultiplayerClientPatches
     /// </summary>
     internal static bool ClientShotSentThisTurn;
 
+    // Throttled diagnostic logging for client aiming state
+    private static float _clientAimDiagTimer;
+
     [HarmonyPatch(typeof(BattleController), "Update")]
     [HarmonyPrefix]
     public static bool BattleController_Update_Prefix(BattleController __instance)
     {
         if (!ShouldSuppressClientLogic) return true;
 
+        bool isMyTurn = Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn;
+        bool shotSent = ClientShotSentThisTurn;
+
         // In co-op: handle aiming input ourselves instead of running BattleController.Update.
         // BattleController.Update in AWAITING_SHOT fires OnStartedAwaitingShot, increments
         // round count, resets per-shot relics, etc. — side effects that corrupt client state.
         // HandleClientAiming creates the ball visual needed for the native prediction aimer.
-        if (Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn && !ClientShotSentThisTurn)
+        if (isMyTurn && !shotSent)
         {
+            // Safety: if ball was destroyed (scene change) but flag stayed, reset
+            if (_clientBallInitialized && _clientBallGO == null)
+            {
+                MultiplayerPlugin.Logger?.LogWarning("[ClientAim] Ball was destroyed externally — resetting for retry");
+                _clientBallInitialized = false;
+            }
+
             HandleClientAiming(__instance);
         }
         else
@@ -236,6 +250,27 @@ public static class MultiplayerClientPatches
             // Not aiming — clean up client ball and trajectory
             if (_clientBallInitialized)
                 CleanupClientAiming();
+        }
+
+        // Per-second diagnostic: log client aiming state (throttled)
+        _clientAimDiagTimer += UnityEngine.Time.unscaledDeltaTime;
+        if (_clientAimDiagTimer >= 2f)
+        {
+            _clientAimDiagTimer = 0f;
+            var ballState = "none";
+            if (_clientBallGO != null)
+            {
+                var ball = _clientBallGO.GetComponent<PachinkoBall>();
+                ballState = ball != null ? ball.CurrentState.ToString() : "noPB";
+            }
+            else if (_clientBallInitialized)
+            {
+                ballState = "destroyed";
+            }
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[ClientAim/Diag] isMyTurn={isMyTurn} shotSent={shotSent} ballInit={_clientBallInitialized} " +
+                $"ballState={ballState} ballGO={(_clientBallGO != null ? "alive" : "null")} " +
+                $"blocking={GameBlockingWindow.wasOpenThisFrame} preBattlePause={BattleController.PreBattlePause}");
         }
 
         return false; // Always block BattleController.Update on the client
@@ -291,6 +326,7 @@ public static class MultiplayerClientPatches
         if (_clientTrajectoryGO != null) { UnityEngine.Object.Destroy(_clientTrajectoryGO); _clientTrajectoryGO = null; }
         _clientTrajectoryLR = null;
         _clientBallInitialized = false;
+        _clientBallRetryCount = 0;
     }
 
     /// <summary>
@@ -299,12 +335,19 @@ public static class MultiplayerClientPatches
     /// many dependencies to work on the client. Instead we build our own LineRenderer
     /// using the same physics formula as TrajectorySimulation.simulatePath().
     /// </summary>
+    // Retry counter to avoid infinite retry spam if ball creation keeps failing
+    private static int _clientBallRetryCount;
+    private const int MaxBallRetries = 30; // ~0.5s at 60fps
+
     private static void HandleClientAiming(BattleController bc)
     {
         if (!_clientBallInitialized)
         {
+            // Rate-limit retries to avoid log spam
+            if (_clientBallRetryCount >= MaxBallRetries)
+                return;
+
             CleanupClientAiming();
-            _clientBallInitialized = true; // Only try once per turn
 
             // Get spawn position
             var spawnPos = bc.pachinkoBallSpawnLocation;
@@ -319,7 +362,13 @@ public static class MultiplayerClientPatches
                 // Get the orb prefab from the deck
                 var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
                 var dm = dms.Length > 0 ? dms[0] : null;
-                if (dm == null) { MultiplayerPlugin.Logger?.LogWarning("[ClientAim] No DeckManager"); return; }
+                if (dm == null)
+                {
+                    _clientBallRetryCount++;
+                    if (_clientBallRetryCount == 1 || _clientBallRetryCount == MaxBallRetries)
+                        MultiplayerPlugin.Logger?.LogWarning($"[ClientAim] No DeckManager (retry {_clientBallRetryCount})");
+                    return;
+                }
 
                 var shuffledField = HarmonyLib.AccessTools.Field(typeof(DeckManager), "shuffledDeck");
                 var shuffled = shuffledField?.GetValue(dm) as System.Collections.Generic.Stack<UnityEngine.GameObject>;
@@ -328,7 +377,13 @@ public static class MultiplayerClientPatches
                     prefab = shuffled.Peek();
                 if (prefab == null && DeckManager.completeDeck != null && DeckManager.completeDeck.Count > 0)
                     prefab = DeckManager.completeDeck[0];
-                if (prefab == null) { MultiplayerPlugin.Logger?.LogWarning("[ClientAim] No orb prefab found"); return; }
+                if (prefab == null)
+                {
+                    _clientBallRetryCount++;
+                    if (_clientBallRetryCount == 1 || _clientBallRetryCount == MaxBallRetries)
+                        MultiplayerPlugin.Logger?.LogWarning($"[ClientAim] No orb prefab (shuffled={shuffled?.Count ?? -1}, complete={DeckManager.completeDeck?.Count ?? -1}, retry {_clientBallRetryCount})");
+                    return;
+                }
 
                 // Instantiate ball for the orb visual at spawn point
                 _clientBallGO = UnityEngine.Object.Instantiate(prefab, spawnPos, UnityEngine.Quaternion.identity);
@@ -359,35 +414,36 @@ public static class MultiplayerClientPatches
                     ball.InitializeMembers();
 
                     // Arm the ball — this enables TrajectorySimulation and prediction line
-                    try { ball.Arm(); } catch { }
+                    try { ball.Arm(); } catch (System.Exception armEx)
+                    {
+                        MultiplayerPlugin.Logger?.LogWarning($"[ClientAim] Arm() failed (non-fatal): {armEx.Message}");
+                    }
 
                     // Set AIMING state for proper mouse input handling in PachinkoBall.Update
                     var stateProp = HarmonyLib.AccessTools.Property(typeof(PachinkoBall), "CurrentState");
                     stateProp?.GetSetMethod(true)?.Invoke(ball, new object[] { PachinkoBall.FireballState.AIMING });
                 }
 
-                // Custom trajectory LineRenderer disabled — native aimer works now.
-                // Kept for reference in case we want it back later.
-                // _clientTrajectoryGO = new UnityEngine.GameObject("ClientTrajectory");
-                // _clientTrajectoryGO.hideFlags = UnityEngine.HideFlags.HideAndDontSave;
-                // UnityEngine.Object.DontDestroyOnLoad(_clientTrajectoryGO);
-                // _clientTrajectoryLR = _clientTrajectoryGO.AddComponent<UnityEngine.LineRenderer>();
-                // _clientTrajectoryLR.material = new UnityEngine.Material(UnityEngine.Shader.Find("Sprites/Default"));
-                // _clientTrajectoryLR.startColor = new UnityEngine.Color(1f, 1f, 1f, 0.9f);
-                // _clientTrajectoryLR.endColor = new UnityEngine.Color(1f, 1f, 1f, 0f);
-                // _clientTrajectoryLR.startWidth = 0.15f;
-                // _clientTrajectoryLR.endWidth = 0.15f;
-                // _clientTrajectoryLR.useWorldSpace = true;
-                // _clientTrajectoryLR.sortingLayerName = "Default";
-                // _clientTrajectoryLR.sortingOrder = 200;
+                // SUCCESS — mark initialized so we don't retry
+                _clientBallInitialized = true;
+                _clientBallRetryCount = 0;
 
                 MultiplayerPlugin.Logger?.LogInfo(
                     $"[ClientAim] Created ball at ({spawnPos.x:F1},{spawnPos.y:F1}), " +
-                    $"fireForce={_clientFireForce}, mass={_clientBallMass}, gravity={_clientGravityScale}");
+                    $"fireForce={_clientFireForce}, mass={_clientBallMass}, gravity={_clientGravityScale}, " +
+                    $"state={ball?.CurrentState}, active={_clientBallGO.activeInHierarchy}");
             }
             catch (System.Exception ex)
             {
-                MultiplayerPlugin.Logger?.LogError($"[ClientAim] Failed to create ball: {ex}");
+                _clientBallRetryCount++;
+                MultiplayerPlugin.Logger?.LogError($"[ClientAim] Failed to create ball (retry {_clientBallRetryCount}): {ex}");
+                // Clean up partial creation
+                if (_clientBallGO != null)
+                {
+                    UnityEngine.Object.Destroy(_clientBallGO);
+                    _clientBallGO = null;
+                }
+                // DO NOT set _clientBallInitialized — allow retry on next frame
             }
         }
 
