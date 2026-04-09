@@ -396,6 +396,44 @@ public class GameStateApplyService
                     SafeApply("Deck(coop-orb-only)", () => _deckApplier.ApplyActiveOrbOnly(snapshot.Deck));
                 }
             }
+            // In coop, use the heartbeat to keep IsMyTurn in sync.
+            // TurnChangeEvent is a one-shot that can be missed if the client
+            // loads the Battle scene after the host already broadcast it.
+            // The heartbeat is authoritative — converge every 2 seconds.
+            if (isCoop && snapshot.TotalPlayerCount >= 2)
+            {
+                try
+                {
+                    int mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
+                    var battleState = snapshot.Enemies?.BattleStateName ?? "";
+                    bool hostWantsMyShot = snapshot.ActivePlayerSlot == mySlot
+                        && (battleState == "AWAITING_SHOT" || battleState == "SPAWNING");
+
+                    var handler = Events.Handlers.Coop.TurnChangeClientHandler.LatestTurnState;
+                    bool currentlyMyTurn = Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn;
+
+                    // If the heartbeat says it's my turn but the one-shot event was missed, fix it
+                    if (hostWantsMyShot && !currentlyMyTurn)
+                    {
+                        _log.LogInfo($"[ApplyService] Heartbeat: fixing IsMyTurn=true (slot={mySlot}, battleState={battleState}, activeSlot={snapshot.ActivePlayerSlot})");
+                        Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn = true;
+                        Events.Handlers.Coop.TurnChangeClientHandler.TurnMessage = "Your turn! Aim and shoot.";
+                        Patches.MultiplayerClientPatches.ClientShotSentThisTurn = false;
+                    }
+                    // If the heartbeat says it's NOT my turn but the client thinks it is, fix it
+                    else if (!hostWantsMyShot && currentlyMyTurn
+                        && battleState != "" && battleState != "SHOULD_SPAWN")
+                    {
+                        Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn = false;
+                        Events.Handlers.Coop.TurnChangeClientHandler.TurnMessage = "";
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning($"[ApplyService] Heartbeat turn sync failed: {ex.Message}");
+                }
+            }
+
             VerifyConsistency(snapshot);
 
             // Post-battle navigation: trigger the game's own setup on the client

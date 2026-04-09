@@ -162,8 +162,10 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
 
                     // Rebuild DeckInfoManager visual display to match the new shuffledDeck.
                     // The deck tube UI is driven by _displayOrbs, not by DeckManager directly.
-                    // Without this, the visual deck goes stale after turn changes.
-                    if (deckChanged || needsRebuild)
+                    // Without this, the visual deck goes stale after turn changes or reshuffles.
+                    // ALWAYS rebuild on client every heartbeat tick — the deck tube must converge
+                    // to the host state regardless of what happened locally. This is cheap (just
+                    // destroys old display orbs and creates new ones from shuffledDeck).
                     {
                         try
                         {
