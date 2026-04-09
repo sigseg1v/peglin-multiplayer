@@ -14,8 +14,10 @@ public class DeckStateSnapshot
     public List<OrbEntry> BattleDeck { get; set; } = new List<OrbEntry>();
 
     /// <summary>
-    /// Orb names in shuffledDeck stack order (top of stack = first to draw = index 0).
-    /// This is the authoritative draw order from the host.
+    /// Orb identifiers in shuffledDeck stack order (top of stack = first to draw = index 0).
+    /// For the active player, these are OrbIdentifier GUIDs (12-char hex strings).
+    /// For non-active coop players, these are prefab names (from CoopPlayerState).
+    /// The applier handles both formats.
     /// </summary>
     public List<string> ShuffledOrder { get; set; } = new List<string>();
 

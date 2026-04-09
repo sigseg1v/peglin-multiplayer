@@ -63,7 +63,7 @@ public class DeckStateProvider : IGameStateProvider<DeckStateSnapshot>
                 foreach (var orb in dm.shuffledDeck)
                 {
                     if (orb != null)
-                        snapshot.ShuffledOrder.Add(orb.name);
+                        snapshot.ShuffledOrder.Add(_orbId.GetOrAssignGuid(orb));
                 }
             }
 

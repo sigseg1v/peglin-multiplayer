@@ -361,12 +361,26 @@ public class CoopStateManager
             for (int i = arr.Length - 1; i >= 0; i--)
             {
                 if (arr[i] == null) continue;
+                // Log source orb info for debugging visual issues
+                var pb = arr[i].GetComponent<PachinkoBall>();
+                var srcSR = arr[i].GetComponentInChildren<UnityEngine.SpriteRenderer>();
+                _log.LogInfo($"[CoopState] RebuildDeck orb[{i}]: name={arr[i].name} active={arr[i].activeSelf} " +
+                    $"pbSprite={(pb != null ? (pb.sprite != null ? pb.sprite.name : "NULL") : "noPB")} " +
+                    $"srcSR={(srcSR != null ? (srcSR.sprite != null ? srcSR.sprite.name : "NULL_sprite") : "NULL_sr")}");
+
+                // Temporarily activate inactive orbs so PachinkoBall.sprite is populated
+                // (UpcomingOrbDisplay.Initialize reads it, which is null on inactive clones)
+                bool wasActive = arr[i].activeSelf;
+                if (!wasActive) arr[i].SetActive(true);
                 var previewGO = createMethod.Invoke(dim, new object[] { arr[i], (float)i * 0.01f }) as GameObject;
+                if (!wasActive) arr[i].SetActive(false);
                 if (previewGO != null)
                 {
                     previewGO.transform.parent = plungerParent;
                     var sr = previewGO.GetComponent<UnityEngine.SpriteRenderer>();
                     float spriteHeight = sr != null ? sr.bounds.size.y : 0f;
+                    _log.LogInfo($"[CoopState] RebuildDeck preview[{i}]: srNull={sr == null} sprite={(sr?.sprite != null ? sr.sprite.name : "NULL")} " +
+                        $"height={spriteHeight:F3} yAccum={yAccum:F3} active={previewGO.activeSelf}");
                     previewGO.transform.localPosition = UnityEngine.Vector3.up * (yAccum + fudge + spriteHeight * 0.5f);
                     yAccum += spriteHeight;
                     displayOrbs.Push(previewGO);
@@ -381,7 +395,7 @@ public class CoopStateManager
                     topTransform.position.y - yAccum,
                     plungerParent.position.z);
 
-            _log.LogInfo($"[CoopState] RebuildDeckInfoDisplay: {created}/{arr.Length} display orbs from shuffledDeck");
+            _log.LogInfo($"[CoopState] RebuildDeckInfoDisplay: {created}/{arr.Length} display orbs from shuffledDeck yAccum={yAccum:F3}");
         }
         catch (Exception ex)
         {

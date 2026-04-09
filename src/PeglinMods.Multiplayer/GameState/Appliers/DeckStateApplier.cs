@@ -7,6 +7,7 @@ using DG.Tweening;
 using HarmonyLib;
 using Loading;
 using PeglinMods.Multiplayer.GameState.Snapshots;
+using PeglinMods.Multiplayer.Utility;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -15,8 +16,13 @@ namespace PeglinMods.Multiplayer.GameState.Appliers;
 public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
 {
     private readonly ManualLogSource _log;
+    private readonly OrbIdentifier _orbId;
 
-    public DeckStateApplier(ManualLogSource log) => _log = log;
+    public DeckStateApplier(ManualLogSource log, OrbIdentifier orbId)
+    {
+        _log = log;
+        _orbId = orbId;
+    }
 
     public void Apply(DeckStateSnapshot snapshot)
     {
@@ -70,25 +76,33 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                         // Push in reverse order — stack is LIFO, index 0 = top = first draw
                         for (int i = snapshot.ShuffledOrder.Count - 1; i >= 0; i--)
                         {
-                            var orbName = snapshot.ShuffledOrder[i].Replace("(Clone)", "").Trim();
-                            // Find matching orb in battleDeck by name (strip Clone suffix for comparison —
-                            // host sends names with (Clone) from live singletons, but client battleDeck
-                            // instances have it stripped by SyncBattleDeck/LoadDeckState)
+                            var entry = snapshot.ShuffledOrder[i];
                             GameObject match = null;
-                            for (int j = 0; j < dm.battleDeck.Count; j++)
+
+                            // Try GUID lookup first (active player path sends 12-char hex GUIDs)
+                            bool isGuid = entry.Length == 12 && IsHexString(entry);
+                            if (isGuid)
+                                match = _orbId.Find(entry);
+
+                            // Fallback to name matching (coop non-active players send prefab names)
+                            if (match == null)
                             {
-                                if (dm.battleDeck[j] != null &&
-                                    dm.battleDeck[j].name.Replace("(Clone)", "").Trim() == orbName)
+                                var orbName = entry.Replace("(Clone)", "").Trim();
+                                for (int j = 0; j < dm.battleDeck.Count; j++)
                                 {
-                                    match = dm.battleDeck[j];
-                                    break;
+                                    if (dm.battleDeck[j] != null &&
+                                        dm.battleDeck[j].name.Replace("(Clone)", "").Trim() == orbName)
+                                    {
+                                        match = dm.battleDeck[j];
+                                        break;
+                                    }
                                 }
                             }
+
                             if (match != null)
                                 dm.shuffledDeck.Push(match);
                         }
 
-                        DeckManager.onDeckShuffled(dm.shuffledDeck.Count);
                         _log.LogInfo($"[DeckApplier] Built shuffledDeck in host order: {dm.shuffledDeck.Count} orbs");
                     }
                     else if (needsRebuild)
@@ -101,7 +115,6 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                                 dm.shuffledDeck.Push(dm.battleDeck[i]);
                         }
 
-                        DeckManager.onDeckShuffled(dm.shuffledDeck.Count);
                         _log.LogInfo($"[DeckApplier] Built shuffledDeck (fallback order): {dm.shuffledDeck.Count} orbs");
                     }
 
@@ -476,6 +489,10 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                     UnityEngine.Object.DontDestroyOnLoad(instance);
                     newBattleDeck.Add(instance);
                     loaded++;
+
+                    // Register client instance with host's GUID for shuffledDeck matching
+                    if (!string.IsNullOrEmpty(entry.Guid))
+                        _orbId.Register(instance, entry.Guid);
                 }
             }
             catch { }
@@ -522,5 +539,17 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             }
         }
         catch { }
+    }
+
+    /// <summary>Check if a string is a valid hexadecimal string (used to distinguish GUIDs from orb names).</summary>
+    private static bool IsHexString(string s)
+    {
+        for (int i = 0; i < s.Length; i++)
+        {
+            char c = s[i];
+            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
+                return false;
+        }
+        return true;
     }
 }

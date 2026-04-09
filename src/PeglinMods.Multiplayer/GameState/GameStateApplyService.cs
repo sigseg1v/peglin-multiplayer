@@ -47,14 +47,14 @@ public class GameStateApplyService
     private PlayerStateSnapshot _latestPlayer;
     private MapStateSnapshot _latestMap;
 
-    public GameStateApplyService(ManualLogSource log, EnemyIdentifier enemyId, PegIdentifier pegId)
+    public GameStateApplyService(ManualLogSource log, EnemyIdentifier enemyId, PegIdentifier pegId, OrbIdentifier orbId)
     {
         _log = log;
         _mapApplier = new MapStateApplier(log);
         _playerApplier = new PlayerStateApplier(log);
         _enemyApplier = new EnemyStateApplier(log, enemyId);
         _pegboardApplier = new PegboardStateApplier(log, pegId);
-        _deckApplier = new DeckStateApplier(log);
+        _deckApplier = new DeckStateApplier(log, orbId);
         _relicApplier = new RelicStateApplier(log);
         _enemyId = enemyId;
         _pegId = pegId;

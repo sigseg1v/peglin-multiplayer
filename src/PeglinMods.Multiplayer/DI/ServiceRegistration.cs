@@ -134,7 +134,7 @@ public static class ServiceRegistration
         container.RegisterSingleton<IGameStateSyncService>(syncService);
 
         // Game state apply service (client -> receives state and applies)
-        var applyService = new GameStateApplyService(log, enemyId, pegId);
+        var applyService = new GameStateApplyService(log, enemyId, pegId, orbId);
         container.RegisterSingleton(applyService);
 
         var versionChecker = new VersionChecker(log);
