@@ -387,6 +387,7 @@ public static class MultiplayerClientPatches
 
                 // Instantiate ball for the orb visual at spawn point
                 _clientBallGO = UnityEngine.Object.Instantiate(prefab, spawnPos, UnityEngine.Quaternion.identity);
+                _clientBallGO.SetActive(true); // Deck orb prefabs may be inactive — force active so Update() runs
 
                 // Read physics parameters for trajectory calculation
                 var ball = _clientBallGO.GetComponent<PachinkoBall>();
