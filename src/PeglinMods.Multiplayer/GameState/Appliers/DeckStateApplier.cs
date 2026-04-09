@@ -70,12 +70,15 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                         // Push in reverse order — stack is LIFO, index 0 = top = first draw
                         for (int i = snapshot.ShuffledOrder.Count - 1; i >= 0; i--)
                         {
-                            var orbName = snapshot.ShuffledOrder[i];
-                            // Find matching orb in battleDeck by name
+                            var orbName = snapshot.ShuffledOrder[i].Replace("(Clone)", "").Trim();
+                            // Find matching orb in battleDeck by name (strip Clone suffix for comparison —
+                            // host sends names with (Clone) from live singletons, but client battleDeck
+                            // instances have it stripped by SyncBattleDeck/LoadDeckState)
                             GameObject match = null;
                             for (int j = 0; j < dm.battleDeck.Count; j++)
                             {
-                                if (dm.battleDeck[j] != null && dm.battleDeck[j].name == orbName)
+                                if (dm.battleDeck[j] != null &&
+                                    dm.battleDeck[j].name.Replace("(Clone)", "").Trim() == orbName)
                                 {
                                     match = dm.battleDeck[j];
                                     break;
