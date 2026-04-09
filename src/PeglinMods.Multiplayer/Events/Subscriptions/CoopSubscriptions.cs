@@ -405,6 +405,17 @@ public sealed class CoopSubscriptions
                 catch { }
             }
 
+            // Rebuild the host's deck tube display to match the newly-loaded player's deck.
+            // Without this, _displayOrbs is stale from the previous player and the top orb
+            // doesn't get promoted to the "active" position correctly.
+            try
+            {
+                var deckMgr = Resources.FindObjectsOfTypeAll<DeckManager>()?.FirstOrDefault();
+                if (deckMgr != null)
+                    _coopStateManager.RebuildDeckInfoDisplay(deckMgr);
+            }
+            catch { }
+
             BroadcastTurnChange();
 
             // Push updated AllDecks to client immediately so the client
