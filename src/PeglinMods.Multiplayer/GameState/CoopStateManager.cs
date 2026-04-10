@@ -569,6 +569,89 @@ public class CoopStateManager
         }
     }
 
+    // --- Board relic merging for battle init ---
+
+    /// <summary>
+    /// Relic effects that modify the shared pegboard at battle start.
+    /// These are checked during BattleController.Start() (before OnBattleStarted)
+    /// and should reflect ALL players' relics, not just the active player.
+    /// </summary>
+    private static readonly int[] BoardRelicEffects = new[]
+    {
+        // Battle start: bombs/coins
+        64,  // ADDITIONAL_STARTING_BOMBS (+3 bombs)
+        63,  // DOUBLE_BOMBS_ON_MAP (2x bombs)
+        98,  // ADDITIONAL_BATTLE_GOLD (+10 coins)
+        104, // DOUBLE_COINS_AND_PRICES (3x gold)
+        // Peg count modifiers (checked in PegManager.GetPegCount)
+        36,  // ADDITIONAL_CRIT1 (+1 crit)
+        17,  // ADDITIONAL_CRIT2 (+2 crit)
+        18,  // ADDITIONAL_CRIT3 (+3 crit)
+        69,  // CRIT_PIT (+2 crit)
+        82,  // REDUCE_CRIT (-1 crit)
+        37,  // ADDITIONAL_REFRESH1 (+1 refresh)
+        20,  // ADDITIONAL_REFRESH2 (+2 refresh)
+        21,  // ADDITIONAL_REFRESH3 (+3 refresh)
+        81,  // REDUCE_REFRESH (-1 refresh)
+        140, // ONLY_REFRESH_X_PEGS (+10 refresh)
+        105, // ALL_ORBS_MORBID (halves refresh)
+        101, // DUPLICATE_SPECIAL_PEGS (no reset on shuffle)
+    };
+
+    /// <summary>
+    /// Temporarily merge all players' board-affecting relics into _ownedRelics.
+    /// Call this BEFORE BattleController.Start() runs (e.g. in Awake postfix)
+    /// so the board setup reflects every player's contributions.
+    /// The normal LoadRelicState for the active player restores the correct
+    /// state after board init completes.
+    /// </summary>
+    public void MergeBoardRelics()
+    {
+        if (TotalPlayerCount < 2) return;
+        try
+        {
+            var relicMgr = Resources.FindObjectsOfTypeAll<RelicManager>()?.FirstOrDefault();
+            if (relicMgr == null) return;
+
+            var ownedField = AccessTools.Field(typeof(RelicManager), "_ownedRelics");
+            var owned = ownedField?.GetValue(relicMgr) as Dictionary<RelicEffect, Relic>;
+            if (owned == null) return;
+
+            var allRelicAssets = Resources.FindObjectsOfTypeAll<Relic>();
+            var boardEffectSet = new HashSet<int>(BoardRelicEffects);
+            int merged = 0;
+
+            foreach (var kvp in PlayerStates)
+            {
+                // Skip the active player — their relics are already loaded
+                if (kvp.Key == ActivePlayerSlot) continue;
+
+                foreach (var entry in kvp.Value.OwnedRelics)
+                {
+                    if (!boardEffectSet.Contains(entry.Effect)) continue;
+
+                    var effect = (RelicEffect)entry.Effect;
+                    if (owned.ContainsKey(effect)) continue; // Active player already has it
+
+                    var relicAsset = allRelicAssets.FirstOrDefault(r => r.effect == effect);
+                    if (relicAsset != null)
+                    {
+                        owned[effect] = relicAsset;
+                        merged++;
+                        _log.LogInfo($"[CoopState] MergeBoardRelics: added {effect} from slot {kvp.Key}");
+                    }
+                }
+            }
+
+            if (merged > 0)
+                _log.LogInfo($"[CoopState] MergeBoardRelics: merged {merged} board relics from non-active players");
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[CoopState] MergeBoardRelics failed: {ex.Message}");
+        }
+    }
+
     // --- Health save/load ---
 
     private void SaveHealthState(CoopPlayerState state)
@@ -627,28 +710,33 @@ public class CoopStateManager
                 var healthVar = healthField?.GetValue(phc);
                 var maxVar = maxField?.GetValue(phc);
 
-                if (healthVar != null)
-                {
-                    // FloatVariable.Value is read-only; use the Set(float) method instead
-                    var setMethod = healthVar.GetType().GetMethod("Set", new[] { typeof(float) });
-                    setMethod?.Invoke(healthVar, new object[] { state.CurrentHealth });
-                }
+                // Set max FIRST so that current doesn't get clamped to the old max.
+                // FloatVariable.Set may clamp current <= max, so order matters.
                 if (maxVar != null)
                 {
                     var setMethod = maxVar.GetType().GetMethod("Set", new[] { typeof(float) });
                     setMethod?.Invoke(maxVar, new object[] { state.MaxHealth });
                 }
+                if (healthVar != null)
+                {
+                    var setMethod = healthVar.GetType().GetMethod("Set", new[] { typeof(float) });
+                    setMethod?.Invoke(healthVar, new object[] { state.CurrentHealth });
+                }
                 return;
             }
 
             // Fallback: write directly to FloatVariable ScriptableObject assets
+            // Set max first, then current (same reason: avoid clamping)
             var floatVars = Resources.FindObjectsOfTypeAll<FloatVariable>();
+            foreach (var fv in floatVars)
+            {
+                if (fv.name == "MaxPlayerHealth" || fv.name == "maxPlayerHealth")
+                    fv.Set(state.MaxHealth);
+            }
             foreach (var fv in floatVars)
             {
                 if (fv.name == "PlayerHealth" || fv.name == "playerHealth")
                     fv.Set(state.CurrentHealth);
-                else if (fv.name == "MaxPlayerHealth" || fv.name == "maxPlayerHealth")
-                    fv.Set(state.MaxHealth);
             }
         }
         catch (Exception ex)

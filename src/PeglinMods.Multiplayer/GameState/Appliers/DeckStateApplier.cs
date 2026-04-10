@@ -323,7 +323,8 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             }
 
             // Create a preview sprite using the same method as RebuildDeckInfoDisplay
-            var createMethod = AccessTools.Method(typeof(DeckInfoManager), "CreatePreviewSprite");
+            var createMethod = AccessTools.Method(typeof(DeckInfoManager), "CreatePreviewSprite",
+                new[] { typeof(GameObject), typeof(float) });
             if (createMethod == null)
             {
                 _log.LogWarning("[DeckApplier] CreatePreviewSprite method not found");
@@ -334,7 +335,7 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             bool wasActive = orbSource.activeSelf;
             if (!wasActive) orbSource.SetActive(true);
 
-            var previewGo = createMethod.Invoke(dim, new object[] { orbSource }) as GameObject;
+            var previewGo = createMethod.Invoke(dim, new object[] { orbSource, 0f }) as GameObject;
 
             if (!wasActive) orbSource.SetActive(false);
 

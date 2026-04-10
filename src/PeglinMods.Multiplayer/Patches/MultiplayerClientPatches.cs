@@ -2007,6 +2007,16 @@ public static class MultiplayerClientPatches
 
         coopSubs.Subscribe();
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] BattleController.Awake: re-subscribed CoopSubscriptions");
+
+        // Merge all players' board-affecting relics into _ownedRelics BEFORE
+        // BattleController.Start() runs. Start() checks relics for bombs, coins,
+        // crit/refresh peg counts, etc. Without the merge, only the host's relics
+        // affect the board even if a client has ADDITIONAL_STARTING_BOMBS, etc.
+        // The relics are restored to the active player after OnBattleStarted.
+        if (MultiplayerPlugin.Services?.TryResolve<GameState.CoopStateManager>(out var coopState) == true)
+        {
+            coopState.MergeBoardRelics();
+        }
     }
 
     // =========================================================================
