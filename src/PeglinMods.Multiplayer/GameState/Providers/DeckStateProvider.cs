@@ -19,6 +19,12 @@ public class DeckStateProvider : IGameStateProvider<DeckStateSnapshot>
         _orbId = orbId;
     }
 
+    /// <summary>
+    /// Capture the current deck state from DeckManager singletons.
+    /// NOTE: ActiveSlotIndex is NOT set here -- it is populated by the caller
+    /// (GameStateSyncService.SyncAll) which has access to CoopStateManager's
+    /// active slot. The provider intentionally does not depend on CoopStateManager.
+    /// </summary>
     public DeckStateSnapshot Capture()
     {
         try
@@ -57,8 +63,16 @@ public class DeckStateProvider : IGameStateProvider<DeckStateSnapshot>
                 }
             }
 
-            // Capture shuffledDeck order (top of stack = first to draw)
-            if (dm.shuffledDeck != null && dm.shuffledDeck.Count > 0)
+            // Capture shuffledDeck order (top of stack = first to draw).
+            // Null vs empty semantics for downstream consumers:
+            // - ShuffledOrder = null  -> no data available (shuffledDeck uninitialized), use fallback
+            // - ShuffledOrder = []    -> deck truly empty (all orbs drawn as active)
+            // - ShuffledOrder = [...] -> populated with GUIDs in draw order
+            if (dm.shuffledDeck == null)
+            {
+                snapshot.ShuffledOrder = null;
+            }
+            else if (dm.shuffledDeck.Count > 0)
             {
                 foreach (var orb in dm.shuffledDeck)
                 {
@@ -66,6 +80,7 @@ public class DeckStateProvider : IGameStateProvider<DeckStateSnapshot>
                         snapshot.ShuffledOrder.Add(_orbId.GetOrAssignGuid(orb));
                 }
             }
+            // else: shuffledDeck.Count == 0 -> ShuffledOrder stays as initialized empty list
 
             snapshot.DeckSize = snapshot.CompleteDeck.Count;
 
@@ -80,9 +95,9 @@ public class DeckStateProvider : IGameStateProvider<DeckStateSnapshot>
                     snapshot.CurrentOrbLevel = atk?.Level ?? 1;
                 }
             }
-            catch { }
+            catch (Exception activeOrbEx) { _log.LogWarning($"[DeckProvider] Failed to capture active orb: {activeOrbEx.Message}"); }
 
-            _log.LogInfo($"[DeckProvider] Captured {snapshot.CompleteDeck.Count} complete, {snapshot.BattleDeck.Count} battle, {snapshot.ShuffledOrder.Count} shuffled orbs ({_orbId.Count} in registry) activeOrb={snapshot.CurrentOrb ?? "none"}");
+            _log.LogInfo($"[DeckProvider] Captured {snapshot.CompleteDeck.Count} complete, {snapshot.BattleDeck.Count} battle, {snapshot.ShuffledOrder?.Count ?? 0} shuffled orbs ({_orbId.Count} in registry) activeOrb={snapshot.CurrentOrb ?? "none"}");
 
             return snapshot;
         }

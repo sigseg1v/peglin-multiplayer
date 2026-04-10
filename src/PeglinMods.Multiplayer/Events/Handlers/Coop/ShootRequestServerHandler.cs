@@ -1,5 +1,6 @@
 namespace PeglinMods.Multiplayer.Events.Handlers.Coop;
 
+using BepInEx.Logging;
 using PeglinMods.Multiplayer.Events.Network.Coop;
 
 /// <summary>
@@ -9,5 +10,11 @@ using PeglinMods.Multiplayer.Events.Network.Coop;
 /// </summary>
 public sealed class ShootRequestServerHandler : IServerHandler<ShootRequestEvent>
 {
-    public ShootRequestEvent Handle(ShootRequestEvent networkEvent) => null;
+    private static readonly ManualLogSource _log = Logger.CreateLogSource("ShootRequestServer");
+
+    public ShootRequestEvent Handle(ShootRequestEvent networkEvent)
+    {
+        _log.LogInfo($"[ShootRequestServer] Received shoot request: aim=({networkEvent.AimDirectionX:F2},{networkEvent.AimDirectionY:F2}) — suppressing rebroadcast");
+        return null;
+    }
 }

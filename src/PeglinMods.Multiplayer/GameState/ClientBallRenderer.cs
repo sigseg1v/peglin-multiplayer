@@ -12,6 +12,9 @@ public class ClientBallRenderer : MonoBehaviour
 {
     public static ClientBallRenderer Instance { get; private set; }
 
+    /// <summary>Name of the orb currently displayed (for stale detection by heartbeat applier).</summary>
+    public string CurrentOrbName => _currentOrbName;
+
     private GameObject _ballObject;
     private SpriteRenderer _ballRenderer;
     private Vector2 _targetPos;
@@ -22,6 +25,7 @@ public class ClientBallRenderer : MonoBehaviour
     private Vector2 _aimDirection;
     private Vector3 _spawnPos;
     private bool _renderCopied; // True once material+sorting copied from a real renderer
+    private string _currentOrbName; // Name of the orb currently being displayed (for stale detection)
 
     // Additional multiball visuals
     private readonly List<GameObject> _multiballs = new List<GameObject>();
@@ -46,6 +50,7 @@ public class ClientBallRenderer : MonoBehaviour
         if (_ballObject == null)
             CreateBall();
 
+        _currentOrbName = orbName?.Replace("(Clone)", "").Trim();
         UpdateBallSprite(orbName);
 
         // Position at player spawn
@@ -285,6 +290,7 @@ public class ClientBallRenderer : MonoBehaviour
     public void OnBallDestroyed()
     {
         _isActive = false;
+        _currentOrbName = null;
         if (_ballObject != null)
             _ballObject.SetActive(false);
 

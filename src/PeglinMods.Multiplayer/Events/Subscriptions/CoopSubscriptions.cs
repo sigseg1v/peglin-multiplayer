@@ -5,6 +5,7 @@ using Battle;
 using BepInEx.Logging;
 using HarmonyLib;
 using PeglinMods.Multiplayer.Events;
+using PeglinMods.Multiplayer.Events.Handlers.Coop;
 using PeglinMods.Multiplayer.Events.Network.Coop;
 using PeglinMods.Multiplayer.GameState;
 using PeglinMods.Multiplayer.Multiplayer;
@@ -368,9 +369,10 @@ public sealed class CoopSubscriptions
                 DeckManager.onBallUsed = _ => { }; // no-op during non-host operations
                 DeckManager.onDeckShuffled = _ => { }; // no-op during non-host shuffle
             }
-            catch { }
+            catch (Exception cbEx) { _log.LogWarning($"[CoopSubs] Failed to disconnect DeckManager callbacks: {cbEx.Message}"); }
 
-            EnsureBattleDeckPopulated("shot complete swap");
+            if (!EnsureBattleDeckPopulated("shot complete swap"))
+                _log.LogWarning("[CoopSubs] EnsureBattleDeckPopulated failed after shot complete swap — deck may be empty");
 
             // Override BattleState back to AWAITING_SHOT so the state machine
             // re-enters the aiming phase instead of proceeding to attack.
@@ -402,25 +404,22 @@ public sealed class CoopSubscriptions
                     if (savedOnBallUsed != null) DeckManager.onBallUsed = savedOnBallUsed;
                     if (savedOnDeckShuffled != null) DeckManager.onDeckShuffled = savedOnDeckShuffled;
                 }
-                catch { }
+                catch (Exception restoreEx) { _log.LogWarning($"[CoopSubs] Failed to restore DeckManager callbacks: {restoreEx.Message}"); }
             }
 
-            // Rebuild the host's deck tube display to match the newly-loaded player's deck.
-            // Without this, _displayOrbs is stale from the previous player and the top orb
-            // doesn't get promoted to the "active" position correctly.
-            try
-            {
-                var deckMgr = Resources.FindObjectsOfTypeAll<DeckManager>()?.FirstOrDefault();
-                if (deckMgr != null)
-                    _coopStateManager.RebuildDeckInfoDisplay(deckMgr);
-            }
-            catch { }
+            // Do NOT call RebuildDeckInfoDisplay here. The host should always
+            // see the HOST's own deck in the deck tube UI, not the swapped-in
+            // player's deck. DeckManager callbacks are disconnected above, so
+            // the client's DrawBall won't touch the host's displayOrbs. The
+            // native game flow (PlungerPlungeComplete + DrawNextOrb) keeps the
+            // host's deck tube correct across rounds.
 
             BroadcastTurnChange();
 
             // Push updated AllDecks to client immediately so the client
             // sees its own deck rather than waiting for the next heartbeat.
-            try { _syncService.SyncAll("TurnSwap"); } catch { }
+            try { _syncService.SyncAll("TurnSwap"); }
+            catch (Exception syncEx) { _log.LogWarning($"[CoopSubs] TurnSwap SyncAll failed: {syncEx.Message}"); }
 
             _log.LogInfo($"[CoopSubs] Swapped to player slot {_turnManager.CurrentPlayerSlot}, " +
                 $"redirected BattleState -> AWAITING_SHOT");
@@ -485,6 +484,11 @@ public sealed class CoopSubscriptions
             var services = MultiplayerPlugin.Services;
             if (services?.TryResolve<IGameEventRegistry>(out var registry) != true) return;
 
+            // Clear previous reward tracking state
+            CoopRewardState.PendingSentRewardChoices.Clear();
+            CoopRewardState.ClientRewardChoicesReceived.Clear();
+            int rewardClientCount = 0;
+
             foreach (var kvp in _coopStateManager.PlayerStates)
             {
                 if (kvp.Key == 0) continue; // Host picks rewards via the normal game UI
@@ -520,18 +524,170 @@ public sealed class CoopSubscriptions
                     GoldReward = 10,
                 });
 
-                registry.Dispatch(new RewardChoicesEvent
+                var choicesEvent = new RewardChoicesEvent
                 {
                     TargetSlotIndex = kvp.Key,
                     Options = options,
-                });
+                };
+
+                // Store sent choices so the handler can look up options by slot
+                CoopRewardState.PendingSentRewardChoices[kvp.Key] = choicesEvent;
+                rewardClientCount++;
+
+                registry.Dispatch(choicesEvent);
 
                 _log.LogInfo($"[CoopSubs] Sent {options.Count} reward choices to slot {kvp.Key}");
             }
+
+            CoopRewardState.TotalRewardClientsExpected = rewardClientCount;
         }
         catch (Exception ex)
         {
             _log.LogWarning($"[CoopSubs] OnVictory reward distribution failed: {ex.Message}");
+        }
+    }
+
+    // =========================================================================
+    // PLAYER DISCONNECT — remove disconnected player from turn system
+    // =========================================================================
+
+    /// <summary>
+    /// Handle a player disconnecting mid-battle. Removes them from the turn order
+    /// and advances the turn if it was their turn. If all non-host players disconnect,
+    /// the host continues solo.
+    /// </summary>
+    public void HandlePlayerDisconnect(int slotIndex, string playerName)
+    {
+        if (!_mode.IsHosting) return;
+
+        _log.LogInfo($"[CoopSubs] HandlePlayerDisconnect: slot {slotIndex} ({playerName}) — " +
+            $"turnPhase={_turnManager.Phase}, activeSlot={_turnManager.CurrentPlayerSlot}, " +
+            $"totalPlayers={_coopStateManager.TotalPlayerCount}");
+
+        // Remove from accumulated shot data
+        _accumulatedShotData.Remove(slotIndex);
+
+        // Remove from CoopStateManager
+        if (_coopStateManager.PlayerStates.ContainsKey(slotIndex))
+        {
+            _coopStateManager.PlayerStates.Remove(slotIndex);
+            _log.LogInfo($"[CoopSubs] Removed slot {slotIndex} from CoopStateManager. Remaining players: {_coopStateManager.TotalPlayerCount}");
+        }
+
+        // Remove from TurnManager — this tells us if it was their turn
+        bool wasTheirTurn = _turnManager.RemovePlayer(slotIndex);
+
+        // If only 1 player remains (the host), log that we're continuing solo
+        if (_coopStateManager.TotalPlayerCount <= 1)
+        {
+            _log.LogInfo("[CoopSubs] All non-host players disconnected. Host continues solo.");
+        }
+
+        if (!wasTheirTurn)
+        {
+            // It wasn't their turn — turn order was adjusted, broadcast updated state
+            BroadcastTurnChange();
+            _log.LogInfo($"[CoopSubs] Disconnect handled (not their turn). Current turn: slot {_turnManager.CurrentPlayerSlot}");
+            return;
+        }
+
+        // It was their turn — we need to handle the state machine transition.
+        // The TurnManager already advanced to the next player or ALL_DONE.
+        if (_turnManager.Phase == TurnPhase.ALL_DONE)
+        {
+            // All remaining players have shot. Let the attack phase proceed.
+            // Combine accumulated damage from players who DID shoot.
+            var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
+            var pegTallyField = AccessTools.Field(typeof(BattleController), "_pegMultiplierDamageTally");
+            var critField = AccessTools.Field(typeof(BattleController), "_criticalHitCount");
+            var numPegsField = AccessTools.Field(typeof(BattleController), "_numPegsHit");
+            var cactusField = AccessTools.Field(typeof(BattleController), "_cactusDamageTally");
+
+            int totalPegTally = 0, totalCrits = 0, totalPegsHit = 0, totalCactus = 0;
+            foreach (var data in _accumulatedShotData.Values)
+            {
+                totalPegTally += data.PegMultiplierDamageTally;
+                totalCrits += data.CriticalHitCount;
+                totalPegsHit += data.NumPegsHit;
+                totalCactus += data.CactusDamageTally;
+            }
+
+            if (bc != null)
+            {
+                pegTallyField?.SetValue(bc, totalPegTally);
+                critField?.SetValue(null, totalCrits);
+                numPegsField?.SetValue(bc, totalPegsHit);
+                cactusField?.SetValue(bc, totalCactus);
+            }
+
+            _accumulatedShotData.Clear();
+            BroadcastTurnChange();
+            _log.LogInfo($"[CoopSubs] Disconnect during turn: all remaining players done, letting attack proceed. " +
+                $"Combined damage: pegTally={totalPegTally}, crits={totalCrits}, pegsHit={totalPegsHit}, cactus={totalCactus}");
+        }
+        else if (_turnManager.Phase == TurnPhase.PLAYER_AIMING)
+        {
+            // Next player needs to shoot. Swap to the next player's state and
+            // redirect BattleController back to AWAITING_SHOT.
+            int nextSlot = _turnManager.CurrentPlayerSlot;
+
+            _coopStateManager.SwapToPlayer(nextSlot);
+
+            // Disconnect DeckInfoManager callbacks to avoid corrupting host UI
+            DeckManager.BallDrawn savedOnBallUsed = null;
+            DeckManager.Shuffled savedOnDeckShuffled = null;
+            try
+            {
+                savedOnBallUsed = DeckManager.onBallUsed;
+                savedOnDeckShuffled = DeckManager.onDeckShuffled;
+                DeckManager.onBallUsed = _ => { };
+                DeckManager.onDeckShuffled = _ => { };
+            }
+            catch (Exception cbEx) { _log.LogWarning($"[CoopSubs] Disconnect: failed to save DeckManager callbacks: {cbEx.Message}"); }
+
+            EnsureBattleDeckPopulated("disconnect swap");
+
+            // Redirect battle state back to AWAITING_SHOT
+            BattleController.CurrentBattleState = BattleController.BattleState.AWAITING_SHOT;
+
+            // Manually trigger DrawBall for the next player
+            var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
+            try
+            {
+                if (bc != null)
+                {
+                    var drawBallMethod = AccessTools.Method(typeof(BattleController), "DrawBall");
+                    drawBallMethod?.Invoke(bc, null);
+                    _log.LogInfo($"[CoopSubs] Disconnect: called DrawBall for next player slot {nextSlot}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning($"[CoopSubs] Disconnect DrawBall failed: {ex.InnerException?.Message ?? ex.Message}");
+            }
+            finally
+            {
+                try
+                {
+                    if (savedOnBallUsed != null) DeckManager.onBallUsed = savedOnBallUsed;
+                    if (savedOnDeckShuffled != null) DeckManager.onDeckShuffled = savedOnDeckShuffled;
+                }
+                catch (Exception restoreEx) { _log.LogWarning($"[CoopSubs] Disconnect: failed to restore DeckManager callbacks: {restoreEx.Message}"); }
+            }
+
+            BroadcastTurnChange();
+
+            try { _syncService.SyncAll("DisconnectTurnSwap"); }
+            catch (Exception syncEx) { _log.LogWarning($"[CoopSubs] Disconnect SyncAll failed: {syncEx.Message}"); }
+
+            _log.LogInfo($"[CoopSubs] Disconnect during turn: swapped to slot {nextSlot}, " +
+                $"redirected BattleState -> AWAITING_SHOT");
+        }
+        else
+        {
+            // WAITING_FOR_PLAYERS or DAMAGE_PHASE — just broadcast the updated state
+            BroadcastTurnChange();
+            _log.LogInfo($"[CoopSubs] Disconnect handled in phase {_turnManager.Phase}");
         }
     }
 
@@ -543,12 +699,12 @@ public sealed class CoopSubscriptions
     /// Only shuffle if both battleDeck and shuffledDeck are empty (no state was saved),
     /// or if battleDeck has orbs but shuffledDeck couldn't be rebuilt (name mismatch).
     /// </summary>
-    private void EnsureBattleDeckPopulated(string context)
+    private bool EnsureBattleDeckPopulated(string context)
     {
         try
         {
             var dms = UnityEngine.Resources.FindObjectsOfTypeAll<DeckManager>();
-            if (dms == null || dms.Length == 0) return;
+            if (dms == null || dms.Length == 0) return false;
 
             var dm = dms[0];
             bool hasBattle = dm.battleDeck != null && dm.battleDeck.Count > 0;
@@ -557,7 +713,7 @@ public sealed class CoopSubscriptions
             if (hasBattle && hasShuffled)
             {
                 // Both populated from loaded state — do NOT re-shuffle
-                return;
+                return true;
             }
 
             if (hasBattle && !hasShuffled)
@@ -603,10 +759,16 @@ public sealed class CoopSubscriptions
                 }
             }
             // else: both empty — nothing to do, likely pre-battle state
+
+            // Return success: both battleDeck and shuffledDeck are non-empty
+            bool success = (dm.battleDeck != null && dm.battleDeck.Count > 0) &&
+                           (dm.shuffledDeck != null && dm.shuffledDeck.Count > 0);
+            return success;
         }
         catch (System.Exception ex)
         {
             _log.LogWarning($"[CoopSubs] EnsureBattleDeckPopulated ({context}) failed: {ex.Message}");
+            return false;
         }
     }
 

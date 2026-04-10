@@ -22,6 +22,9 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
             ApplyGold(snapshot);
             ApplySpeedup(snapshot);
             LogStatusEffects(snapshot);
+
+            // === Post-apply verification ===
+            VerifyPlayerState(snapshot);
         }
         catch (Exception ex)
         {
@@ -85,10 +88,18 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
         int currentGold = currencyManager.GoldAmount;
         int diff = snapshot.Gold - currentGold;
 
-        if (diff > 0)
-            currencyManager.AddGold(diff, silent: true);
-        else if (diff < 0)
-            currencyManager.RemoveGold(-diff, silent: true);
+        Patches.MultiplayerClientPatches.AllowCurrencySync = true;
+        try
+        {
+            if (diff > 0)
+                currencyManager.AddGold(diff, silent: true);
+            else if (diff < 0)
+                currencyManager.RemoveGold(-diff, silent: true);
+        }
+        finally
+        {
+            Patches.MultiplayerClientPatches.AllowCurrencySync = false;
+        }
 
         _log.LogInfo($"[PlayerApplier] Gold set to {snapshot.Gold} (was {currentGold}, diff={diff})");
     }
@@ -118,6 +129,61 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
         foreach (var effect in snapshot.StatusEffects)
         {
             _log.LogInfo($"  - {effect.EffectName} (type={effect.EffectType}, intensity={effect.Intensity})");
+        }
+    }
+
+    /// <summary>
+    /// Post-apply verification: re-read actual game state and compare with snapshot.
+    /// Logs MISMATCH warnings for any differences, INFO on success.
+    /// </summary>
+    private void VerifyPlayerState(PlayerStateSnapshot snapshot)
+    {
+        try
+        {
+            bool allMatch = true;
+
+            // Verify health
+            var ctrl = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
+            if (ctrl != null)
+            {
+                var healthField = AccessTools.Field(typeof(PlayerHealthController), "_playerHealth");
+                var maxHealthField = AccessTools.Field(typeof(PlayerHealthController), "_maxPlayerHealth");
+                var healthVar = healthField?.GetValue(ctrl) as FloatVariable;
+                var maxHealthVar = maxHealthField?.GetValue(ctrl) as FloatVariable;
+
+                float actualHealth = healthVar?.Value ?? -1f;
+                float actualMax = maxHealthVar?.Value ?? -1f;
+
+                if (Math.Abs(actualHealth - snapshot.CurrentHealth) > 0.1f)
+                {
+                    _log.LogWarning($"[Verify] MISMATCH health: actual={actualHealth:F1} expected={snapshot.CurrentHealth:F1}");
+                    allMatch = false;
+                }
+                if (Math.Abs(actualMax - snapshot.MaxHealth) > 0.1f)
+                {
+                    _log.LogWarning($"[Verify] MISMATCH maxHealth: actual={actualMax:F1} expected={snapshot.MaxHealth:F1}");
+                    allMatch = false;
+                }
+            }
+
+            // Verify gold
+            var currencyManager = CurrencyManager.Instance;
+            if (currencyManager != null)
+            {
+                int actualGold = currencyManager.GoldAmount;
+                if (actualGold != snapshot.Gold)
+                {
+                    _log.LogWarning($"[Verify] MISMATCH gold: actual={actualGold} expected={snapshot.Gold}");
+                    allMatch = false;
+                }
+            }
+
+            if (allMatch)
+                _log.LogInfo($"[Verify] PlayerState OK: health={snapshot.CurrentHealth:F0}/{snapshot.MaxHealth:F0} gold={snapshot.Gold}");
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[Verify] PlayerState verification failed: {ex.Message}");
         }
     }
 }

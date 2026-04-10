@@ -144,7 +144,7 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                                 displayOrbs = displayOrbsField?.GetValue(dim) as Stack<GameObject>;
                             }
                         }
-                        catch { }
+                        catch (Exception dimEx) { _log.LogWarning($"[DeckApplier] Failed to get _displayOrbs: {dimEx.Message}"); }
 
                         while (dm.shuffledDeck.Count > hostCount && dm.shuffledDeck.Count > 0)
                         {
@@ -199,7 +199,7 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                             if (services?.TryResolve<GameState.CoopStateManager>(out var csm) == true)
                                 csm.RebuildDeckInfoDisplay(dm);
                         }
-                        catch { }
+                        catch (Exception rebuildEx) { _log.LogWarning($"[DeckApplier] RebuildDeckInfoDisplay call failed: {rebuildEx.Message}"); }
                     }
                 }
                 catch (Exception shuffleEx)
@@ -222,6 +222,9 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
 
             // Diagnostic: log what the game actually sees
             LogActualDeckState(dm);
+
+            // === Post-apply verification ===
+            VerifyDeckState(dm, snapshot);
         }
         catch (Exception ex)
         {
@@ -252,8 +255,8 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
 
     /// <summary>
     /// Ensure DeckInfoManager shows the correct active orb at the top of the deck UI.
-    /// Called every heartbeat. If _currentOrb is already set, does nothing.
-    /// If _currentOrb is null (initial draw was missed), pops from _displayOrbs and sets it.
+    /// Called every heartbeat. Always replaces _currentOrb with the top displayOrb
+    /// so the display converges to host state (dumb canvas approach).
     /// </summary>
     private void EnsureDeckUIShowsActiveOrb(DeckManager dm, string activeOrbName)
     {
@@ -262,15 +265,18 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
             if (dim == null) return;
 
-            // Check if the deck UI already has a current orb displayed
+            // Always replace _currentOrb with the top displayOrb. RebuildDeckInfoDisplay
+            // recreates ALL displayOrbs from host shuffledDeck every heartbeat, so we must
+            // pop the top one for the active display each time. Without this, _currentOrb
+            // goes stale after a player shoots (the active orb changes but the display
+            // doesn't update because the old code skipped when _currentOrb was non-null).
             var currentOrbField = AccessTools.Field(typeof(DeckInfoManager), "_currentOrb");
             var currentOrb = currentOrbField?.GetValue(dim) as GameObject;
             if (currentOrb != null)
             {
-                _log.LogInfo($"[DeckApplier] Deck UI already has currentOrb: '{currentOrb.name}' — skipping");
-                return;
+                UnityEngine.Object.Destroy(currentOrb);
+                currentOrbField.SetValue(dim, null);
             }
-            _log.LogInfo($"[DeckApplier] Deck UI has NO currentOrb — setting up active orb display");
 
             // Force-complete shuffle animation if still running
             if (DeckInfoManager.animating)
@@ -361,7 +367,8 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
 
     /// <summary>
     /// Ensure ClientBallRenderer shows the orb at the aimer position.
-    /// Called every heartbeat. If already showing, does nothing.
+    /// Called every heartbeat. If already showing the correct orb, does nothing.
+    /// If showing a stale (wrong) orb, refreshes the display.
     /// </summary>
     private void EnsureAimerOrbShown(string activeOrbName)
     {
@@ -390,7 +397,19 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                 $"material={sr?.material?.name ?? "NULL"} layer={sr?.sortingLayerName} order={sr?.sortingOrder} " +
                 $"renderCopied={renderCopied}");
 
-            if (isAiming || isActive) return; // Already showing
+            if (isAiming || isActive)
+            {
+                // Already showing, but check if the displayed orb is stale (wrong orb name).
+                // This happens when the host switches active orb between heartbeats (e.g. coop turn change).
+                var cleanActiveOrb = activeOrbName?.Replace("(Clone)", "").Trim();
+                var displayedOrb = cbr.CurrentOrbName;
+                if (!string.IsNullOrEmpty(cleanActiveOrb) && displayedOrb != cleanActiveOrb)
+                {
+                    _log.LogInfo($"[DeckApplier] Aimer orb stale: displayed='{displayedOrb}' host='{cleanActiveOrb}', refreshing");
+                    cbr.OnOrbDrawn(activeOrbName);
+                }
+                return;
+            }
 
             cbr.OnOrbDrawn(activeOrbName);
             _log.LogInfo($"[DeckApplier] Triggered aimer orb display for '{activeOrbName}'");
@@ -512,7 +531,7 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                         _orbId.Register(instance, entry.Guid);
                 }
             }
-            catch { }
+            catch (Exception orbEx) { _log.LogWarning($"[DeckApplier] Failed to load battle orb: {orbEx.Message}"); }
         }
 
         foreach (var go in dm.battleDeck)
@@ -555,7 +574,66 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                 _log.LogInfo($"[DeckApplier]   next draw: {peek?.name ?? "NULL"} loc={atk?.locNameString ?? "?"}");
             }
         }
-        catch { }
+        catch (Exception logEx) { _log.LogWarning($"[DeckApplier] LogActualDeckState failed: {logEx.Message}"); }
+    }
+
+    /// <summary>
+    /// Post-apply verification: re-read actual game state and compare with what was sent.
+    /// Logs MISMATCH warnings for any differences, INFO on success.
+    /// </summary>
+    private void VerifyDeckState(DeckManager dm, DeckStateSnapshot snapshot)
+    {
+        try
+        {
+            bool allMatch = true;
+
+            int actualComplete = DeckManager.completeDeck?.Count ?? 0;
+            int expectedComplete = snapshot.CompleteDeck?.Count ?? 0;
+            if (expectedComplete > 0 && actualComplete != expectedComplete)
+            {
+                _log.LogWarning($"[Verify] MISMATCH completeDeck: actual={actualComplete} expected={expectedComplete}");
+                allMatch = false;
+            }
+
+            int actualBattle = dm.battleDeck?.Count ?? 0;
+            int expectedBattle = snapshot.BattleDeck?.Count ?? 0;
+            if (expectedBattle > 0 && actualBattle != expectedBattle)
+            {
+                _log.LogWarning($"[Verify] MISMATCH battleDeck: actual={actualBattle} expected={expectedBattle}");
+                allMatch = false;
+            }
+
+            int actualShuffled = dm.shuffledDeck?.Count ?? 0;
+            int expectedShuffled = snapshot.ShuffledOrder?.Count ?? 0;
+            if (snapshot.ShuffledOrder != null && actualShuffled != expectedShuffled)
+            {
+                _log.LogWarning($"[Verify] MISMATCH shuffledDeck: actual={actualShuffled} expected={expectedShuffled}");
+                allMatch = false;
+            }
+
+            try
+            {
+                var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
+                if (dim != null && dim.displayOrbs != null && actualShuffled > 0)
+                {
+                    int actualDisplay = dim.displayOrbs.Count;
+                    int expectedDisplay = !string.IsNullOrEmpty(snapshot.CurrentOrb) ? actualShuffled - 1 : actualShuffled;
+                    if (expectedDisplay >= 0 && actualDisplay != expectedDisplay)
+                    {
+                        _log.LogWarning($"[Verify] MISMATCH displayOrbs: actual={actualDisplay} expected={expectedDisplay} (shuffled={actualShuffled})");
+                        allMatch = false;
+                    }
+                }
+            }
+            catch (Exception verifyEx) { _log.LogWarning($"[DeckApplier] VerifyDeckState failed: {verifyEx.Message}"); }
+
+            if (allMatch)
+                _log.LogInfo($"[Verify] DeckState OK: complete={actualComplete} battle={actualBattle} shuffled={actualShuffled}");
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[Verify] DeckState verification failed: {ex.Message}");
+        }
     }
 
     /// <summary>Check if a string is a valid hexadecimal string (used to distinguish GUIDs from orb names).</summary>

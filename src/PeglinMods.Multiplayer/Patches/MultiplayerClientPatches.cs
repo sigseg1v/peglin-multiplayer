@@ -913,10 +913,12 @@ public static class MultiplayerClientPatches
                                 if (relic == null) continue;
                                 try
                                 {
+                                    AllowRelicSync = true;
                                     clientRelicMgrs[0].AddRelic(relic);
                                     MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Client: added starting class relic {relic.effect} ({relic.locKey})");
                                 }
                                 catch { }
+                                finally { AllowRelicSync = false; }
                             }
                         }
                     }
@@ -1621,6 +1623,7 @@ public static class MultiplayerClientPatches
     public static bool DeckInfoManager_StartShuffleAnimation_Prefix()
     {
         if (!ShouldSuppressClientLogic) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked StartShuffleAnimation on client — host controls deck visuals");
         return false;
     }
 
@@ -2004,5 +2007,123 @@ public static class MultiplayerClientPatches
 
         coopSubs.Subscribe();
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] BattleController.Awake: re-subscribed CoopSubscriptions");
+    }
+
+    // =========================================================================
+    // BLOCK CLIENT STATE-ALTERING METHODS — prevent state divergence
+    // =========================================================================
+
+    /// <summary>
+    /// Set to true by sync code while applying host relic state.
+    /// </summary>
+    internal static bool AllowRelicSync;
+
+    [HarmonyPatch(typeof(Relics.RelicManager), "AddRelic")]
+    [HarmonyPrefix]
+    public static bool RelicManager_AddRelic_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        if (AllowRelicSync) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked RelicManager.AddRelic on client");
+        return false;
+    }
+
+    [HarmonyPatch(typeof(Relics.RelicManager), "RemoveRelic", new[] { typeof(Relics.Relic) })]
+    [HarmonyPrefix]
+    public static bool RelicManager_RemoveRelic_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        if (AllowRelicSync) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked RelicManager.RemoveRelic on client");
+        return false;
+    }
+
+    [HarmonyPatch(typeof(Relics.RelicManager), "RemoveRelic", new[] { typeof(Relics.RelicEffect) })]
+    [HarmonyPrefix]
+    public static bool RelicManager_RemoveRelicByEffect_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        if (AllowRelicSync) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked RelicManager.RemoveRelic(RelicEffect) on client");
+        return false;
+    }
+
+    [HarmonyPatch(typeof(Battle.Enemies.Enemy), "Damage")]
+    [HarmonyPrefix]
+    public static bool Enemy_Damage_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        return false;
+    }
+
+    [HarmonyPatch(typeof(Battle.Attacks.AttackManager), "Attack")]
+    [HarmonyPrefix]
+    public static bool AttackManager_Attack_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked AttackManager.Attack on client");
+        return false;
+    }
+
+    [HarmonyPatch(typeof(DeckManager), "ShuffleCompleteDeck")]
+    [HarmonyPrefix]
+    public static bool DeckManager_ShuffleCompleteDeck_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        if (UI.LobbyUI.GameStartReceived && Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DeckManager.ShuffleCompleteDeck on client");
+        return false;
+    }
+
+    [HarmonyPatch(typeof(PlayerHealthController), "Damage")]
+    [HarmonyPrefix]
+    public static bool PlayerHealthController_Damage_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked PlayerHealthController.Damage on client");
+        return false;
+    }
+
+    /// <summary>
+    /// Set to true by sync code while applying host gold state.
+    /// </summary>
+    internal static bool AllowCurrencySync;
+
+    [HarmonyPatch(typeof(Currency.CurrencyManager), "AddGold")]
+    [HarmonyPrefix]
+    public static bool CurrencyManager_AddGold_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        if (AllowCurrencySync) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked CurrencyManager.AddGold on client");
+        return false;
+    }
+
+    [HarmonyPatch(typeof(Currency.CurrencyManager), "RemoveGold")]
+    [HarmonyPrefix]
+    public static bool CurrencyManager_RemoveGold_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        if (AllowCurrencySync) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked CurrencyManager.RemoveGold on client");
+        return false;
+    }
+
+    [HarmonyPatch(typeof(DeckManager), "AddOrbToDeck")]
+    [HarmonyPrefix]
+    public static bool DeckManager_AddOrbToDeck_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DeckManager.AddOrbToDeck on client");
+        return false;
+    }
+
+    [HarmonyPatch(typeof(DeckManager), "RemoveOrbFromBattleDeck")]
+    [HarmonyPrefix]
+    public static bool DeckManager_RemoveOrbFromBattleDeck_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DeckManager.RemoveOrbFromBattleDeck on client");
+        return false;
     }
 }

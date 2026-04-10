@@ -159,6 +159,75 @@ public class TurnManager
         return isHost && CurrentPlayerSlot == 0;
     }
 
+
+    /// <summary>
+    /// Remove a player from the turn order (e.g., on disconnect).
+    /// If the removed player was the current turn player, advances to the next
+    /// player or marks ALL_DONE if no players remain.
+    /// Returns true if the removed player was the active turn player.
+    /// </summary>
+    public bool RemovePlayer(int slotIndex)
+    {
+        var beforeIndex = CurrentTurnIndex;
+        var beforePhase = Phase;
+        var beforeCount = TurnOrder.Count;
+        var beforeSlot = CurrentPlayerSlot;
+
+        int removeIdx = TurnOrder.IndexOf(slotIndex);
+        if (removeIdx < 0)
+        {
+            _log.LogInfo($"[TurnManager] RemovePlayer: slot {slotIndex} not in TurnOrder [{string.Join(", ", TurnOrder)}], no-op");
+            return false;
+        }
+
+        bool wasCurrentTurn = (removeIdx == CurrentTurnIndex) &&
+            (Phase == TurnPhase.PLAYER_AIMING || Phase == TurnPhase.SHOT_IN_FLIGHT);
+        TurnOrder.RemoveAt(removeIdx);
+
+        _log.LogInfo($"[TurnManager] RemovePlayer: removed slot {slotIndex} (was at index {removeIdx}). " +
+            $"Before: turnIdx={beforeIndex}, phase={beforePhase}, count={beforeCount}, activeSlot={beforeSlot}");
+
+        if (TurnOrder.Count == 0)
+        {
+            Phase = TurnPhase.ALL_DONE;
+            CurrentTurnIndex = 0;
+            UpdateSnapshot();
+            _log.LogInfo("[TurnManager] RemovePlayer: no players left, phase -> ALL_DONE");
+            return wasCurrentTurn;
+        }
+
+        if (wasCurrentTurn)
+        {
+            if (CurrentTurnIndex >= TurnOrder.Count)
+            {
+                Phase = TurnPhase.ALL_DONE;
+                UpdateSnapshot();
+                _log.LogInfo("[TurnManager] RemovePlayer: removed last-in-order player, phase -> ALL_DONE");
+            }
+            else
+            {
+                Phase = TurnPhase.PLAYER_AIMING;
+                UpdateSnapshot();
+                _log.LogInfo($"[TurnManager] RemovePlayer: advancing to slot {CurrentPlayerSlot} (index {CurrentTurnIndex}/{TurnOrder.Count})");
+            }
+        }
+        else if (removeIdx < CurrentTurnIndex)
+        {
+            CurrentTurnIndex--;
+            UpdateSnapshot();
+            _log.LogInfo($"[TurnManager] RemovePlayer: adjusted CurrentTurnIndex {beforeIndex} -> {CurrentTurnIndex}");
+        }
+        else
+        {
+            UpdateSnapshot();
+            _log.LogInfo("[TurnManager] RemovePlayer: removed future-turn player, no index change");
+        }
+
+        _log.LogInfo($"[TurnManager] RemovePlayer result: turnIdx={CurrentTurnIndex}, phase={Phase}, " +
+            $"count={TurnOrder.Count}, activeSlot={CurrentPlayerSlot}, order=[{string.Join(", ", TurnOrder)}]");
+
+        return wasCurrentTurn;
+    }
     /// <summary>
     /// Reset the turn manager for a new battle.
     /// </summary>

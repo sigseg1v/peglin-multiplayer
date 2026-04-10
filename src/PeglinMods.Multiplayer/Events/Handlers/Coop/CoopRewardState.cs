@@ -38,6 +38,23 @@ public static class CoopRewardState
     /// <summary>True when all clients have made their relic choice.</summary>
     public static bool AllClientRelicChoicesReceived => TotalClientsExpected > 0 && ClientRelicChoicesReceived.Count >= TotalClientsExpected;
 
+    // --- Host-side: post-battle reward tracking ---
+
+    /// <summary>Host-side: reward options sent to each slot (keyed by slot index).</summary>
+    public static System.Collections.Generic.Dictionary<int, RewardChoicesEvent> PendingSentRewardChoices
+        = new System.Collections.Generic.Dictionary<int, RewardChoicesEvent>();
+
+    /// <summary>Host-side: slot indices of clients who have sent their post-battle reward choice.</summary>
+    public static System.Collections.Generic.HashSet<int> ClientRewardChoicesReceived
+        = new System.Collections.Generic.HashSet<int>();
+
+    /// <summary>Host-side: number of non-host players expected to choose post-battle rewards.</summary>
+    public static int TotalRewardClientsExpected;
+
+    /// <summary>Host-side: true when all clients have made their post-battle reward choice.</summary>
+    public static bool AllClientRewardChoicesReceived => TotalRewardClientsExpected > 0
+        && ClientRewardChoicesReceived.Count >= TotalRewardClientsExpected;
+
     public static void Reset()
     {
         PendingRelicChoices = null;
@@ -49,5 +66,8 @@ public static class CoopRewardState
         ClientRelicChoicesReceived.Clear();
         TotalClientsExpected = 0;
         PendingGameInitInstance = null;
+        PendingSentRewardChoices.Clear();
+        ClientRewardChoicesReceived.Clear();
+        TotalRewardClientsExpected = 0;
     }
 }

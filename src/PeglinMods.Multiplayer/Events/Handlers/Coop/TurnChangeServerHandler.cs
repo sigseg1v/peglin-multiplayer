@@ -1,5 +1,6 @@
 namespace PeglinMods.Multiplayer.Events.Handlers.Coop;
 
+using BepInEx.Logging;
 using PeglinMods.Multiplayer.Events.Network.Coop;
 using PeglinMods.Multiplayer.GameState;
 
@@ -9,8 +10,12 @@ using PeglinMods.Multiplayer.GameState;
 /// </summary>
 public sealed class TurnChangeServerHandler : IServerHandler<TurnChangeEvent>
 {
+    private static readonly ManualLogSource _log = Logger.CreateLogSource("TurnChangeServer");
+
     public TurnChangeEvent Handle(TurnChangeEvent networkEvent)
     {
+        _log.LogInfo($"[TurnChangeServer] Broadcasting turn change: slot={networkEvent.ActiveSlotIndex}, player={networkEvent.ActivePlayerName}, phase={networkEvent.TurnPhase}, round={networkEvent.RoundNumber}");
+
         // Update the same statics that TurnChangeClientHandler uses,
         // so MultiplayerUI can show turn messages on the host too.
         TurnChangeClientHandler.LatestTurnState = networkEvent;

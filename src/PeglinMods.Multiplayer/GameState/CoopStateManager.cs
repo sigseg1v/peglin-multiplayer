@@ -69,10 +69,12 @@ public class CoopStateManager
         SaveRelicState(state);
         SaveHealthState(state);
         SaveGoldState(state);
+        SaveStatusEffects(state);
         state.IsInitialized = true;
 
         _log.LogInfo($"[CoopState] Captured initial state for slot {slotIndex}: " +
-            $"hp={state.CurrentHealth}/{state.MaxHealth}, deck={state.CompleteDeck.Count}, relics={state.OwnedRelics.Count}");
+            $"hp={state.CurrentHealth}/{state.MaxHealth}, deck={state.CompleteDeck.Count}, " +
+            $"relics={state.OwnedRelics.Count}, statusEffects={state.StatusEffects.Count}");
     }
 
     /// <summary>Save the currently active player's state from game singletons.</summary>
@@ -85,9 +87,11 @@ public class CoopStateManager
         SaveRelicState(state);
         SaveHealthState(state);
         SaveGoldState(state);
+        SaveStatusEffects(state);
 
         _log.LogInfo($"[CoopState] Saved slot {ActivePlayerSlot}: " +
-            $"hp={state.CurrentHealth}/{state.MaxHealth}, deck={state.CompleteDeck.Count}, relics={state.OwnedRelics.Count}");
+            $"hp={state.CurrentHealth}/{state.MaxHealth}, deck={state.CompleteDeck.Count}, " +
+            $"relics={state.OwnedRelics.Count}, statusEffects={state.StatusEffects.Count}");
     }
 
     /// <summary>Load a player's state into the game singletons.</summary>
@@ -99,11 +103,13 @@ public class CoopStateManager
         LoadRelicState(state);
         LoadHealthState(state);
         LoadGoldState(state);
+        LoadStatusEffects(state);
 
         ActivePlayerSlot = slotIndex;
 
         _log.LogInfo($"[CoopState] Loaded slot {slotIndex}: " +
-            $"hp={state.CurrentHealth}/{state.MaxHealth}, deck={state.CompleteDeck.Count}, relics={state.OwnedRelics.Count}");
+            $"hp={state.CurrentHealth}/{state.MaxHealth}, deck={state.CompleteDeck.Count}, " +
+            $"relics={state.OwnedRelics.Count}, statusEffects={state.StatusEffects.Count}");
     }
 
     /// <summary>Save current player, load next player.</summary>
@@ -168,6 +174,10 @@ public class CoopStateManager
                 }
             }
 
+            int prevComplete = state.CompleteDeck.Count;
+            int prevBattle = state.BattleDeck.Count;
+            int prevShuffled = state.ShuffledOrder.Count;
+
             state.CompleteDeck.Clear();
             if (DeckManager.completeDeck != null)
             {
@@ -222,6 +232,11 @@ public class CoopStateManager
             {
                 state.CurrentOrb = "";
             }
+
+            _log.LogInfo($"[CoopState] SaveDeckState slot {state.SlotIndex}: " +
+                $"complete {prevComplete}->{state.CompleteDeck.Count}, " +
+                $"battle {prevBattle}->{state.BattleDeck.Count}, " +
+                $"shuffled {prevShuffled}->{state.ShuffledOrder.Count}");
         }
         catch (Exception ex)
         {
@@ -301,15 +316,17 @@ public class CoopStateManager
                     if (_orbId != null)
                         match = _orbId.Find(entry);
 
-                    // Fall back to name matching
+                    // Fall back to name matching — should rarely be needed if SaveDeckState always saves GUIDs
                     if (match == null)
                     {
+                        _log.LogWarning($"[CoopState] LoadDeckState: GUID lookup failed for shuffledDeck entry '{entry}', falling back to name matching");
                         var name = entry.Replace("(Clone)", "").Trim();
                         foreach (var go in deckMgr.battleDeck)
                         {
                             if (go != null && go.name.Replace("(Clone)", "").Trim() == name)
                             {
                                 match = go;
+                                _log.LogWarning($"[CoopState] LoadDeckState: name fallback matched '{name}' for entry '{entry}'");
                                 break;
                             }
                         }
@@ -319,6 +336,12 @@ public class CoopStateManager
                         deckMgr.shuffledDeck.Push(match);
                 }
             }
+
+            // NOTE: state.CurrentOrb is intentionally NOT loaded here. CurrentOrb is a
+            // display-only field used by DeckStateProvider for client snapshots (the orb
+            // name shown in the aimer). It is derived from shuffledDeck.Peek() in
+            // SaveDeckState and consumed by the snapshot/applier pipeline — it does not
+            // correspond to any game singleton state that needs restoring.
 
             _log.LogInfo($"[CoopState] LoadDeckState for slot {state.SlotIndex}: " +
                 $"complete={DeckManager.completeDeck.Count}, battle={deckMgr.battleDeck.Count}, " +
@@ -334,8 +357,6 @@ public class CoopStateManager
     /// Rebuild DeckInfoManager._displayOrbs to match the current shuffledDeck.
     /// The game's PlungerPlungeComplete does this after a shuffle animation,
     /// but we need it immediately after a deck swap.
-    /// </summary>
-    /// <summary>
     /// Call AFTER all deck modifications (LoadDeckState + EnsureBattleDeckPopulated)
     /// are complete, right before DrawBall. Must be called at the last moment because
     /// EnsureBattleDeckPopulated may reshuffle and invalidate the display.
@@ -567,6 +588,7 @@ public class CoopStateManager
                     var valProp = maxVar.GetType().GetProperty("Value");
                     state.MaxHealth = valProp != null ? (float)valProp.GetValue(maxVar) : 0;
                 }
+                _log.LogInfo($"[CoopState] SaveHealthState slot {state.SlotIndex}: hp={state.CurrentHealth}/{state.MaxHealth}");
                 return;
             }
 
@@ -643,7 +665,11 @@ public class CoopStateManager
         {
             var currMgr = Currency.CurrencyManager.Instance;
             if (currMgr != null)
+            {
+                var prevGold = state.Gold;
                 state.Gold = currMgr.GoldAmount;
+                _log.LogInfo($"[CoopState] SaveGoldState slot {state.SlotIndex}: gold {prevGold}->{state.Gold}");
+            }
         }
         catch (Exception ex)
         {
@@ -658,15 +684,149 @@ public class CoopStateManager
             var currMgr = Currency.CurrencyManager.Instance;
             if (currMgr == null) return;
 
-            var diff = state.Gold - currMgr.GoldAmount;
-            if (diff > 0)
-                currMgr.AddGold(diff, true);
-            else if (diff < 0)
-                currMgr.RemoveGold(-diff, true);
+            var beforeGold = currMgr.GoldAmount;
+            var diff = state.Gold - beforeGold;
+            Patches.MultiplayerClientPatches.AllowCurrencySync = true;
+            try
+            {
+                if (diff > 0)
+                    currMgr.AddGold(diff, true);
+                else if (diff < 0)
+                    currMgr.RemoveGold(-diff, true);
+            }
+            finally
+            {
+                Patches.MultiplayerClientPatches.AllowCurrencySync = false;
+            }
+            _log.LogInfo($"[CoopState] LoadGoldState slot {state.SlotIndex}: gold {beforeGold}->{state.Gold} (diff={diff})");
         }
         catch (Exception ex)
         {
             _log.LogWarning($"[CoopState] LoadGoldState failed: {ex.Message}");
+        }
+    }
+
+    // --- Status effect save/load ---
+
+    private void SaveStatusEffects(CoopPlayerState state)
+    {
+        try
+        {
+            var statusCtrl = UnityEngine.Object.FindObjectOfType<Battle.StatusEffects.PlayerStatusEffectController>();
+            if (statusCtrl == null)
+            {
+                // Not in a battle scene — preserve any previously saved effects
+                _log.LogInfo($"[CoopState] SaveStatusEffects: PlayerStatusEffectController not found (non-battle scene), " +
+                    $"preserving {state.StatusEffects.Count} existing effects for slot {state.SlotIndex}");
+                return;
+            }
+
+            var effectsList = AccessTools.Field(typeof(Battle.StatusEffects.PlayerStatusEffectController), "_statusEffects")
+                ?.GetValue(statusCtrl) as System.Collections.IList;
+            if (effectsList == null)
+            {
+                _log.LogInfo($"[CoopState] SaveStatusEffects: _statusEffects list is null for slot {state.SlotIndex}");
+                state.StatusEffects.Clear();
+                return;
+            }
+
+            state.StatusEffects.Clear();
+            foreach (var effect in effectsList)
+            {
+                var typeField = AccessTools.Field(effect.GetType(), "EffectType");
+                var intensityField = AccessTools.Field(effect.GetType(), "Intensity");
+                if (typeField == null) continue;
+
+                var effectType = typeField.GetValue(effect);
+                var intensity = (int)(intensityField?.GetValue(effect) ?? 0);
+                if (intensity <= 0) continue;
+
+                state.StatusEffects.Add(new SerializedStatusEffect
+                {
+                    EffectType = (int)effectType,
+                    Intensity = intensity,
+                });
+            }
+
+            if (state.StatusEffects.Count > 0)
+            {
+                var names = string.Join(", ", state.StatusEffects.ConvertAll(
+                    e => $"{(Battle.StatusEffects.StatusEffectType)e.EffectType}={e.Intensity}"));
+                _log.LogInfo($"[CoopState] SaveStatusEffects slot {state.SlotIndex}: [{names}]");
+            }
+            else
+            {
+                _log.LogInfo($"[CoopState] SaveStatusEffects slot {state.SlotIndex}: no active effects");
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[CoopState] SaveStatusEffects failed: {ex.Message}");
+        }
+    }
+
+    private void LoadStatusEffects(CoopPlayerState state)
+    {
+        try
+        {
+            var statusCtrl = UnityEngine.Object.FindObjectOfType<Battle.StatusEffects.PlayerStatusEffectController>();
+            if (statusCtrl == null)
+            {
+                _log.LogInfo($"[CoopState] LoadStatusEffects: PlayerStatusEffectController not found (non-battle scene), " +
+                    $"skipping load for slot {state.SlotIndex} ({state.StatusEffects.Count} saved effects)");
+                return;
+            }
+
+            var effectsField = AccessTools.Field(typeof(Battle.StatusEffects.PlayerStatusEffectController), "_statusEffects");
+            var effects = effectsField?.GetValue(statusCtrl) as List<Battle.StatusEffects.StatusEffect>;
+            if (effects == null)
+            {
+                _log.LogWarning($"[CoopState] LoadStatusEffects: _statusEffects list is null for slot {state.SlotIndex}");
+                return;
+            }
+
+            // Clear existing effects
+            effects.Clear();
+
+            // Restore saved effects directly into the list (no game logic — just raw state)
+            foreach (var saved in state.StatusEffects)
+            {
+                var effectType = (Battle.StatusEffects.StatusEffectType)saved.EffectType;
+                if (effectType == Battle.StatusEffects.StatusEffectType.None) continue;
+                if (saved.Intensity <= 0) continue;
+
+                effects.Add(new Battle.StatusEffects.StatusEffect(effectType, saved.Intensity));
+            }
+
+            // Update the UI to reflect the restored effects
+            var uiField = AccessTools.Field(typeof(Battle.StatusEffects.PlayerStatusEffectController), "_statusEffectUI");
+            var ui = uiField?.GetValue(statusCtrl) as Battle.StatusEffects.StatusEffectIconManager;
+            if (ui != null)
+            {
+                try
+                {
+                    ui.UpdateStatusEffects(effects.ToArray());
+                }
+                catch (Exception uiEx)
+                {
+                    _log.LogWarning($"[CoopState] LoadStatusEffects: UI update failed: {uiEx.Message}");
+                }
+            }
+
+            if (state.StatusEffects.Count > 0)
+            {
+                var names = string.Join(", ", state.StatusEffects.ConvertAll(
+                    e => $"{(Battle.StatusEffects.StatusEffectType)e.EffectType}={e.Intensity}"));
+                _log.LogInfo($"[CoopState] LoadStatusEffects slot {state.SlotIndex}: [{names}]");
+            }
+            else
+            {
+                _log.LogInfo($"[CoopState] LoadStatusEffects slot {state.SlotIndex}: no effects to restore");
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[CoopState] LoadStatusEffects failed: {ex.Message}");
         }
     }
 }

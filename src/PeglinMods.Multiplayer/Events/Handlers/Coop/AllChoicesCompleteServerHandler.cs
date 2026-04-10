@@ -1,3 +1,4 @@
+using BepInEx.Logging;
 using PeglinMods.Multiplayer.Events.Network.Coop;
 
 namespace PeglinMods.Multiplayer.Events.Handlers.Coop;
@@ -8,5 +9,11 @@ namespace PeglinMods.Multiplayer.Events.Handlers.Coop;
 /// </summary>
 public sealed class AllChoicesCompleteServerHandler : IServerHandler<AllChoicesCompleteEvent>
 {
-    public AllChoicesCompleteEvent Handle(AllChoicesCompleteEvent networkEvent) => networkEvent;
+    private static readonly ManualLogSource _log = Logger.CreateLogSource("AllChoicesCompleteServer");
+
+    public AllChoicesCompleteEvent Handle(AllChoicesCompleteEvent networkEvent)
+    {
+        _log.LogInfo($"[AllChoicesCompleteServer] Broadcasting all choices complete: phase={networkEvent.Phase}");
+        return networkEvent;
+    }
 }

@@ -21,7 +21,6 @@ public class FullGameStateSnapshot
     // Co-op multi-player state
     public int ActivePlayerSlot { get; set; }
     public int TotalPlayerCount { get; set; }
-    public Dictionary<int, PlayerStateSnapshot> AllPlayers { get; set; }
     public Dictionary<int, DeckStateSnapshot> AllDecks { get; set; }
     public Dictionary<int, RelicStateSnapshot> AllRelics { get; set; }
     public List<CoopPlayerSummary> PlayerSummaries { get; set; }

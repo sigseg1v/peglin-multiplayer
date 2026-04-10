@@ -161,12 +161,62 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                 $"(host={snapshot.Enemies.Count}, client_before={liveEnemies.Count}, battle={snapshot.BattleStateName})");
             _enemyId.DumpState("AfterApply");
 
+            // === Post-apply verification ===
+            VerifyEnemyState(snapshot);
+
             // Sync upcoming enemy preview from host's actual list
             SyncUpcomingEnemies(snapshot.UpcomingEnemyNames);
         }
         catch (Exception ex)
         {
             _log.LogError($"[EnemyApplier] Apply failed: {ex.Message}\n{ex.StackTrace}");
+        }
+    }
+
+    /// <summary>
+    /// Post-apply verification: spot-check first 3 enemies to confirm health was applied.
+    /// Logs MISMATCH warnings for any differences, INFO on success.
+    /// </summary>
+    private void VerifyEnemyState(EnemyStateSnapshot snapshot)
+    {
+        try
+        {
+            bool allMatch = true;
+            int checked_ = 0;
+            const int MAX_CHECK = 3;
+
+            foreach (var entry in snapshot.Enemies)
+            {
+                if (checked_ >= MAX_CHECK) break;
+
+                var enemy = FindByGuid(entry.Id);
+                if (enemy == null) continue;
+
+                checked_++;
+                float actualHp = enemy.CurrentHealth;
+                if (Math.Abs(actualHp - entry.CurrentHealth) > 0.1f)
+                {
+                    _log.LogWarning($"[Verify] MISMATCH enemy '{entry.LocKey}' (guid={entry.Id}) health: actual={actualHp:F1} expected={entry.CurrentHealth:F1}");
+                    allMatch = false;
+                }
+
+                var maxField = AccessTools.Field(typeof(Enemy), "_maxHealth");
+                float actualMax = maxField != null ? (float)maxField.GetValue(enemy) : -1f;
+                if (entry.MaxHealth > 0 && Math.Abs(actualMax - entry.MaxHealth) > 0.1f)
+                {
+                    _log.LogWarning($"[Verify] MISMATCH enemy '{entry.LocKey}' (guid={entry.Id}) maxHealth: actual={actualMax:F1} expected={entry.MaxHealth:F1}");
+                    allMatch = false;
+                }
+            }
+
+            if (allMatch && checked_ > 0)
+                _log.LogInfo($"[Verify] EnemyState OK: checked {checked_}/{snapshot.Enemies.Count} enemies");
+            else if (checked_ == 0)
+                _log.LogInfo("[Verify] EnemyState: no GUID-matched enemies to verify");
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[Verify] EnemyState verification failed: {ex.Message}");
         }
     }
 

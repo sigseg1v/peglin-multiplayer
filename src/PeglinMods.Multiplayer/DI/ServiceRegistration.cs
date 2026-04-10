@@ -175,6 +175,7 @@ public static class ServiceRegistration
     {
         var transport = container.Resolve<INetworkTransport>();
         var eventRegistry = container.Resolve<GameEventRegistry>();
+        var log = container.Resolve<ManualLogSource>();
 
         var syncService = container.Resolve<IGameStateSyncService>();
 
@@ -193,6 +194,37 @@ public static class ServiceRegistration
             // Send full game state to newly connected client
             if (transport.IsHost)
                 syncService.SyncAll("ClientHandshake");
+        };
+
+        // Host-side: handle client disconnects during battle
+        var playerRegistry = container.Resolve<PlayerRegistry>();
+        transport.OnDisconnected += peerId =>
+        {
+            if (!transport.IsHost) return;
+
+            var slot = playerRegistry.GetSlotByPeerId(peerId);
+            if (slot == null)
+            {
+                log.LogWarning($"[Disconnect] Peer {peerId} disconnected but no slot found in registry");
+                return;
+            }
+
+            log.LogInfo($"[Disconnect] Peer {peerId} disconnected: slot {slot.SlotIndex} ({slot.PlayerName})");
+
+            // Notify the turn system / coop subscriptions
+            var coopSubs = CoopSubscriptions.Instance;
+            if (coopSubs != null)
+            {
+                coopSubs.HandlePlayerDisconnect(slot.SlotIndex, slot.PlayerName);
+            }
+            else
+            {
+                log.LogWarning($"[Disconnect] CoopSubscriptions.Instance is null — cannot handle turn removal for slot {slot.SlotIndex}");
+            }
+
+            // Remove from player registry (after coop handling so the slot lookup works)
+            playerRegistry.RemoveByPeerId(peerId);
+            log.LogInfo($"[Disconnect] Removed peer {peerId} from PlayerRegistry. Remaining slots: {playerRegistry.SlotCount}");
         };
     }
 

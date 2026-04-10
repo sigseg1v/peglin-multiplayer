@@ -67,6 +67,7 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
 
                     if (relicAsset != null)
                     {
+                        Patches.MultiplayerClientPatches.AllowRelicSync = true;
                         try
                         {
                             rm.AddRelic(relicAsset);
@@ -76,6 +77,10 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
                         catch (Exception ex)
                         {
                             _log.LogWarning($"[RelicApplier] AddRelic failed for {entry.EffectName}: {ex.Message}");
+                        }
+                        finally
+                        {
+                            Patches.MultiplayerClientPatches.AllowRelicSync = false;
                         }
                     }
                     else
@@ -107,6 +112,9 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
 
             _log.LogInfo($"[RelicApplier] Result: added={added}, alreadyOwned={alreadyOwned}, total={owned.Count}");
 
+            // === Post-apply verification ===
+            VerifyRelicState(owned, snapshot);
+
             // Ensure relic UI is up to date — RelicUI subscribes to OnRelicAdded,
             // but relics added before the battle scene loads won't have icons.
             // Find the RelicUI and ensure all owned relics have icons.
@@ -122,6 +130,51 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
         catch (Exception ex)
         {
             _log.LogError($"[RelicApplier] Apply failed: {ex.Message}\n{ex.StackTrace}");
+        }
+    }
+
+    /// <summary>
+    /// Post-apply verification: re-read _ownedRelics and compare count with snapshot.
+    /// Logs MISMATCH warnings for any differences, INFO on success.
+    /// </summary>
+    private void VerifyRelicState(Dictionary<RelicEffect, Relic> owned, RelicStateSnapshot snapshot)
+    {
+        try
+        {
+            int actualCount = owned?.Count ?? 0;
+            int expectedCount = snapshot.OwnedRelics?.Count ?? 0;
+
+            if (actualCount != expectedCount)
+            {
+                _log.LogWarning($"[Verify] MISMATCH relics: actual={actualCount} expected={expectedCount}");
+
+                // Log which relics are missing or extra for debugging
+                if (snapshot.OwnedRelics != null && owned != null)
+                {
+                    var expectedEffects = new HashSet<RelicEffect>();
+                    foreach (var entry in snapshot.OwnedRelics)
+                        expectedEffects.Add((RelicEffect)entry.Effect);
+
+                    foreach (var effect in expectedEffects)
+                    {
+                        if (!owned.ContainsKey(effect))
+                            _log.LogWarning($"[Verify]   MISSING relic: {effect}");
+                    }
+                    foreach (var effect in owned.Keys)
+                    {
+                        if (!expectedEffects.Contains(effect))
+                            _log.LogWarning($"[Verify]   EXTRA relic: {effect}");
+                    }
+                }
+            }
+            else
+            {
+                _log.LogInfo($"[Verify] RelicState OK: count={actualCount}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[Verify] RelicState verification failed: {ex.Message}");
         }
     }
 

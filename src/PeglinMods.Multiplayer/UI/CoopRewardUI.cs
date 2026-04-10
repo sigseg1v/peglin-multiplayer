@@ -334,7 +334,11 @@ public class CoopRewardUI : MonoBehaviour
                     if ((int)relic.effect == relicEffect)
                     {
                         if (relicMgrs != null && relicMgrs.Length > 0)
-                            relicMgrs[0].AddRelic(relic);
+                        {
+                            Patches.MultiplayerClientPatches.AllowRelicSync = true;
+                            try { relicMgrs[0].AddRelic(relic); }
+                            finally { Patches.MultiplayerClientPatches.AllowRelicSync = false; }
+                        }
                         Log?.LogInfo($"[CoopRewardUI] Host added relic: {relic.effect} ({relic.locKey})");
                         break;
                     }
@@ -379,7 +383,9 @@ public class CoopRewardUI : MonoBehaviour
                     {
                         if ((int)relic.effect == relicEffect)
                         {
-                            clientRelicMgrs[0].AddRelic(relic);
+                            Patches.MultiplayerClientPatches.AllowRelicSync = true;
+                            try { clientRelicMgrs[0].AddRelic(relic); }
+                            finally { Patches.MultiplayerClientPatches.AllowRelicSync = false; }
                             Log?.LogInfo($"[CoopRewardUI] Client added relic locally: {relic.effect}");
                             break;
                         }
