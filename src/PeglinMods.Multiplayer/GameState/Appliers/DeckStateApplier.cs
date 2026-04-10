@@ -255,8 +255,14 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
 
     /// <summary>
     /// Ensure DeckInfoManager shows the correct active orb at the top of the deck UI.
-    /// Called every heartbeat. Always replaces _currentOrb with the top displayOrb
-    /// so the display converges to host state (dumb canvas approach).
+    /// Called every heartbeat on the CLIENT only.
+    ///
+    /// IMPORTANT: The shuffledDeck from the host contains the REMAINING orbs after the
+    /// active orb was drawn. RebuildDeckInfoDisplay creates displayOrbs from shuffledDeck.
+    /// Those displayOrbs are the upcoming deck tube — do NOT pop from them.
+    /// Instead, create the active orb display SEPARATELY using CreatePreviewSprite from
+    /// the CurrentOrb name. This fixes the off-by-one bug where we were popping the
+    /// next-to-draw orb instead of showing the currently-drawn orb.
     /// </summary>
     private void EnsureDeckUIShowsActiveOrb(DeckManager dm, string activeOrbName)
     {
@@ -265,13 +271,10 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
             if (dim == null) return;
 
-            // Always replace _currentOrb with the top displayOrb. RebuildDeckInfoDisplay
-            // recreates ALL displayOrbs from host shuffledDeck every heartbeat, so we must
-            // pop the top one for the active display each time. Without this, _currentOrb
-            // goes stale after a player shoots (the active orb changes but the display
-            // doesn't update because the old code skipped when _currentOrb was non-null).
             var currentOrbField = AccessTools.Field(typeof(DeckInfoManager), "_currentOrb");
             var currentOrb = currentOrbField?.GetValue(dim) as GameObject;
+
+            // Destroy the old _currentOrb so we can replace it
             if (currentOrb != null)
             {
                 UnityEngine.Object.Destroy(currentOrb);
@@ -291,46 +294,68 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                 }
             }
 
-            if (dim.displayOrbs == null || dim.displayOrbs.Count == 0)
+            // Find the orb prefab/instance to create the active display from CurrentOrb name
+            // (NOT from displayOrbs — those are the remaining deck tube)
+            var orbName = activeOrbName.Replace("(Clone)", "").Trim();
+            GameObject orbSource = null;
+
+            // Try to find the orb in battleDeck by name
+            if (dm.battleDeck != null)
             {
-                _log.LogWarning("[DeckApplier] displayOrbs empty — cannot set active orb in deck UI");
+                foreach (var orb in dm.battleDeck)
+                {
+                    if (orb != null && orb.name.Replace("(Clone)", "").Trim() == orbName)
+                    {
+                        orbSource = orb;
+                        break;
+                    }
+                }
+            }
+
+            // Fallback: try AssetLoading prefab cache
+            if (orbSource == null)
+                orbSource = Loading.AssetLoading.Instance?.GetOrbPrefab(orbName);
+
+            if (orbSource == null)
+            {
+                _log.LogWarning($"[DeckApplier] Cannot find orb '{orbName}' for active display");
                 return;
             }
 
-            // Pop the top display orb and set it as active (same logic as BallUsedClientHandler)
-            var nextOrb = dim.displayOrbs.Pop();
+            // Create a preview sprite using the same method as RebuildDeckInfoDisplay
+            var createMethod = AccessTools.Method(typeof(DeckInfoManager), "CreatePreviewSprite");
+            if (createMethod == null)
+            {
+                _log.LogWarning("[DeckApplier] CreatePreviewSprite method not found");
+                return;
+            }
 
-            // Kill any ongoing tweens
-            var plungerParentField = AccessTools.Field(typeof(DeckInfoManager), "_plungerParent");
-            var plungerParent = plungerParentField?.GetValue(dim) as Transform;
-            if (plungerParent != null)
-                DOTween.Kill(plungerParent);
-            DOTween.Kill(nextOrb.transform);
+            // Temporarily activate the orb so PachinkoBall.sprite is accessible
+            bool wasActive = orbSource.activeSelf;
+            if (!wasActive) orbSource.SetActive(true);
 
-            // Clear stale _nextOrb
-            var nextOrbField = AccessTools.Field(typeof(DeckInfoManager), "_nextOrb");
-            nextOrbField?.SetValue(dim, null);
+            var previewGo = createMethod.Invoke(dim, new object[] { orbSource }) as GameObject;
 
-            // Get orb height before unparenting
-            var spriteRenderer = nextOrb.GetComponent<SpriteRenderer>();
-            float orbHeight = spriteRenderer != null ? spriteRenderer.bounds.size.y : 0f;
+            if (!wasActive) orbSource.SetActive(false);
+
+            if (previewGo == null)
+            {
+                _log.LogWarning("[DeckApplier] CreatePreviewSprite returned null for active orb");
+                return;
+            }
 
             // Unparent from plunger so world position is independent
-            nextOrb.transform.SetParent(null);
+            previewGo.transform.SetParent(null);
 
             // Move to the active orb display position
             var displayPosField = AccessTools.Field(typeof(DeckInfoManager), "_currentOrbDisplayPos");
             var displayPos = displayPosField?.GetValue(dim) as Transform;
             if (displayPos != null)
-                nextOrb.transform.position = displayPos.position;
-            nextOrb.transform.localScale = Vector3.one * 0.85f; // ACTIVE_ORB_DISPLAY_HEIGHT
-
-            // Move plunger up so remaining orbs shift up to fill the gap
-            if (plungerParent != null && orbHeight > 0f)
-                plungerParent.position += Vector3.up * orbHeight;
+                previewGo.transform.position = displayPos.position;
+            previewGo.transform.localScale = Vector3.one * 0.85f; // ACTIVE_ORB_DISPLAY_HEIGHT
 
             // Set level ring
-            var uod = nextOrb.GetComponentInChildren<PeglinUI.OrbDisplay.UpcomingOrbDisplay>();
+            var uod = previewGo.GetComponentInChildren<PeglinUI.OrbDisplay.UpcomingOrbDisplay>();
             int levelIdx = 0;
             if (uod?.attack != null)
                 levelIdx = Mathf.Clamp(uod.attack.Level - 1, 0, 2);
@@ -346,18 +371,21 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             if (uod?.mainOrbLevelFrameMask != null)
                 uod.mainOrbLevelFrameMask.SetActive(true);
 
+            previewGo.SetActive(true);
+
             // Set as current orb
-            currentOrbField?.SetValue(dim, nextOrb);
+            currentOrbField?.SetValue(dim, previewGo);
 
-            var animator = nextOrb.GetComponentInChildren<Animator>();
-            if (animator != null) animator.speed = 1f;
+            // Clear stale _nextOrb
+            var nextOrbField = AccessTools.Field(typeof(DeckInfoManager), "_nextOrb");
+            nextOrbField?.SetValue(dim, null);
 
-            DeckInfoManager.onActiveOrbScaleStarted?.Invoke(nextOrb);
+            DeckInfoManager.onActiveOrbScaleStarted?.Invoke(previewGo);
             DeckInfoManager.onActiveOrbScaleCompleted?.Invoke();
             DeckInfoManager.populatingDisplayOrb = false;
             DeckInfoManager.animating = false;
 
-            _log.LogInfo($"[DeckApplier] Set active orb in deck UI: '{activeOrbName}' at ({displayPos?.position.x:F1},{displayPos?.position.y:F1}), displayOrbs remaining: {dim.displayOrbs.Count}");
+            _log.LogInfo($"[DeckApplier] Set active orb in deck UI: '{activeOrbName}' at ({displayPos?.position.x:F1},{displayPos?.position.y:F1}), displayOrbs remaining: {dim.displayOrbs?.Count ?? 0}");
         }
         catch (Exception ex)
         {
@@ -617,8 +645,10 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                 if (dim != null && dim.displayOrbs != null && actualShuffled > 0)
                 {
                     int actualDisplay = dim.displayOrbs.Count;
-                    int expectedDisplay = !string.IsNullOrEmpty(snapshot.CurrentOrb) ? actualShuffled - 1 : actualShuffled;
-                    if (expectedDisplay >= 0 && actualDisplay != expectedDisplay)
+                    // displayOrbs should match shuffledDeck exactly — the active orb is
+                    // created separately and NOT popped from displayOrbs
+                    int expectedDisplay = actualShuffled;
+                    if (actualDisplay != expectedDisplay)
                     {
                         _log.LogWarning($"[Verify] MISMATCH displayOrbs: actual={actualDisplay} expected={expectedDisplay} (shuffled={actualShuffled})");
                         allMatch = false;

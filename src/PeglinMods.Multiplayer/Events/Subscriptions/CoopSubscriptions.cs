@@ -180,6 +180,12 @@ public sealed class CoopSubscriptions
                 // EnsureBattleDeckPopulated would trigger the reshuffle too
                 // early (before DrawBall), causing DrawNextOrb to pop from
                 // _displayOrbs before PlungerPlungeComplete rebuilds them.
+                //
+                // DO rebuild the deck tube display though. LoadDeckState creates
+                // new shuffledDeck object instances, so _displayOrbs is stale
+                // (still referencing destroyed objects from before the swap).
+                // Without this, the deck tube visually freezes after round 1.
+                _coopStateManager.RebuildDeckInfoDisplay();
                 _log.LogInfo($"[CoopSubs] Post-attack: swapped to host (slot 0) for next round's DrawBall");
             }
         }

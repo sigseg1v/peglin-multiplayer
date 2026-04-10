@@ -62,6 +62,12 @@ public sealed class RelicChoiceClientHandler : IClientHandler<RelicChoiceEvent>
                         Rarity = rarity,
                     });
                     MultiplayerPlugin.Logger?.LogInfo($"[CoopReward] Added relic {networkEvent.ChosenRelicEffect} to slot {slot.SlotIndex} state");
+
+                    // Apply stat effects for health-modifying relics.
+                    // The game's native RelicManager.AddRelic only modifies singletons
+                    // (which belong to the active player), so non-active players need
+                    // their CoopPlayerState updated directly.
+                    ApplyRelicStatEffects(playerState, networkEvent.ChosenRelicEffect);
                 }
             }
 
@@ -95,5 +101,114 @@ public sealed class RelicChoiceClientHandler : IClientHandler<RelicChoiceEvent>
         {
             MultiplayerPlugin.Logger?.LogWarning($"[CoopReward] RelicChoice handler failed: {e.Message}");
         }
+    }
+
+    /// <summary>
+    /// Apply on-add stat modifications for relics. Mirrors the switch in
+    /// RelicManager.AddRelic — only the 4 relics that mutate state at
+    /// acquisition time need handling here; all other relics are passive
+    /// and work automatically via AttemptUseRelic at runtime.
+    /// </summary>
+    private static void ApplyRelicStatEffects(CoopPlayerState playerState, int relicEffect)
+    {
+        // Check if the player has the INCREASE_MAX_HP_GAIN relic (effect 106)
+        bool hasHpGainBoost = false;
+        foreach (var r in playerState.OwnedRelics)
+        {
+            if (r.Effect == 106) // INCREASE_MAX_HP_GAIN
+            { hasHpGainBoost = true; break; }
+        }
+
+        float hpBonus = 0f;
+        switch (relicEffect)
+        {
+            case 23: // MAX_HEALTH_SMALL (+15)
+                hpBonus = 15f;
+                break;
+            case 24: // MAX_HEALTH_MEDIUM (+25)
+                hpBonus = 25f;
+                break;
+            case 74: // MAX_HEALTH_LARGE (+50)
+                hpBonus = 50f;
+                break;
+            case 88: // ADD_ORBS_AND_UPGRADE (Haglin's Satchel: +orbs, +upgrades, +100g)
+                ApplyHaglinsSatchel(playerState);
+                return;
+        }
+
+        if (hpBonus <= 0f) return;
+
+        if (hasHpGainBoost)
+            hpBonus += 1f;
+
+        float beforeMax = playerState.MaxHealth;
+        float beforeCur = playerState.CurrentHealth;
+        playerState.MaxHealth += hpBonus;
+        playerState.CurrentHealth += hpBonus;
+        MultiplayerPlugin.Logger?.LogInfo(
+            $"[CoopReward] Relic HP effect={relicEffect}: slot {playerState.SlotIndex} " +
+            $"MaxHP {beforeMax}->{playerState.MaxHealth}, HP {beforeCur}->{playerState.CurrentHealth}" +
+            (hasHpGainBoost ? " (+1 from INCREASE_MAX_HP_GAIN)" : ""));
+    }
+
+    /// <summary>
+    /// Apply Haglin's Satchel: add 2 random orbs, upgrade 3 random orbs, +100 gold.
+    /// We swap to the player's state so DeckManager operates on their deck,
+    /// call the native RelicModifyDeck, then save back.
+    /// </summary>
+    private static void ApplyHaglinsSatchel(CoopPlayerState playerState)
+    {
+        try
+        {
+            var services = MultiplayerPlugin.Services;
+            if (services == null || !services.TryResolve<CoopStateManager>(out var coopState)) return;
+
+            var relic = FindRelicByEffect(88);
+            if (relic == null)
+            {
+                MultiplayerPlugin.Logger?.LogWarning("[CoopReward] Haglin's Satchel: could not find Relic asset");
+                playerState.Gold += 100;
+                return;
+            }
+
+            // Swap to this player so DeckManager singletons point at their deck
+            int previousSlot = coopState.ActivePlayerSlot;
+            coopState.SwapToPlayer(playerState.SlotIndex);
+
+            // Run the native deck modification (adds orbs + upgrades)
+            var dm = Resources.FindObjectsOfTypeAll<DeckManager>();
+            if (dm != null && dm.Length > 0)
+                dm[0].RelicModifyDeck(relic);
+
+            // +100 gold
+            playerState.Gold += 100;
+
+            // Save the modified deck back to CoopPlayerState
+            coopState.SaveActivePlayerState();
+
+            // Swap back to whoever was active before
+            if (previousSlot != playerState.SlotIndex)
+                coopState.SwapToPlayer(previousSlot);
+
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[CoopReward] Haglin's Satchel applied to slot {playerState.SlotIndex}: " +
+                $"deck={playerState.CompleteDeck?.Count ?? 0} orbs, gold +100 (now {playerState.Gold})");
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[CoopReward] Haglin's Satchel failed: {ex.Message}");
+            // At minimum give them the gold
+            playerState.Gold += 100;
+        }
+    }
+
+    private static Relics.Relic FindRelicByEffect(int effect)
+    {
+        var allRelics = Resources.FindObjectsOfTypeAll<Relics.Relic>();
+        foreach (var r in allRelics)
+        {
+            if ((int)r.effect == effect) return r;
+        }
+        return null;
     }
 }
