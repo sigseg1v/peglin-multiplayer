@@ -345,7 +345,7 @@ public static class ServiceRegistration
         new EnemySubscriptions(registry, enemyIdentifier, log).Subscribe();
         new DeckSubscriptions(registry, orbIdentifier, log).Subscribe();
         new RelicSubscriptions(registry, log).Subscribe();
-        new CurrencySubscriptions(registry, log).Subscribe();
+        new CurrencySubscriptions(registry, log, coopStateManager).Subscribe();
         new StatusEffectEventSubscriptions(registry, multiplayerMode).Subscribe();
         new BallSubscriptions(registry, log).Subscribe();
         new PegSubscriptions(registry, log).Subscribe();

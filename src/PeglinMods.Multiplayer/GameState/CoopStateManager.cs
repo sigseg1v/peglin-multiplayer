@@ -123,11 +123,20 @@ public class CoopStateManager
         LoadPlayerState(slotIndex);
     }
 
-    /// <summary>Apply gold to all players (shared gold gain).</summary>
-    public void AddGoldToAll(int amount)
+    /// <summary>
+    /// Distribute gold earned during battle to all NON-ACTIVE players.
+    /// The active player already receives gold via the CurrencyManager singleton.
+    /// Call this from CurrencySubscriptions.OnGoldAdded so peg-hit gold is shared.
+    /// </summary>
+    public void DistributeGoldToInactivePlayers(int amount)
     {
-        foreach (var state in PlayerStates.Values)
-            state.Gold += amount;
+        if (amount <= 0) return;
+        foreach (var kvp in PlayerStates)
+        {
+            if (kvp.Key == ActivePlayerSlot) continue; // Active player gets it via singleton
+            kvp.Value.Gold += amount;
+        }
+        _log.LogInfo($"[CoopState] Distributed +{amount} gold to {PlayerStates.Count - 1} inactive player(s)");
     }
 
     /// <summary>Apply damage to all players (enemy attacks).</summary>
