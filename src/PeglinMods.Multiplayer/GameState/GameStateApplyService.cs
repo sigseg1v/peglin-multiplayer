@@ -91,6 +91,17 @@ public class GameStateApplyService
         _pegId.Clear();
         Patches.MultiplayerClientPatches.MapControllerStartCompleted = false;
 
+        // Treasure scene: send relic choices to non-host players via CoopRewardUI
+        if (scene.name == "Treasure")
+        {
+            var svc = MultiplayerPlugin.Services;
+            if (svc?.TryResolve<IMultiplayerMode>(out var mpMode) == true && mpMode.IsHosting &&
+                svc.TryResolve<CoopStateManager>(out var coopMgr))
+            {
+                coopMgr.SendTreasureRelicChoicesToClients();
+            }
+        }
+
         // Check if we have a pending snapshot for this scene
         if (_pendingSnapshot != null &&
             string.Equals(_pendingSnapshotScene, scene.name, StringComparison.OrdinalIgnoreCase))

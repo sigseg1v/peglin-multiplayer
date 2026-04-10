@@ -124,6 +124,83 @@ public class CoopStateManager
     }
 
     /// <summary>
+    /// Generate treasure relic choices for each non-host player and send
+    /// RelicChoicesEvent so they see CoopRewardUI. The host picks natively
+    /// from the chest. Called when the host enters the Treasure scene.
+    /// </summary>
+    public void SendTreasureRelicChoicesToClients()
+    {
+        if (TotalPlayerCount < 2) return;
+        try
+        {
+            var services = MultiplayerPlugin.Services;
+            if (services?.TryResolve<Events.IGameEventRegistry>(out var registry) != true) return;
+
+            var relicMgr = Resources.FindObjectsOfTypeAll<Relics.RelicManager>()?.FirstOrDefault();
+            if (relicMgr == null) { _log.LogWarning("[CoopState] TreasureRelics: RelicManager null"); return; }
+
+            // Set up CoopRewardState so RelicChoiceClientHandler knows this is treasure
+            Events.Handlers.Coop.CoopRewardState.HostRelicSelectionActive = true;
+            Events.Handlers.Coop.CoopRewardState.HostHasChosenRelic = true; // Host picks natively
+            Events.Handlers.Coop.CoopRewardState.ClientRelicChoicesReceived.Clear();
+
+            int clientCount = 0;
+            foreach (var kvp in PlayerStates)
+            {
+                if (kvp.Key == 0) continue; // Host picks natively from chest
+                clientCount++;
+
+                // Generate 3 common relic choices for this client
+                var relics = relicMgr.GetMultipleRelicsOffOfQueue(3, Relics.RelicRarity.COMMON);
+                var choices = new System.Collections.Generic.List<Snapshots.RelicEntry>();
+
+                foreach (var relic in relics)
+                {
+                    string displayName = relic.locKey ?? "Unknown";
+                    try
+                    {
+                        var translated = I2.Loc.LocalizationManager.GetTranslation("Relics/" + relic.locKey);
+                        if (!string.IsNullOrEmpty(translated)) displayName = translated;
+                    }
+                    catch { }
+
+                    string description = relic.locKey ?? "";
+                    try
+                    {
+                        var translated = I2.Loc.LocalizationManager.GetTranslation("Relics/" + relic.locKey + "_desc");
+                        if (!string.IsNullOrEmpty(translated)) description = translated;
+                    }
+                    catch { }
+
+                    choices.Add(new Snapshots.RelicEntry
+                    {
+                        Effect = (int)relic.effect,
+                        EffectName = displayName,
+                        LocKey = relic.locKey,
+                        Rarity = (int)relic.globalRarity,
+                        IsEnabled = true,
+                    });
+                }
+
+                registry.Dispatch(new Events.Network.Coop.RelicChoicesEvent
+                {
+                    TargetSlotIndex = kvp.Key,
+                    Choices = choices,
+                });
+
+                _log.LogInfo($"[CoopState] Treasure: sent {choices.Count} relic choices to slot {kvp.Key}");
+            }
+
+            Events.Handlers.Coop.CoopRewardState.TotalClientsExpected = clientCount;
+            Events.Handlers.Coop.CoopRewardState.PendingGameInitInstance = null; // Not GameInit → no LoadMapScene on completion
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[CoopState] SendTreasureRelicChoices failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Distribute gold earned during battle to all NON-ACTIVE players.
     /// The active player already receives gold via the CurrencyManager singleton.
     /// Call this from CurrencySubscriptions.OnGoldAdded so peg-hit gold is shared.

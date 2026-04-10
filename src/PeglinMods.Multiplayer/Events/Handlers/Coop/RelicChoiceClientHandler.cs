@@ -77,18 +77,22 @@ public sealed class RelicChoiceClientHandler : IClientHandler<RelicChoiceEvent>
             // Check if all players have now chosen
             if (CoopRewardState.HostHasChosenRelic && CoopRewardState.AllClientRelicChoicesReceived)
             {
-                MultiplayerPlugin.Logger?.LogInfo("[CoopReward] All relic choices received -- triggering map load");
                 CoopRewardState.HostRelicSelectionActive = false;
                 CoopRewardState.WaitingForOtherPlayers = false;
+
+                var gameInit = CoopRewardState.PendingGameInitInstance as GameInit;
+                string phase = gameInit != null ? "starting_relic" : "treasure";
+
+                MultiplayerPlugin.Logger?.LogInfo($"[CoopReward] All relic choices received (phase={phase})");
 
                 // Dispatch AllChoicesCompleteEvent to clients
                 if (services.TryResolve<IGameEventRegistry>(out var reg2))
                 {
-                    reg2.Dispatch(new AllChoicesCompleteEvent { Phase = "starting_relic" });
+                    reg2.Dispatch(new AllChoicesCompleteEvent { Phase = phase });
                 }
 
-                // Call LoadMapScene on the stored GameInit instance
-                var gameInit = CoopRewardState.PendingGameInitInstance as GameInit;
+                // For starting_relic: call LoadMapScene to proceed from GameInit
+                // For treasure: host's native chest flow handles scene transition
                 if (gameInit != null)
                 {
                     var loadMapMethod = typeof(GameInit).GetMethod("LoadMapScene",
@@ -101,6 +105,16 @@ public sealed class RelicChoiceClientHandler : IClientHandler<RelicChoiceEvent>
         {
             MultiplayerPlugin.Logger?.LogWarning($"[CoopReward] RelicChoice handler failed: {e.Message}");
         }
+    }
+
+    /// <summary>
+    /// Public entry point for applying relic stat effects from other classes
+    /// (e.g., CoopStateManager.AssignTreasureRelicsToNonHostPlayers).
+    /// </summary>
+    public static void ApplyRelicStatEffectsStatic(CoopPlayerState playerState, int relicEffect,
+        BepInEx.Logging.ManualLogSource log = null)
+    {
+        ApplyRelicStatEffects(playerState, relicEffect);
     }
 
     /// <summary>

@@ -611,13 +611,32 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             catch { }
         }
 
-        // Apply gold coins
-        if (entry.CoinCount > 0)
+        // Sync gold coins: add missing or collect consumed
         {
             int currentCoins = peg.NumCoins();
-            for (int c = currentCoins; c < entry.CoinCount; c++)
+            if (currentCoins < entry.CoinCount)
             {
-                try { peg.AddCoin(false); } catch { }
+                for (int c = currentCoins; c < entry.CoinCount; c++)
+                {
+                    try { peg.AddCoin(false); } catch { }
+                }
+            }
+            else if (currentCoins > entry.CoinCount && currentCoins > 0)
+            {
+                // Host collected coins (peg was hit) — remove visual on client
+                try
+                {
+                    var overlayField = HarmonyLib.AccessTools.Field(typeof(Peg), "PegCoinOverlayInstance");
+                    var overlay = overlayField?.GetValue(peg);
+                    if (overlay != null)
+                    {
+                        var collectMethod = overlay.GetType().GetMethod("CollectCoins",
+                            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance,
+                            null, System.Type.EmptyTypes, null);
+                        collectMethod?.Invoke(overlay, null);
+                    }
+                }
+                catch { }
             }
         }
 

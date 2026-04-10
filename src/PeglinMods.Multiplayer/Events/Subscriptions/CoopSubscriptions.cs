@@ -483,7 +483,17 @@ public sealed class CoopSubscriptions
 
         try
         {
-            // Save active player state before reward selection
+            // Swap back to host BEFORE reward selection. OnVictory fires BEFORE
+            // OnTurnComplete, so ActivePlayerSlot may still point to the last
+            // client who shot. Without this swap:
+            // - Host's orb/reward choices modify the client's loaded singletons
+            // - SaveActivePlayerState reads stale singleton values, overwriting
+            //   any CoopPlayerState changes (like client's +5 max HP reward)
+            if (_coopStateManager.ActivePlayerSlot != 0)
+            {
+                _coopStateManager.SwapToPlayer(0);
+                _log.LogInfo("[CoopSubs] OnVictory: swapped to host (slot 0) before reward selection");
+            }
             _coopStateManager.SaveActivePlayerState();
 
             // Generate reward choices for each non-host player

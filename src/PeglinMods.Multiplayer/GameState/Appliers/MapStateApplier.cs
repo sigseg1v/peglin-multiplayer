@@ -125,14 +125,12 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 return;
             }
 
-            // Event/interaction scenes — host is making choices, client waits
-            // In coop mode, let the client follow to Treasure so they can pick
-            // their own post-battle rewards (their deck is independent).
+            // Treasure: let client follow so they see CoopRewardUI with relic choices
             if (snapshot.ActiveScene == "Treasure")
             {
                 if (UI.LobbyUI.GameStartReceived)
                 {
-                    _log.LogInfo("[MapApplier] Coop mode: allowing client to follow to Treasure for independent rewards");
+                    _log.LogInfo("[MapApplier] Coop mode: allowing client to follow to Treasure for relic choices");
                     // Fall through to normal scene load logic below
                 }
                 else
