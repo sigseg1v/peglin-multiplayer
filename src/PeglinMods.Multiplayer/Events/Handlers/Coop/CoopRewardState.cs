@@ -38,6 +38,20 @@ public static class CoopRewardState
     /// <summary>True when all clients have made their relic choice.</summary>
     public static bool AllClientRelicChoicesReceived => TotalClientsExpected > 0 && ClientRelicChoicesReceived.Count >= TotalClientsExpected;
 
+    // --- Native post-battle reward phase (replaces custom RewardChoicesEvent flow) ---
+
+    /// <summary>True on client while the native BattleUpgradeCanvas is open for post-battle rewards.</summary>
+    public static bool ClientInNativeRewardPhase;
+
+    /// <summary>True on host when the coop post-battle reward phase is active (host + clients picking rewards).</summary>
+    public static bool HostRewardPhaseActive;
+
+    /// <summary>True on host when the host has finished its own post-battle rewards.</summary>
+    public static bool HostRewardsDone;
+
+    /// <summary>Stored PostBattleController reference so we can call StartNavigation later on the host.</summary>
+    public static global::Battle.PostBattleController PendingPostBattleController;
+
     // --- Host-side: post-battle reward tracking ---
 
     /// <summary>Host-side: reward options sent to each slot (keyed by slot index).</summary>
@@ -69,5 +83,9 @@ public static class CoopRewardState
         PendingSentRewardChoices.Clear();
         ClientRewardChoicesReceived.Clear();
         TotalRewardClientsExpected = 0;
+        ClientInNativeRewardPhase = false;
+        HostRewardPhaseActive = false;
+        HostRewardsDone = false;
+        PendingPostBattleController = null;
     }
 }

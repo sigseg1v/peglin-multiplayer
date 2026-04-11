@@ -328,6 +328,14 @@ public class GameStateApplyService
         // In coop mode, each player has their own deck/relics — don't overwrite with host's
         var isCoop = UI.LobbyUI.GameStartReceived;
 
+        // During the native post-battle reward phase, the client's singletons are being
+        // modified by BattleUpgradeCanvas. Don't overwrite with heartbeat data.
+        if (isCoop && Events.Handlers.Coop.CoopRewardState.ClientInNativeRewardPhase)
+        {
+            _log.LogInfo("[ApplyService] Skipping player/deck sync — client in native reward phase");
+            return;
+        }
+
         // In coop, the Player snapshot contains the host's active player's data, which
         // may not be this client's player. Use PlayerSummaries to find our own health/gold.
         if (isCoop && snapshot.PlayerSummaries != null && snapshot.PlayerSummaries.Count > 0)

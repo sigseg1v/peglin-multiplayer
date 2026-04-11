@@ -15,5 +15,13 @@ public sealed class AllChoicesCompleteClientHandler : IClientHandler<AllChoicesC
 
         CoopRewardState.AllChoicesComplete = true;
         CoopRewardState.WaitingForOtherPlayers = false;
+
+        // Clear native reward phase state on client
+        if (networkEvent.Phase == "post_battle")
+        {
+            CoopRewardState.ClientInNativeRewardPhase = false;
+            Patches.MultiplayerClientPatches.AllowNativeRewardLogic = false;
+            MultiplayerPlugin.Logger?.LogInfo("[CoopReward] Post-battle reward phase ended on client");
+        }
     }
 }

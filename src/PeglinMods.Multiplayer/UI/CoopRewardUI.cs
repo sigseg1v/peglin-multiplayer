@@ -174,14 +174,9 @@ public class CoopRewardUI : MonoBehaviour
                 return;
             }
 
-            // Check for pending reward choices
-            var rewardChoices = CoopRewardState.PendingRewardChoices;
-            if (rewardChoices?.Options != null && rewardChoices.Options.Count > 0)
-            {
-                if (_currentState != DisplayState.RewardChoices || _displayedRewardCount != rewardChoices.Options.Count)
-                    ShowRewardChoices(rewardChoices);
-                return;
-            }
+            // Post-battle rewards now use the native BattleUpgradeCanvas.
+            // Skip the custom reward display — it's replaced by PostBattleStartEvent flow.
+            // (RewardChoicesEvent is no longer sent for post-battle rewards.)
 
             // Nothing to show
             if (_currentState != DisplayState.Hidden)

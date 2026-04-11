@@ -58,6 +58,10 @@ public sealed class TurnChangeClientHandler : IClientHandler<TurnChangeEvent>
         // again when their next turn comes around.
         Patches.MultiplayerClientPatches.ClientShotSentThisTurn = false;
 
+        // Hide the host aim line on turn change — the host only sends aim updates
+        // during its own turn, so clear any stale line from the previous turn.
+        GameState.ClientAimRenderer.Instance?.HideAim();
+
         if (IsMyTurn)
         {
             TurnMessage = "Your turn! Aim and shoot.";

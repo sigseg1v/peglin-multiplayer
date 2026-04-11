@@ -502,66 +502,30 @@ public sealed class CoopSubscriptions
             }
             _coopStateManager.SaveActivePlayerState();
 
-            // Generate reward choices for each non-host player
+            // Signal clients to open their native post-battle reward screen
             var services = MultiplayerPlugin.Services;
             if (services?.TryResolve<IGameEventRegistry>(out var registry) != true) return;
 
             // Clear previous reward tracking state
             CoopRewardState.PendingSentRewardChoices.Clear();
             CoopRewardState.ClientRewardChoicesReceived.Clear();
-            int rewardClientCount = 0;
+            CoopRewardState.HostRewardPhaseActive = true;
+            CoopRewardState.HostRewardsDone = false;
+            CoopRewardState.PendingPostBattleController = null;
 
+            int rewardClientCount = 0;
             foreach (var kvp in _coopStateManager.PlayerStates)
             {
                 if (kvp.Key == 0) continue; // Host picks rewards via the normal game UI
-
-                var options = new System.Collections.Generic.List<RewardOption>();
-                int idx = 0;
-
-                // Option 1: Heal 20 HP
-                options.Add(new RewardOption
-                {
-                    OptionIndex = idx++,
-                    Type = "heal",
-                    DisplayName = "Heal 20 HP",
-                    Description = "Restore 20 hit points",
-                });
-
-                // Option 2: +5 max HP
-                options.Add(new RewardOption
-                {
-                    OptionIndex = idx++,
-                    Type = "max_hp",
-                    DisplayName = "+5 Max HP",
-                    Description = "Permanently gain 5 max hit points",
-                });
-
-                // Option 3: Skip (small gold reward)
-                options.Add(new RewardOption
-                {
-                    OptionIndex = idx++,
-                    Type = "skip",
-                    DisplayName = "Skip",
-                    Description = "Skip this reward and gain 10 gold",
-                    GoldReward = 10,
-                });
-
-                var choicesEvent = new RewardChoicesEvent
-                {
-                    TargetSlotIndex = kvp.Key,
-                    Options = options,
-                };
-
-                // Store sent choices so the handler can look up options by slot
-                CoopRewardState.PendingSentRewardChoices[kvp.Key] = choicesEvent;
                 rewardClientCount++;
-
-                registry.Dispatch(choicesEvent);
-
-                _log.LogInfo($"[CoopSubs] Sent {options.Count} reward choices to slot {kvp.Key}");
             }
 
             CoopRewardState.TotalRewardClientsExpected = rewardClientCount;
+
+            // Dispatch PostBattleStartEvent — clients will activate their own PostBattleController
+            registry.Dispatch(new PostBattleStartEvent());
+
+            _log.LogInfo($"[CoopSubs] Sent PostBattleStartEvent, expecting {rewardClientCount} client(s) to complete rewards");
         }
         catch (Exception ex)
         {

@@ -13,6 +13,7 @@ public class BallPositionSync : MonoBehaviour
     private IGameEventRegistry _registry;
     private IMultiplayerMode _mode;
     private INetworkTransport _transport;
+    private TurnManager _turnManager;
     private float _sendInterval = 0.05f; // 20 Hz
     private float _lastSendTime;
     private float _lastAimSendTime;
@@ -25,6 +26,7 @@ public class BallPositionSync : MonoBehaviour
         services.TryResolve(out _registry);
         services.TryResolve(out _mode);
         services.TryResolve(out _transport);
+        services.TryResolve(out _turnManager);
     }
 
     private void Update()
@@ -41,6 +43,7 @@ public class BallPositionSync : MonoBehaviour
         bool navBallFired = activeBall != null && activeBall.IsFiring();
 
         // Stream ball position during active ball physics (20 Hz)
+        // This runs for ANY player's shot — the host always runs physics.
         if (state == BattleController.BattleState.AWAITING_SHOT_COMPLETION
             || (isNav && navBallFired))
         {
@@ -51,9 +54,14 @@ public class BallPositionSync : MonoBehaviour
             }
         }
         // Stream aim direction while player is aiming (10 Hz)
+        // Only send when it's the host's turn — during client turns the host
+        // has no aimer and shouldn't broadcast stale aim data.
         else if (state == BattleController.BattleState.AWAITING_SHOT
             || (isNav && !navBallFired))
         {
+            if (_turnManager != null && _turnManager.CurrentPlayerSlot > 0)
+                return; // client's turn — skip aim broadcast
+
             if (Time.time - _lastAimSendTime >= _aimSendInterval)
             {
                 _lastAimSendTime = Time.time;

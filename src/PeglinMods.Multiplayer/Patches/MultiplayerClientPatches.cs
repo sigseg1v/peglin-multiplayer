@@ -83,6 +83,13 @@ public static class MultiplayerClientPatches
     /// </summary>
     internal static bool ExecutingPendingShot;
 
+    /// <summary>
+    /// Set to true while the client's native BattleUpgradeCanvas is open.
+    /// Allows blocked methods (AddGold, RemoveGold, AddOrbToDeck, Damage, AddRelic)
+    /// to execute so the reward screen works normally.
+    /// </summary>
+    internal static bool AllowNativeRewardLogic;
+
     // Track fired ball for position diagnostics
     private static UnityEngine.GameObject _firedBallGO;
     private static float _firedBallTimer;
@@ -678,10 +685,13 @@ public static class MultiplayerClientPatches
     }
 
     /// <summary>
-    /// After DrawBall creates the active ball, ensure it's active.
+    /// After DrawBall creates the active ball, ensure it's active on the host's turn.
     /// CoopStateManager.LoadDeckState stores deck objects with SetActive(false).
     /// Instantiate copies that inactive state, so the ball is inactive and can't
-    /// be aimed or fired. This postfix activates it.
+    /// be aimed or fired. This postfix activates it for the host's turn.
+    ///
+    /// During a client's turn the ball is DEACTIVATED so the host can't see or aim
+    /// it. The pending-shot execution code reactivates it before calling Fire().
     /// </summary>
     [HarmonyPatch(typeof(BattleController), "DrawBall")]
     [HarmonyPostfix]
@@ -694,7 +704,24 @@ public static class MultiplayerClientPatches
 
         var activeBallField = HarmonyLib.AccessTools.Field(typeof(BattleController), "_activePachinkoBall");
         var ballGO = activeBallField?.GetValue(bc) as UnityEngine.GameObject;
-        if (ballGO != null && !ballGO.activeInHierarchy)
+        if (ballGO == null) return;
+
+        // On the host during a client's turn, hide the ball so the host
+        // can't see the aimer or interact with it.
+        if (IsHosting)
+        {
+            var services = MultiplayerPlugin.Services;
+            if (services?.TryResolve<GameState.TurnManager>(out var tm) == true
+                && tm.CurrentPlayerSlot > 0)
+            {
+                if (ballGO.activeInHierarchy)
+                    ballGO.SetActive(false);
+                MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] DrawBall postfix: hid ball '{ballGO.name}' (client's turn, slot {tm.CurrentPlayerSlot})");
+                return;
+            }
+        }
+
+        if (!ballGO.activeInHierarchy)
         {
             ballGO.SetActive(true);
             MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] DrawBall postfix: activated ball '{ballGO.name}'");
@@ -2046,6 +2073,7 @@ public static class MultiplayerClientPatches
     {
         if (!ShouldSuppressClientLogic) return true;
         if (AllowRelicSync) return true;
+        if (AllowNativeRewardLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked RelicManager.AddRelic on client");
         return false;
     }
@@ -2102,6 +2130,7 @@ public static class MultiplayerClientPatches
     public static bool PlayerHealthController_Damage_Prefix()
     {
         if (!ShouldSuppressClientLogic) return true;
+        if (AllowNativeRewardLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked PlayerHealthController.Damage on client");
         return false;
     }
@@ -2117,6 +2146,7 @@ public static class MultiplayerClientPatches
     {
         if (!ShouldSuppressClientLogic) return true;
         if (AllowCurrencySync) return true;
+        if (AllowNativeRewardLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked CurrencyManager.AddGold on client");
         return false;
     }
@@ -2127,6 +2157,7 @@ public static class MultiplayerClientPatches
     {
         if (!ShouldSuppressClientLogic) return true;
         if (AllowCurrencySync) return true;
+        if (AllowNativeRewardLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked CurrencyManager.RemoveGold on client");
         return false;
     }
@@ -2136,6 +2167,7 @@ public static class MultiplayerClientPatches
     public static bool DeckManager_AddOrbToDeck_Prefix()
     {
         if (!ShouldSuppressClientLogic) return true;
+        if (AllowNativeRewardLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DeckManager.AddOrbToDeck on client");
         return false;
     }
@@ -2147,5 +2179,131 @@ public static class MultiplayerClientPatches
         if (!ShouldSuppressClientLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DeckManager.RemoveOrbFromBattleDeck on client");
         return false;
+    }
+
+    // =========================================================================
+    // POST-BATTLE REWARD PHASE — intercept navigation for coop sync
+    // =========================================================================
+
+    /// <summary>
+    /// Intercept PostBattleController.StartNavigation to synchronize the coop
+    /// post-battle reward phase. On host: delay navigation until all clients
+    /// finish. On client: block navigation entirely and send results to host.
+    /// </summary>
+    [HarmonyPatch(typeof(Battle.PostBattleController), "StartNavigation")]
+    [HarmonyPrefix]
+    public static bool PostBattleController_StartNavigation_Prefix(Battle.PostBattleController __instance)
+    {
+        if (!UI.LobbyUI.GameStartReceived) return true; // not coop
+
+        var services = MultiplayerPlugin.Services;
+        if (services == null) return true;
+
+        if (IsHosting)
+        {
+            if (!Events.Handlers.Coop.CoopRewardState.HostRewardPhaseActive)
+                return true; // not in coop reward phase — normal flow
+
+            // Save host's updated state after rewards
+            if (services.TryResolve<GameState.CoopStateManager>(out var coopState))
+                coopState.SaveActivePlayerState();
+
+            Events.Handlers.Coop.CoopRewardState.HostRewardsDone = true;
+            Events.Handlers.Coop.CoopRewardState.PendingPostBattleController = __instance;
+
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Host finished post-battle rewards, checking if all clients done...");
+
+            if (Events.Handlers.Coop.CoopRewardState.AllClientRewardChoicesReceived)
+            {
+                // All done — proceed with navigation
+                MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] All clients done — proceeding with navigation");
+                Events.Handlers.Coop.CoopRewardState.HostRewardPhaseActive = false;
+                AllowNativeRewardLogic = false;
+
+                if (services.TryResolve<IGameEventRegistry>(out var reg))
+                    reg.Dispatch(new Events.Network.Coop.AllChoicesCompleteEvent { Phase = "post_battle" });
+
+                return true; // let StartNavigation run
+            }
+            else
+            {
+                // Still waiting for clients
+                MultiplayerPlugin.Logger?.LogInfo(
+                    $"[ClientPatches] Waiting for clients: {Events.Handlers.Coop.CoopRewardState.ClientRewardChoicesReceived.Count}/{Events.Handlers.Coop.CoopRewardState.TotalRewardClientsExpected}");
+                Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = true;
+                return false; // block navigation until all clients done
+            }
+        }
+        else if (ShouldSuppressClientLogic)
+        {
+            // Client: never navigate — send results to host and wait
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Client finished post-battle rewards — sending results to host");
+
+            try
+            {
+                var completeEvent = CaptureClientPostBattleState();
+                if (services.TryResolve<Network.IMessageSender>(out var sender))
+                    sender.Send(completeEvent);
+            }
+            catch (System.Exception ex)
+            {
+                MultiplayerPlugin.Logger?.LogError($"[ClientPatches] Failed to send PostBattleCompleteEvent: {ex.Message}");
+            }
+
+            // Disable reward logic bypass now that the screen is done
+            AllowNativeRewardLogic = false;
+
+            // Show waiting overlay
+            Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = true;
+            return false; // never navigate on client
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Capture the client's current state after the reward screen for sending to host.
+    /// </summary>
+    private static Events.Network.Coop.PostBattleCompleteEvent CaptureClientPostBattleState()
+    {
+        var evt = new Events.Network.Coop.PostBattleCompleteEvent();
+
+        // Health
+        var ctrl = UnityEngine.Object.FindObjectOfType<Battle.PlayerHealthController>();
+        if (ctrl != null)
+        {
+            var healthField = HarmonyLib.AccessTools.Field(typeof(Battle.PlayerHealthController), "_playerHealth");
+            var maxHealthField = HarmonyLib.AccessTools.Field(typeof(Battle.PlayerHealthController), "_maxPlayerHealth");
+            var healthVar = healthField?.GetValue(ctrl) as FloatVariable;
+            var maxHealthVar = maxHealthField?.GetValue(ctrl) as FloatVariable;
+            evt.CurrentHealth = healthVar?.Value ?? 0;
+            evt.MaxHealth = maxHealthVar?.Value ?? 0;
+        }
+
+        // Gold
+        var currency = Currency.CurrencyManager.Instance;
+        if (currency != null)
+            evt.Gold = currency.GoldAmount;
+
+        // Deck
+        var completeDeck = DeckManager.completeDeck;
+        if (completeDeck != null)
+        {
+            foreach (var orbGO in completeDeck)
+            {
+                if (orbGO == null) continue;
+                var attack = orbGO.GetComponent<Battle.Attacks.Attack>();
+                evt.CompleteDeck.Add(new Events.Network.Coop.PostBattleOrbEntry
+                {
+                    PrefabName = orbGO.name,
+                    Level = attack != null ? attack.Level : 0,
+                });
+            }
+        }
+
+        MultiplayerPlugin.Logger?.LogInfo(
+            $"[ClientPatches] Captured post-battle state: HP={evt.CurrentHealth}/{evt.MaxHealth} Gold={evt.Gold} Deck={evt.CompleteDeck.Count} orbs");
+
+        return evt;
     }
 }

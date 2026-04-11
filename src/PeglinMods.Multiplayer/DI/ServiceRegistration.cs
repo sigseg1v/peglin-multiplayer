@@ -319,6 +319,8 @@ public static class ServiceRegistration
         registry.Register(new CoopHandlers.RewardChoicesServerHandler(), new CoopHandlers.RewardChoicesClientHandler());
         registry.Register(new CoopHandlers.RewardChoiceServerHandler(), new CoopHandlers.RewardChoiceClientHandler());
         registry.Register(new CoopHandlers.AllChoicesCompleteServerHandler(), new CoopHandlers.AllChoicesCompleteClientHandler());
+        registry.Register(new CoopHandlers.PostBattleStartServerHandler(), new CoopHandlers.PostBattleStartClientHandler());
+        registry.Register(new CoopHandlers.PostBattleCompleteServerHandler(), new CoopHandlers.PostBattleCompleteClientHandler());
 
         // State sync snapshots
         registry.Register(new FullGameStateServerHandler(), new FullGameStateClientHandler());
