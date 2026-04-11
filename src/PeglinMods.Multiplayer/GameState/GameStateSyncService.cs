@@ -88,7 +88,7 @@ public class GameStateSyncService : IGameStateSyncService
                     var ps = kvp.Value;
                     // For the active player, use live singleton data
                     var isActive = kvp.Key == _coopStateManager.ActivePlayerSlot;
-                    snapshot.PlayerSummaries.Add(new CoopPlayerSummary
+                    var summary = new CoopPlayerSummary
                     {
                         SlotIndex = ps.SlotIndex,
                         PlayerName = ps.PlayerName,
@@ -97,7 +97,24 @@ public class GameStateSyncService : IGameStateSyncService
                         MaxHealth = isActive ? (snapshot.Player?.MaxHealth ?? ps.MaxHealth) : ps.MaxHealth,
                         Gold = isActive ? (snapshot.Player?.Gold ?? ps.Gold) : ps.Gold,
                         HasShotThisRound = ps.HasShotThisRound,
-                    });
+                    };
+
+                    // Per-player status effects: active player from singletons, others from CoopPlayerState
+                    if (isActive && snapshot.Player?.StatusEffects != null)
+                    {
+                        summary.StatusEffects = snapshot.Player.StatusEffects;
+                    }
+                    else if (ps.StatusEffects != null)
+                    {
+                        summary.StatusEffects = ps.StatusEffects.ConvertAll(e => new Snapshots.StatusEffectEntry
+                        {
+                            EffectType = e.EffectType,
+                            EffectName = ((Battle.StatusEffects.StatusEffectType)e.EffectType).ToString(),
+                            Intensity = e.Intensity,
+                        });
+                    }
+
+                    snapshot.PlayerSummaries.Add(summary);
 
                     // Per-player deck: active player from singletons, others from CoopPlayerState
                     if (isActive)

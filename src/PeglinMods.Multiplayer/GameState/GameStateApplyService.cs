@@ -345,10 +345,14 @@ public class GameStateApplyService
                         MaxHealth = summary.MaxHealth,
                         Gold = summary.Gold,
                     };
-                    // Preserve status effects and speedup from the generic snapshot if available
+                    // Use per-player status effects from the summary (each player's own effects)
+                    if (summary.StatusEffects != null && summary.StatusEffects.Count > 0)
+                    {
+                        myPlayerState.StatusEffects = summary.StatusEffects;
+                    }
+                    // Preserve speedup from the generic snapshot if available
                     if (snapshot.Player != null)
                     {
-                        myPlayerState.StatusEffects = snapshot.Player.StatusEffects;
                         myPlayerState.IsSpedUp = snapshot.Player.IsSpedUp;
                         myPlayerState.SpeedupLevel = snapshot.Player.SpeedupLevel;
                     }

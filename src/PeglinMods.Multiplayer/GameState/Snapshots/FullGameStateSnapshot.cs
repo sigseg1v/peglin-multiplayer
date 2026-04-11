@@ -39,4 +39,5 @@ public class CoopPlayerSummary
     public float MaxHealth { get; set; }
     public int Gold { get; set; }
     public bool HasShotThisRound { get; set; }
+    public List<StatusEffectEntry> StatusEffects { get; set; } = new List<StatusEffectEntry>();
 }
