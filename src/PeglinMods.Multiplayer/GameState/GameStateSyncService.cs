@@ -132,8 +132,10 @@ public class GameStateSyncService : IGameStateSyncService
                             BattleDeck = ps.BattleDeck?.Select(o => new Snapshots.OrbEntry { Name = o.PrefabName, Guid = o.Guid, Level = o.Level }).ToList()
                                 ?? new List<Snapshots.OrbEntry>(),
                             ShuffledOrder = ps.ShuffledOrder ?? new List<string>(),
-                            CurrentOrb = ps.CurrentOrb,
-                            CurrentOrbLevel = ps.CurrentOrbLevel,
+                            // Non-active players have no drawn orb — CurrentOrb is only
+                            // meaningful for the active player (captured live by DeckStateProvider).
+                            CurrentOrb = null,
+                            CurrentOrbLevel = 0,
                         };
                     }
                 }

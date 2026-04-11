@@ -355,6 +355,8 @@ public class CoopRewardUI : MonoBehaviour
                 {
                     Log?.LogInfo("[CoopRewardUI] All relic choices received — proceeding to map");
                     CoopRewardState.HostRelicSelectionActive = false;
+                    CoopRewardState.AllChoicesComplete = true;
+                    CoopRewardState.WaitingForOtherPlayers = false;
                     if (services.TryResolve<IGameEventRegistry>(out var reg))
                         reg.Dispatch(new AllChoicesCompleteEvent { Phase = "starting_relic" });
 
@@ -399,8 +401,11 @@ public class CoopRewardUI : MonoBehaviour
         }
 
         CoopRewardState.PendingRelicChoices = null;
-        CoopRewardState.WaitingForOtherPlayers = true;
-        ShowWaiting();
+        if (!CoopRewardState.AllChoicesComplete)
+        {
+            CoopRewardState.WaitingForOtherPlayers = true;
+            ShowWaiting();
+        }
     }
 
     private void OnRewardChosen(int optionIndex)

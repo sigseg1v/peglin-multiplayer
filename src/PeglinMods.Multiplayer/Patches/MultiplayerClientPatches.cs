@@ -1120,6 +1120,8 @@ public static class MultiplayerClientPatches
         {
             // Everyone done -- allow LoadMapScene to proceed
             Events.Handlers.Coop.CoopRewardState.HostRelicSelectionActive = false;
+            Events.Handlers.Coop.CoopRewardState.AllChoicesComplete = true;
+            Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = false;
             MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] All relic choices received -- proceeding to map");
 
             // Dispatch AllChoicesCompleteEvent

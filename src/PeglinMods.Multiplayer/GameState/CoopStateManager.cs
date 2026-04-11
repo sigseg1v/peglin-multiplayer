@@ -308,16 +308,11 @@ public class CoopStateManager
                 }
             }
 
-            // Save current/next orb for display in AllDecks
-            if (deckMgr.shuffledDeck != null && deckMgr.shuffledDeck.Count > 0)
-            {
-                var top = deckMgr.shuffledDeck.Peek();
-                state.CurrentOrb = top?.name ?? "";
-            }
-            else
-            {
-                state.CurrentOrb = "";
-            }
+            // CurrentOrb represents the orb that has been drawn from the deck and is
+            // actively being aimed/fired.  For non-active players no orb has been drawn,
+            // so leave it empty.  The active player's CurrentOrb is captured live from
+            // BattleController.activePachinkoBall by DeckStateProvider.
+            state.CurrentOrb = "";
 
             _log.LogInfo($"[CoopState] SaveDeckState slot {state.SlotIndex}: " +
                 $"complete {prevComplete}->{state.CompleteDeck.Count}, " +
