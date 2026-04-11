@@ -11,6 +11,7 @@ using PeglinMods.Multiplayer.Events.Network.Map;
 using PeglinMods.Multiplayer.Events.Subscriptions;
 using PeglinMods.Multiplayer.Multiplayer;
 using PeglinUI;
+using Scenarios;
 using Tutorial;
 using UnityEngine;
 using Worldmap;
@@ -2027,6 +2028,15 @@ public static class MultiplayerClientPatches
     /// Set to true by sync code while applying host relic state.
     /// </summary>
     internal static bool AllowRelicSync;
+
+    [HarmonyPatch(typeof(Scenarios.ChestScenarioController), "OpenChest")]
+    [HarmonyPrefix]
+    public static bool ChestScenarioController_OpenChest_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked ChestScenarioController.OpenChest on client — using CoopRewardUI instead");
+        return false;
+    }
 
     [HarmonyPatch(typeof(Relics.RelicManager), "AddRelic")]
     [HarmonyPrefix]

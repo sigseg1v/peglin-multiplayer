@@ -233,17 +233,23 @@ public sealed class CoopSubscriptions
             _coopStateManager.SaveActivePlayerState();
             _log.LogInfo("[CoopSubs] Battle init: saved host (slot 0) state from singletons");
 
-            // Ensure non-host players have populated BattleDeck/ShuffledOrder.
-            // Their CompleteDeck is set from ClassLoadoutData or rewards, but
-            // battleDeck and shuffledDeck are only populated when singletons are
-            // loaded for them. Swap to each, populate, save, then swap back.
+            // Rebuild BattleDeck/ShuffledOrder from CompleteDeck for every
+            // non-host player at the start of each battle. The saved state from
+            // the previous battle has stale ShuffledOrder (only the remaining
+            // draws, not the full deck). Without clearing first, the heartbeat
+            // sends stale deck data until the host swaps to this player's turn,
+            // causing the client deck UI to show the wrong number of orbs.
             foreach (var kvp in _coopStateManager.PlayerStates)
             {
                 if (kvp.Key == 0) continue; // Always skip host (slot 0)
                 var state = kvp.Value;
-                if (state.CompleteDeck.Count > 0 && state.BattleDeck.Count == 0)
+                if (state.CompleteDeck.Count > 0)
                 {
-                    _log.LogInfo($"[CoopSubs] Battle init: slot {kvp.Key} has completeDeck ({state.CompleteDeck.Count}) but empty battleDeck — populating");
+                    // Clear stale battle state so LoadDeckState + EnsureBattleDeckPopulated
+                    // rebuilds everything fresh from CompleteDeck
+                    state.BattleDeck.Clear();
+                    state.ShuffledOrder?.Clear();
+                    _log.LogInfo($"[CoopSubs] Battle init: slot {kvp.Key} — rebuilding deck from completeDeck ({state.CompleteDeck.Count})");
                     _coopStateManager.SwapToPlayer(kvp.Key);
                     EnsureBattleDeckPopulated($"battle init slot {kvp.Key}");
                     _coopStateManager.SaveActivePlayerState();
