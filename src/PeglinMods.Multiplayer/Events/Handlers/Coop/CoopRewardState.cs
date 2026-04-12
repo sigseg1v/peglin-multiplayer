@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using PeglinMods.Multiplayer.Events.Network.Coop;
 
 namespace PeglinMods.Multiplayer.Events.Handlers.Coop;
@@ -114,6 +115,11 @@ public static class CoopRewardState
     /// <summary>True on client when the client has already sent their treasure completion event.</summary>
     public static bool ClientTreasureChoiceSent;
 
+    // --- Post-battle relic choices (boss/rare) ---
+
+    /// <summary>Host-provided relic choices for the post-battle boss/rare relic selection on the client.</summary>
+    public static List<RelicChoiceEntry> PendingPostBattleRelicChoices;
+
     public static void Reset()
     {
         PendingRelicChoices = null;
@@ -143,5 +149,6 @@ public static class CoopRewardState
         TotalTreasureClientsExpected = 0;
         PendingChestController = null;
         ClientTreasureChoiceSent = false;
+        PendingPostBattleRelicChoices = null;
     }
 }

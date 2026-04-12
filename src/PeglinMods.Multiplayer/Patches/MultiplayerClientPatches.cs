@@ -104,6 +104,14 @@ public static class MultiplayerClientPatches
     /// </summary>
     internal static bool AllowTreasureLogic;
 
+    /// <summary>
+    /// Tracks the relic effect chosen by the client during the post-battle
+    /// boss/rare relic selection. Reset when the reward phase ends.
+    /// -1 means no relic chosen (skipped or not yet selected).
+    /// </summary>
+    internal static int ClientChosenPostBattleRelicEffect = -1;
+    internal static string ClientChosenPostBattleRelicName;
+
     // Track fired ball for position diagnostics
     private static UnityEngine.GameObject _firedBallGO;
     private static float _firedBallTimer;
@@ -2759,6 +2767,11 @@ public static class MultiplayerClientPatches
             // Disable reward logic bypass now that the screen is done
             AllowNativeRewardLogic = false;
 
+            // Clear relic choice tracking
+            ClientChosenPostBattleRelicEffect = -1;
+            ClientChosenPostBattleRelicName = null;
+            Events.Handlers.Coop.CoopRewardState.PendingPostBattleRelicChoices = null;
+
             // Show waiting overlay
             Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = true;
             return false; // never navigate on client
@@ -2807,8 +2820,13 @@ public static class MultiplayerClientPatches
             }
         }
 
+        // Boss/rare relic chosen during this post-battle phase
+        evt.ChosenRelicEffect = ClientChosenPostBattleRelicEffect;
+        evt.ChosenRelicName = ClientChosenPostBattleRelicName;
+
         MultiplayerPlugin.Logger?.LogInfo(
-            $"[ClientPatches] Captured post-battle state: HP={evt.CurrentHealth}/{evt.MaxHealth} Gold={evt.Gold} Deck={evt.CompleteDeck.Count} orbs");
+            $"[ClientPatches] Captured post-battle state: HP={evt.CurrentHealth}/{evt.MaxHealth} Gold={evt.Gold} " +
+            $"Deck={evt.CompleteDeck.Count} orbs, chosenRelic={evt.ChosenRelicEffect} ({evt.ChosenRelicName ?? "none"})");
 
         return evt;
     }
@@ -3241,12 +3259,24 @@ public static class MultiplayerClientPatches
 
     /// <summary>
     /// BattleUpgradeCanvas.AcceptRelic — on client during treasure, send completion event.
+    /// Also tracks chosen relic during post-battle boss/rare relic selection.
     /// </summary>
     [HarmonyPatch(typeof(PeglinUI.PostBattle.BattleUpgradeCanvas), "AcceptRelic")]
     [HarmonyPostfix]
     public static void BattleUpgradeCanvas_AcceptRelic_Postfix(Relics.Relic relic)
     {
         if (!ShouldSuppressClientLogic) return;
+
+        // Track boss/rare relic choice during post-battle native reward phase
+        if (AllowNativeRewardLogic)
+        {
+            ClientChosenPostBattleRelicEffect = (int)relic.effect;
+            ClientChosenPostBattleRelicName = relic.locKey;
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[ClientPatch] Client chose post-battle relic: '{relic.locKey}' (effect={relic.effect})");
+        }
+
+        // Treasure-specific flow
         if (!AllowTreasureLogic) return;
         if (Events.Handlers.Coop.CoopRewardState.ClientTreasureChoiceSent) return;
 
@@ -3267,6 +3297,112 @@ public static class MultiplayerClientPatches
         catch (System.Exception ex)
         {
             MultiplayerPlugin.Logger?.LogError($"[ClientPatch] Failed to send TreasureCompleteEvent: {ex.Message}");
+        }
+    }
+
+    // =========================================================================
+    // HOST: CAPTURE BOSS/RARE RELIC CHOICES — send to clients
+    // CLIENT: REPLACE RELICS WITH HOST CHOICES
+    // =========================================================================
+
+    /// <summary>
+    /// BattleUpgradeCanvas.SetupRelicGrant — after the relic panel is configured:
+    /// HOST: capture the displayed relics and send to clients.
+    /// CLIENT: replace with host-provided relics if available.
+    /// </summary>
+    [HarmonyPatch(typeof(PeglinUI.PostBattle.BattleUpgradeCanvas), "SetupRelicGrant")]
+    [HarmonyPostfix]
+    public static void BattleUpgradeCanvas_SetupRelicGrant_Postfix(
+        PeglinUI.PostBattle.BattleUpgradeCanvas __instance)
+    {
+        if (!UI.LobbyUI.GameStartReceived) return;
+
+        try
+        {
+            var relicPanelField = HarmonyLib.AccessTools.Field(
+                typeof(PeglinUI.PostBattle.BattleUpgradeCanvas), "_relicPanel");
+            var relicPanel = relicPanelField?.GetValue(__instance) as UnityEngine.GameObject;
+            if (relicPanel == null) return;
+
+            var icons = relicPanel.GetComponentsInChildren<RelicIcon>(true);
+            if (icons == null || icons.Length == 0) return;
+
+            if (IsHosting)
+            {
+                // HOST: capture relics and dispatch to clients
+                var evt = new Events.Network.Coop.PostBattleRelicChoicesEvent();
+                foreach (var icon in icons)
+                {
+                    if (icon.relic != null && icon.transform.parent.gameObject.activeSelf)
+                    {
+                        evt.Choices.Add(new Events.Network.Coop.RelicChoiceEntry
+                        {
+                            Effect = (int)icon.relic.effect,
+                            LocKey = icon.relic.locKey,
+                        });
+                    }
+                }
+
+                if (evt.Choices.Count > 0)
+                {
+                    var services = MultiplayerPlugin.Services;
+                    if (services?.TryResolve<Events.IGameEventRegistry>(out var reg) == true)
+                    {
+                        reg.Dispatch(evt);
+                        MultiplayerPlugin.Logger?.LogInfo(
+                            $"[ClientPatches] Host captured {evt.Choices.Count} post-battle relic choices — sent to clients");
+                    }
+                }
+            }
+            else if (ShouldSuppressClientLogic)
+            {
+                // CLIENT: replace with host relics if available
+                var choices = Events.Handlers.Coop.CoopRewardState.PendingPostBattleRelicChoices;
+                if (choices != null && choices.Count > 0)
+                {
+                    var allRelics = UnityEngine.Resources.FindObjectsOfTypeAll<Relics.Relic>();
+
+                    for (int i = 0; i < icons.Length; i++)
+                    {
+                        if (i < choices.Count)
+                        {
+                            var choice = choices[i];
+                            Relics.Relic found = null;
+                            foreach (var r in allRelics)
+                            {
+                                if ((int)r.effect == choice.Effect)
+                                {
+                                    found = r;
+                                    break;
+                                }
+                            }
+                            if (found != null)
+                            {
+                                icons[i].SetRelic(found);
+                                icons[i].shouldShowTooltip = false;
+                                icons[i].transform.parent.gameObject.SetActive(true);
+                            }
+                        }
+                        else
+                        {
+                            icons[i].transform.parent.gameObject.SetActive(false);
+                        }
+                    }
+
+                    MultiplayerPlugin.Logger?.LogInfo(
+                        $"[ClientPatches] Client replaced relic panel with {choices.Count} host-provided choices");
+                }
+                else
+                {
+                    MultiplayerPlugin.Logger?.LogWarning(
+                        "[ClientPatches] Client SetupRelicGrant — no host relic choices available yet");
+                }
+            }
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning(
+                $"[ClientPatches] SetupRelicGrant postfix failed: {ex.Message}\n{ex.StackTrace}");
         }
     }
 }

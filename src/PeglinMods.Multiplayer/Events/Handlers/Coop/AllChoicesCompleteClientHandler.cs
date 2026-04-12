@@ -20,7 +20,10 @@ public sealed class AllChoicesCompleteClientHandler : IClientHandler<AllChoicesC
         if (networkEvent.Phase == "post_battle")
         {
             CoopRewardState.ClientInNativeRewardPhase = false;
+            CoopRewardState.PendingPostBattleRelicChoices = null;
             Patches.MultiplayerClientPatches.AllowNativeRewardLogic = false;
+            Patches.MultiplayerClientPatches.ClientChosenPostBattleRelicEffect = -1;
+            Patches.MultiplayerClientPatches.ClientChosenPostBattleRelicName = null;
             MultiplayerPlugin.Logger?.LogInfo("[CoopReward] Post-battle reward phase ended on client");
         }
         else if (networkEvent.Phase == "shop")

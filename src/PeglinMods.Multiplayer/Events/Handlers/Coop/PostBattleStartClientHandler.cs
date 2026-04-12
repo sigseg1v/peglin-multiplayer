@@ -25,9 +25,12 @@ public sealed class PostBattleStartClientHandler : IClientHandler<PostBattleStar
         CoopRewardState.ClientInNativeRewardPhase = true;
         CoopRewardState.AllChoicesComplete = false;
         CoopRewardState.WaitingForOtherPlayers = false;
+        CoopRewardState.PendingPostBattleRelicChoices = null;
 
         // Enable method bypass so the native reward screen can modify game state
         Patches.MultiplayerClientPatches.AllowNativeRewardLogic = true;
+        Patches.MultiplayerClientPatches.ClientChosenPostBattleRelicEffect = -1;
+        Patches.MultiplayerClientPatches.ClientChosenPostBattleRelicName = null;
 
         // Find PostBattleController — it's on a disabled GameObject in the Battle scene
         var pbcs = Resources.FindObjectsOfTypeAll<global::Battle.PostBattleController>();

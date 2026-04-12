@@ -3,6 +3,7 @@ using System.Linq;
 using PeglinMods.Multiplayer.Events.Network.Coop;
 using PeglinMods.Multiplayer.GameState;
 using PeglinMods.Multiplayer.Multiplayer;
+using UnityEngine;
 
 namespace PeglinMods.Multiplayer.Events.Handlers.Coop;
 
@@ -69,6 +70,43 @@ public sealed class PostBattleCompleteClientHandler : IClientHandler<PostBattleC
             playerState.BattleDeck.Clear();
             playerState.ShuffledOrder.Clear();
             playerState.CurrentOrb = "";
+
+            // Add the chosen boss/rare relic to the player's relic list
+            if (networkEvent.ChosenRelicEffect >= 0)
+            {
+                var allRelics = Resources.FindObjectsOfTypeAll<Relics.Relic>();
+                Relics.Relic chosenRelic = null;
+                foreach (var r in allRelics)
+                {
+                    if ((int)r.effect == networkEvent.ChosenRelicEffect)
+                    {
+                        chosenRelic = r;
+                        break;
+                    }
+                }
+
+                if (chosenRelic != null)
+                {
+                    playerState.OwnedRelics.Add(new SerializedRelic
+                    {
+                        Effect = networkEvent.ChosenRelicEffect,
+                        LocKey = chosenRelic.locKey,
+                        Rarity = (int)chosenRelic.globalRarity,
+                    });
+                    MultiplayerPlugin.Logger?.LogInfo(
+                        $"[PostBattleComplete] Added relic '{chosenRelic.locKey}' (effect={networkEvent.ChosenRelicEffect}) to slot {slot.SlotIndex}");
+                }
+                else
+                {
+                    MultiplayerPlugin.Logger?.LogWarning(
+                        $"[PostBattleComplete] Could not find Relic asset for effect={networkEvent.ChosenRelicEffect}");
+                }
+            }
+            else if (!string.IsNullOrEmpty(networkEvent.ChosenRelicName))
+            {
+                MultiplayerPlugin.Logger?.LogInfo(
+                    $"[PostBattleComplete] Player skipped boss relic selection");
+            }
 
             // Track completion
             CoopRewardState.ClientRewardChoicesReceived.Add(slot.SlotIndex);

@@ -13,6 +13,12 @@ public class PostBattleCompleteEvent
     public float MaxHealth { get; set; }
     public int Gold { get; set; }
     public List<PostBattleOrbEntry> CompleteDeck { get; set; } = new List<PostBattleOrbEntry>();
+
+    /// <summary>Relic effect chosen during boss/rare relic selection. -1 if skipped or none.</summary>
+    public int ChosenRelicEffect { get; set; } = -1;
+
+    /// <summary>LocKey of the chosen relic, or null if skipped.</summary>
+    public string ChosenRelicName { get; set; }
 }
 
 public class PostBattleOrbEntry
