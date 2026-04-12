@@ -152,16 +152,20 @@ public sealed class CoopSubscriptions
                     // Save the active player's state so it reflects the damage already taken
                     _coopStateManager.SaveActivePlayerState();
 
-                    // Apply the same damage to all non-active players
+                    // Apply damage to all non-active players, respecting their
+                    // individual defensive buffs (Ballusion, Intangiball, Ballwark).
+                    // The active player already had these checked via the normal
+                    // PlayerHealthController.Damage() flow.
                     int activeSlot = _coopStateManager.ActivePlayerSlot;
                     foreach (var state in _coopStateManager.PlayerStates.Values)
                     {
                         if (state.SlotIndex == activeSlot) continue;
 
                         float oldHp = state.CurrentHealth;
-                        state.CurrentHealth = Mathf.Max(0f, state.CurrentHealth - damage);
+                        float effectiveDamage = ApplyDefensiveBuffs(state, damage);
+                        state.CurrentHealth = Mathf.Max(0f, state.CurrentHealth - effectiveDamage);
                         _log.LogInfo($"[CoopSubs] Slot {state.SlotIndex} ({state.PlayerName}): " +
-                            $"hp {oldHp} -> {state.CurrentHealth} (damage={damage})");
+                            $"hp {oldHp} -> {state.CurrentHealth} (raw={damage}, after buffs={effectiveDamage})");
                     }
 
                     // Check if any player died
@@ -944,5 +948,115 @@ public sealed class CoopSubscriptions
         {
             _log.LogWarning($"[CoopSubs] BroadcastTurnChange failed: {ex.Message}");
         }
+    }
+
+    // =========================================================================
+    // PER-PLAYER DEFENSIVE BUFF RESOLUTION
+    // =========================================================================
+
+    /// <summary>
+    /// Apply a player's defensive status effects (Ballusion, Intangiball, Ballwark)
+    /// to incoming damage. Modifies the player's saved status effects in-place
+    /// (e.g. consuming Ballwark stacks, reducing Ballusion on dodge).
+    /// Returns the effective damage after all defensive buffs.
+    /// </summary>
+    private float ApplyDefensiveBuffs(GameState.CoopPlayerState state, float rawDamage)
+    {
+        float damage = rawDamage;
+
+        int ballusionStacks = GetEffectIntensity(state, (int)Battle.StatusEffects.StatusEffectType.Ballusion);
+        int intangiballCap = GetEffectIntensity(state, (int)Battle.StatusEffects.StatusEffectType.Intangiball);
+        int ballwarkStacks = GetEffectIntensity(state, (int)Battle.StatusEffects.StatusEffectType.Ballwark);
+
+        // 1. Ballusion (evasion): 1% dodge chance per stack
+        if (ballusionStacks > 0 && damage > 0f)
+        {
+            float evasionChance = ballusionStacks * Battle.StatusEffects.StatusEffectData.BALLUSION_EVASION_PER_STACK;
+            float roll = UnityEngine.Random.value;
+            if (roll < evasionChance)
+            {
+                // Dodge! Reduce Ballusion stacks by ~50%
+                float reduction = Battle.StatusEffects.StatusEffectData.BALLUSION_REDUCTION_PERCENTAGE;
+
+                // Check for relics that modify reduction
+                if (HasRelic(state, Relics.RelicEffect.BALLUSION_DOUBLE_MAX) ||
+                    HasRelic(state, Relics.RelicEffect.RETAIN_DODGE_BETWEEN_BATTLES))
+                    reduction -= 0.1f;
+                if (HasRelic(state, Relics.RelicEffect.BALLUSION_DOUBLE_GAIN_AND_LOSS))
+                    reduction *= 2f;
+
+                float keep = Mathf.Clamp(1f - reduction, 0f, 1f);
+                int newStacks = Mathf.RoundToInt(ballusionStacks * keep);
+                SetEffectIntensity(state, (int)Battle.StatusEffects.StatusEffectType.Ballusion, newStacks);
+
+                _log.LogInfo($"[CoopSubs] Slot {state.SlotIndex} DODGED (Ballusion {ballusionStacks}->{newStacks}, roll={roll:F3} < {evasionChance:F3})");
+                damage = 0f;
+            }
+        }
+
+        // 2. Intangiball (damage cap)
+        if (intangiballCap > 0 && damage > 0f)
+        {
+            damage = Mathf.Min(damage, intangiballCap);
+        }
+
+        // 3. Ballwark (armor absorption)
+        if (ballwarkStacks > 0 && damage > 0f)
+        {
+            float armour = ballwarkStacks;
+            if (armour >= damage)
+            {
+                armour -= damage;
+                damage = 0f;
+            }
+            else
+            {
+                damage -= armour;
+                armour = 0f;
+            }
+            SetEffectIntensity(state, (int)Battle.StatusEffects.StatusEffectType.Ballwark, Mathf.RoundToInt(armour));
+            _log.LogInfo($"[CoopSubs] Slot {state.SlotIndex} Ballwark absorbed: {ballwarkStacks}->{Mathf.RoundToInt(armour)}");
+        }
+
+        return Mathf.Max(0f, damage);
+    }
+
+    private static int GetEffectIntensity(GameState.CoopPlayerState state, int effectType)
+    {
+        foreach (var e in state.StatusEffects)
+            if (e.EffectType == effectType) return e.Intensity;
+        return 0;
+    }
+
+    private static void SetEffectIntensity(GameState.CoopPlayerState state, int effectType, int intensity)
+    {
+        for (int i = 0; i < state.StatusEffects.Count; i++)
+        {
+            if (state.StatusEffects[i].EffectType == effectType)
+            {
+                if (intensity <= 0)
+                    state.StatusEffects.RemoveAt(i);
+                else
+                    state.StatusEffects[i].Intensity = intensity;
+                return;
+            }
+        }
+        // Effect not in list yet — add if positive
+        if (intensity > 0)
+        {
+            state.StatusEffects.Add(new GameState.SerializedStatusEffect
+            {
+                EffectType = effectType,
+                Intensity = intensity,
+            });
+        }
+    }
+
+    private static bool HasRelic(GameState.CoopPlayerState state, Relics.RelicEffect effect)
+    {
+        int effectInt = (int)effect;
+        foreach (var r in state.OwnedRelics)
+            if (r.Effect == effectInt) return true;
+        return false;
     }
 }

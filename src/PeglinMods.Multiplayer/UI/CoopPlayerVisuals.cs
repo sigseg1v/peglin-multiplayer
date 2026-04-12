@@ -39,6 +39,8 @@ public class CoopPlayerVisuals : MonoBehaviour
         public TextMeshProUGUI HpText;
         public GameObject ArrowPanel;
         public TextMeshProUGUI ArrowText;
+        public GameObject BuffsPanel;
+        public TextMeshProUGUI BuffsText;
     }
 
     private readonly List<PlayerVisual> _visuals = new List<PlayerVisual>();
@@ -111,11 +113,44 @@ public class CoopPlayerVisuals : MonoBehaviour
             if (!services.TryResolve<CoopStateManager>(out var coopState)) return;
             if (coopState.TotalPlayerCount < 2) return;
 
+            // Read live status effects from the singleton for the active player
+            List<StatusEffectEntry> liveEffects = null;
+            try
+            {
+                var statusCtrl = FindObjectOfType<Battle.StatusEffects.PlayerStatusEffectController>();
+                if (statusCtrl != null)
+                {
+                    var effectsList = HarmonyLib.AccessTools.Field(
+                        typeof(Battle.StatusEffects.PlayerStatusEffectController), "_statusEffects")
+                        ?.GetValue(statusCtrl) as System.Collections.IList;
+                    if (effectsList != null && effectsList.Count > 0)
+                    {
+                        liveEffects = new List<StatusEffectEntry>();
+                        foreach (var effect in effectsList)
+                        {
+                            var typeField = HarmonyLib.AccessTools.Field(effect.GetType(), "EffectType");
+                            var intensityField = HarmonyLib.AccessTools.Field(effect.GetType(), "Intensity");
+                            if (typeField == null) continue;
+                            var effectType = typeField.GetValue(effect);
+                            var intensity = (int)(intensityField?.GetValue(effect) ?? 0);
+                            if (intensity <= 0) continue;
+                            liveEffects.Add(new StatusEffectEntry
+                            {
+                                EffectType = (int)effectType,
+                                EffectName = effectType.ToString(),
+                                Intensity = intensity,
+                            });
+                        }
+                    }
+                }
+            }
+            catch { }
+
             var summaries = new List<CoopPlayerSummary>();
             foreach (var kvp in coopState.PlayerStates)
             {
                 var ps = kvp.Value;
-                summaries.Add(new CoopPlayerSummary
+                var summary = new CoopPlayerSummary
                 {
                     SlotIndex = ps.SlotIndex,
                     PlayerName = ps.PlayerName,
@@ -124,7 +159,29 @@ public class CoopPlayerVisuals : MonoBehaviour
                     MaxHealth = ps.MaxHealth,
                     Gold = ps.Gold,
                     HasShotThisRound = ps.HasShotThisRound,
-                });
+                };
+
+                // Active player: read live from singleton (includes buffs gained this turn)
+                // Inactive players: read from saved CoopPlayerState
+                bool isActive = ps.SlotIndex == coopState.ActivePlayerSlot;
+                if (isActive && liveEffects != null)
+                {
+                    summary.StatusEffects = liveEffects;
+                }
+                else if (ps.StatusEffects != null)
+                {
+                    foreach (var e in ps.StatusEffects)
+                    {
+                        summary.StatusEffects.Add(new StatusEffectEntry
+                        {
+                            EffectType = e.EffectType,
+                            EffectName = ((Battle.StatusEffects.StatusEffectType)e.EffectType).ToString(),
+                            Intensity = e.Intensity,
+                        });
+                    }
+                }
+
+                summaries.Add(summary);
             }
 
             LatestPlayerSummaries = summaries;
@@ -292,6 +349,14 @@ public class CoopPlayerVisuals : MonoBehaviour
                 out var arrowText);
             arrowPanel.SetActive(false); // only visible for active player
 
+            var buffsColor = new Color(0.9f, 0.8f, 1f); // light purple
+            var buffsPanel = CreateTextPanel(
+                $"CoopBuffs_Slot{summary.SlotIndex}",
+                300, 40,
+                "", 28, buffsColor, bgColor,
+                out var buffsText);
+            buffsPanel.SetActive(false); // only visible when buffs exist
+
             return new PlayerVisual
             {
                 SlotIndex = summary.SlotIndex,
@@ -302,6 +367,8 @@ public class CoopPlayerVisuals : MonoBehaviour
                 HpText = hpText,
                 ArrowPanel = arrowPanel,
                 ArrowText = arrowText,
+                BuffsPanel = buffsPanel,
+                BuffsText = buffsText,
             };
         }
         catch (Exception ex)
@@ -423,6 +490,54 @@ public class CoopPlayerVisuals : MonoBehaviour
             if (isActive)
                 PositionPanelAtWorld(visual.ArrowPanel, charPos + new Vector3(1.0f, 0.5f, 0), cam);
         }
+
+        // Status effects display
+        if (visual.BuffsPanel != null && visual.BuffsText != null)
+        {
+            string buffsStr = FormatStatusEffects(summary.StatusEffects);
+            if (string.IsNullOrEmpty(buffsStr))
+            {
+                visual.BuffsPanel.SetActive(false);
+            }
+            else
+            {
+                visual.BuffsText.text = buffsStr;
+                visual.BuffsPanel.SetActive(true);
+                PositionPanelAtWorld(visual.BuffsPanel, charPos + new Vector3(0, -1.1f, 0), cam);
+            }
+        }
+    }
+
+    /// <summary>Format status effects as compact text: "STR:5 BAL:3 BWK:10"</summary>
+    private static string FormatStatusEffects(List<StatusEffectEntry> effects)
+    {
+        if (effects == null || effects.Count == 0) return null;
+
+        var sb = new System.Text.StringBuilder();
+        foreach (var e in effects)
+        {
+            if (e.Intensity <= 0) continue;
+            if (sb.Length > 0) sb.Append("  ");
+            sb.Append(GetEffectAbbrev(e.EffectType));
+            sb.Append(':');
+            sb.Append(e.Intensity);
+        }
+        return sb.Length > 0 ? sb.ToString() : null;
+    }
+
+    private static string GetEffectAbbrev(int effectType)
+    {
+        return (Battle.StatusEffects.StatusEffectType)effectType switch
+        {
+            Battle.StatusEffects.StatusEffectType.Strength => "STR",
+            Battle.StatusEffects.StatusEffectType.Finesse => "FIN",
+            Battle.StatusEffects.StatusEffectType.Balance => "BAL",
+            Battle.StatusEffects.StatusEffectType.Dexterity => "DEX",
+            Battle.StatusEffects.StatusEffectType.Ballwark => "BWK",
+            Battle.StatusEffects.StatusEffectType.Ballusion => "BLU",
+            Battle.StatusEffects.StatusEffectType.Intangiball => "ITB",
+            _ => ((Battle.StatusEffects.StatusEffectType)effectType).ToString().Substring(0, 3).ToUpper(),
+        };
     }
 
     /// <summary>
@@ -477,6 +592,7 @@ public class CoopPlayerVisuals : MonoBehaviour
         try { if (v.NamePanel != null) Destroy(v.NamePanel); } catch { }
         try { if (v.HpPanel != null) Destroy(v.HpPanel); } catch { }
         try { if (v.ArrowPanel != null) Destroy(v.ArrowPanel); } catch { }
+        try { if (v.BuffsPanel != null) Destroy(v.BuffsPanel); } catch { }
     }
 
     private static Color GetSlotColor(int slot)
