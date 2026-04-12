@@ -41,7 +41,7 @@ public sealed class PendingDamageOverlay : MonoBehaviour
     private class EnemyPanel
     {
         public GameObject Root;
-        public readonly Dictionary<int, TextMeshProUGUI> SlotLabels = new();
+        public TextMeshProUGUI Label;
     }
 
     void Awake()
@@ -119,8 +119,8 @@ public sealed class PendingDamageOverlay : MonoBehaviour
     {
         EnsureCanvas();
 
-        // Collect enemy GUIDs → list of (slotIndex, playerName, damage)
-        var enemyDamage = new Dictionary<string, List<(int slot, string name, long dmg)>>();
+        // Collect enemy GUIDs → summed damage across all players
+        var enemyTotals = new Dictionary<string, long>();
 
         // Resolve EnemyIdentifier + EnemyManager for GUID lookups
         Utility.EnemyIdentifier enemyId = null;
@@ -146,17 +146,15 @@ public sealed class PendingDamageOverlay : MonoBehaviour
                     if (enemy == null || enemy.CurrentHealth <= 0f) continue;
                     var guid = enemyId.GetGuid(enemy);
                     if (string.IsNullOrEmpty(guid)) continue;
-                    if (!enemyDamage.ContainsKey(guid))
-                        enemyDamage[guid] = new List<(int, string, long)>();
-                    enemyDamage[guid].Add((kvp.Key, data.PlayerName, data.Damage));
+                    enemyTotals.TryGetValue(guid, out var existing);
+                    enemyTotals[guid] = existing + data.Damage;
                 }
             }
             else if (!string.IsNullOrEmpty(data.TargetEnemyGuid))
             {
                 var guid = data.TargetEnemyGuid;
-                if (!enemyDamage.ContainsKey(guid))
-                    enemyDamage[guid] = new List<(int, string, long)>();
-                enemyDamage[guid].Add((kvp.Key, data.PlayerName, data.Damage));
+                enemyTotals.TryGetValue(guid, out var existing);
+                enemyTotals[guid] = existing + data.Damage;
             }
         }
 
@@ -164,7 +162,7 @@ public sealed class PendingDamageOverlay : MonoBehaviour
         var toRemove = new List<string>();
         foreach (var guid in _panels.Keys)
         {
-            if (!enemyDamage.ContainsKey(guid))
+            if (!enemyTotals.ContainsKey(guid))
                 toRemove.Add(guid);
         }
         foreach (var guid in toRemove)
@@ -173,58 +171,22 @@ public sealed class PendingDamageOverlay : MonoBehaviour
             _panels.Remove(guid);
         }
 
-        // Create/update panels
-        foreach (var kvp in enemyDamage)
+        // Create/update one label per enemy with summed damage
+        foreach (var kvp in enemyTotals)
         {
             var guid = kvp.Key;
-            var entries = kvp.Value;
+            var totalDmg = kvp.Value;
 
             if (!_panels.TryGetValue(guid, out var panel))
             {
                 panel = new EnemyPanel { Root = new GameObject($"PendingDmg_{guid}") };
                 panel.Root.transform.SetParent(_canvasObj.transform, false);
                 panel.Root.AddComponent<RectTransform>();
+                panel.Label = CreateLabel(panel.Root.transform);
                 _panels[guid] = panel;
             }
 
-            // Update/create slot labels
-            var activeSlots = new HashSet<int>();
-            for (int i = 0; i < entries.Count; i++)
-            {
-                var (slot, name, dmg) = entries[i];
-                activeSlots.Add(slot);
-
-                if (!panel.SlotLabels.TryGetValue(slot, out var label))
-                {
-                    label = CreateLabel(panel.Root.transform, slot);
-                    panel.SlotLabels[slot] = label;
-                }
-
-                label.text = $"-{DamageCountDisplay.FormatDamageNumberAsString(dmg)}";
-            }
-
-            // Remove labels for slots no longer targeting this enemy
-            var slotsToRemove = new List<int>();
-            foreach (var slotKvp in panel.SlotLabels)
-            {
-                if (!activeSlots.Contains(slotKvp.Key))
-                    slotsToRemove.Add(slotKvp.Key);
-            }
-            foreach (var slot in slotsToRemove)
-            {
-                if (panel.SlotLabels[slot] != null)
-                    Destroy(panel.SlotLabels[slot].gameObject);
-                panel.SlotLabels.Remove(slot);
-            }
-
-            // Stack labels vertically
-            int idx = 0;
-            foreach (var slotKvp in panel.SlotLabels)
-            {
-                var rect = slotKvp.Value.rectTransform;
-                rect.anchoredPosition = new Vector2(0, -idx * 110f);
-                idx++;
-            }
+            panel.Label.text = $"-{DamageCountDisplay.FormatDamageNumberAsString(totalDmg)}";
         }
     }
 
@@ -293,9 +255,9 @@ public sealed class PendingDamageOverlay : MonoBehaviour
         _canvasRect = _canvasObj.GetComponent<RectTransform>();
     }
 
-    private TextMeshProUGUI CreateLabel(Transform parent, int slotIndex)
+    private TextMeshProUGUI CreateLabel(Transform parent)
     {
-        var obj = new GameObject($"Label_Slot{slotIndex}");
+        var obj = new GameObject("Label_Damage");
         obj.transform.SetParent(parent, false);
         var tmp = obj.AddComponent<TextMeshProUGUI>();
         tmp.fontSize = 104;
@@ -318,19 +280,7 @@ public sealed class PendingDamageOverlay : MonoBehaviour
         return tmp;
     }
 
-    private static Color GetSlotColor(int slotIndex)
-    {
-        return slotIndex switch
-        {
-            0 => new Color(1f, 0.85f, 0.2f),      // Gold for host
-            1 => new Color(0.3f, 0.85f, 1f),       // Cyan for client 1
-            2 => new Color(0.5f, 1f, 0.5f),        // Green for client 2
-            3 => new Color(1f, 0.5f, 0.8f),        // Pink for client 3
-            _ => Color.white,
-        };
-    }
-
-    private static TMP_FontAsset GetGameFont()
+private static TMP_FontAsset GetGameFont()
     {
         if (_gameFontSearched) return _gameFont;
         _gameFontSearched = true;
