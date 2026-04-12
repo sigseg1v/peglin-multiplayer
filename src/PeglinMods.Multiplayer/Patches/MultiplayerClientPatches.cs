@@ -226,6 +226,17 @@ public static class MultiplayerClientPatches
     /// </summary>
     internal static bool ClientShotSentThisTurn;
 
+    /// <summary>
+    /// Tracks whether the client has sent an OrbDiscardRequest this turn.
+    /// Reset when OrbDiscardedEvent comes back (confirming the discard) or on turn change.
+    /// Prevents sending multiple discard requests before the host responds.
+    /// </summary>
+    private static bool _clientDiscardSentThisTurn;
+
+    // Throttled aim update sending from client to host (10 Hz)
+    private static float _clientAimSendTimer;
+    private const float ClientAimSendInterval = 0.1f;
+
     // Throttled diagnostic logging for client aiming state
     private static float _clientAimDiagTimer;
 
@@ -252,12 +263,37 @@ public static class MultiplayerClientPatches
             }
 
             HandleClientAiming(__instance);
+
+            // Send aim direction to host at 10 Hz so the host sees the client's aim line
+            if (_clientBallInitialized && _clientBallGO != null)
+            {
+                _clientAimSendTimer += UnityEngine.Time.unscaledDeltaTime;
+                if (_clientAimSendTimer >= ClientAimSendInterval)
+                {
+                    _clientAimSendTimer = 0f;
+                    SendClientAimUpdate();
+                }
+            }
+
+            // Right-click to discard orb — send request to host
+            if (_clientBallInitialized && !_clientDiscardSentThisTurn
+                && UnityEngine.Input.GetMouseButtonDown(1))
+            {
+                var services = MultiplayerPlugin.Services;
+                if (services?.TryResolve<Network.IMessageSender>(out var sender) == true)
+                {
+                    sender.Send(new Events.Network.Coop.OrbDiscardRequestEvent());
+                    _clientDiscardSentThisTurn = true;
+                    MultiplayerPlugin.Logger?.LogInfo("[ClientAim] Sent OrbDiscardRequest to host (right-click)");
+                }
+            }
         }
         else
         {
             // Not aiming — clean up client ball and trajectory
             if (_clientBallInitialized)
                 CleanupClientAiming();
+            _clientAimSendTimer = 0f;
         }
 
         // Per-second diagnostic: log client aiming state (throttled)
@@ -300,6 +336,17 @@ public static class MultiplayerClientPatches
     private static float _clientGravityScale;
 
     /// <summary>
+    /// Reset the client aiming ball so it gets re-created on the next frame.
+    /// Called when the host confirms an orb discard — the new orb is in the
+    /// shuffled deck and HandleClientAiming will pick it up.
+    /// </summary>
+    internal static void ResetClientAimingBall()
+    {
+        _clientDiscardSentThisTurn = false;
+        CleanupClientAiming();
+    }
+
+    /// <summary>
     /// Clean up client aiming objects (ball visual + trajectory line).
     /// Called when the turn ends or aiming is no longer active.
     /// </summary>
@@ -335,6 +382,7 @@ public static class MultiplayerClientPatches
         _clientTrajectoryLR = null;
         _clientBallInitialized = false;
         _clientBallRetryCount = 0;
+        _clientDiscardSentThisTurn = false;
     }
 
     /// <summary>
@@ -463,6 +511,33 @@ public static class MultiplayerClientPatches
     }
 
     /// <summary>
+    /// Send the client's current aim direction to the host so it can render
+    /// the aim line. Uses IMessageSender.Send() (client→host network path).
+    /// </summary>
+    private static void SendClientAimUpdate()
+    {
+        if (_clientBallGO == null) return;
+        var ball = _clientBallGO.GetComponent<PachinkoBall>();
+        if (ball == null) return;
+
+        var aimVec = ball.aimVector;
+        if (aimVec == UnityEngine.Vector2.zero) return;
+
+        var pos = ball.transform.position;
+        var services = MultiplayerPlugin.Services;
+        if (services?.TryResolve<Network.IMessageSender>(out var sender) == true)
+        {
+            sender.Send(new Events.Network.Ball.AimUpdateEvent
+            {
+                AimX = aimVec.x,
+                AimY = aimVec.y,
+                SpawnX = pos.x,
+                SpawnY = pos.y,
+            });
+        }
+    }
+
+    /// <summary>
     /// Compute and draw a trajectory arc using the same formula as
     /// TrajectorySimulation.simulatePath(). Uses fixedDeltaTime for
     /// frame-rate independence instead of the game's Time.deltaTime.
@@ -526,8 +601,41 @@ public static class MultiplayerClientPatches
             }
         }
 
-        // Only fire when BattleController is in AWAITING_SHOT and there's a pending shot
+        // Only process when BattleController is in AWAITING_SHOT
         if (BattleController.CurrentBattleState != BattleController.BattleState.AWAITING_SHOT) return;
+
+        // Handle pending discard request from client before checking for shots
+        if (Events.Handlers.Coop.OrbDiscardRequestClientHandler.PendingDiscard)
+        {
+            Events.Handlers.Coop.OrbDiscardRequestClientHandler.PendingDiscard = false;
+
+            var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
+            if (bc != null)
+            {
+                // The client's deck is loaded into singletons during their turn.
+                // AttemptOrbDiscard reads from those singletons, so it operates on the client's deck.
+                // We need to temporarily re-activate the ball so AttemptOrbDiscard sees it as available.
+                var activeBallField = HarmonyLib.AccessTools.Field(typeof(BattleController), "_activePachinkoBall");
+                var ballGO = activeBallField?.GetValue(bc) as UnityEngine.GameObject;
+                bool wasInactive = ballGO != null && !ballGO.activeInHierarchy;
+                if (wasInactive) ballGO.SetActive(true);
+
+                _executingPendingDiscard = true;
+                try
+                {
+                    var discardMethod = HarmonyLib.AccessTools.Method(typeof(BattleController), "AttemptOrbDiscard");
+                    discardMethod?.Invoke(bc, null);
+                }
+                finally
+                {
+                    _executingPendingDiscard = false;
+                }
+
+                MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Executed pending OrbDiscard for client");
+                // AttemptOrbDiscard calls DrawBall internally, DrawBall_Postfix will hide the new ball
+            }
+            return;
+        }
 
         var pending = Events.Handlers.Coop.ShootRequestClientHandler.PeekPendingShot();
         if (pending == null) return;
@@ -729,21 +837,35 @@ public static class MultiplayerClientPatches
     }
 
     /// <summary>
-    /// Block the host from discarding/skipping orbs during a client's turn.
-    /// Without this, right-click discard operates on the client's deck
-    /// (loaded in singletons for their turn) instead of the host's.
+    /// Set to true by BattleController_Update_Postfix just before calling
+    /// AttemptOrbDiscard() to execute a client's pending discard request. This
+    /// prevents AttemptOrbDiscard_Prefix from blocking the programmatic discard.
+    /// </summary>
+    private static bool _executingPendingDiscard;
+
+    /// <summary>
+    /// Block the host from discarding/skipping orbs during a client's turn
+    /// (unless it's a programmatic discard from OrbDiscardRequest).
+    /// Without this, the host's right-click discard would operate on the client's
+    /// deck (loaded in singletons for their turn) instead of the host's.
     /// </summary>
     [HarmonyPatch(typeof(BattleController), "AttemptOrbDiscard")]
     [HarmonyPrefix]
     public static bool BattleController_AttemptOrbDiscard_Prefix()
     {
-        if (!IsHosting || !UI.LobbyUI.GameStartReceived) return true;
+        if (!UI.LobbyUI.GameStartReceived) return true;
+
+        // Block on client — discards are handled via OrbDiscardRequestEvent to host
+        if (ShouldSuppressClientLogic) return false;
+
+        if (!IsHosting) return true;
+        if (_executingPendingDiscard) return true; // bypass for programmatic discard
 
         var services = MultiplayerPlugin.Services;
         if (services?.TryResolve<GameState.TurnManager>(out var tm) == true
             && tm.CurrentPlayerSlot > 0) // client's turn
         {
-            return false; // block discard
+            return false; // block manual discard from host player
         }
         return true;
     }

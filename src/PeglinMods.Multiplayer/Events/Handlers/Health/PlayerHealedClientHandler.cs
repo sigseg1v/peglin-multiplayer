@@ -10,6 +10,9 @@ public sealed class PlayerHealedClientHandler : IClientHandler<PlayerHealedEvent
     {
         try
         {
+            // During native post-battle rewards, the client's health is managed locally.
+            if (Coop.CoopRewardState.ClientInNativeRewardPhase) return;
+
             PlayerHealthController.OnPlayerHealed?.Invoke(networkEvent.Amount);
         }
         catch (Exception e)

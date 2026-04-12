@@ -13,6 +13,9 @@ public sealed class PlayerDamagedClientHandler : IClientHandler<PlayerDamagedEve
     {
         try
         {
+            // During native post-battle rewards, the client's health is managed locally.
+            if (Coop.CoopRewardState.ClientInNativeRewardPhase) return;
+
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
             if (mode == null || !mode.IsSpectating) return;
 

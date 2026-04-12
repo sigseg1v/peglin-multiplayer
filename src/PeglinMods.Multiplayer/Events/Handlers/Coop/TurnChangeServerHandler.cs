@@ -16,6 +16,27 @@ public sealed class TurnChangeServerHandler : IServerHandler<TurnChangeEvent>
     {
         _log.LogInfo($"[TurnChangeServer] Broadcasting turn change: slot={networkEvent.ActiveSlotIndex}, player={networkEvent.ActivePlayerName}, phase={networkEvent.TurnPhase}, round={networkEvent.RoundNumber}");
 
+        // When it's a client's turn, hide the host's native prediction trajectory.
+        // PredictionManager lives on BattleController (not the ball), so deactivating
+        // the ball doesn't hide its line renderer and bounce indicators.
+        if (networkEvent.ActiveSlotIndex > 0
+            && networkEvent.TurnPhase == nameof(TurnPhase.PLAYER_AIMING))
+        {
+            try
+            {
+                var bc = UnityEngine.Object.FindObjectOfType<global::Battle.BattleController>();
+                bc?.PredictionManager?.PlayerFired();
+            }
+            catch (System.Exception ex)
+            {
+                _log.LogWarning($"[TurnChangeServer] Failed to hide prediction: {ex.Message}");
+            }
+        }
+
+        // Hide the remote aim line on any turn change — the new active player
+        // will send fresh aim updates once they start aiming.
+        ClientAimRenderer.Instance?.HideAim();
+
         // Update the same statics that TurnChangeClientHandler uses,
         // so MultiplayerUI can show turn messages on the host too.
         TurnChangeClientHandler.LatestTurnState = networkEvent;

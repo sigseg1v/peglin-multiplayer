@@ -10,6 +10,9 @@ public sealed class MaxHealthChangedClientHandler : IClientHandler<MaxHealthChan
     {
         try
         {
+            // During native post-battle rewards, the client's health is managed locally.
+            if (Coop.CoopRewardState.ClientInNativeRewardPhase) return;
+
             PlayerHealthController.OnPlayerMaxHealthChanged?.Invoke(networkEvent.NewMaxHealth);
         }
         catch (Exception e)

@@ -11,6 +11,16 @@ public sealed class GoldChangedClientHandler : IClientHandler<GoldChangedEvent>
     {
         try
         {
+            // During the native post-battle reward phase, the client's gold is being
+            // modified by BattleUpgradeCanvas (orb purchases, upgrades, heals). Don't
+            // overwrite with the host's gold changes — each player has their own gold.
+            if (Coop.CoopRewardState.ClientInNativeRewardPhase)
+            {
+                MultiplayerPlugin.Logger.LogInfo(
+                    $"Multiplayer: Ignoring GoldChanged during reward phase (host gold {networkEvent.NewAmount}, keeping client's local gold)");
+                return;
+            }
+
             MultiplayerPlugin.Logger.LogInfo($"Multiplayer: Gold changed {networkEvent.PreviousAmount} -> {networkEvent.NewAmount} ({(networkEvent.IsGain ? "+" : "")}{networkEvent.Delta})");
 
             var cm = UnityEngine.Object.FindObjectOfType<global::Currency.CurrencyManager>();
