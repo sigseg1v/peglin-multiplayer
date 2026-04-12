@@ -27,6 +27,9 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
     /// </summary>
     public static string ClientWaitingMessage { get; set; }
 
+    /// <summary>Host player name from latest heartbeat, used for spectator banners.</summary>
+    public static string HostPlayerName { get; set; }
+
     private static readonly HashSet<string> MapScenes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "ForestMap", "CastleMap", "MinesMap", "CoreMap"
@@ -125,41 +128,38 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 return;
             }
 
-            // Treasure: let client follow so they see CoopRewardUI with relic choices
+            // Treasure: client loads the scene for native relic selection — don't block.
             if (snapshot.ActiveScene == "Treasure")
             {
-                if (UI.LobbyUI.GameStartReceived)
-                {
-                    _log.LogInfo("[MapApplier] Coop mode: allowing client to follow to Treasure for relic choices");
-                    // Fall through to normal scene load logic below
-                }
-                else
-                {
-                    ClientWaitingMessage = "Host is completing event...";
-                    _log.LogInfo("[MapApplier] Host is on Treasure — showing waiting message");
-                    return;
-                }
+                _log.LogInfo("[MapApplier] Host is on Treasure — client follows for native relic UI");
+                // Fall through to normal scene load logic below
             }
 
+            // TextScenario: client loads the scene for spectating — don't block.
+            // Set a banner message so the client sees "Waiting for <name>..." at the top.
             if (snapshot.ActiveScene == "TextScenario")
             {
-                ClientWaitingMessage = "Host is completing event...";
-                _log.LogInfo("[MapApplier] Host is on TextScenario — showing waiting message");
-                return;
+                var hostName = !string.IsNullOrEmpty(HostPlayerName) ? HostPlayerName : "host";
+                ClientWaitingMessage = $"Waiting for {hostName}...";
+                _log.LogInfo("[MapApplier] Host is on TextScenario — client spectating");
+                // Fall through to normal scene handling (don't return)
             }
 
+            // ShopScenario: client loads the scene for interactive shopping — don't block.
             if (snapshot.ActiveScene == "ShopScenario")
             {
-                ClientWaitingMessage = "Host is shopping...";
-                _log.LogInfo("[MapApplier] Host is on ShopScenario — showing waiting message");
-                return;
+                _log.LogInfo("[MapApplier] Host is on ShopScenario — client follows for interactive shopping");
+                // Fall through to normal scene load logic below
             }
 
+            // PegMinigame: client loads the scene for spectating — don't block.
+            // Set a banner message so the client sees "Waiting for <name>..." at the top.
             if (snapshot.ActiveScene == "PegMinigame")
             {
-                ClientWaitingMessage = "Host is completing event...";
-                _log.LogInfo("[MapApplier] Host is on PegMinigame — showing waiting message");
-                return;
+                var hostName = !string.IsNullOrEmpty(HostPlayerName) ? HostPlayerName : "host";
+                ClientWaitingMessage = $"Waiting for {hostName}...";
+                _log.LogInfo("[MapApplier] Host is on PegMinigame — client spectating");
+                // Fall through to normal scene handling (don't return)
             }
 
             // Act completion / win scenes — host clicks continue, client waits
@@ -179,7 +179,9 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             }
 
             // Clear waiting state — we're loading a real game scene
-            ClientWaitingMessage = null;
+            // (but keep the PegMinigame spectator banner)
+            if (snapshot.ActiveScene != "PegMinigame")
+                ClientWaitingMessage = null;
 
             var currentScene = SceneManager.GetActiveScene().name;
             var targetScene = snapshot.ActiveScene;

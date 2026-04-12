@@ -28,7 +28,7 @@ public class CoopPlayerVisuals : MonoBehaviour
     /// <summary>Active player slot index from the host heartbeat.</summary>
     public static int LatestActiveSlot { get; set; } = -1;
 
-    // Per-player visual data — name, HP, and arrow are separate panels
+    // Per-player visual data — name, HP, arrow, and status icons are separate panels
     private class PlayerVisual
     {
         public int SlotIndex;
@@ -39,9 +39,20 @@ public class CoopPlayerVisuals : MonoBehaviour
         public TextMeshProUGUI HpText;
         public GameObject ArrowPanel;
         public TextMeshProUGUI ArrowText;
-        public GameObject BuffsPanel;
-        public TextMeshProUGUI BuffsText;
+        public GameObject StatusIconContainer; // horizontal row of native-style icons
+        public Dictionary<int, StatusIconEntry> StatusIcons = new Dictionary<int, StatusIconEntry>();
     }
+
+    private class StatusIconEntry
+    {
+        public GameObject Root;
+        public Image IconImage;
+        public TextMeshProUGUI IntensityText;
+    }
+
+    // Cache the game's StatusEffectData ScriptableObject for icon sprites
+    private static Battle.StatusEffects.StatusEffectData _statusEffectData;
+    private static bool _statusEffectDataSearched;
 
     private readonly List<PlayerVisual> _visuals = new List<PlayerVisual>();
     private bool _inBattle;
@@ -344,18 +355,25 @@ public class CoopPlayerVisuals : MonoBehaviour
 
             var arrowPanel = CreateTextPanel(
                 $"CoopArrow_Slot{summary.SlotIndex}",
-                80, 80,
-                "<", 72, arrowColor, new Color(0, 0, 0, 0),
+                80, 100,
+                "\u25C0", 64, arrowColor, new Color(0, 0, 0, 0),
                 out var arrowText);
+            arrowText.outlineWidth = 0.4f;
             arrowPanel.SetActive(false); // only visible for active player
 
-            var buffsColor = new Color(0.9f, 0.8f, 1f); // light purple
-            var buffsPanel = CreateTextPanel(
-                $"CoopBuffs_Slot{summary.SlotIndex}",
-                300, 40,
-                "", 28, buffsColor, bgColor,
-                out var buffsText);
-            buffsPanel.SetActive(false); // only visible when buffs exist
+            // Status icon container — horizontal row positioned above the name
+            EnsureOverlayCanvas();
+            var iconContainer = new GameObject($"CoopStatusIcons_Slot{summary.SlotIndex}");
+            iconContainer.transform.SetParent(_overlayCanvasObj.transform, false);
+            var containerRect = iconContainer.AddComponent<RectTransform>();
+            containerRect.sizeDelta = new Vector2(300, 42);
+            containerRect.pivot = new Vector2(0.5f, 0.5f);
+            var layout = iconContainer.AddComponent<HorizontalLayoutGroup>();
+            layout.spacing = 2;
+            layout.childAlignment = TextAnchor.MiddleCenter;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
+            iconContainer.SetActive(false);
 
             return new PlayerVisual
             {
@@ -367,8 +385,7 @@ public class CoopPlayerVisuals : MonoBehaviour
                 HpText = hpText,
                 ArrowPanel = arrowPanel,
                 ArrowText = arrowText,
-                BuffsPanel = buffsPanel,
-                BuffsText = buffsText,
+                StatusIconContainer = iconContainer,
             };
         }
         catch (Exception ex)
@@ -470,6 +487,12 @@ public class CoopPlayerVisuals : MonoBehaviour
         }
     }
 
+    // Colors for name pulse animation
+    private static readonly Color _nameColorBase = new Color(0.9f, 0.5f, 0.1f); // dark orange
+    private static readonly Color _nameColorActive = new Color(1f, 0.95f, 0.4f); // bright yellow
+    private static readonly Color _arrowColorDim = new Color(1f, 0.9f, 0.3f, 0.5f);
+    private static readonly Color _arrowColorBright = new Color(1f, 1f, 0.6f, 1f);
+
     private void UpdatePlayerLabel(PlayerVisual visual, CoopPlayerSummary summary,
         Vector3 charPos, int activeSlot, Camera cam)
     {
@@ -484,60 +507,179 @@ public class CoopPlayerVisuals : MonoBehaviour
         PositionPanelAtWorld(visual.HpPanel, charPos + new Vector3(0, -0.6f, 0), cam);
 
         bool isActive = (activeSlot == visual.SlotIndex);
+
+        // Pulsate name color when this player is active
+        if (visual.NameText != null)
+        {
+            if (isActive)
+            {
+                float t = (Mathf.Sin(Time.unscaledTime * 3f) + 1f) * 0.5f; // 0..1 at ~3Hz
+                visual.NameText.color = Color.Lerp(_nameColorBase, _nameColorActive, t);
+            }
+            else
+            {
+                visual.NameText.color = _nameColorBase;
+            }
+        }
+
+        // Arrow indicator — pulse scale and color
         if (visual.ArrowPanel != null)
         {
             visual.ArrowPanel.SetActive(isActive);
             if (isActive)
+            {
                 PositionPanelAtWorld(visual.ArrowPanel, charPos + new Vector3(1.0f, 0.5f, 0), cam);
+
+                float pulse = (Mathf.Sin(Time.unscaledTime * 4f) + 1f) * 0.5f; // 0..1 at ~4Hz
+                float scale = Mathf.Lerp(0.85f, 1.15f, pulse);
+                visual.ArrowPanel.transform.localScale = new Vector3(scale, scale, 1f);
+
+                if (visual.ArrowText != null)
+                    visual.ArrowText.color = Color.Lerp(_arrowColorDim, _arrowColorBright, pulse);
+            }
         }
 
-        // Status effects display
-        if (visual.BuffsPanel != null && visual.BuffsText != null)
-        {
-            string buffsStr = FormatStatusEffects(summary.StatusEffects);
-            if (string.IsNullOrEmpty(buffsStr))
-            {
-                visual.BuffsPanel.SetActive(false);
-            }
-            else
-            {
-                visual.BuffsText.text = buffsStr;
-                visual.BuffsPanel.SetActive(true);
-                PositionPanelAtWorld(visual.BuffsPanel, charPos + new Vector3(0, -1.1f, 0), cam);
-            }
-        }
+        // Status effects — native-style icons above the player's head
+        UpdateStatusIcons(visual, summary.StatusEffects, charPos, cam);
     }
 
-    /// <summary>Format status effects as compact text: "STR:5 BAL:3 BWK:10"</summary>
-    private static string FormatStatusEffects(List<StatusEffectEntry> effects)
+    private void UpdateStatusIcons(PlayerVisual visual, List<StatusEffectEntry> effects,
+        Vector3 charPos, Camera cam)
     {
-        if (effects == null || effects.Count == 0) return null;
+        if (visual.StatusIconContainer == null) return;
 
-        var sb = new System.Text.StringBuilder();
+        bool hasEffects = effects != null && effects.Count > 0;
+
+        // Build set of current effect types for quick lookup
+        var activeTypes = new HashSet<int>();
+        if (hasEffects)
+        {
+            foreach (var e in effects)
+                if (e.Intensity > 0) activeTypes.Add(e.EffectType);
+        }
+
+        // Remove icons for effects that are no longer active
+        var toRemove = new List<int>();
+        foreach (var kvp in visual.StatusIcons)
+        {
+            if (!activeTypes.Contains(kvp.Key))
+            {
+                try { if (kvp.Value.Root != null) Destroy(kvp.Value.Root); } catch { }
+                toRemove.Add(kvp.Key);
+            }
+        }
+        foreach (var key in toRemove)
+            visual.StatusIcons.Remove(key);
+
+        if (!hasEffects)
+        {
+            visual.StatusIconContainer.SetActive(false);
+            return;
+        }
+
+        // Add or update icons for each active effect
         foreach (var e in effects)
         {
             if (e.Intensity <= 0) continue;
-            if (sb.Length > 0) sb.Append("  ");
-            sb.Append(GetEffectAbbrev(e.EffectType));
-            sb.Append(':');
-            sb.Append(e.Intensity);
+
+            if (visual.StatusIcons.TryGetValue(e.EffectType, out var existing))
+            {
+                // Update intensity text
+                if (existing.IntensityText != null)
+                    existing.IntensityText.text = e.Intensity > 999
+                        ? (e.Intensity / 1000) + "K"
+                        : e.Intensity.ToString();
+            }
+            else
+            {
+                // Create new icon
+                var entry = CreateStatusIcon(e.EffectType, e.Intensity,
+                    visual.StatusIconContainer.transform);
+                if (entry != null)
+                    visual.StatusIcons[e.EffectType] = entry;
+            }
         }
-        return sb.Length > 0 ? sb.ToString() : null;
+
+        visual.StatusIconContainer.SetActive(true);
+        PositionPanelAtWorld(visual.StatusIconContainer, charPos + new Vector3(0, 2.6f, 0), cam);
     }
 
-    private static string GetEffectAbbrev(int effectType)
+    private StatusIconEntry CreateStatusIcon(int effectType, int intensity, Transform parent)
     {
-        return (Battle.StatusEffects.StatusEffectType)effectType switch
+        var icon = new GameObject($"StatusIcon_{effectType}");
+        icon.transform.SetParent(parent, false);
+
+        var rect = icon.AddComponent<RectTransform>();
+        rect.sizeDelta = new Vector2(38, 38);
+
+        // Add LayoutElement so HorizontalLayoutGroup respects preferred size
+        var le = icon.AddComponent<LayoutElement>();
+        le.preferredWidth = 38;
+        le.preferredHeight = 38;
+
+        // Icon image (status effect sprite)
+        var img = icon.AddComponent<Image>();
+        var sprite = GetStatusEffectSprite(effectType);
+        if (sprite != null)
         {
-            Battle.StatusEffects.StatusEffectType.Strength => "STR",
-            Battle.StatusEffects.StatusEffectType.Finesse => "FIN",
-            Battle.StatusEffects.StatusEffectType.Balance => "BAL",
-            Battle.StatusEffects.StatusEffectType.Dexterity => "DEX",
-            Battle.StatusEffects.StatusEffectType.Ballwark => "BWK",
-            Battle.StatusEffects.StatusEffectType.Ballusion => "BLU",
-            Battle.StatusEffects.StatusEffectType.Intangiball => "ITB",
-            _ => ((Battle.StatusEffects.StatusEffectType)effectType).ToString().Substring(0, 3).ToUpper(),
+            img.sprite = sprite;
+            img.preserveAspect = true;
+        }
+        else
+        {
+            // Fallback: tinted square with effect abbreviation
+            img.color = new Color(0.4f, 0.3f, 0.6f, 0.8f);
+        }
+
+        // Intensity number overlaid at bottom-center
+        var textObj = new GameObject("Intensity");
+        textObj.transform.SetParent(icon.transform, false);
+        var tmp = textObj.AddComponent<TextMeshProUGUI>();
+        tmp.text = intensity > 999 ? (intensity / 1000) + "K" : intensity.ToString();
+        tmp.fontSize = 16;
+        tmp.fontStyle = FontStyles.Bold;
+        var font = GetGameFont();
+        if (font != null) tmp.font = font;
+        tmp.alignment = TextAlignmentOptions.Bottom;
+        tmp.color = Color.white;
+        tmp.outlineWidth = 0.35f;
+        tmp.outlineColor = Color.black;
+        tmp.enableWordWrapping = false;
+        tmp.overflowMode = TextOverflowModes.Overflow;
+        tmp.raycastTarget = false;
+
+        var textRect = tmp.rectTransform;
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = new Vector2(0, -2);
+        textRect.offsetMax = new Vector2(0, 0);
+
+        return new StatusIconEntry
+        {
+            Root = icon,
+            IconImage = img,
+            IntensityText = tmp,
         };
+    }
+
+    private static Battle.StatusEffects.StatusEffectData GetStatusEffectData()
+    {
+        if (_statusEffectDataSearched) return _statusEffectData;
+        _statusEffectDataSearched = true;
+        try
+        {
+            var all = Resources.FindObjectsOfTypeAll<Battle.StatusEffects.StatusEffectData>();
+            if (all.Length > 0) _statusEffectData = all[0];
+        }
+        catch { }
+        return _statusEffectData;
+    }
+
+    private static Sprite GetStatusEffectSprite(int effectType)
+    {
+        var data = GetStatusEffectData();
+        if (data == null) return null;
+        return data.GetStatusEffectIcon((Battle.StatusEffects.StatusEffectType)effectType);
     }
 
     /// <summary>
@@ -592,7 +734,8 @@ public class CoopPlayerVisuals : MonoBehaviour
         try { if (v.NamePanel != null) Destroy(v.NamePanel); } catch { }
         try { if (v.HpPanel != null) Destroy(v.HpPanel); } catch { }
         try { if (v.ArrowPanel != null) Destroy(v.ArrowPanel); } catch { }
-        try { if (v.BuffsPanel != null) Destroy(v.BuffsPanel); } catch { }
+        try { if (v.StatusIconContainer != null) Destroy(v.StatusIconContainer); } catch { }
+        v.StatusIcons?.Clear();
     }
 
     private static Color GetSlotColor(int slot)
@@ -610,5 +753,7 @@ public class CoopPlayerVisuals : MonoBehaviour
     {
         LatestPlayerSummaries = null;
         LatestActiveSlot = -1;
+        _statusEffectDataSearched = false;
+        _statusEffectData = null;
     }
 }

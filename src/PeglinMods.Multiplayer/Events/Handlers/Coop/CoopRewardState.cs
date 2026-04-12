@@ -69,6 +69,51 @@ public static class CoopRewardState
     public static bool AllClientRewardChoicesReceived => TotalRewardClientsExpected > 0
         && ClientRewardChoicesReceived.Count >= TotalRewardClientsExpected;
 
+    // --- Shop wait-for-all ---
+
+    /// <summary>True when the shop phase is active (all players shopping).</summary>
+    public static bool ShopPhaseActive;
+
+    /// <summary>True when the host has clicked "Exit Store".</summary>
+    public static bool HostShopDone;
+
+    /// <summary>Slot indices of clients who have sent their ShopCompleteEvent.</summary>
+    public static System.Collections.Generic.HashSet<int> ClientShopChoicesReceived = new System.Collections.Generic.HashSet<int>();
+
+    /// <summary>Number of non-host players expected to finish shopping.</summary>
+    public static int TotalShopClientsExpected;
+
+    /// <summary>True when all clients have finished shopping.</summary>
+    public static bool AllClientShopChoicesReceived => TotalShopClientsExpected > 0
+        && ClientShopChoicesReceived.Count >= TotalShopClientsExpected;
+
+    /// <summary>Stored ShopManager reference so host can call CloseStore after all clients finish.</summary>
+    public static object PendingShopManager;
+
+    // --- Treasure wait-for-all ---
+
+    /// <summary>True when the treasure relic selection phase is active.</summary>
+    public static bool TreasurePhaseActive;
+
+    /// <summary>True when the host has picked/skipped their treasure relic.</summary>
+    public static bool HostTreasureDone;
+
+    /// <summary>Slot indices of clients who have sent their TreasureCompleteEvent.</summary>
+    public static System.Collections.Generic.HashSet<int> ClientTreasureChoicesReceived = new System.Collections.Generic.HashSet<int>();
+
+    /// <summary>Number of non-host players expected to finish treasure selection.</summary>
+    public static int TotalTreasureClientsExpected;
+
+    /// <summary>True when all clients have finished treasure selection.</summary>
+    public static bool AllClientTreasureChoicesReceived => TotalTreasureClientsExpected > 0
+        && ClientTreasureChoicesReceived.Count >= TotalTreasureClientsExpected;
+
+    /// <summary>Stored ChestScenarioController so host can resume navigation after all clients finish.</summary>
+    public static global::Scenarios.ChestScenarioController PendingChestController;
+
+    /// <summary>True on client when the client has already sent their treasure completion event.</summary>
+    public static bool ClientTreasureChoiceSent;
+
     public static void Reset()
     {
         PendingRelicChoices = null;
@@ -87,5 +132,16 @@ public static class CoopRewardState
         HostRewardPhaseActive = false;
         HostRewardsDone = false;
         PendingPostBattleController = null;
+        ShopPhaseActive = false;
+        HostShopDone = false;
+        ClientShopChoicesReceived.Clear();
+        TotalShopClientsExpected = 0;
+        PendingShopManager = null;
+        TreasurePhaseActive = false;
+        HostTreasureDone = false;
+        ClientTreasureChoicesReceived.Clear();
+        TotalTreasureClientsExpected = 0;
+        PendingChestController = null;
+        ClientTreasureChoiceSent = false;
     }
 }

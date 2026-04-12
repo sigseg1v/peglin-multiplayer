@@ -1,7 +1,9 @@
 using System;
 using Battle;
+using HarmonyLib;
 using PeglinMods.Multiplayer.Events.Network.Battle;
 using PeglinMods.Multiplayer.Multiplayer;
+using UnityEngine;
 
 namespace PeglinMods.Multiplayer.Events.Subscriptions;
 
@@ -74,7 +76,27 @@ public sealed class BattleEventSubscriptions
     private void OnReloadStarted() { if (_multiplayerMode.IsHosting) _registry.Dispatch(new ReloadStartedEvent()); }
     private void OnCritActivated() { if (_multiplayerMode.IsHosting) _registry.Dispatch(new CritActivatedEvent()); }
     private void OnCritDeactivated() { if (_multiplayerMode.IsHosting) _registry.Dispatch(new CritDeactivatedEvent()); }
-    private void OnBombThrown() { if (_multiplayerMode.IsHosting) _registry.Dispatch(new BombThrownEvent()); }
+    private static readonly System.Reflection.FieldInfo _bombsRegularField =
+        AccessTools.Field(typeof(BattleController), "_bombsToThrowRegular");
+    private static readonly System.Reflection.FieldInfo _bombsRiggedField =
+        AccessTools.Field(typeof(BattleController), "_bombsToThrowRigged");
+
+    private void OnBombThrown()
+    {
+        if (!_multiplayerMode.IsHosting) return;
+        int regular = 0, rigged = 0;
+        try
+        {
+            var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
+            if (bc != null)
+            {
+                regular = (int)(_bombsRegularField?.GetValue(bc) ?? 0);
+                rigged = (int)(_bombsRiggedField?.GetValue(bc) ?? 0);
+            }
+        }
+        catch { }
+        _registry.Dispatch(new BombThrownEvent { RegularCount = regular, RiggedCount = rigged });
+    }
     private void OnBombDetonated() { if (_multiplayerMode.IsHosting) _registry.Dispatch(new BombDetonatedEvent()); }
     private void OnOrbDiscarded() { if (_multiplayerMode.IsHosting) _registry.Dispatch(new OrbDiscardedEvent()); }
     private void OnAwaitingShot() { if (_multiplayerMode.IsHosting) _registry.Dispatch(new AwaitingShotEvent()); }

@@ -284,7 +284,15 @@ public class CoopRewardUI : MonoBehaviour
         ClearButtons();
 
         // Use context-specific messages
-        if (CoopRewardState.HostRelicSelectionActive)
+        if (CoopRewardState.ShopPhaseActive)
+        {
+            _titleText.text = "Waiting for other players to finish shopping...";
+        }
+        else if (CoopRewardState.TreasurePhaseActive)
+        {
+            _titleText.text = "Waiting for other players to choose a relic...";
+        }
+        else if (CoopRewardState.HostRelicSelectionActive)
         {
             var services = MultiplayerPlugin.Services;
             bool isHost = services?.TryResolve<IMultiplayerMode>(out var m) == true && m.IsHosting;

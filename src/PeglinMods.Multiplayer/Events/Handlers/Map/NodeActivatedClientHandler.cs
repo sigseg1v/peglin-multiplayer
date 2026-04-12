@@ -1,12 +1,15 @@
 using System;
 using System.Linq;
 using Data;
+using Data.Scenarios;
 using HarmonyLib;
 using Loading;
 using Map;
 using PeglinMods.Multiplayer.Events.Network.Map;
+using PeglinMods.Multiplayer.GameState;
 using PeglinMods.Multiplayer.Multiplayer;
 using PeglinMods.Multiplayer.Patches;
+using Scenarios;
 using UnityEngine;
 
 namespace PeglinMods.Multiplayer.Events.Handlers.Map;
@@ -30,7 +33,57 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
                 log?.LogInfo("[NodeActivated] Stored host RNG state for pegboard sync");
             }
 
-            // For non-battle nodes (treasure, shop, peg minigame, scenario),
+            // PegMinigame node — load the scene so the client can spectate
+            if (string.IsNullOrEmpty(e.BattleName) && !string.IsNullOrEmpty(e.MapDataName))
+            {
+                var minigameData = FindPegMinigameData(e.MapDataName, log);
+                if (minigameData != null)
+                {
+                    log?.LogInfo($"[NodeActivated] PegMinigame node — loading scene for spectating (asset={e.MapDataName})");
+                    StaticGameData.dataToLoad = minigameData;
+                    MultiplayerClientPatches.AllowNextSceneLoad = true;
+                    PeglinSceneLoader.Instance?.LoadScene(PeglinSceneLoader.Scene.PEG_MINIGAME);
+                    return;
+                }
+
+                // TextScenario node — load the scene so the client can spectate dialogue
+                var scenarioData = FindTextScenarioData(e.MapDataName, log);
+                if (scenarioData != null)
+                {
+                    log?.LogInfo($"[NodeActivated] TextScenario node — loading scene for spectating (asset={e.MapDataName})");
+                    StaticGameData.dataToLoad = scenarioData;
+                    TextScenarioHoverTracker.Reset();
+                    MultiplayerClientPatches.AllowNextSceneLoad = true;
+                    PeglinSceneLoader.Instance?.LoadScene(PeglinSceneLoader.Scene.TEXT_SCENARIO);
+                    return;
+                }
+
+                // ShopScenario node — load the scene so the client can shop interactively
+                var shopData = FindShopData(e.MapDataName, log);
+                if (shopData != null)
+                {
+                    log?.LogInfo($"[NodeActivated] ShopScenario node — loading scene for interactive shopping (asset={e.MapDataName})");
+                    StaticGameData.dataToLoad = shopData;
+                    MultiplayerClientPatches.AllowNextSceneLoad = true;
+                    PeglinSceneLoader.Instance?.LoadScene(PeglinSceneLoader.Scene.SHOP_SCENARIO);
+                    return;
+                }
+
+                // Treasure node — load the scene so the client gets native relic UI
+                var treasureData = FindTreasureData(e.MapDataName, log);
+                if (treasureData != null)
+                {
+                    log?.LogInfo($"[NodeActivated] Treasure node — loading scene for native relic selection (asset={e.MapDataName})");
+                    StaticGameData.dataToLoad = treasureData;
+                    MultiplayerClientPatches.AllowNextSceneLoad = true;
+                    PeglinSceneLoader.Instance?.LoadScene(PeglinSceneLoader.Scene.TREASURE);
+                    return;
+                }
+
+                // Fall through — MapStateApplier will handle if lookup failed
+            }
+
+            // For non-battle nodes (treasure, shop),
             // BattleName is empty. Let the MapStateApplier handle scene transition
             // via the next SyncAll which carries the correct ActiveScene.
             if (string.IsNullOrEmpty(e.BattleName))
@@ -81,6 +134,80 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
         {
             log?.LogError($"[NodeActivated] Failed: {ex.Message}\n{ex.StackTrace}");
         }
+    }
+
+    private static MapDataPegMinigame FindPegMinigameData(string assetName, BepInEx.Logging.ManualLogSource log)
+    {
+        try
+        {
+            var all = Resources.FindObjectsOfTypeAll<MapDataPegMinigame>();
+            foreach (var asset in all)
+            {
+                if (asset.name == assetName)
+                    return asset;
+            }
+            // Don't warn here — may be a TextScenario asset, not a PegMinigame
+        }
+        catch (Exception ex)
+        {
+            log?.LogWarning($"[NodeActivated] FindPegMinigameData failed: {ex.Message}");
+        }
+        return null;
+    }
+
+    private static MapDataScenario FindTextScenarioData(string assetName, BepInEx.Logging.ManualLogSource log)
+    {
+        try
+        {
+            var all = Resources.FindObjectsOfTypeAll<MapDataScenario>();
+            foreach (var asset in all)
+            {
+                if (asset.name == assetName)
+                    return asset;
+            }
+            log?.LogWarning($"[NodeActivated] MapDataScenario '{assetName}' not found in {all.Length} loaded assets");
+        }
+        catch (Exception ex)
+        {
+            log?.LogWarning($"[NodeActivated] FindTextScenarioData failed: {ex.Message}");
+        }
+        return null;
+    }
+
+    private static MapDataShop FindShopData(string assetName, BepInEx.Logging.ManualLogSource log)
+    {
+        try
+        {
+            var all = Resources.FindObjectsOfTypeAll<MapDataShop>();
+            foreach (var asset in all)
+            {
+                if (asset.name == assetName)
+                    return asset;
+            }
+        }
+        catch (Exception ex)
+        {
+            log?.LogWarning($"[NodeActivated] FindShopData failed: {ex.Message}");
+        }
+        return null;
+    }
+
+    private static MapDataTreasure FindTreasureData(string assetName, BepInEx.Logging.ManualLogSource log)
+    {
+        try
+        {
+            var all = Resources.FindObjectsOfTypeAll<MapDataTreasure>();
+            foreach (var asset in all)
+            {
+                if (asset.name == assetName)
+                    return asset;
+            }
+        }
+        catch (Exception ex)
+        {
+            log?.LogWarning($"[NodeActivated] FindTreasureData failed: {ex.Message}");
+        }
+        return null;
     }
 
     /// <summary>

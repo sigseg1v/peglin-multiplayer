@@ -59,6 +59,10 @@ public class MultiplayerUI : MonoBehaviour
     private GameObject _waitingPanel;
     private TextMeshProUGUI _waitingText;
 
+    // Transparent spectator banner (for PegMinigame etc — shows text without blocking the view)
+    private GameObject _spectatorBanner;
+    private TextMeshProUGUI _spectatorBannerText;
+
     // Coop turn indicator (small banner at top of screen)
     private GameObject _turnIndicatorPanel;
     private TextMeshProUGUI _turnIndicatorText;
@@ -121,20 +125,37 @@ public class MultiplayerUI : MonoBehaviour
             bool suppressForBattle = currentScene == "Battle"
                 && _turnIndicatorPanel != null && _turnIndicatorPanel.activeSelf;
 
+            bool isSpectatingScene = currentScene == "PegMinigame" || currentScene == "TextScenario";
+
             if (!string.IsNullOrEmpty(waitMsg) && !suppressForBattle)
             {
-                if (_waitingPanel == null) CreateWaitingPanel();
-                _waitingPanel.SetActive(true);
-                _waitingText.text = waitMsg;
+                if (isSpectatingScene)
+                {
+                    // Transparent top banner — game board visible behind it
+                    if (_spectatorBanner == null) CreateSpectatorBanner();
+                    _spectatorBanner.SetActive(true);
+                    _spectatorBannerText.text = waitMsg;
+                    if (_waitingPanel != null) _waitingPanel.SetActive(false);
+                }
+                else
+                {
+                    // Dark fullscreen overlay for non-spectatable scenes
+                    if (_waitingPanel == null) CreateWaitingPanel();
+                    _waitingPanel.SetActive(true);
+                    _waitingText.text = waitMsg;
+                    if (_spectatorBanner != null) _spectatorBanner.SetActive(false);
+                }
             }
-            else if (_waitingPanel != null)
+            else
             {
-                _waitingPanel.SetActive(false);
+                if (_waitingPanel != null) _waitingPanel.SetActive(false);
+                if (_spectatorBanner != null) _spectatorBanner.SetActive(false);
             }
         }
-        else if (_waitingPanel != null)
+        else
         {
-            _waitingPanel.SetActive(false);
+            if (_waitingPanel != null) _waitingPanel.SetActive(false);
+            if (_spectatorBanner != null) _spectatorBanner.SetActive(false);
         }
 
         // Coop turn indicator — shown during Battle for both host and client
@@ -439,6 +460,31 @@ public class MultiplayerUI : MonoBehaviour
         rect.sizeDelta = new Vector2(800, 200);
 
         _waitingPanel.SetActive(false);
+    }
+
+    private void CreateSpectatorBanner()
+    {
+        _spectatorBanner = new GameObject("SpectatorBanner");
+        _spectatorBanner.transform.SetParent(_canvasObj.transform, false);
+        var bg = _spectatorBanner.AddComponent<Image>();
+        bg.color = new Color(0.05f, 0.05f, 0.15f, 0.7f);
+
+        var bannerRect = _spectatorBanner.GetComponent<RectTransform>();
+        bannerRect.anchorMin = new Vector2(0, 1);
+        bannerRect.anchorMax = new Vector2(1, 1);
+        bannerRect.pivot = new Vector2(0.5f, 1);
+        bannerRect.anchoredPosition = Vector2.zero;
+        bannerRect.sizeDelta = new Vector2(0, 60);
+
+        _spectatorBannerText = CreateText(_spectatorBanner.transform, "SpectatorText", "", 32);
+        _spectatorBannerText.alignment = TextAlignmentOptions.Center;
+        var textRect = _spectatorBannerText.rectTransform;
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = new Vector2(10, 5);
+        textRect.offsetMax = new Vector2(-10, -5);
+
+        _spectatorBanner.SetActive(false);
     }
 
     private void UpdateTurnIndicator()

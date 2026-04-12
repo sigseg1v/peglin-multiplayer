@@ -23,5 +23,19 @@ public sealed class AllChoicesCompleteClientHandler : IClientHandler<AllChoicesC
             Patches.MultiplayerClientPatches.AllowNativeRewardLogic = false;
             MultiplayerPlugin.Logger?.LogInfo("[CoopReward] Post-battle reward phase ended on client");
         }
+        else if (networkEvent.Phase == "shop")
+        {
+            CoopRewardState.ShopPhaseActive = false;
+            Patches.MultiplayerClientPatches.AllowShopLogic = false;
+            MultiplayerPlugin.Logger?.LogInfo("[CoopReward] Shop phase ended");
+        }
+        else if (networkEvent.Phase == "treasure")
+        {
+            CoopRewardState.TreasurePhaseActive = false;
+            Patches.MultiplayerClientPatches.AllowTreasureLogic = false;
+            Patches.MultiplayerClientPatches.AllowRelicSync = false;
+            CoopRewardState.ClientTreasureChoiceSent = false;
+            MultiplayerPlugin.Logger?.LogInfo("[CoopReward] Treasure phase ended");
+        }
     }
 }

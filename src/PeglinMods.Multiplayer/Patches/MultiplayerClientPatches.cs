@@ -9,11 +9,15 @@ using Map;
 using PeglinMods.Multiplayer.Events;
 using PeglinMods.Multiplayer.Events.Network.Map;
 using PeglinMods.Multiplayer.Events.Subscriptions;
+using PeglinMods.Multiplayer.GameState;
 using PeglinMods.Multiplayer.Multiplayer;
 using PeglinUI;
+using PixelCrushers.DialogueSystem;
+using RNG.Scenarios;
 using Scenarios;
 using Tutorial;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using Worldmap;
 using Random = UnityEngine.Random;
 
@@ -89,6 +93,16 @@ public static class MultiplayerClientPatches
     /// to execute so the reward screen works normally.
     /// </summary>
     internal static bool AllowNativeRewardLogic;
+
+    /// <summary>
+    /// Set to true while the client is in the ShopScenario scene and allowed to purchase.
+    /// </summary>
+    internal static bool AllowShopLogic;
+
+    /// <summary>
+    /// Set to true while the client is in the Treasure scene and allowed to interact with chest/relic UI.
+    /// </summary>
+    internal static bool AllowTreasureLogic;
 
     // Track fired ball for position diagnostics
     private static UnityEngine.GameObject _firedBallGO;
@@ -2277,14 +2291,142 @@ public static class MultiplayerClientPatches
 
         var pos = __instance.transform.position;
         string battleName = (__instance.MapData as MapDataBattle)?.name;
+        string mapDataName = string.IsNullOrEmpty(battleName) ? __instance.MapData?.name : null;
         registry.Dispatch(new NodeActivatedEvent
         {
             PosX = pos.x,
             PosY = pos.y,
             BattleName = battleName,
             RngState = SerializeRandomState(Random.state),
+            MapDataName = mapDataName,
         });
-        MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Host activated node at ({pos.x:F1}, {pos.y:F1}), battle={battleName}");
+        MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Host activated node at ({pos.x:F1}, {pos.y:F1}), battle={battleName}, mapData={mapDataName}");
+    }
+
+    // =========================================================================
+    // CLIENT: PEG MINIGAME SPECTATING — suppress ball creation and interaction
+    // =========================================================================
+
+    [HarmonyPatch(typeof(Peglin.PegMinigame.PegMinigameManager), "CreateOrb")]
+    [HarmonyPrefix]
+    public static bool PegMinigameManager_CreateOrb_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked PegMinigameManager.CreateOrb (spectating)");
+        return false;
+    }
+
+    [HarmonyPatch(typeof(Peglin.PegMinigame.PegMinigameManager), "PrepareNavigationOrbForFiring")]
+    [HarmonyPrefix]
+    public static bool PegMinigameManager_PrepareNavigationOrbForFiring_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked PegMinigameManager.PrepareNavigationOrbForFiring (spectating)");
+        return false;
+    }
+
+    [HarmonyPatch(typeof(Peglin.PegMinigame.PegMinigameManager), "HandleRewardSlotTriggerActivated")]
+    [HarmonyPrefix]
+    public static bool PegMinigameManager_HandleRewardSlotTriggerActivated_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked PegMinigameManager.HandleRewardSlotTriggerActivated (spectating)");
+        return false;
+    }
+
+    [HarmonyPatch(typeof(Peglin.PegMinigame.PegMinigameManager), "HandleNavigationSlotTriggerActivated")]
+    [HarmonyPrefix]
+    public static bool PegMinigameManager_HandleNavigationSlotTriggerActivated_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        return false;
+    }
+
+    // =========================================================================
+    // HOST: PEG MINIGAME REWARD SHARING — distribute rewards to all coop players
+    // =========================================================================
+
+    /// <summary>
+    /// Prefix captures _indexSelected before HandleUpgradeOptionClicked resets it to -1.
+    /// </summary>
+    [HarmonyPatch(typeof(Peglin.PegMinigame.PegMinigameManager), "HandleUpgradeOptionClicked")]
+    [HarmonyPrefix]
+    public static void PegMinigameManager_HandleUpgradeOptionClicked_SharePrefix(
+        int ____indexSelected,
+        ref int __state)
+    {
+        __state = ____indexSelected;
+    }
+
+    /// <summary>
+    /// After the host grants a PegMinigame reward (orb or relic), add the same
+    /// reward to all other coop players' serialized state so everyone benefits.
+    /// </summary>
+    [HarmonyPatch(typeof(Peglin.PegMinigame.PegMinigameManager), "HandleUpgradeOptionClicked")]
+    [HarmonyPostfix]
+    public static void PegMinigameManager_HandleUpgradeOptionClicked_SharePostfix(
+        PeglinUI.PostBattle.UpgradeOption.UpgradeType type,
+        MapDataPegMinigame ____mapData,
+        int __state)
+    {
+        if (__state < 0) return; // no reward was selected
+        if (type == PeglinUI.PostBattle.UpgradeOption.UpgradeType.INSPECT_ORB_FOR_UPGRADE) return;
+        if (type == PeglinUI.PostBattle.UpgradeOption.UpgradeType.SKIP) return;
+        if (!IsHosting) return;
+
+        var services = MultiplayerPlugin.Services;
+        if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true) return;
+        if (coopState.TotalPlayerCount < 2) return;
+
+        try
+        {
+            if (____mapData?.Rewards == null || __state >= ____mapData.Rewards.Count) return;
+            var reward = ____mapData.Rewards[__state];
+            if (reward == null) return;
+
+            if (reward is Peglin.PegMinigame.OrbReward orbReward)
+            {
+                var orb = orbReward.Orb;
+                if (orb == null) return;
+                string prefabName = orb.name.Replace("(Clone)", "").Trim();
+                int level = orb.GetComponent<Battle.Attacks.Attack>()?.Level ?? 0;
+
+                foreach (var kvp in coopState.PlayerStates)
+                {
+                    if (kvp.Key == coopState.ActivePlayerSlot) continue;
+                    kvp.Value.CompleteDeck.Add(new GameState.SerializedOrb
+                    {
+                        PrefabName = prefabName,
+                        Guid = null,
+                        Level = level,
+                    });
+                    MultiplayerPlugin.Logger?.LogInfo(
+                        $"[CoopReward] PegMinigame: added orb '{prefabName}' (lvl={level}) to slot {kvp.Key}");
+                }
+            }
+            else if (reward is Peglin.PegMinigame.RelicReward relicReward)
+            {
+                var relic = relicReward.Relic;
+                if (relic == null) return;
+
+                foreach (var kvp in coopState.PlayerStates)
+                {
+                    if (kvp.Key == coopState.ActivePlayerSlot) continue;
+                    kvp.Value.OwnedRelics.Add(new GameState.SerializedRelic
+                    {
+                        Effect = (int)relic.effect,
+                        LocKey = relic.locKey ?? "",
+                        Rarity = (int)relic.globalRarity,
+                    });
+                    MultiplayerPlugin.Logger?.LogInfo(
+                        $"[CoopReward] PegMinigame: added relic '{relic.locKey}' (effect={relic.effect}) to slot {kvp.Key}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[CoopReward] PegMinigame reward sharing failed: {ex.Message}");
+        }
     }
 
     // =========================================================================
@@ -2419,7 +2561,8 @@ public static class MultiplayerClientPatches
     public static bool ChestScenarioController_OpenChest_Prefix()
     {
         if (!ShouldSuppressClientLogic) return true;
-        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked ChestScenarioController.OpenChest on client — using CoopRewardUI instead");
+        if (AllowTreasureLogic) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked ChestScenarioController.OpenChest on client");
         return false;
     }
 
@@ -2430,6 +2573,8 @@ public static class MultiplayerClientPatches
         if (!ShouldSuppressClientLogic) return true;
         if (AllowRelicSync) return true;
         if (AllowNativeRewardLogic) return true;
+        if (AllowShopLogic) return true;
+        if (AllowTreasureLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked RelicManager.AddRelic on client");
         return false;
     }
@@ -2487,6 +2632,7 @@ public static class MultiplayerClientPatches
     {
         if (!ShouldSuppressClientLogic) return true;
         if (AllowNativeRewardLogic) return true;
+        if (AllowShopLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked PlayerHealthController.Damage on client");
         return false;
     }
@@ -2503,6 +2649,8 @@ public static class MultiplayerClientPatches
         if (!ShouldSuppressClientLogic) return true;
         if (AllowCurrencySync) return true;
         if (AllowNativeRewardLogic) return true;
+        if (AllowShopLogic) return true;
+        if (AllowTreasureLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked CurrencyManager.AddGold on client");
         return false;
     }
@@ -2514,6 +2662,7 @@ public static class MultiplayerClientPatches
         if (!ShouldSuppressClientLogic) return true;
         if (AllowCurrencySync) return true;
         if (AllowNativeRewardLogic) return true;
+        if (AllowShopLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked CurrencyManager.RemoveGold on client");
         return false;
     }
@@ -2524,6 +2673,7 @@ public static class MultiplayerClientPatches
     {
         if (!ShouldSuppressClientLogic) return true;
         if (AllowNativeRewardLogic) return true;
+        if (AllowShopLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DeckManager.AddOrbToDeck on client");
         return false;
     }
@@ -2713,6 +2863,14 @@ public static class MultiplayerClientPatches
         if (!IsHosting) return true;
         if (!UI.LobbyUI.GameStartReceived) return true;
         if (Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn) return true;
+        // Allow prediction during non-battle phases (navigation, post-battle, map).
+        // The turn system only tracks battle turns — outside active combat the host
+        // should always see the aimer (e.g. navigation orb after victory).
+        var state = BattleController.CurrentBattleState;
+        if (state == BattleController.BattleState.NAVIGATION
+            || state == BattleController.BattleState.AWAITING_POST_BATTLE_CONTROLLER
+            || state == BattleController.BattleState.NAVIGATION_COMPLETE)
+            return true;
         return false; // Not host's turn — suppress prediction
     }
 
@@ -2724,6 +2882,11 @@ public static class MultiplayerClientPatches
         if (!IsHosting) return true;
         if (!UI.LobbyUI.GameStartReceived) return true;
         if (Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn) return true;
+        var state = BattleController.CurrentBattleState;
+        if (state == BattleController.BattleState.NAVIGATION
+            || state == BattleController.BattleState.AWAITING_POST_BATTLE_CONTROLLER
+            || state == BattleController.BattleState.NAVIGATION_COMPLETE)
+            return true;
         return false; // Not host's turn — don't re-enable prediction line
     }
 
@@ -2763,5 +2926,347 @@ public static class MultiplayerClientPatches
             }
         }
         catch { }
+    }
+
+    // =========================================================================
+    // CLIENT: TEXT SCENARIO SPECTATING — block dialogue + navigation on client
+    // =========================================================================
+
+    /// <summary>
+    /// Flag to allow mirror event logic on the client (deck modification).
+    /// </summary>
+    public static bool AllowMirrorEventLogic;
+
+    /// <summary>
+    /// Block DialogueSystemScenario.DisableFadeCurtain on client.
+    /// This prevents the client from starting its own conversation.
+    /// </summary>
+    [HarmonyPatch(typeof(DialogueSystemScenario), "DisableFadeCurtain")]
+    [HarmonyPrefix]
+    public static bool DialogueSystemScenario_DisableFadeCurtain_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DialogueSystemScenario.DisableFadeCurtain (spectating)");
+        return false;
+    }
+
+    /// <summary>
+    /// Block DialogueManager.StartConversation on client.
+    /// </summary>
+    [HarmonyPatch(typeof(DialogueManager), "StartConversation", typeof(string), typeof(UnityEngine.Transform), typeof(UnityEngine.Transform), typeof(int))]
+    [HarmonyPrefix]
+    public static bool DialogueManager_StartConversation_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DialogueManager.StartConversation (spectating)");
+        return false;
+    }
+
+    /// <summary>
+    /// Block DialogueSystemScenario.ConversationEnded on client.
+    /// Host controls when navigation starts.
+    /// </summary>
+    [HarmonyPatch(typeof(DialogueSystemScenario), "ConversationEnded")]
+    [HarmonyPrefix]
+    public static bool DialogueSystemScenario_ConversationEnded_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DialogueSystemScenario.ConversationEnded (spectating)");
+        return false;
+    }
+
+    /// <summary>
+    /// Track navigation state on host; block navigation on client unless we
+    /// explicitly enable it for spectating the navigation shot.
+    /// </summary>
+    [HarmonyPatch(typeof(DialogueSystemScenario), "StartNavigation")]
+    [HarmonyPrefix]
+    public static bool DialogueSystemScenario_StartNavigation_Prefix()
+    {
+        // On host: track that navigation has started
+        if (IsHosting)
+        {
+            TextScenarioHoverTracker.IsNavigating = true;
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Host TextScenario navigation started");
+            return true;
+        }
+
+        // On client: block unless navigation is already enabled by heartbeat
+        if (ShouldSuppressClientLogic && !AllowTextScenarioNavigation)
+        {
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DialogueSystemScenario.StartNavigation (spectating)");
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Flag set by the state applier when the heartbeat reports IsNavigating=true.
+    /// Allows the client to activate its navigation controller.
+    /// </summary>
+    public static bool AllowTextScenarioNavigation;
+
+    // =========================================================================
+    // HOST: TRACK DIALOGUE HOVER (which response button host is highlighting)
+    // =========================================================================
+
+    [HarmonyPatch(typeof(StandardUIResponseButton), "OnSelect")]
+    [HarmonyPostfix]
+    public static void StandardUIResponseButton_OnSelect_Postfix(StandardUIResponseButton __instance)
+    {
+        if (!IsHosting) return;
+
+        try
+        {
+            // Find this button's index in its parent menu panel
+            var dialogueUI = UnityEngine.Object.FindObjectOfType<StandardDialogueUI>();
+            if (dialogueUI == null) return;
+
+            var menuPanel = dialogueUI.conversationUIElements?.defaultMenuPanel;
+            if (menuPanel?.buttons == null) return;
+
+            for (int i = 0; i < menuPanel.buttons.Length; i++)
+            {
+                if (menuPanel.buttons[i] == __instance)
+                {
+                    TextScenarioHoverTracker.CurrentHoveredIndex = i;
+                    return;
+                }
+            }
+        }
+        catch { }
+    }
+
+    // =========================================================================
+    // SHOP + TREASURE: Wait-for-all synchronization
+    // =========================================================================
+
+    /// <summary>
+    /// Client-side: tracks purchases made during the current shop visit.
+    /// Populated by PurchaseItem postfix, sent to host on CloseStore.
+    /// </summary>
+    internal static readonly System.Collections.Generic.List<Events.Network.Scenarios.ShopPurchase> ClientShopPurchases
+        = new System.Collections.Generic.List<Events.Network.Scenarios.ShopPurchase>();
+
+    /// <summary>Client-side: gold at the time the shop was entered.</summary>
+    internal static int ClientShopStartGold;
+
+    /// <summary>
+    /// Track purchases on the client so we can send them to the host on shop exit.
+    /// </summary>
+    [HarmonyPatch(typeof(Scenarios.Shop.ShopManager), "PurchaseItem")]
+    [HarmonyPostfix]
+    public static void ShopManager_PurchaseItem_Postfix(Scenarios.Shop.IPurchasableItem item)
+    {
+        if (!ShouldSuppressClientLogic) return;
+        if (!AllowShopLogic) return;
+
+        try
+        {
+            var purchase = new Events.Network.Scenarios.ShopPurchase();
+            if (item is Scenarios.Shop.PurchasableOrb orbItem)
+            {
+                purchase.Type = "orb";
+                // Get the orb prefab name from the PurchasableOrb via reflection
+                var prefabField = HarmonyLib.AccessTools.Field(typeof(Scenarios.Shop.PurchasableOrb), "_orbPrefab");
+                var prefab = prefabField?.GetValue(orbItem) as UnityEngine.GameObject;
+                purchase.Name = prefab?.name?.Replace("(Clone)", "").Trim() ?? "unknown";
+                purchase.Cost = item.GetCost();
+            }
+            else if (item is Scenarios.Shop.PurchasableRelic relicItem)
+            {
+                purchase.Type = "relic";
+                var relicField = HarmonyLib.AccessTools.Field(typeof(Scenarios.Shop.PurchasableRelic), "_relic");
+                var relic = relicField?.GetValue(relicItem) as Relics.Relic;
+                purchase.Name = relic?.locKey ?? "unknown";
+                purchase.RelicEffect = relic != null ? (int)relic.effect : -1;
+                purchase.Cost = item.GetCost();
+            }
+
+            ClientShopPurchases.Add(purchase);
+            MultiplayerPlugin.Logger?.LogInfo($"[ClientPatch] Tracked shop purchase: {purchase.Type} '{purchase.Name}' cost={purchase.Cost}");
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatch] Failed to track shop purchase: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// ShopManager.CloseStore — on client: send ShopCompleteEvent, block navigation.
+    /// On host: check wait-for-all before allowing navigation to proceed.
+    /// </summary>
+    [HarmonyPatch(typeof(Scenarios.Shop.ShopManager), "CloseStore")]
+    [HarmonyPrefix]
+    public static bool ShopManager_CloseStore_Prefix(Scenarios.Shop.ShopManager __instance)
+    {
+        if (!UI.LobbyUI.GameStartReceived) return true; // Not in coop
+
+        if (ShouldSuppressClientLogic)
+        {
+            // CLIENT: send shop results to host, then show waiting
+            try
+            {
+                AllowShopLogic = false;
+
+                int remainingGold = Currency.CurrencyManager.Instance?.GoldAmount ?? 0;
+                int goldSpent = ClientShopStartGold - remainingGold;
+
+                var evt = new Events.Network.Scenarios.ShopCompleteEvent
+                {
+                    Purchases = new System.Collections.Generic.List<Events.Network.Scenarios.ShopPurchase>(ClientShopPurchases),
+                    GoldSpent = goldSpent > 0 ? goldSpent : 0,
+                    RemainingGold = remainingGold,
+                };
+
+                var services = MultiplayerPlugin.Services;
+                if (services?.TryResolve<Network.IMessageSender>(out var sender) == true)
+                {
+                    sender.Send(evt);
+                    MultiplayerPlugin.Logger?.LogInfo($"[ClientPatch] Sent ShopCompleteEvent: {evt.Purchases.Count} purchases, gold={evt.RemainingGold}");
+                }
+
+                ClientShopPurchases.Clear();
+            }
+            catch (System.Exception ex)
+            {
+                MultiplayerPlugin.Logger?.LogError($"[ClientPatch] Failed to send ShopCompleteEvent: {ex.Message}");
+            }
+
+            Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = true;
+            Events.Handlers.Coop.CoopRewardState.ShopPhaseActive = true;
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Client finished shopping — waiting for other players");
+            return false; // Block CloseStore navigation on client
+        }
+
+        if (IsHosting && Events.Handlers.Coop.CoopRewardState.ShopPhaseActive)
+        {
+            // HOST: mark self as done, check if all clients finished
+            Events.Handlers.Coop.CoopRewardState.HostShopDone = true;
+
+            if (Events.Handlers.Coop.CoopRewardState.AllClientShopChoicesReceived)
+            {
+                MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Host CloseStore — all clients done, proceeding");
+                Events.Handlers.Coop.CoopRewardState.ShopPhaseActive = false;
+                Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = false;
+                // Dispatch AllChoicesComplete so clients can dismiss waiting UI
+                var services = MultiplayerPlugin.Services;
+                if (services?.TryResolve<Events.IGameEventRegistry>(out var reg) == true)
+                    reg.Dispatch(new Events.Network.Coop.AllChoicesCompleteEvent { Phase = "shop" });
+                return true; // Let CloseStore run normally
+            }
+            else
+            {
+                // Not all clients done — store reference and block
+                Events.Handlers.Coop.CoopRewardState.PendingShopManager = __instance;
+                Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = true;
+                MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Host CloseStore — waiting for clients to finish shopping");
+                return false; // Block until all clients done
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// ChestScenarioController.Skip — controls navigation after treasure relic selection.
+    /// On client: send TreasureCompleteEvent, block navigation.
+    /// On host: check wait-for-all before allowing navigation.
+    /// </summary>
+    [HarmonyPatch(typeof(Scenarios.ChestScenarioController), "Skip")]
+    [HarmonyPrefix]
+    public static bool ChestScenarioController_Skip_Prefix(Scenarios.ChestScenarioController __instance)
+    {
+        if (!UI.LobbyUI.GameStartReceived) return true; // Not in coop
+
+        if (ShouldSuppressClientLogic)
+        {
+            // CLIENT: send treasure complete if not already sent
+            if (!Events.Handlers.Coop.CoopRewardState.ClientTreasureChoiceSent)
+            {
+                try
+                {
+                    // If we get here without AcceptRelic having fired, the player skipped
+                    var services = MultiplayerPlugin.Services;
+                    if (services?.TryResolve<Network.IMessageSender>(out var sender) == true)
+                    {
+                        sender.Send(new Events.Network.Scenarios.TreasureCompleteEvent
+                        {
+                            ChosenRelicEffect = -1,
+                            ChosenRelicName = null,
+                        });
+                        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Client skipped treasure relic — sent TreasureCompleteEvent");
+                    }
+                    Events.Handlers.Coop.CoopRewardState.ClientTreasureChoiceSent = true;
+                }
+                catch (System.Exception ex)
+                {
+                    MultiplayerPlugin.Logger?.LogError($"[ClientPatch] Failed to send TreasureCompleteEvent: {ex.Message}");
+                }
+            }
+
+            AllowTreasureLogic = false;
+            Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = true;
+            Events.Handlers.Coop.CoopRewardState.TreasurePhaseActive = true;
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Client finished treasure — waiting for other players");
+            return false; // Block navigation on client
+        }
+
+        if (IsHosting && Events.Handlers.Coop.CoopRewardState.TreasurePhaseActive)
+        {
+            // HOST: mark self as done, check if all clients finished
+            Events.Handlers.Coop.CoopRewardState.HostTreasureDone = true;
+
+            if (Events.Handlers.Coop.CoopRewardState.AllClientTreasureChoicesReceived)
+            {
+                MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Host Skip — all clients done, proceeding");
+                Events.Handlers.Coop.CoopRewardState.TreasurePhaseActive = false;
+                Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = false;
+                var services = MultiplayerPlugin.Services;
+                if (services?.TryResolve<Events.IGameEventRegistry>(out var reg) == true)
+                    reg.Dispatch(new Events.Network.Coop.AllChoicesCompleteEvent { Phase = "treasure" });
+                return true; // Let Skip run normally
+            }
+            else
+            {
+                Events.Handlers.Coop.CoopRewardState.PendingChestController = __instance;
+                Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = true;
+                MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Host Skip — waiting for clients to finish treasure");
+                return false; // Block until all clients done
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// BattleUpgradeCanvas.AcceptRelic — on client during treasure, send completion event.
+    /// </summary>
+    [HarmonyPatch(typeof(PeglinUI.PostBattle.BattleUpgradeCanvas), "AcceptRelic")]
+    [HarmonyPostfix]
+    public static void BattleUpgradeCanvas_AcceptRelic_Postfix(Relics.Relic relic)
+    {
+        if (!ShouldSuppressClientLogic) return;
+        if (!AllowTreasureLogic) return;
+        if (Events.Handlers.Coop.CoopRewardState.ClientTreasureChoiceSent) return;
+
+        try
+        {
+            var services = MultiplayerPlugin.Services;
+            if (services?.TryResolve<Network.IMessageSender>(out var sender) == true)
+            {
+                sender.Send(new Events.Network.Scenarios.TreasureCompleteEvent
+                {
+                    ChosenRelicEffect = (int)relic.effect,
+                    ChosenRelicName = relic.locKey,
+                });
+                MultiplayerPlugin.Logger?.LogInfo($"[ClientPatch] Client accepted treasure relic '{relic.locKey}' — sent TreasureCompleteEvent");
+            }
+            Events.Handlers.Coop.CoopRewardState.ClientTreasureChoiceSent = true;
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogError($"[ClientPatch] Failed to send TreasureCompleteEvent: {ex.Message}");
+        }
     }
 }

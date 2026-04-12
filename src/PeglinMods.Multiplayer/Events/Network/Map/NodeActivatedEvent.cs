@@ -15,4 +15,7 @@ public class NodeActivatedEvent
     /// before the battle scene loads. Client restores this so RandomPegField
     /// generates identical positions.</summary>
     public string RngState { get; set; }
+    /// <summary>MapData asset name for non-battle nodes (e.g. MapDataPegMinigame).
+    /// Used by the client to look up the correct ScriptableObject for scene init.</summary>
+    public string MapDataName { get; set; }
 }

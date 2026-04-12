@@ -22,6 +22,8 @@ public class GameStateSyncService : IGameStateSyncService
     private readonly DeckStateProvider _deckProvider;
     private readonly RelicStateProvider _relicProvider;
     private readonly CoopStateManager _coopStateManager;
+    private readonly TextScenarioStateProvider _textScenarioProvider;
+    private bool _mirrorEventDispatched;
 
     public GameStateSyncService(
         ManualLogSource log,
@@ -41,6 +43,7 @@ public class GameStateSyncService : IGameStateSyncService
         _pegboardProvider = new PegboardStateProvider(log, pegId);
         _deckProvider = new DeckStateProvider(log, orbId);
         _relicProvider = new RelicStateProvider(log);
+        _textScenarioProvider = new TextScenarioStateProvider(log);
         _coopStateManager = coopStateManager;
     }
 
@@ -63,6 +66,7 @@ public class GameStateSyncService : IGameStateSyncService
                 Relics = _relicProvider.Capture(),
                 Enemies = _enemyProvider.Capture(),
                 Pegboard = _pegboardProvider.Capture(),
+                TextScenario = _textScenarioProvider.Capture(),
             };
 
             // Tag per-player snapshots with the active slot so the client knows
@@ -155,6 +159,21 @@ public class GameStateSyncService : IGameStateSyncService
                     var names = orbs != null ? string.Join(", ", orbs.Select(o => o.Name)) : "NULL";
                     _log.LogInfo($"{tag}AllDecks[{dk.Key}]: {orbs?.Count ?? 0} orbs [{names}] shuffled={dk.Value?.ShuffledOrder?.Count ?? 0} active={dk.Key == snapshot.ActivePlayerSlot}");
                 }
+            }
+
+            // Dispatch mirror event start once when detected
+            if (snapshot.TextScenario?.IsMirrorEvent == true && !_mirrorEventDispatched)
+            {
+                _mirrorEventDispatched = true;
+                _log.LogInfo($"{tag}Mirror event detected — dispatching MirrorEventStartEvent");
+                _registry.Dispatch(new Events.Network.Scenarios.MirrorEventStartEvent
+                {
+                    ScenarioName = snapshot.TextScenario.ScenarioName,
+                });
+            }
+            else if (snapshot.TextScenario?.IsMirrorEvent != true)
+            {
+                _mirrorEventDispatched = false;
             }
 
             _registry.Dispatch(snapshot);

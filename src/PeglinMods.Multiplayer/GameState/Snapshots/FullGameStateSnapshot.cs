@@ -24,6 +24,9 @@ public class FullGameStateSnapshot
     public Dictionary<int, DeckStateSnapshot> AllDecks { get; set; }
     public Dictionary<int, RelicStateSnapshot> AllRelics { get; set; }
     public List<CoopPlayerSummary> PlayerSummaries { get; set; }
+
+    // TextScenario dialogue state (for spectating event scenes)
+    public TextScenarioStateSnapshot TextScenario { get; set; }
 }
 
 /// <summary>

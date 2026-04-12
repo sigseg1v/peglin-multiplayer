@@ -9,6 +9,7 @@ using PeglinMods.Multiplayer.Events.Handlers.Enemy;
 using PeglinMods.Multiplayer.Events.Handlers.Health;
 using CoopHandlers = PeglinMods.Multiplayer.Events.Handlers.Coop;
 using LobbyHandlers = PeglinMods.Multiplayer.Events.Handlers.Lobby;
+using ScenarioHandlers = PeglinMods.Multiplayer.Events.Handlers.Scenarios;
 using PeglinMods.Multiplayer.Events.Handlers.Map;
 using PeglinMods.Multiplayer.Events.Handlers.Peg;
 using PeglinMods.Multiplayer.Events.Handlers.Relic;
@@ -25,6 +26,7 @@ using PeglinMods.Multiplayer.Events.Network.Enemy;
 using PeglinMods.Multiplayer.Events.Network.Health;
 using PeglinMods.Multiplayer.Events.Network.Coop;
 using PeglinMods.Multiplayer.Events.Network.Lobby;
+using PeglinMods.Multiplayer.Events.Network.Scenarios;
 using PeglinMods.Multiplayer.Events.Network.Map;
 using PeglinMods.Multiplayer.Events.Network.Peg;
 using PeglinMods.Multiplayer.Events.Network.Relic;
@@ -324,6 +326,12 @@ public static class ServiceRegistration
         registry.Register(new CoopHandlers.PostBattleStartServerHandler(), new CoopHandlers.PostBattleStartClientHandler());
         registry.Register(new CoopHandlers.PostBattleCompleteServerHandler(), new CoopHandlers.PostBattleCompleteClientHandler());
         registry.Register(new CoopHandlers.OrbDiscardRequestServerHandler(), new CoopHandlers.OrbDiscardRequestClientHandler());
+
+        // Scenario events (TextScenario / Mirror / Shop / Treasure)
+        registry.Register(new ScenarioHandlers.MirrorEventStartServerHandler(), new ScenarioHandlers.MirrorEventStartClientHandler());
+        registry.Register(new ScenarioHandlers.MirrorEventCompleteServerHandler(), new ScenarioHandlers.MirrorEventCompleteClientHandler());
+        registry.Register(new ScenarioHandlers.ShopCompleteServerHandler(), new ScenarioHandlers.ShopCompleteClientHandler());
+        registry.Register(new ScenarioHandlers.TreasureCompleteServerHandler(), new ScenarioHandlers.TreasureCompleteClientHandler());
 
         // State sync snapshots
         registry.Register(new FullGameStateServerHandler(), new FullGameStateClientHandler());

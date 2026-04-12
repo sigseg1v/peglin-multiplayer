@@ -91,14 +91,69 @@ public class GameStateApplyService
         _pegId.Clear();
         Patches.MultiplayerClientPatches.MapControllerStartCompleted = false;
 
-        // Treasure scene: send relic choices to non-host players via CoopRewardUI
+        // Reset TextScenario state on scene transitions
+        TextScenarioHoverTracker.Reset();
+        Patches.MultiplayerClientPatches.AllowTextScenarioNavigation = false;
+        _wasNavigating = false;
+        if (UI.TextScenarioSpectatorUI.Instance != null)
+            UI.TextScenarioSpectatorUI.Instance.Hide();
+        if (UI.MirrorEventUI.IsActive)
+            UI.MirrorEventUI.Hide();
+
+        // Reset shop/treasure bypass flags on any scene transition
+        Patches.MultiplayerClientPatches.AllowShopLogic = false;
+        Patches.MultiplayerClientPatches.AllowTreasureLogic = false;
+        Patches.MultiplayerClientPatches.ClientShopPurchases.Clear();
+        Events.Handlers.Coop.CoopRewardState.ClientTreasureChoiceSent = false;
+
+        var svc = MultiplayerPlugin.Services;
+        IMultiplayerMode mpModeRef = null;
+        svc?.TryResolve(out mpModeRef);
+        bool isHosting = mpModeRef?.IsHosting == true;
+        bool isSpectating = mpModeRef?.IsSpectating == true;
+
+        // Shop scene: initialize wait-for-all on host, enable shopping on client
+        if (scene.name == "ShopScenario")
+        {
+            if (isHosting && svc.TryResolve<CoopStateManager>(out var coopMgr))
+            {
+                Events.Handlers.Coop.CoopRewardState.ShopPhaseActive = true;
+                Events.Handlers.Coop.CoopRewardState.HostShopDone = false;
+                Events.Handlers.Coop.CoopRewardState.ClientShopChoicesReceived.Clear();
+                Events.Handlers.Coop.CoopRewardState.TotalShopClientsExpected = coopMgr.TotalPlayerCount - 1;
+                Events.Handlers.Coop.CoopRewardState.PendingShopManager = null;
+                _log.LogInfo($"[ApplyService] Shop phase initialized — expecting {coopMgr.TotalPlayerCount - 1} client(s)");
+            }
+
+            if (isSpectating)
+            {
+                Patches.MultiplayerClientPatches.AllowShopLogic = true;
+                Patches.MultiplayerClientPatches.AllowCurrencySync = true;
+                Patches.MultiplayerClientPatches.AllowRelicSync = true;
+                Patches.MultiplayerClientPatches.ClientShopStartGold =
+                    Currency.CurrencyManager.Instance?.GoldAmount ?? 0;
+                _log.LogInfo("[ApplyService] Client shop mode enabled — AllowShopLogic=true");
+            }
+        }
+
+        // Treasure scene: initialize wait-for-all on host, enable native relic UI on client
         if (scene.name == "Treasure")
         {
-            var svc = MultiplayerPlugin.Services;
-            if (svc?.TryResolve<IMultiplayerMode>(out var mpMode) == true && mpMode.IsHosting &&
-                svc.TryResolve<CoopStateManager>(out var coopMgr))
+            if (isHosting && svc.TryResolve<CoopStateManager>(out var coopMgr2))
             {
-                coopMgr.SendTreasureRelicChoicesToClients();
+                Events.Handlers.Coop.CoopRewardState.TreasurePhaseActive = true;
+                Events.Handlers.Coop.CoopRewardState.HostTreasureDone = false;
+                Events.Handlers.Coop.CoopRewardState.ClientTreasureChoicesReceived.Clear();
+                Events.Handlers.Coop.CoopRewardState.TotalTreasureClientsExpected = coopMgr2.TotalPlayerCount - 1;
+                Events.Handlers.Coop.CoopRewardState.PendingChestController = null;
+                _log.LogInfo($"[ApplyService] Treasure phase initialized — expecting {coopMgr2.TotalPlayerCount - 1} client(s)");
+            }
+
+            if (isSpectating)
+            {
+                Patches.MultiplayerClientPatches.AllowTreasureLogic = true;
+                Patches.MultiplayerClientPatches.AllowRelicSync = true;
+                _log.LogInfo("[ApplyService] Client treasure mode enabled — AllowTreasureLogic=true");
             }
         }
 
@@ -340,6 +395,16 @@ public class GameStateApplyService
         // may not be this client's player. Use PlayerSummaries to find our own health/gold.
         if (isCoop && snapshot.PlayerSummaries != null && snapshot.PlayerSummaries.Count > 0)
         {
+            // Cache host player name for spectator banners
+            foreach (var s in snapshot.PlayerSummaries)
+            {
+                if (s.SlotIndex == 0 && !string.IsNullOrEmpty(s.PlayerName))
+                {
+                    Appliers.MapStateApplier.HostPlayerName = s.PlayerName;
+                    break;
+                }
+            }
+
             int mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
             bool found = false;
             foreach (var summary in snapshot.PlayerSummaries)
@@ -472,6 +537,91 @@ public class GameStateApplyService
             }
             _log.LogInfo($"[ApplyService] Non-battle scene '{currentScene}': applied player/deck/relics, skipped enemies/pegs{(isCoop ? " (coop: deck/relic sync skipped)" : "")}");
         }
+
+        // TextScenario spectator UI — driven by heartbeat
+        ApplyTextScenarioState(snapshot);
+    }
+
+    // =========================================================================
+    // TEXT SCENARIO SPECTATOR — sync dialogue text/responses/hover to client
+    // =========================================================================
+
+    private bool _wasNavigating;
+
+    private void ApplyTextScenarioState(FullGameStateSnapshot snapshot)
+    {
+        var ts = snapshot.TextScenario;
+        var currentScene = SceneManager.GetActiveScene().name;
+
+        if (ts == null || currentScene != "TextScenario")
+        {
+            // Not on TextScenario — hide spectator UI if it exists
+            if (UI.TextScenarioSpectatorUI.Instance != null)
+                UI.TextScenarioSpectatorUI.Instance.Hide();
+            _wasNavigating = false;
+            return;
+        }
+
+        if (ts.IsActive)
+        {
+            // Dialogue is active — show spectator overlay
+            var spectatorUI = UI.TextScenarioSpectatorUI.Instance;
+            if (spectatorUI == null)
+            {
+                // Create the spectator UI component if it doesn't exist yet
+                var uiObj = new GameObject("TextScenarioSpectatorUIHost");
+                uiObj.hideFlags = HideFlags.HideAndDontSave;
+                UnityEngine.Object.DontDestroyOnLoad(uiObj);
+                spectatorUI = uiObj.AddComponent<UI.TextScenarioSpectatorUI>();
+            }
+
+            spectatorUI.UpdateDialogue(ts.SpeakerName, ts.SubtitleText, ts.Responses, ts.HighlightedIndex);
+        }
+        else
+        {
+            // Dialogue ended — hide spectator UI
+            if (UI.TextScenarioSpectatorUI.Instance != null)
+                UI.TextScenarioSpectatorUI.Instance.Hide();
+        }
+
+        // Handle navigation transition: when host starts navigation phase,
+        // activate the navigation controller on the client
+        if (ts.IsNavigating && !_wasNavigating)
+        {
+            _log.LogInfo("[ApplyService] TextScenario navigation started — activating nav controller on client");
+            ActivateClientNavigation();
+        }
+        _wasNavigating = ts.IsNavigating;
+    }
+
+    private void ActivateClientNavigation()
+    {
+        try
+        {
+            var dss = UnityEngine.Object.FindObjectOfType<RNG.Scenarios.DialogueSystemScenario>();
+            if (dss == null)
+            {
+                _log.LogWarning("[ApplyService] DialogueSystemScenario not found for navigation activation");
+                return;
+            }
+
+            // Find the navController field and activate it
+            var navField = HarmonyLib.AccessTools.Field(typeof(RNG.Scenarios.DialogueSystemScenario), "navController");
+            var navObj = navField?.GetValue(dss) as GameObject;
+            if (navObj != null)
+            {
+                navObj.SetActive(true);
+                _log.LogInfo("[ApplyService] Activated TextScenario navController for spectating");
+            }
+
+            // Also hide the spectator UI during navigation
+            if (UI.TextScenarioSpectatorUI.Instance != null)
+                UI.TextScenarioSpectatorUI.Instance.Hide();
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[ApplyService] ActivateClientNavigation failed: {ex.Message}");
+        }
     }
 
     // =========================================================================
@@ -598,8 +748,6 @@ public class GameStateApplyService
     /// and shows a waiting message.
     /// </summary>
     private static bool IsEventScene(string scene) =>
-        scene == "Treasure" || scene == "TextScenario" ||
-        scene == "ShopScenario" || scene == "PegMinigame" ||
         scene == "ForestWinScene" || scene == "CastleWinScene" ||
         scene == "FinalWinScene" || scene == "CoreWinScene" ||
         scene == "RunSummary";
