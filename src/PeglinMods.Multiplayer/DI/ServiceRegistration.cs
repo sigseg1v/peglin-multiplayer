@@ -312,6 +312,7 @@ public static class ServiceRegistration
         // Co-op turn system events
         registry.Register(new CoopHandlers.TurnChangeServerHandler(), new CoopHandlers.TurnChangeClientHandler());
         registry.Register(new CoopHandlers.ShootRequestServerHandler(), new CoopHandlers.ShootRequestClientHandler());
+        registry.Register(new CoopHandlers.TargetSelectServerHandler(), new CoopHandlers.TargetSelectClientHandler());
 
         // Co-op relic/reward selection events
         registry.Register(new CoopHandlers.RelicChoicesServerHandler(), new CoopHandlers.RelicChoicesClientHandler());

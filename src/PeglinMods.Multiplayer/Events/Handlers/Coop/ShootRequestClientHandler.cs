@@ -53,6 +53,7 @@ public sealed class ShootRequestClientHandler : IClientHandler<ShootRequestEvent
             PlayerName = senderSlot.PlayerName,
             AimDirectionX = networkEvent.AimDirectionX,
             AimDirectionY = networkEvent.AimDirectionY,
+            TargetEnemyGuid = networkEvent.TargetEnemyGuid,
         };
 
         MultiplayerPlugin.Logger?.LogInfo(
@@ -90,4 +91,5 @@ public class PendingShot
     public string PlayerName { get; set; }
     public float AimDirectionX { get; set; }
     public float AimDirectionY { get; set; }
+    public string TargetEnemyGuid { get; set; }
 }

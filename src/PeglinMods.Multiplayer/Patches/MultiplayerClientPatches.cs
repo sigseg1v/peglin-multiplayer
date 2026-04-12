@@ -748,6 +748,27 @@ public static class MultiplayerClientPatches
                 MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Pre-activated ball before Fire()");
             }
 
+            // Save the client's target GUID so OnShotComplete can record it for
+            // per-player damage resolution. Must happen before ConsumePendingShot.
+            Events.Subscriptions.CoopSubscriptions.LastPendingShotTargetGuid = pending.TargetEnemyGuid;
+
+            // Also set the host's TargetingManager to the client's target so
+            // GetCurrentDamage and DoAttack use the right target context.
+            try
+            {
+                if (!string.IsNullOrEmpty(pending.TargetEnemyGuid)
+                    && services?.TryResolve<Utility.EnemyIdentifier>(out var eid) == true)
+                {
+                    var targetEnemy = eid.Find(pending.TargetEnemyGuid);
+                    if (targetEnemy != null)
+                    {
+                        var targetMgr = UnityEngine.Object.FindObjectOfType<Battle.TargetingManager>();
+                        targetMgr?.SetEnemyAsTarget(targetEnemy, force: true);
+                    }
+                }
+            }
+            catch { }
+
             // Use the real PachinkoBall.Fire() so all internal state (collision layers,
             // wall bounce tracking, shot timeout, etc.) is set up correctly.
             // ExecutingPendingShot bypasses PachinkoBall_Fire_Prefix's block.
@@ -1852,6 +1873,83 @@ public static class MultiplayerClientPatches
     }
 
     // =========================================================================
+    // PER-PLAYER DAMAGE RESOLUTION — apply non-host damage in coop DoAttack
+    // =========================================================================
+
+    /// <summary>
+    /// Before the host's normal DoAttack runs, apply each non-host player's
+    /// pre-computed damage to their individually targeted enemy. The host's
+    /// attack proceeds normally via the original DoAttack method.
+    ///
+    /// This prefix does NOT skip the original — it applies extra damage first,
+    /// then lets the host's attack run as normal (return true).
+    /// </summary>
+    [HarmonyPatch(typeof(BattleController), "DoAttack")]
+    [HarmonyPrefix]
+    public static void BattleController_DoAttack_Prefix()
+    {
+        if (!IsHosting) return;
+        if (!UI.LobbyUI.GameStartReceived) return;
+
+        try
+        {
+            var nonHostShots = Events.Subscriptions.CoopSubscriptions.ConsumeNonHostShotData();
+            if (nonHostShots == null || nonHostShots.Count == 0) return;
+
+            var services = MultiplayerPlugin.Services;
+            if (services?.TryResolve<Utility.EnemyIdentifier>(out var enemyId) != true) return;
+
+            var em = UnityEngine.Object.FindObjectOfType<EnemyManager>();
+            if (em == null) return;
+
+            foreach (var shot in nonHostShots)
+            {
+                if (shot.IsHeal || shot.Damage <= 0) continue;
+
+                if (shot.IsAoE)
+                {
+                    // SimpleAttack orbs hit ALL enemies
+                    for (int i = 0; i < em.Enemies.Count; i++)
+                    {
+                        var enemy = em.Enemies[i];
+                        if (enemy == null || enemy.CurrentHealth <= 0f) continue;
+                        enemy.Damage(shot.Damage, screenshake: false, 0.25f, 1f, unblockable: false,
+                            Battle.Enemies.Enemy.EnemyDamageSource.AOE);
+                    }
+                    MultiplayerPlugin.Logger?.LogInfo(
+                        $"[CoopAttack] {shot.PlayerName} (slot {shot.SlotIndex}): " +
+                        $"AoE {shot.Damage} damage to all enemies");
+                }
+                else
+                {
+                    // Targeted orb — apply damage to the selected target
+                    Battle.Enemies.Enemy target = null;
+                    if (!string.IsNullOrEmpty(shot.TargetEnemyGuid))
+                        target = enemyId.Find(shot.TargetEnemyGuid);
+
+                    // Fallback: closest enemy
+                    if (target == null || target.CurrentHealth <= 0f)
+                    {
+                        target = em.GetFarthestEnemyFromPlayer();
+                        if (target == null) continue;
+                    }
+
+                    target.Damage(shot.Damage, screenshake: false, 0.25f, 1f, unblockable: false,
+                        Battle.Enemies.Enemy.EnemyDamageSource.TargetedAttack);
+
+                    MultiplayerPlugin.Logger?.LogInfo(
+                        $"[CoopAttack] {shot.PlayerName} (slot {shot.SlotIndex}): " +
+                        $"{shot.Damage} damage to {target.name} (guid={shot.TargetEnemyGuid})");
+                }
+            }
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[CoopAttack] Per-player damage resolution failed: {ex}");
+        }
+    }
+
+    // =========================================================================
     // ATTACK ANIMATION DATA — capture attack trigger and target for sync
     // =========================================================================
 
@@ -2006,10 +2104,24 @@ public static class MultiplayerClientPatches
                 var services = MultiplayerPlugin.Services;
                 if (services?.TryResolve<Network.IMessageSender>(out var sender) == true)
                 {
+                    // Capture the client's selected target enemy GUID
+                    string targetGuid = null;
+                    try
+                    {
+                        var targetMgr = UnityEngine.Object.FindObjectOfType<Battle.TargetingManager>();
+                        if (targetMgr?.currentTarget != null &&
+                            services.TryResolve<Utility.EnemyIdentifier>(out var enemyId))
+                        {
+                            targetGuid = enemyId.GetGuid(targetMgr.currentTarget);
+                        }
+                    }
+                    catch { }
+
                     sender.Send(new Events.Network.Coop.ShootRequestEvent
                     {
                         AimDirectionX = aimVec.x,
                         AimDirectionY = aimVec.y,
+                        TargetEnemyGuid = targetGuid,
                     });
                     ClientShotSentThisTurn = true;
 
@@ -2020,7 +2132,7 @@ public static class MultiplayerClientPatches
                     try { pm?.PlayerFired(); } catch { }
 
                     MultiplayerPlugin.Logger?.LogInfo(
-                        $"[ClientPatches] Fire intercepted → ShootRequest: aim=({aimVec.x:F2},{aimVec.y:F2})");
+                        $"[ClientPatches] Fire intercepted → ShootRequest: aim=({aimVec.x:F2},{aimVec.y:F2}), target={targetGuid ?? "auto"}");
                 }
             }
             return false;
@@ -2491,5 +2603,43 @@ public static class MultiplayerClientPatches
         if (!UI.LobbyUI.GameStartReceived) return true;
         if (Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn) return true;
         return false; // Not host's turn — don't re-enable prediction line
+    }
+
+    // =========================================================================
+    // CLIENT TARGET SELECTION — send TargetSelectEvent when client changes target
+    // =========================================================================
+
+    /// <summary>
+    /// When the client selects an enemy target during their aiming phase, send a
+    /// TargetSelectEvent to the host so the host can display the targeting indicator.
+    /// </summary>
+    [HarmonyPatch(typeof(Battle.TargetingManager), "SetEnemyAsTarget")]
+    [HarmonyPostfix]
+    public static void TargetingManager_SetEnemyAsTarget_Postfix(Battle.Enemies.Enemy enemy)
+    {
+        if (!ShouldSuppressClientLogic) return;
+        if (!UI.LobbyUI.GameStartReceived) return;
+        if (!Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn) return;
+
+        try
+        {
+            string guid = null;
+            if (enemy != null)
+            {
+                var services = MultiplayerPlugin.Services;
+                if (services?.TryResolve<Utility.EnemyIdentifier>(out var eid) == true)
+                    guid = eid.GetGuid(enemy);
+            }
+
+            var services2 = MultiplayerPlugin.Services;
+            if (services2?.TryResolve<Network.IMessageSender>(out var sender) == true)
+            {
+                sender.Send(new Events.Network.Coop.TargetSelectEvent
+                {
+                    TargetEnemyGuid = guid,
+                });
+            }
+        }
+        catch { }
     }
 }

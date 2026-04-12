@@ -8,4 +8,10 @@ public class ShootRequestEvent
 {
     public float AimDirectionX { get; set; }
     public float AimDirectionY { get; set; }
+
+    /// <summary>
+    /// GUID of the enemy the player has targeted for their attack.
+    /// Null or empty means "use auto-select" (closest enemy).
+    /// </summary>
+    public string TargetEnemyGuid { get; set; }
 }

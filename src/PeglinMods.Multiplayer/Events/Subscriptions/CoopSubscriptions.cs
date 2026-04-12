@@ -31,6 +31,13 @@ public sealed class CoopSubscriptions
         public int CriticalHitCount;
         public int NumPegsHit;
         public int CactusDamageTally;
+
+        // Per-player targeting data
+        public long PrecomputedDamage;
+        public string TargetEnemyGuid;
+        public bool IsAoE;      // SimpleAttack hits all enemies
+        public bool IsHeal;     // HealAction — not an attack
+        public string PlayerName;
     }
 
     private readonly IMultiplayerMode _mode;
@@ -40,6 +47,13 @@ public sealed class CoopSubscriptions
     private readonly ManualLogSource _log;
 
     private readonly Dictionary<int, ShotDamageData> _accumulatedShotData = new Dictionary<int, ShotDamageData>();
+
+    /// <summary>
+    /// Stores the target GUID from the last pending shot (client → host).
+    /// Set by ExecutePendingShot before consuming the pending shot.
+    /// Read by OnShotComplete to record per-player targeting.
+    /// </summary>
+    internal static string LastPendingShotTargetGuid { get; set; }
 
     /// <summary>
     /// Track health before the enemy attack phase to compute the damage delta.
@@ -333,15 +347,69 @@ public sealed class CoopSubscriptions
             int numPegs = numPegsField != null ? (int)numPegsField.GetValue(bc) : 0;
             int cactusTally = cactusField != null ? (int)cactusField.GetValue(bc) : 0;
 
+            // Capture per-player targeting data while their state is still loaded
+            var dmgMultField = AccessTools.Field(typeof(BattleController), "_damageMultiplier");
+            var dmgBonusField = AccessTools.Field(typeof(BattleController), "_damageBonus");
+            float dmgMult = dmgMultField != null ? (float)dmgMultField.GetValue(bc) : 1f;
+            long dmgBonus = dmgBonusField != null ? (int)dmgBonusField.GetValue(bc) : 0;
+
+            // Pre-compute this player's damage using the currently loaded Attack
+            var amField = AccessTools.Field(typeof(BattleController), "_attackManager");
+            var am = amField?.GetValue(bc) as Battle.Attacks.AttackManager;
+            long precomputedDamage = 0;
+            bool isAoE = false;
+            bool isHeal = false;
+            if (am != null)
+            {
+                precomputedDamage = am.GetCurrentDamage(pegTally, dmgMult, dmgBonus, critCount);
+                isHeal = am.isHeal;
+
+                // Check attack type to determine targeting behavior
+                var attackField = AccessTools.Field(typeof(Battle.Attacks.AttackManager), "_attack");
+                var attack = attackField?.GetValue(am) as Battle.Attacks.Attack;
+                if (attack is Battle.Attacks.SimpleAttack)
+                    isAoE = true;
+            }
+
+            // Get target enemy GUID: host uses TargetingManager, client uses stored value
+            string targetGuid = null;
+            if (activeSlot == 0) // Host
+            {
+                var tmgr = UnityEngine.Object.FindObjectOfType<Battle.TargetingManager>();
+                if (tmgr?.currentTarget != null)
+                {
+                    var services = MultiplayerPlugin.Services;
+                    if (services?.TryResolve<Utility.EnemyIdentifier>(out var eid) == true)
+                        targetGuid = eid.GetGuid(tmgr.currentTarget);
+                }
+            }
+            else // Client — read from stored pending shot data
+            {
+                targetGuid = LastPendingShotTargetGuid;
+                LastPendingShotTargetGuid = null;
+            }
+
+            // Resolve player name
+            string playerName = null;
+            if (_coopStateManager.PlayerStates.TryGetValue(activeSlot, out var pState))
+                playerName = pState.PlayerName;
+
             _accumulatedShotData[activeSlot] = new ShotDamageData
             {
                 PegMultiplierDamageTally = pegTally,
                 CriticalHitCount = critCount,
                 NumPegsHit = numPegs,
                 CactusDamageTally = cactusTally,
+                PrecomputedDamage = precomputedDamage,
+                TargetEnemyGuid = targetGuid,
+                IsAoE = isAoE,
+                IsHeal = isHeal,
+                PlayerName = playerName ?? $"Slot {activeSlot}",
             };
 
-            _log.LogInfo($"[CoopSubs] Saved shot data for slot {activeSlot}: pegTally={pegTally}, crits={critCount}, pegsHit={numPegs}, cactus={cactusTally}");
+            _log.LogInfo($"[CoopSubs] Saved shot data for slot {activeSlot}: " +
+                $"pegTally={pegTally}, crits={critCount}, pegsHit={numPegs}, " +
+                $"damage={precomputedDamage}, target={targetGuid ?? "auto"}, isAoE={isAoE}");
         }
 
         // Mark current player's shot as fired before advancing
@@ -438,33 +506,66 @@ public sealed class CoopSubscriptions
         }
         else if (_turnManager.Phase == TurnPhase.ALL_DONE)
         {
-            // All players have shot. Combine accumulated damage and write back
-            // to BattleController so the normal attack phase uses the total.
+            // All players have shot. Write only the HOST's (slot 0) tallies to
+            // BattleController so the normal attack phase resolves the host's attack.
+            // Non-host players' damage will be applied directly in the DoAttack prefix
+            // based on their per-player targeting data in _accumulatedShotData.
 
-            int totalPegTally = 0, totalCrits = 0, totalPegsHit = 0, totalCactus = 0;
-            foreach (var data in _accumulatedShotData.Values)
+            if (_accumulatedShotData.TryGetValue(0, out var hostData) && bc != null)
             {
-                totalPegTally += data.PegMultiplierDamageTally;
-                totalCrits += data.CriticalHitCount;
-                totalPegsHit += data.NumPegsHit;
-                totalCactus += data.CactusDamageTally;
+                pegTallyField?.SetValue(bc, hostData.PegMultiplierDamageTally);
+                critField?.SetValue(null, hostData.CriticalHitCount);
+                numPegsField?.SetValue(bc, hostData.NumPegsHit);
+                cactusField?.SetValue(bc, hostData.CactusDamageTally);
+                _log.LogInfo($"[CoopSubs] Host (slot 0) damage: pegTally={hostData.PegMultiplierDamageTally}, " +
+                    $"crits={hostData.CriticalHitCount}, pegsHit={hostData.NumPegsHit}");
+            }
+            else if (bc != null)
+            {
+                // Host data missing — zero out tallies to avoid stale data
+                pegTallyField?.SetValue(bc, 0);
+                critField?.SetValue(null, 0);
+                numPegsField?.SetValue(bc, 0);
+                cactusField?.SetValue(bc, 0);
+                _log.LogWarning("[CoopSubs] Host slot 0 not found in accumulated shot data!");
             }
 
-            if (bc != null)
+            // Set the host's target in TargetingManager for the native DoAttack
+            if (_accumulatedShotData.TryGetValue(0, out var hostShot) && !string.IsNullOrEmpty(hostShot.TargetEnemyGuid))
             {
-                pegTallyField?.SetValue(bc, totalPegTally);
-                critField?.SetValue(null, totalCrits); // static field
-                numPegsField?.SetValue(bc, totalPegsHit);
-                cactusField?.SetValue(bc, totalCactus);
+                try
+                {
+                    var services = MultiplayerPlugin.Services;
+                    if (services?.TryResolve<Utility.EnemyIdentifier>(out var eid) == true)
+                    {
+                        var hostTarget = eid.Find(hostShot.TargetEnemyGuid);
+                        if (hostTarget != null)
+                        {
+                            var tmgr = UnityEngine.Object.FindObjectOfType<Battle.TargetingManager>();
+                            tmgr?.SetEnemyAsTarget(hostTarget, force: true);
+                        }
+                    }
+                }
+                catch (Exception ex) { _log.LogWarning($"[CoopSubs] Failed to set host target: {ex.Message}"); }
             }
 
-            _log.LogInfo($"[CoopSubs] Combined damage: pegTally={totalPegTally}, crits={totalCrits}, pegsHit={totalPegsHit}, cactus={totalCactus}");
-            _accumulatedShotData.Clear();
+            // Swap to host for the attack phase (their orb/relics drive the native attack)
+            if (_coopStateManager.ActivePlayerSlot != 0)
+            {
+                _coopStateManager.SwapToPlayer(0);
+                _log.LogInfo("[CoopSubs] ALL_DONE: swapped to host (slot 0) for attack phase");
+            }
+
+            // DO NOT clear _accumulatedShotData — the DoAttack prefix reads it
+            // to apply non-host players' damage to their chosen targets.
+
+            // Show pending damage preview above targeted enemies
+            ShowPendingDamagePreview();
 
             // DO NOT redirect state — let PRE_ATTACK_SPAWN_CHECK -> DO_ATTACK proceed normally
             BroadcastTurnChange();
 
-            _log.LogInfo($"[CoopSubs] All players shot — letting attack phase proceed. Phase={_turnManager.Phase}");
+            _log.LogInfo($"[CoopSubs] All players shot — per-player targeting active. Phase={_turnManager.Phase}");
         }
         else
         {
@@ -581,35 +682,28 @@ public sealed class CoopSubscriptions
         // The TurnManager already advanced to the next player or ALL_DONE.
         if (_turnManager.Phase == TurnPhase.ALL_DONE)
         {
-            // All remaining players have shot. Let the attack phase proceed.
-            // Combine accumulated damage from players who DID shoot.
+            // All remaining players have shot. Write host tallies and let per-player
+            // resolution handle the rest in the DoAttack prefix.
             var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
             var pegTallyField = AccessTools.Field(typeof(BattleController), "_pegMultiplierDamageTally");
             var critField = AccessTools.Field(typeof(BattleController), "_criticalHitCount");
             var numPegsField = AccessTools.Field(typeof(BattleController), "_numPegsHit");
             var cactusField = AccessTools.Field(typeof(BattleController), "_cactusDamageTally");
 
-            int totalPegTally = 0, totalCrits = 0, totalPegsHit = 0, totalCactus = 0;
-            foreach (var data in _accumulatedShotData.Values)
+            if (_accumulatedShotData.TryGetValue(0, out var hostData) && bc != null)
             {
-                totalPegTally += data.PegMultiplierDamageTally;
-                totalCrits += data.CriticalHitCount;
-                totalPegsHit += data.NumPegsHit;
-                totalCactus += data.CactusDamageTally;
+                pegTallyField?.SetValue(bc, hostData.PegMultiplierDamageTally);
+                critField?.SetValue(null, hostData.CriticalHitCount);
+                numPegsField?.SetValue(bc, hostData.NumPegsHit);
+                cactusField?.SetValue(bc, hostData.CactusDamageTally);
             }
 
-            if (bc != null)
-            {
-                pegTallyField?.SetValue(bc, totalPegTally);
-                critField?.SetValue(null, totalCrits);
-                numPegsField?.SetValue(bc, totalPegsHit);
-                cactusField?.SetValue(bc, totalCactus);
-            }
+            if (_coopStateManager.ActivePlayerSlot != 0)
+                _coopStateManager.SwapToPlayer(0);
 
-            _accumulatedShotData.Clear();
+            ShowPendingDamagePreview();
             BroadcastTurnChange();
-            _log.LogInfo($"[CoopSubs] Disconnect during turn: all remaining players done, letting attack proceed. " +
-                $"Combined damage: pegTally={totalPegTally}, crits={totalCrits}, pegsHit={totalPegsHit}, cactus={totalCactus}");
+            _log.LogInfo($"[CoopSubs] Disconnect during turn: all remaining players done, per-player resolution active");
         }
         else if (_turnManager.Phase == TurnPhase.PLAYER_AIMING)
         {
@@ -755,6 +849,103 @@ public sealed class CoopSubscriptions
         {
             _log.LogWarning($"[CoopSubs] EnsureBattleDeckPopulated ({context}) failed: {ex.Message}");
             return false;
+        }
+    }
+
+    // =========================================================================
+    // PER-PLAYER DAMAGE RESOLUTION — accessed by DoAttack Harmony prefix
+    // =========================================================================
+
+    /// <summary>
+    /// Data for a single player's shot, consumed during DoAttack.
+    /// </summary>
+    public class PlayerAttackData
+    {
+        public int SlotIndex;
+        public string PlayerName;
+        public long Damage;
+        public string TargetEnemyGuid;
+        public bool IsAoE;
+        public bool IsHeal;
+    }
+
+    /// <summary>
+    /// Returns non-host players' accumulated shot data for per-player damage resolution.
+    /// Called by the DoAttack Harmony prefix. Clears the data after consumption.
+    /// </summary>
+    internal static List<PlayerAttackData> ConsumeNonHostShotData()
+    {
+        var inst = Instance;
+        if (inst == null) return null;
+
+        var result = new List<PlayerAttackData>();
+        foreach (var kvp in inst._accumulatedShotData)
+        {
+            if (kvp.Key == 0) continue; // Skip host — handled by normal DoAttack
+            var d = kvp.Value;
+            result.Add(new PlayerAttackData
+            {
+                SlotIndex = kvp.Key,
+                PlayerName = d.PlayerName,
+                Damage = d.PrecomputedDamage,
+                TargetEnemyGuid = d.TargetEnemyGuid,
+                IsAoE = d.IsAoE,
+                IsHeal = d.IsHeal,
+            });
+        }
+        inst._accumulatedShotData.Clear();
+        return result;
+    }
+
+    /// <summary>
+    /// Show pending damage amounts above targeted enemies for all players.
+    /// Called right before the attack phase begins.
+    /// </summary>
+    private void ShowPendingDamagePreview()
+    {
+        try
+        {
+            var dcd = UnityEngine.Object.FindObjectOfType<DamageCountDisplay>();
+            if (dcd == null) return;
+
+            var services = MultiplayerPlugin.Services;
+            if (services?.TryResolve<Utility.EnemyIdentifier>(out var eid) != true) return;
+
+            foreach (var kvp in _accumulatedShotData)
+            {
+                var data = kvp.Value;
+                if (data.IsHeal || data.PrecomputedDamage <= 0) continue;
+
+                if (data.IsAoE)
+                {
+                    // AoE damage targets all enemies — show preview on each
+                    var em = UnityEngine.Object.FindObjectOfType<EnemyManager>();
+                    if (em == null) continue;
+                    foreach (var enemy in em.Enemies)
+                    {
+                        if (enemy == null || enemy.CurrentHealth <= 0f) continue;
+                        var pos = (Vector2)enemy.transform.position + new Vector2(0f, 1.2f);
+                        var color = kvp.Key == 0
+                            ? new Color(1f, 0.85f, 0.2f, 0.85f)  // Gold for host
+                            : new Color(0.3f, 0.85f, 1f, 0.85f);  // Cyan for client
+                        dcd.CreateText($"{data.PlayerName}: {data.PrecomputedDamage}", pos, color);
+                    }
+                }
+                else if (!string.IsNullOrEmpty(data.TargetEnemyGuid))
+                {
+                    var enemy = eid.Find(data.TargetEnemyGuid);
+                    if (enemy == null) continue;
+                    var pos = (Vector2)enemy.transform.position + new Vector2(0f, 1.2f);
+                    var color = kvp.Key == 0
+                        ? new Color(1f, 0.85f, 0.2f, 0.85f)
+                        : new Color(0.3f, 0.85f, 1f, 0.85f);
+                    dcd.CreateText($"{data.PlayerName}: {data.PrecomputedDamage}", pos, color);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[CoopSubs] ShowPendingDamagePreview failed: {ex.Message}");
         }
     }
 

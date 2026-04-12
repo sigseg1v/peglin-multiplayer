@@ -2,6 +2,7 @@ namespace PeglinMods.Multiplayer.Events.Handlers.Coop;
 
 using PeglinMods.Multiplayer.Events.Network.Coop;
 using PeglinMods.Multiplayer.GameState;
+using UnityEngine;
 using BattleCtrl = global::Battle.BattleController;
 
 /// <summary>
@@ -62,6 +63,12 @@ public sealed class TurnChangeClientHandler : IClientHandler<TurnChangeEvent>
         // during its own turn, so clear any stale line from the previous turn.
         GameState.ClientAimRenderer.Instance?.HideAim();
 
+        // Enable/disable targeting on the client based on whose turn it is
+        EnableClientTargeting(IsMyTurn);
+
+        // Clear client target indicator on the host when turns change
+        TargetSelectClientHandler.ClearClientTarget();
+
         if (IsMyTurn)
         {
             TurnMessage = "Your turn! Aim and shoot.";
@@ -87,5 +94,33 @@ public sealed class TurnChangeClientHandler : IClientHandler<TurnChangeEvent>
         MultiplayerPlugin.Logger?.LogInfo(
             $"[TurnChange] Slot {networkEvent.ActiveSlotIndex} ({networkEvent.ActivePlayerName}), " +
             $"phase={networkEvent.TurnPhase}, round={networkEvent.RoundNumber}, isMyTurn={IsMyTurn}");
+    }
+
+    /// <summary>
+    /// Enable or disable enemy targeting on the client so the player can select
+    /// which enemy to attack during their aiming phase.
+    /// </summary>
+    private static void EnableClientTargeting(bool enable)
+    {
+        try
+        {
+            var tm = Object.FindObjectOfType<global::Battle.TargetingManager>();
+            if (tm == null) return;
+
+            if (enable)
+            {
+                // Use SPELL targeting type to allow selecting any enemy (including flying)
+                tm.SetTargetingStatus(canTarget: true, global::Battle.TargetingType.SPELL);
+                tm.AutoSelect();
+            }
+            else
+            {
+                tm.SetTargetingStatus(canTarget: false, global::Battle.TargetingType.SINGLE);
+            }
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[TurnChange] EnableClientTargeting failed: {ex.Message}");
+        }
     }
 }
