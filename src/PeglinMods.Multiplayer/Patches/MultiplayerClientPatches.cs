@@ -1969,6 +1969,15 @@ public static class MultiplayerClientPatches
             }
 
             registry.Dispatch(new Events.Network.Coop.PendingDamagePreviewEvent { Entries = entries });
+
+            // Dispatch only runs ServerHandler (sends to clients over network).
+            // Apply locally on host so the overlay renders here too.
+            foreach (var entry in entries)
+            {
+                UI.PendingDamageOverlay.SetPlayerDamage(
+                    entry.SlotIndex, entry.PlayerName, entry.Damage,
+                    entry.TargetEnemyGuid, entry.IsAoE);
+            }
         }
         catch (System.Exception ex)
         {

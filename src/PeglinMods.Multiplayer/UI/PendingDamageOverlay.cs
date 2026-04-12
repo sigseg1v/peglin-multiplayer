@@ -200,8 +200,7 @@ public sealed class PendingDamageOverlay : MonoBehaviour
                     panel.SlotLabels[slot] = label;
                 }
 
-                label.text = $"{name}: {DamageCountDisplay.FormatDamageNumberAsString(dmg)}";
-                label.color = GetSlotColor(slot);
+                label.text = $"-{DamageCountDisplay.FormatDamageNumberAsString(dmg)}";
             }
 
             // Remove labels for slots no longer targeting this enemy
@@ -223,7 +222,7 @@ public sealed class PendingDamageOverlay : MonoBehaviour
             foreach (var slotKvp in panel.SlotLabels)
             {
                 var rect = slotKvp.Value.rectTransform;
-                rect.anchoredPosition = new Vector2(0, -idx * 28f);
+                rect.anchoredPosition = new Vector2(0, -idx * 110f);
                 idx++;
             }
         }
@@ -299,10 +298,10 @@ public sealed class PendingDamageOverlay : MonoBehaviour
         var obj = new GameObject($"Label_Slot{slotIndex}");
         obj.transform.SetParent(parent, false);
         var tmp = obj.AddComponent<TextMeshProUGUI>();
-        tmp.fontSize = 26;
+        tmp.fontSize = 104;
         tmp.fontStyle = FontStyles.Bold;
         tmp.alignment = TextAlignmentOptions.Center;
-        tmp.color = GetSlotColor(slotIndex);
+        tmp.color = new Color(1f, 0.2f, 0.2f);
         tmp.outlineWidth = 0.35f;
         tmp.outlineColor = Color.black;
         tmp.enableWordWrapping = false;
@@ -313,7 +312,7 @@ public sealed class PendingDamageOverlay : MonoBehaviour
         if (font != null) tmp.font = font;
 
         var rect = tmp.rectTransform;
-        rect.sizeDelta = new Vector2(300, 30);
+        rect.sizeDelta = new Vector2(600, 120);
         rect.pivot = new Vector2(0.5f, 1f); // anchor at top-center
 
         return tmp;
