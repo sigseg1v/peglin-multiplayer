@@ -222,6 +222,7 @@ public sealed class CoopSubscriptions
         if (_coopStateManager.TotalPlayerCount < 2) return;
 
         _accumulatedShotData.Clear();
+        PeglinMods.Multiplayer.UI.PendingDamageOverlay.ClearAll();
         _turnManager.BuildTurnOrder();
         _turnManager.StartNewRound();
         BroadcastTurnChange();
@@ -558,9 +559,8 @@ public sealed class CoopSubscriptions
 
             // DO NOT clear _accumulatedShotData — the DoAttack prefix reads it
             // to apply non-host players' damage to their chosen targets.
-
-            // Show pending damage preview above targeted enemies
-            ShowPendingDamagePreview();
+            // The live PendingDamageOverlay was already updating during shots
+            // via HandlePegActivated postfix — no final preview call needed.
 
             // DO NOT redirect state — let PRE_ATTACK_SPAWN_CHECK -> DO_ATTACK proceed normally
             BroadcastTurnChange();
@@ -701,7 +701,6 @@ public sealed class CoopSubscriptions
             if (_coopStateManager.ActivePlayerSlot != 0)
                 _coopStateManager.SwapToPlayer(0);
 
-            ShowPendingDamagePreview();
             BroadcastTurnChange();
             _log.LogInfo($"[CoopSubs] Disconnect during turn: all remaining players done, per-player resolution active");
         }
@@ -898,55 +897,29 @@ public sealed class CoopSubscriptions
     }
 
     /// <summary>
-    /// Show pending damage amounts above targeted enemies for all players.
-    /// Called right before the attack phase begins.
+    /// Returns ALL players' accumulated shot data for the pending damage overlay.
+    /// Does NOT clear the data — called repeatedly during shots.
     /// </summary>
-    private void ShowPendingDamagePreview()
+    internal static List<Events.Network.Coop.PendingDamagePreviewEvent.DamageEntry> GetAccumulatedDamageEntries()
     {
-        try
+        var inst = Instance;
+        if (inst == null) return null;
+
+        var result = new List<Events.Network.Coop.PendingDamagePreviewEvent.DamageEntry>();
+        foreach (var kvp in inst._accumulatedShotData)
         {
-            var dcd = UnityEngine.Object.FindObjectOfType<DamageCountDisplay>();
-            if (dcd == null) return;
-
-            var services = MultiplayerPlugin.Services;
-            if (services?.TryResolve<Utility.EnemyIdentifier>(out var eid) != true) return;
-
-            foreach (var kvp in _accumulatedShotData)
+            var d = kvp.Value;
+            if (d.IsHeal || d.PrecomputedDamage <= 0) continue;
+            result.Add(new Events.Network.Coop.PendingDamagePreviewEvent.DamageEntry
             {
-                var data = kvp.Value;
-                if (data.IsHeal || data.PrecomputedDamage <= 0) continue;
-
-                if (data.IsAoE)
-                {
-                    // AoE damage targets all enemies — show preview on each
-                    var em = UnityEngine.Object.FindObjectOfType<EnemyManager>();
-                    if (em == null) continue;
-                    foreach (var enemy in em.Enemies)
-                    {
-                        if (enemy == null || enemy.CurrentHealth <= 0f) continue;
-                        var pos = (Vector2)enemy.transform.position + new Vector2(0f, 1.2f);
-                        var color = kvp.Key == 0
-                            ? new Color(1f, 0.85f, 0.2f, 0.85f)  // Gold for host
-                            : new Color(0.3f, 0.85f, 1f, 0.85f);  // Cyan for client
-                        dcd.CreateText($"{data.PlayerName}: {data.PrecomputedDamage}", pos, color);
-                    }
-                }
-                else if (!string.IsNullOrEmpty(data.TargetEnemyGuid))
-                {
-                    var enemy = eid.Find(data.TargetEnemyGuid);
-                    if (enemy == null) continue;
-                    var pos = (Vector2)enemy.transform.position + new Vector2(0f, 1.2f);
-                    var color = kvp.Key == 0
-                        ? new Color(1f, 0.85f, 0.2f, 0.85f)
-                        : new Color(0.3f, 0.85f, 1f, 0.85f);
-                    dcd.CreateText($"{data.PlayerName}: {data.PrecomputedDamage}", pos, color);
-                }
-            }
+                SlotIndex = kvp.Key,
+                PlayerName = d.PlayerName,
+                Damage = d.PrecomputedDamage,
+                TargetEnemyGuid = d.TargetEnemyGuid,
+                IsAoE = d.IsAoE,
+            });
         }
-        catch (Exception ex)
-        {
-            _log.LogWarning($"[CoopSubs] ShowPendingDamagePreview failed: {ex.Message}");
-        }
+        return result;
     }
 
     /// <summary>

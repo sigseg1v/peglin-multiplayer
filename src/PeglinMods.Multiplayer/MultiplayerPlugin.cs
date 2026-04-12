@@ -60,6 +60,7 @@ public class MultiplayerPlugin : BaseUnityPlugin
             _modObject.AddComponent<ClientAimRenderer>();
             _modObject.AddComponent<ClientAttackProjectile>();
             _modObject.AddComponent<CoopPlayerVisuals>();
+            _modObject.AddComponent<PendingDamageOverlay>();
 
             _modObject.AddComponent<CoopRewardUI>();
 

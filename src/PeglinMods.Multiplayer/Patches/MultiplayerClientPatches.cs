@@ -1873,6 +1873,110 @@ public static class MultiplayerClientPatches
     }
 
     // =========================================================================
+    // LIVE PENDING DAMAGE OVERLAY — update per peg hit during coop
+    // =========================================================================
+
+    /// <summary>
+    /// After each peg activation, compute the running damage total for the
+    /// current player and dispatch a PendingDamagePreviewEvent so both host
+    /// and client render persistent damage text above targeted enemies.
+    /// </summary>
+    [HarmonyPatch(typeof(BattleController), "HandlePegActivated")]
+    [HarmonyPostfix]
+    public static void BattleController_HandlePegActivated_Postfix(BattleController __instance)
+    {
+        if (!IsHosting) return;
+        if (!UI.LobbyUI.GameStartReceived) return;
+
+        try
+        {
+            var services = MultiplayerPlugin.Services;
+            if (services == null) return;
+            if (!services.TryResolve<GameState.CoopStateManager>(out var coopState)) return;
+            if (coopState.TotalPlayerCount < 2) return;
+            if (!services.TryResolve<IGameEventRegistry>(out var registry)) return;
+
+            int activeSlot = coopState.ActivePlayerSlot;
+
+            // Read BattleController's running tallies
+            var pegTallyField = AccessTools.Field(typeof(BattleController), "_pegMultiplierDamageTally");
+            var critField = AccessTools.Field(typeof(BattleController), "_criticalHitCount");
+            var dmgMultField = AccessTools.Field(typeof(BattleController), "_damageMultiplier");
+            var dmgBonusField = AccessTools.Field(typeof(BattleController), "_damageBonus");
+
+            int pegTally = pegTallyField != null ? (int)pegTallyField.GetValue(__instance) : 0;
+            int critCount = critField != null ? (int)critField.GetValue(null) : 0; // static
+            float dmgMult = dmgMultField != null ? (float)dmgMultField.GetValue(__instance) : 1f;
+            long dmgBonus = dmgBonusField != null ? (int)dmgBonusField.GetValue(__instance) : 0;
+
+            // Compute running damage via AttackManager
+            var amField = AccessTools.Field(typeof(BattleController), "_attackManager");
+            var am = amField?.GetValue(__instance) as Battle.Attacks.AttackManager;
+            if (am == null) return;
+
+            long currentDamage = am.GetCurrentDamage(pegTally, dmgMult, dmgBonus, critCount);
+            if (currentDamage <= 0 && am.isHeal) return; // heal orbs — no damage preview
+
+            // Get target and AoE status
+            bool isAoE = false;
+            var attackField = AccessTools.Field(typeof(Battle.Attacks.AttackManager), "_attack");
+            var attack = attackField?.GetValue(am) as Battle.Attacks.Attack;
+            if (attack is Battle.Attacks.SimpleAttack)
+                isAoE = true;
+
+            string targetGuid = null;
+            var tmgr = UnityEngine.Object.FindObjectOfType<Battle.TargetingManager>();
+            if (tmgr?.currentTarget != null && services.TryResolve<Utility.EnemyIdentifier>(out var eid))
+                targetGuid = eid.GetGuid(tmgr.currentTarget);
+
+            // Player name
+            string playerName = $"Slot {activeSlot}";
+            if (coopState.PlayerStates.TryGetValue(activeSlot, out var pState))
+                playerName = pState.PlayerName ?? playerName;
+
+            // Build event: previous players' finalized data + current player's live total
+            var entries = CoopSubscriptions.GetAccumulatedDamageEntries()
+                ?? new System.Collections.Generic.List<Events.Network.Coop.PendingDamagePreviewEvent.DamageEntry>();
+
+            // Replace or add current player's live entry
+            bool replaced = false;
+            for (int i = 0; i < entries.Count; i++)
+            {
+                if (entries[i].SlotIndex == activeSlot)
+                {
+                    entries[i] = new Events.Network.Coop.PendingDamagePreviewEvent.DamageEntry
+                    {
+                        SlotIndex = activeSlot,
+                        PlayerName = playerName,
+                        Damage = currentDamage,
+                        TargetEnemyGuid = targetGuid,
+                        IsAoE = isAoE,
+                    };
+                    replaced = true;
+                    break;
+                }
+            }
+            if (!replaced)
+            {
+                entries.Add(new Events.Network.Coop.PendingDamagePreviewEvent.DamageEntry
+                {
+                    SlotIndex = activeSlot,
+                    PlayerName = playerName,
+                    Damage = currentDamage,
+                    TargetEnemyGuid = targetGuid,
+                    IsAoE = isAoE,
+                });
+            }
+
+            registry.Dispatch(new Events.Network.Coop.PendingDamagePreviewEvent { Entries = entries });
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[CoopDmgOverlay] HandlePegActivated postfix failed: {ex.Message}");
+        }
+    }
+
+    // =========================================================================
     // PER-PLAYER DAMAGE RESOLUTION — apply non-host damage in coop DoAttack
     // =========================================================================
 
@@ -1890,6 +1994,15 @@ public static class MultiplayerClientPatches
     {
         if (!IsHosting) return;
         if (!UI.LobbyUI.GameStartReceived) return;
+
+        // Clear the pending damage overlay — the attack is now resolving
+        try
+        {
+            UI.PendingDamageOverlay.ClearAll();
+            if (MultiplayerPlugin.Services?.TryResolve<IGameEventRegistry>(out var clearReg) == true)
+                clearReg.Dispatch(new Events.Network.Coop.PendingDamagePreviewEvent());
+        }
+        catch { }
 
         try
         {
