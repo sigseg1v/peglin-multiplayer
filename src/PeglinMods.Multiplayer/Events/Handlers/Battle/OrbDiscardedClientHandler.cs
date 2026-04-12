@@ -23,6 +23,14 @@ public sealed class OrbDiscardedClientHandler : IClientHandler<OrbDiscardedEvent
                     // picks up the correct new orb. The heartbeat will confirm/correct later.
                     PopClientShuffledDeck();
 
+                    // Increment the client's local discard counter so the UI ("0/1" → "1/1") updates
+                    var bc = UnityEngine.Object.FindObjectOfType<global::Battle.BattleController>();
+                    if (bc != null)
+                    {
+                        bc.NumShotsDiscarded++;
+                        global::Battle.BattleController.OnOrbDiscarded?.Invoke();
+                    }
+
                     MultiplayerPlugin.Logger?.LogInfo("[OrbDiscarded] Client's discard processed — resetting aiming ball");
                     PeglinMods.Multiplayer.Patches.MultiplayerClientPatches.ResetClientAimingBall();
                 }

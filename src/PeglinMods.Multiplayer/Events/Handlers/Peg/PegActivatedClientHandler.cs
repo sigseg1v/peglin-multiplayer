@@ -33,6 +33,18 @@ public sealed class PegActivatedClientHandler : IClientHandler<PegActivatedEvent
             // game logic (relic effects, status effects, attack resolution).
             try
             {
+                // Collect coins visually before the peg is popped
+                try
+                {
+                    var overlayField = AccessTools.Field(typeof(global::Peg), "PegCoinOverlayInstance");
+                    var overlay = overlayField?.GetValue(peg) as global::Battle.PegBehaviour.PegCoinOverlay;
+                    if (overlay != null && overlay.NumCoins > 0)
+                    {
+                        overlay.CollectCoins();
+                    }
+                }
+                catch { }
+
                 // Mark as cleared
                 var clearedField = AccessTools.Field(typeof(global::Peg), "_cleared");
                 clearedField?.SetValue(peg, true);

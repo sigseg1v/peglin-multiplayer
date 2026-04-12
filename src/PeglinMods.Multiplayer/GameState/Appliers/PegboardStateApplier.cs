@@ -627,13 +627,11 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 try
                 {
                     var overlayField = HarmonyLib.AccessTools.Field(typeof(Peg), "PegCoinOverlayInstance");
-                    var overlay = overlayField?.GetValue(peg);
+                    var overlay = overlayField?.GetValue(peg) as Battle.PegBehaviour.PegCoinOverlay;
                     if (overlay != null)
                     {
-                        var collectMethod = overlay.GetType().GetMethod("CollectCoins",
-                            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance,
-                            null, System.Type.EmptyTypes, null);
-                        collectMethod?.Invoke(overlay, null);
+                        int toCollect = currentCoins - entry.CoinCount;
+                        overlay.CollectCoins(toCollect);
                     }
                 }
                 catch { }
