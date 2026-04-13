@@ -642,6 +642,15 @@ public static class MultiplayerClientPatches
                 bool wasInactive = ballGO != null && !ballGO.activeInHierarchy;
                 if (wasInactive) ballGO.SetActive(true);
 
+                // Clear populatingDisplayOrb — the previous discard's DrawBall may have
+                // started a DeckInfoManager animation that hasn't finished yet. This flag
+                // blocks AttemptOrbDiscard, preventing relics like Ambidextionary (2 discards)
+                // from working. Also disconnect DeckManager.onBallUsed so the client's DrawBall
+                // doesn't trigger the host's deck tube animation.
+                DeckInfoManager.populatingDisplayOrb = false;
+                var savedOnBallUsed = DeckManager.onBallUsed;
+                DeckManager.onBallUsed = _ => { };
+
                 _executingPendingDiscard = true;
                 try
                 {
@@ -651,6 +660,7 @@ public static class MultiplayerClientPatches
                 finally
                 {
                     _executingPendingDiscard = false;
+                    DeckManager.onBallUsed = savedOnBallUsed;
                 }
 
                 MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Executed pending OrbDiscard for client");
