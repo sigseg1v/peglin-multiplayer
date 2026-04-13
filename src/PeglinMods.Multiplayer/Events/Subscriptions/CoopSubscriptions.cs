@@ -44,10 +44,10 @@ public sealed class CoopSubscriptions
         // Status effects captured from the orb's IAffectEnemyOnHit components + relic effects
         public List<(Battle.StatusEffects.StatusEffectType Type, int Intensity)> StatusEffectsToApply;
 
-        // The orb prefab from the deck (not the instantiated ball, which gets destroyed).
-        // Used to re-instantiate the correct Attack at ALL_DONE so the host's DoAttack
-        // uses the correct orb damage formula, not the last-drawn player's orb.
-        public GameObject OrbPrefab;
+        // Orb name (prefab name without "(Clone)") for re-instantiating at ALL_DONE.
+        // Used with AssetLoading.GetOrbPrefab() to get the correct orb type so DoAttack
+        // computes damage with the right formula.
+        public string OrbPrefabName;
     }
 
     private readonly IMultiplayerMode _mode;
@@ -380,7 +380,7 @@ public sealed class CoopSubscriptions
             bool isAoE = false;
             bool isHeal = false;
             List<(Battle.StatusEffects.StatusEffectType, int)> capturedEffects = null;
-            GameObject capturedOrbPrefab = null;
+            string capturedOrbName = null;
             if (am != null)
             {
                 precomputedDamage = am.GetCurrentDamage(pegTally, dmgMult, dmgBonus, critCount);
@@ -400,33 +400,23 @@ public sealed class CoopSubscriptions
                     capturedEffects = CaptureOrbStatusEffects(attack, critCount);
                 }
 
-                // Capture the orb PREFAB (not the instantiated ball which gets destroyed
-                // when the next player's ball is drawn). The prefab survives in the deck.
-                // We need it at ALL_DONE to re-instantiate the correct Attack for each player.
+                // Capture the orb name for re-instantiation at ALL_DONE.
+                // The active ball is still alive here (not destroyed until DrawBall for next player).
+                // We store the prefab name so we can look it up via AssetLoading.GetOrbPrefab().
                 try
                 {
                     var activeBallField = AccessTools.Field(typeof(BattleController), "_activePachinkoBall");
                     var activeBall = activeBallField?.GetValue(bc) as GameObject;
                     if (activeBall != null)
                     {
-                        string orbName = activeBall.name.Replace("(Clone)", "").Trim();
-                        // Find the matching prefab in the current player's battle deck
-                        var dmField = AccessTools.Field(typeof(BattleController), "_deckManager");
-                        var dm = dmField?.GetValue(bc) as DeckManager;
-                        if (dm?.battleDeck != null)
-                        {
-                            foreach (var orb in dm.battleDeck)
-                            {
-                                if (orb != null && orb.name.Replace("(Clone)", "").Trim() == orbName)
-                                {
-                                    capturedOrbPrefab = orb;
-                                    break;
-                                }
-                            }
-                        }
+                        capturedOrbName = activeBall.name.Replace("(Clone)", "").Trim();
+                    }
+                    else
+                    {
+                        _log.LogWarning($"[CoopSubs] _activePachinkoBall was null at shot capture for slot {activeSlot}");
                     }
                 }
-                catch (Exception ex) { _log.LogWarning($"[CoopSubs] Failed to capture orb prefab: {ex.Message}"); }
+                catch (Exception ex) { _log.LogWarning($"[CoopSubs] Failed to capture orb name: {ex.Message}"); }
             }
 
             // Get target enemy GUID: host uses TargetingManager, client uses stored value
@@ -466,13 +456,13 @@ public sealed class CoopSubscriptions
                 IsHeal = isHeal,
                 PlayerName = playerName ?? $"Slot {activeSlot}",
                 StatusEffectsToApply = capturedEffects,
-                OrbPrefab = capturedOrbPrefab,
+                OrbPrefabName = capturedOrbName,
             };
 
             _log.LogInfo($"[CoopSubs] Saved shot data for slot {activeSlot}: " +
                 $"pegTally={pegTally}, crits={critCount}, pegsHit={numPegs}, " +
                 $"damage={precomputedDamage}, target={targetGuid ?? "auto"}, isAoE={isAoE}, " +
-                $"statusEffects={capturedEffects?.Count ?? 0}");
+                $"statusEffects={capturedEffects?.Count ?? 0}, orb={capturedOrbName ?? "NONE"}");
         }
 
         // Mark current player's shot as fired before advancing
@@ -628,16 +618,27 @@ public sealed class CoopSubscriptions
             // The last DrawBall was for the last non-host player, so _attack points to
             // their orb. DoAttack calls _attack.Fire() which uses the wrong damage formula
             // unless we restore the host's orb here.
-            //
-            // We can't store the instantiated Attack (it gets destroyed when the next ball
-            // is drawn), so we stored the PREFAB from the deck and re-instantiate here.
-            if (_accumulatedShotData.TryGetValue(0, out var hostAttackData) && hostAttackData.OrbPrefab != null && bc != null)
+            if (_accumulatedShotData.TryGetValue(0, out var hostAttackData) && !string.IsNullOrEmpty(hostAttackData.OrbPrefabName) && bc != null)
             {
                 try
                 {
-                    RestoreAttackFromPrefab(bc, hostAttackData.OrbPrefab, "host");
+                    var orbPrefab = Loading.AssetLoading.Instance?.GetOrbPrefab(hostAttackData.OrbPrefabName);
+                    if (orbPrefab != null)
+                    {
+                        RestoreAttackFromPrefab(bc, orbPrefab, "host");
+                    }
+                    else
+                    {
+                        _log.LogWarning($"[CoopSubs] ALL_DONE: AssetLoading.GetOrbPrefab returned null for '{hostAttackData.OrbPrefabName}'");
+                    }
                 }
                 catch (Exception ex) { _log.LogWarning($"[CoopSubs] Failed to restore host Attack: {ex.Message}"); }
+            }
+            else if (bc != null)
+            {
+                _log.LogWarning($"[CoopSubs] ALL_DONE: Cannot restore host Attack — " +
+                    $"hasSlot0={_accumulatedShotData.ContainsKey(0)}, " +
+                    $"orbName={(_accumulatedShotData.TryGetValue(0, out var d) ? d.OrbPrefabName ?? "null" : "N/A")}");
             }
 
             // DO NOT clear _accumulatedShotData — the DoAttack prefix reads it
@@ -1068,11 +1069,38 @@ public sealed class CoopSubscriptions
 
         attack.Initialize(playerPos, am, rm, dm, cm, phc, psec);
 
+        // Clone the instanceID from the matching deck entry so that
+        // IsAttackUnique can correctly identify this orb in the deck
+        // (needed for UNIQUE_ORBS_BUFF / Spinventoriginality relic).
+        // Initialize called SoftInit(forUI:false) which set applyUniqueBuff
+        // with the wrong instanceID; we need to re-check after cloning.
+        if (dm?.battleDeck != null)
+        {
+            foreach (var deckOrb in dm.battleDeck)
+            {
+                if (deckOrb != null)
+                {
+                    var deckAttack = deckOrb.GetComponent<Battle.Attacks.Attack>();
+                    if (deckAttack != null && deckAttack.locNameString == attack.locNameString)
+                    {
+                        attack.CloneInstanceId(deckAttack);
+                        attack.CheckUniqueBuff("");
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Compute relic-based damage buffs (UNIQUE_ORBS_BUFF, INCREASE_STRENGTH_SMALL, etc.)
+        // This mirrors what BattleController.DrawBall does after InitializeAttack.
+        attack.CalculateStaticDamageBuffs(saveResults: true);
+
         // Set as the active attack in AttackManager
         if (am != null)
         {
             var atkField = AccessTools.Field(typeof(Battle.Attacks.AttackManager), "_attack");
             atkField?.SetValue(am, attack);
+            am.isHeal = attack is HealAction;
         }
 
         MultiplayerPlugin.Logger?.LogInfo($"[CoopSubs] Restored {label} Attack from prefab: {orbPrefab.name}");
