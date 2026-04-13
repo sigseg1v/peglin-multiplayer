@@ -663,6 +663,23 @@ public static class MultiplayerClientPatches
                     DeckManager.onBallUsed = savedOnBallUsed;
                 }
 
+                // If the discard emptied the shuffled deck, AttemptOrbDiscard calls
+                // StartReloading() which sets _skipPlayerTurnCount. In coop, this would
+                // skip the client's turn and leave the host with no ball to fire — causing
+                // the pending shot to never execute. Clear the skip count and force the
+                // state back to AWAITING_SHOT so the reload + DrawBall cycle completes.
+                var skipField = HarmonyLib.AccessTools.Field(typeof(BattleController), "_skipPlayerTurnCount");
+                if (skipField != null)
+                {
+                    int skipCount = (int)skipField.GetValue(bc);
+                    if (skipCount > 0)
+                    {
+                        skipField.SetValue(bc, 0);
+                        MultiplayerPlugin.Logger?.LogInfo(
+                            $"[ClientPatches] Cleared _skipPlayerTurnCount={skipCount} after client discard (reload triggered)");
+                    }
+                }
+
                 MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Executed pending OrbDiscard for client");
                 // AttemptOrbDiscard calls DrawBall internally, DrawBall_Postfix will hide the new ball
             }
@@ -2069,10 +2086,12 @@ public static class MultiplayerClientPatches
                         if (enemy == null || enemy.CurrentHealth <= 0f) continue;
                         enemy.Damage(shot.Damage, screenshake: false, 0.25f, 1f, unblockable: false,
                             Battle.Enemies.Enemy.EnemyDamageSource.AOE);
+                        ApplyStatusEffectsToEnemy(enemy, shot.StatusEffectsToApply);
                     }
                     MultiplayerPlugin.Logger?.LogInfo(
                         $"[CoopAttack] {shot.PlayerName} (slot {shot.SlotIndex}): " +
-                        $"AoE {shot.Damage} damage to all enemies");
+                        $"AoE {shot.Damage} damage to all enemies, " +
+                        $"effects={shot.StatusEffectsToApply?.Count ?? 0}");
                 }
                 else
                 {
@@ -2090,16 +2109,47 @@ public static class MultiplayerClientPatches
 
                     target.Damage(shot.Damage, screenshake: false, 0.25f, 1f, unblockable: false,
                         Battle.Enemies.Enemy.EnemyDamageSource.TargetedAttack);
+                    ApplyStatusEffectsToEnemy(target, shot.StatusEffectsToApply);
 
                     MultiplayerPlugin.Logger?.LogInfo(
                         $"[CoopAttack] {shot.PlayerName} (slot {shot.SlotIndex}): " +
-                        $"{shot.Damage} damage to {target.name} (guid={shot.TargetEnemyGuid})");
+                        $"{shot.Damage} damage to {target.name} (guid={shot.TargetEnemyGuid}), " +
+                        $"effects={shot.StatusEffectsToApply?.Count ?? 0}");
                 }
             }
         }
         catch (System.Exception ex)
         {
             MultiplayerPlugin.Logger?.LogWarning($"[CoopAttack] Per-player damage resolution failed: {ex}");
+        }
+    }
+
+    /// <summary>
+    /// Apply captured status effects from a non-host player's orb to a target enemy.
+    /// This replicates the status effect application that the normal attack pipeline
+    /// does via IAffectEnemyOnHit components and Attack.GetStatusEffects().
+    /// </summary>
+    private static void ApplyStatusEffectsToEnemy(
+        Battle.Enemies.Enemy enemy,
+        System.Collections.Generic.List<(Battle.StatusEffects.StatusEffectType Type, int Intensity)> effects)
+    {
+        if (effects == null || effects.Count == 0) return;
+        if (enemy == null || enemy.CurrentHealth <= 0f) return;
+
+        foreach (var (type, intensity) in effects)
+        {
+            if (type == Battle.StatusEffects.StatusEffectType.None) continue;
+            try
+            {
+                enemy.ApplyStatusEffect(
+                    new Battle.StatusEffects.StatusEffect(type, intensity),
+                    Battle.StatusEffects.StatusEffectSource.PLAYER);
+            }
+            catch (System.Exception ex)
+            {
+                MultiplayerPlugin.Logger?.LogWarning(
+                    $"[CoopAttack] Failed to apply {type}({intensity}) to {enemy.name}: {ex.Message}");
+            }
         }
     }
 
@@ -2110,11 +2160,15 @@ public static class MultiplayerClientPatches
     /// <summary>Stores the last attack animation trigger for the AttackStartedEvent.</summary>
     internal static string LastAttackAnimTrigger;
     internal static string LastAttackTargetGuid;
+    internal static int LastAttackNumPegsHit;
+    internal static bool LastAttackIsCrit;
+    internal static string LastAttackOrbName;
 
-    /// <summary>Capture attack trigger and target enemy when attack starts.</summary>
+    /// <summary>Capture attack trigger, target enemy, peg count, crit, and orb name when attack starts.</summary>
     [HarmonyPatch(typeof(Battle.Attacks.AttackManager), "Attack")]
     [HarmonyPostfix]
-    public static void AttackManager_Attack_Postfix(Battle.Attacks.AttackManager __instance, Battle.Enemies.Enemy target)
+    public static void AttackManager_Attack_Postfix(Battle.Attacks.AttackManager __instance, Battle.Enemies.Enemy target,
+        int numPegsHitThisShot, int criticalHitCount)
     {
         if (!IsHosting) return;
         try
@@ -2122,6 +2176,9 @@ public static class MultiplayerClientPatches
             var attackField = HarmonyLib.AccessTools.Field(typeof(Battle.Attacks.AttackManager), "_attack");
             var attack = attackField?.GetValue(__instance) as Battle.Attacks.Attack;
             LastAttackAnimTrigger = attack?.PeglinAttackAnimationTrigger ?? "attack";
+            LastAttackNumPegsHit = numPegsHitThisShot;
+            LastAttackIsCrit = criticalHitCount > 0;
+            LastAttackOrbName = attack?.gameObject?.name?.Replace("(Clone)", "").Trim();
 
             if (target != null)
             {
@@ -3364,6 +3421,11 @@ public static class MultiplayerClientPatches
         PeglinUI.PostBattle.BattleUpgradeCanvas __instance)
     {
         if (!UI.LobbyUI.GameStartReceived) return;
+
+        // During treasure scenes, both host and client pick relics natively from the
+        // chest UI. Do NOT capture/replace relics — that's only for post-battle rewards.
+        if (AllowTreasureLogic) return;
+        if (IsHosting && Events.Handlers.Coop.CoopRewardState.TreasurePhaseActive) return;
 
         try
         {

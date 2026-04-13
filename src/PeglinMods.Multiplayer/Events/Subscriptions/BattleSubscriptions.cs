@@ -68,6 +68,9 @@ public sealed class BattleEventSubscriptions
         {
             AnimTrigger = Patches.MultiplayerClientPatches.LastAttackAnimTrigger ?? "attack",
             TargetEnemyGuid = Patches.MultiplayerClientPatches.LastAttackTargetGuid,
+            NumPegsHit = Patches.MultiplayerClientPatches.LastAttackNumPegsHit,
+            IsCrit = Patches.MultiplayerClientPatches.LastAttackIsCrit,
+            OrbName = Patches.MultiplayerClientPatches.LastAttackOrbName,
         });
     }
     private void OnTurnComplete() { if (_multiplayerMode.IsHosting) _registry.Dispatch(new TurnCompleteEvent()); }

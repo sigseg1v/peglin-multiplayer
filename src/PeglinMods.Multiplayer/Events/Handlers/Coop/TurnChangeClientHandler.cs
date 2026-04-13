@@ -72,6 +72,16 @@ public sealed class TurnChangeClientHandler : IClientHandler<TurnChangeEvent>
         if (IsMyTurn)
         {
             TurnMessage = "Your turn! Aim and shoot.";
+
+            // Reset the discard counter so the client UI shows "0/N" at the start
+            // of each turn. The game normally resets NumShotsDiscarded in DrawBall,
+            // but the client's ball is created locally (not via the game's DrawBall).
+            try
+            {
+                var bc = Object.FindObjectOfType<BattleCtrl>();
+                if (bc != null) bc.NumShotsDiscarded = 0;
+            }
+            catch { }
         }
         else if (networkEvent.TurnPhase == nameof(GameState.TurnPhase.PLAYER_AIMING))
         {

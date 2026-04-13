@@ -24,9 +24,9 @@ public sealed class AttackStartedClientHandler : IClientHandler<AttackStartedEve
                 AttackManager.OnAttackPerformed?.Invoke(e.AnimTrigger);
 
                 // Set up the projectile to launch when the animation fires OnFirePoint
-                ClientAttackProjectile.Instance?.SetupAttack(e.TargetEnemyGuid);
+                ClientAttackProjectile.Instance?.SetupAttack(e.TargetEnemyGuid, e.NumPegsHit, e.IsCrit, e.OrbName);
 
-                MultiplayerPlugin.Logger?.LogInfo($"[AttackStarted] anim='{e.AnimTrigger}', target={e.TargetEnemyGuid}");
+                MultiplayerPlugin.Logger?.LogInfo($"[AttackStarted] anim='{e.AnimTrigger}', target={e.TargetEnemyGuid}, pegs={e.NumPegsHit}, crit={e.IsCrit}, orb={e.OrbName}");
             }
         }
         catch (Exception ex)

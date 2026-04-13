@@ -31,6 +31,8 @@ public sealed class CoopSubscriptions
         public int CriticalHitCount;
         public int NumPegsHit;
         public int CactusDamageTally;
+        public float DamageMultiplier;
+        public long DamageBonus;
 
         // Per-player targeting data
         public long PrecomputedDamage;
@@ -38,6 +40,9 @@ public sealed class CoopSubscriptions
         public bool IsAoE;      // SimpleAttack hits all enemies
         public bool IsHeal;     // HealAction — not an attack
         public string PlayerName;
+
+        // Status effects captured from the orb's IAffectEnemyOnHit components + relic effects
+        public List<(Battle.StatusEffects.StatusEffectType Type, int Intensity)> StatusEffectsToApply;
     }
 
     private readonly IMultiplayerMode _mode;
@@ -346,6 +351,8 @@ public sealed class CoopSubscriptions
         var critField = AccessTools.Field(typeof(BattleController), "_criticalHitCount");
         var numPegsField = AccessTools.Field(typeof(BattleController), "_numPegsHit");
         var cactusField = AccessTools.Field(typeof(BattleController), "_cactusDamageTally");
+        var dmgMultField = AccessTools.Field(typeof(BattleController), "_damageMultiplier");
+        var dmgBonusField = AccessTools.Field(typeof(BattleController), "_damageBonus");
 
         if (bc != null)
         {
@@ -355,9 +362,6 @@ public sealed class CoopSubscriptions
             int numPegs = numPegsField != null ? (int)numPegsField.GetValue(bc) : 0;
             int cactusTally = cactusField != null ? (int)cactusField.GetValue(bc) : 0;
 
-            // Capture per-player targeting data while their state is still loaded
-            var dmgMultField = AccessTools.Field(typeof(BattleController), "_damageMultiplier");
-            var dmgBonusField = AccessTools.Field(typeof(BattleController), "_damageBonus");
             float dmgMult = dmgMultField != null ? (float)dmgMultField.GetValue(bc) : 1f;
             long dmgBonus = dmgBonusField != null ? (int)dmgBonusField.GetValue(bc) : 0;
 
@@ -367,6 +371,7 @@ public sealed class CoopSubscriptions
             long precomputedDamage = 0;
             bool isAoE = false;
             bool isHeal = false;
+            List<(Battle.StatusEffects.StatusEffectType, int)> capturedEffects = null;
             if (am != null)
             {
                 precomputedDamage = am.GetCurrentDamage(pegTally, dmgMult, dmgBonus, critCount);
@@ -377,6 +382,14 @@ public sealed class CoopSubscriptions
                 var attack = attackField?.GetValue(am) as Battle.Attacks.Attack;
                 if (attack is Battle.Attacks.SimpleAttack)
                     isAoE = true;
+
+                // Capture status effects from the orb's components for non-host players.
+                // The host's effects are applied by the normal attack pipeline in DoAttack,
+                // but non-host damage is applied via enemy.Damage() which skips status effects.
+                if (activeSlot != 0 && attack != null)
+                {
+                    capturedEffects = CaptureOrbStatusEffects(attack, critCount);
+                }
             }
 
             // Get target enemy GUID: host uses TargetingManager, client uses stored value
@@ -408,16 +421,20 @@ public sealed class CoopSubscriptions
                 CriticalHitCount = critCount,
                 NumPegsHit = numPegs,
                 CactusDamageTally = cactusTally,
+                DamageMultiplier = dmgMult,
+                DamageBonus = dmgBonus,
                 PrecomputedDamage = precomputedDamage,
                 TargetEnemyGuid = targetGuid,
                 IsAoE = isAoE,
                 IsHeal = isHeal,
                 PlayerName = playerName ?? $"Slot {activeSlot}",
+                StatusEffectsToApply = capturedEffects,
             };
 
             _log.LogInfo($"[CoopSubs] Saved shot data for slot {activeSlot}: " +
                 $"pegTally={pegTally}, crits={critCount}, pegsHit={numPegs}, " +
-                $"damage={precomputedDamage}, target={targetGuid ?? "auto"}, isAoE={isAoE}");
+                $"damage={precomputedDamage}, target={targetGuid ?? "auto"}, isAoE={isAoE}, " +
+                $"statusEffects={capturedEffects?.Count ?? 0}");
         }
 
         // Mark current player's shot as fired before advancing
@@ -439,6 +456,8 @@ public sealed class CoopSubscriptions
                 critField?.SetValue(null, 0); // static field
                 numPegsField?.SetValue(bc, 0);
                 cactusField?.SetValue(bc, 0);
+                dmgMultField?.SetValue(bc, 1f);
+                dmgBonusField?.SetValue(bc, 0);
             }
 
             _coopStateManager.SwapToPlayer(_turnManager.CurrentPlayerSlot);
@@ -525,8 +544,11 @@ public sealed class CoopSubscriptions
                 critField?.SetValue(null, hostData.CriticalHitCount);
                 numPegsField?.SetValue(bc, hostData.NumPegsHit);
                 cactusField?.SetValue(bc, hostData.CactusDamageTally);
+                dmgMultField?.SetValue(bc, hostData.DamageMultiplier);
+                dmgBonusField?.SetValue(bc, (int)hostData.DamageBonus);
                 _log.LogInfo($"[CoopSubs] Host (slot 0) damage: pegTally={hostData.PegMultiplierDamageTally}, " +
-                    $"crits={hostData.CriticalHitCount}, pegsHit={hostData.NumPegsHit}");
+                    $"crits={hostData.CriticalHitCount}, pegsHit={hostData.NumPegsHit}, " +
+                    $"dmgMult={hostData.DamageMultiplier}, dmgBonus={hostData.DamageBonus}");
             }
             else if (bc != null)
             {
@@ -885,6 +907,7 @@ public sealed class CoopSubscriptions
         public string TargetEnemyGuid;
         public bool IsAoE;
         public bool IsHeal;
+        public List<(Battle.StatusEffects.StatusEffectType Type, int Intensity)> StatusEffectsToApply;
     }
 
     /// <summary>
@@ -909,6 +932,7 @@ public sealed class CoopSubscriptions
                 TargetEnemyGuid = d.TargetEnemyGuid,
                 IsAoE = d.IsAoE,
                 IsHeal = d.IsHeal,
+                StatusEffectsToApply = d.StatusEffectsToApply,
             });
         }
         inst._accumulatedShotData.Clear();
@@ -939,6 +963,69 @@ public sealed class CoopSubscriptions
             });
         }
         return result;
+    }
+
+    /// <summary>
+    /// Capture status effects from an orb's IAffectEnemyOnHit components and relic-based effects.
+    /// Called at shot completion time for non-host players, since their effects won't be applied
+    /// by the normal DoAttack pipeline (which only processes the host's Attack object).
+    /// </summary>
+    private static List<(Battle.StatusEffects.StatusEffectType, int)> CaptureOrbStatusEffects(
+        Battle.Attacks.Attack attack, int critCount)
+    {
+        var effects = new List<(Battle.StatusEffects.StatusEffectType, int)>();
+        try
+        {
+            // 1. AddStatusEffectOnHit — the most common orb effect (Poison, Blind, etc.)
+            foreach (var seh in attack.GetComponents<Battle.Attacks.AttackBehaviours.AddStatusEffectOnHit>())
+            {
+                int intensity = seh.intensity;
+                if (seh.isCritThresholdCumulative && seh.critCountThreshold > 0)
+                    intensity += critCount / seh.critCountThreshold * seh.critAddIntensity;
+                else if (seh.critCountThreshold <= critCount)
+                    intensity += seh.critAddIntensity;
+                effects.Add((seh.type, intensity));
+            }
+
+            // 2. AddRandomStatusEffectOnHit (Roundreloquence orb)
+            foreach (var _ in attack.GetComponents<Battle.Attacks.AttackBehaviours.AddRandomStatusEffectOnHit>())
+            {
+                int idx = UnityEngine.Random.Range(0,
+                    Battle.Attacks.AttackBehaviours.AddRandomStatusEffectOnHit.RoundreloquencePotentialEffects.Length);
+                effects.Add((
+                    Battle.Attacks.AttackBehaviours.AddRandomStatusEffectOnHit.RoundreloquencePotentialEffects[idx],
+                    Battle.Attacks.AttackBehaviours.AddRandomStatusEffectOnHit.RoundreloquenceEffectIntensity[idx]));
+            }
+
+            // 3. Relic-based status effects (from Attack.GetStatusEffects equivalent)
+            // Use RelicEffectActive (read-only) rather than AttemptUseRelic to avoid consuming
+            // single-use charges during capture. The non-host player's relics are loaded.
+            var rmField = AccessTools.Field(typeof(Battle.Attacks.Attack), "_relicManager");
+            var rm = rmField?.GetValue(attack) as Relics.RelicManager;
+            if (rm != null)
+            {
+                if (rm.RelicEffectActive(Relics.RelicEffect.ATTACKS_DEAL_BLIND))
+                    effects.Add((Battle.StatusEffects.StatusEffectType.Blind, 4));
+                if (rm.RelicEffectActive(Relics.RelicEffect.ATTACKS_APPLY_TRANSPHERENCY))
+                    effects.Add((Battle.StatusEffects.StatusEffectType.Transpherency, 3));
+                if (rm.RelicEffectActive(Relics.RelicEffect.ATTACKS_DEAL_POISON))
+                    effects.Add((Battle.StatusEffects.StatusEffectType.Poison, 1));
+                if (rm.RelicEffectActive(Relics.RelicEffect.ATTACKS_APPLY_EXPLOITABALL))
+                    effects.Add((Battle.StatusEffects.StatusEffectType.Exploitaball, critCount > 0 ? 2 : 1));
+            }
+
+            if (effects.Count > 0)
+            {
+                MultiplayerPlugin.Logger?.LogInfo(
+                    $"[CoopSubs] Captured {effects.Count} status effect(s) from orb: " +
+                    string.Join(", ", effects.Select(e => $"{e.Item1}({e.Item2})")));
+            }
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[CoopSubs] CaptureOrbStatusEffects failed: {ex.Message}");
+        }
+        return effects.Count > 0 ? effects : null;
     }
 
     /// <summary>
