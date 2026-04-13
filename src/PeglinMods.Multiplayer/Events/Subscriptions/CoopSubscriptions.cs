@@ -44,9 +44,10 @@ public sealed class CoopSubscriptions
         // Status effects captured from the orb's IAffectEnemyOnHit components + relic effects
         public List<(Battle.StatusEffects.StatusEffectType Type, int Intensity)> StatusEffectsToApply;
 
-        // The Attack object reference at shot time — needed to restore into AttackManager
-        // at ALL_DONE so the host's DoAttack uses the correct orb, not the last-drawn one.
-        public Battle.Attacks.Attack AttackRef;
+        // The orb prefab from the deck (not the instantiated ball, which gets destroyed).
+        // Used to re-instantiate the correct Attack at ALL_DONE so the host's DoAttack
+        // uses the correct orb damage formula, not the last-drawn player's orb.
+        public GameObject OrbPrefab;
     }
 
     private readonly IMultiplayerMode _mode;
@@ -218,6 +219,9 @@ public sealed class CoopSubscriptions
                 _coopStateManager.RebuildDeckInfoDisplay();
                 _log.LogInfo($"[CoopSubs] Post-attack: swapped to host (slot 0) for next round's DrawBall");
             }
+
+            // Clean up any temp orb instance created during ALL_DONE for attack restoration
+            CleanupTempOrb();
         }
         catch (Exception ex)
         {
@@ -376,7 +380,7 @@ public sealed class CoopSubscriptions
             bool isAoE = false;
             bool isHeal = false;
             List<(Battle.StatusEffects.StatusEffectType, int)> capturedEffects = null;
-            Battle.Attacks.Attack capturedAttack = null;
+            GameObject capturedOrbPrefab = null;
             if (am != null)
             {
                 precomputedDamage = am.GetCurrentDamage(pegTally, dmgMult, dmgBonus, critCount);
@@ -385,7 +389,6 @@ public sealed class CoopSubscriptions
                 // Check attack type to determine targeting behavior
                 var attackField = AccessTools.Field(typeof(Battle.Attacks.AttackManager), "_attack");
                 var attack = attackField?.GetValue(am) as Battle.Attacks.Attack;
-                capturedAttack = attack;
                 if (attack is Battle.Attacks.SimpleAttack)
                     isAoE = true;
 
@@ -396,6 +399,34 @@ public sealed class CoopSubscriptions
                 {
                     capturedEffects = CaptureOrbStatusEffects(attack, critCount);
                 }
+
+                // Capture the orb PREFAB (not the instantiated ball which gets destroyed
+                // when the next player's ball is drawn). The prefab survives in the deck.
+                // We need it at ALL_DONE to re-instantiate the correct Attack for each player.
+                try
+                {
+                    var activeBallField = AccessTools.Field(typeof(BattleController), "_activePachinkoBall");
+                    var activeBall = activeBallField?.GetValue(bc) as GameObject;
+                    if (activeBall != null)
+                    {
+                        string orbName = activeBall.name.Replace("(Clone)", "").Trim();
+                        // Find the matching prefab in the current player's battle deck
+                        var dmField = AccessTools.Field(typeof(BattleController), "_deckManager");
+                        var dm = dmField?.GetValue(bc) as DeckManager;
+                        if (dm?.battleDeck != null)
+                        {
+                            foreach (var orb in dm.battleDeck)
+                            {
+                                if (orb != null && orb.name.Replace("(Clone)", "").Trim() == orbName)
+                                {
+                                    capturedOrbPrefab = orb;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex) { _log.LogWarning($"[CoopSubs] Failed to capture orb prefab: {ex.Message}"); }
             }
 
             // Get target enemy GUID: host uses TargetingManager, client uses stored value
@@ -435,7 +466,7 @@ public sealed class CoopSubscriptions
                 IsHeal = isHeal,
                 PlayerName = playerName ?? $"Slot {activeSlot}",
                 StatusEffectsToApply = capturedEffects,
-                AttackRef = capturedAttack,
+                OrbPrefab = capturedOrbPrefab,
             };
 
             _log.LogInfo($"[CoopSubs] Saved shot data for slot {activeSlot}: " +
@@ -596,17 +627,17 @@ public sealed class CoopSubscriptions
             // Restore the host's Attack into AttackManager._attack.
             // The last DrawBall was for the last non-host player, so _attack points to
             // their orb. DoAttack calls _attack.Fire() which uses the wrong damage formula
-            // unless we restore the host's Attack reference here.
-            if (_accumulatedShotData.TryGetValue(0, out var hostAttackData) && hostAttackData.AttackRef != null && bc != null)
+            // unless we restore the host's orb here.
+            //
+            // We can't store the instantiated Attack (it gets destroyed when the next ball
+            // is drawn), so we stored the PREFAB from the deck and re-instantiate here.
+            if (_accumulatedShotData.TryGetValue(0, out var hostAttackData) && hostAttackData.OrbPrefab != null && bc != null)
             {
-                var amField = AccessTools.Field(typeof(BattleController), "_attackManager");
-                var am = amField?.GetValue(bc) as Battle.Attacks.AttackManager;
-                if (am != null)
+                try
                 {
-                    var atkField = AccessTools.Field(typeof(Battle.Attacks.AttackManager), "_attack");
-                    atkField?.SetValue(am, hostAttackData.AttackRef);
-                    _log.LogInfo($"[CoopSubs] Restored host Attack: {hostAttackData.AttackRef.name}");
+                    RestoreAttackFromPrefab(bc, hostAttackData.OrbPrefab, "host");
                 }
+                catch (Exception ex) { _log.LogWarning($"[CoopSubs] Failed to restore host Attack: {ex.Message}"); }
             }
 
             // DO NOT clear _accumulatedShotData — the DoAttack prefix reads it
@@ -986,6 +1017,78 @@ public sealed class CoopSubscriptions
             });
         }
         return result;
+    }
+
+    /// <summary>Temporary orb instance created at ALL_DONE; destroyed after DoAttack.</summary>
+    internal static GameObject TempOrbInstance;
+
+    /// <summary>
+    /// Instantiate the orb prefab, initialize its Attack component, and set it as
+    /// AttackManager._attack so DoAttack uses the correct damage formula.
+    /// </summary>
+    private static void RestoreAttackFromPrefab(BattleController bc, GameObject orbPrefab, string label)
+    {
+        // Clean up any previous temp orb
+        if (TempOrbInstance != null)
+        {
+            UnityEngine.Object.Destroy(TempOrbInstance);
+            TempOrbInstance = null;
+        }
+
+        // Instantiate offscreen so it's invisible but active (Fire() needs active components)
+        TempOrbInstance = UnityEngine.Object.Instantiate(orbPrefab, new Vector3(-999, -999, 0), UnityEngine.Quaternion.identity);
+        TempOrbInstance.name = $"CoopTempOrb_{label}";
+
+        var attack = TempOrbInstance.GetComponent<Battle.Attacks.Attack>();
+        if (attack == null)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[CoopSubs] Prefab '{orbPrefab.name}' has no Attack component!");
+            UnityEngine.Object.Destroy(TempOrbInstance);
+            TempOrbInstance = null;
+            return;
+        }
+
+        // Initialize the Attack with the current singletons (host's state is loaded at this point)
+        var amField = AccessTools.Field(typeof(BattleController), "_attackManager");
+        var am = amField?.GetValue(bc) as Battle.Attacks.AttackManager;
+        var dmField = AccessTools.Field(typeof(BattleController), "_deckManager");
+        var dm = dmField?.GetValue(bc) as DeckManager;
+        var rmField = AccessTools.Field(typeof(BattleController), "_relicManager");
+        var rm = rmField?.GetValue(bc) as Relics.RelicManager;
+        var cmField = AccessTools.Field(typeof(BattleController), "_cruciballManager");
+        var cm = cmField?.GetValue(bc) as Cruciball.CruciballManager;
+        var phcField = AccessTools.Field(typeof(BattleController), "_playerHealthController");
+        var phc = phcField?.GetValue(bc) as PlayerHealthController;
+        var psecField = AccessTools.Field(typeof(BattleController), "_playerStatusEffectController");
+        var psec = psecField?.GetValue(bc) as Battle.StatusEffects.PlayerStatusEffectController;
+
+        var playerField = AccessTools.Field(typeof(BattleController), "_playerTransform");
+        var playerTransform = playerField?.GetValue(bc) as UnityEngine.Transform;
+        Vector2 playerPos = playerTransform != null ? (Vector2)playerTransform.position : Vector2.zero;
+
+        attack.Initialize(playerPos, am, rm, dm, cm, phc, psec);
+
+        // Set as the active attack in AttackManager
+        if (am != null)
+        {
+            var atkField = AccessTools.Field(typeof(Battle.Attacks.AttackManager), "_attack");
+            atkField?.SetValue(am, attack);
+        }
+
+        MultiplayerPlugin.Logger?.LogInfo($"[CoopSubs] Restored {label} Attack from prefab: {orbPrefab.name}");
+    }
+
+    /// <summary>
+    /// Clean up the temporary orb instance after DoAttack finishes.
+    /// Called from the DoAttack postfix in MultiplayerClientPatches.
+    /// </summary>
+    internal static void CleanupTempOrb()
+    {
+        if (TempOrbInstance != null)
+        {
+            UnityEngine.Object.Destroy(TempOrbInstance);
+            TempOrbInstance = null;
+        }
     }
 
     /// <summary>
