@@ -228,6 +228,9 @@ public class CoopStateManager
     /// <summary>Check if any player is dead.</summary>
     public bool AnyPlayerDead => PlayerStates.Values.Any(s => s.IsInitialized && s.CurrentHealth <= 0);
 
+    /// <summary>Check if ALL initialized players are dead.</summary>
+    public bool AllPlayersDead => PlayerStates.Values.Where(s => s.IsInitialized).All(s => s.CurrentHealth <= 0);
+
     public CoopPlayerState GetPlayerState(int slotIndex)
         => PlayerStates.TryGetValue(slotIndex, out var s) ? s : null;
 

@@ -121,6 +121,7 @@ public sealed class PostBattleCompleteClientHandler : IClientHandler<PostBattleC
                 MultiplayerPlugin.Logger?.LogInfo("[PostBattleComplete] All players done — dispatching AllChoicesComplete and starting navigation");
 
                 CoopRewardState.HostRewardPhaseActive = false;
+                CoopRewardState.WaitingForOtherPlayers = false;
 
                 if (services.TryResolve<IGameEventRegistry>(out var evtReg))
                     evtReg.Dispatch(new AllChoicesCompleteEvent { Phase = "post_battle" });

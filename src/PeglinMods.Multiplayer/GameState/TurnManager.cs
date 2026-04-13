@@ -72,6 +72,7 @@ public class TurnManager
     /// <summary>
     /// Begin a new round: reset HasShotThisRound for all players,
     /// set CurrentTurnIndex to 0, and enter PLAYER_AIMING phase.
+    /// Skips dead players. If all players are dead, goes to ALL_DONE.
     /// </summary>
     public void StartNewRound()
     {
@@ -86,6 +87,32 @@ public class TurnManager
             var state = _coopState.GetPlayerState(slot);
             if (state != null)
                 state.HasShotThisRound = false;
+        }
+
+        // Skip dead players at the start of the round
+        while (CurrentTurnIndex < TurnOrder.Count)
+        {
+            var state = _coopState.GetPlayerState(TurnOrder[CurrentTurnIndex]);
+            if (state != null && state.CurrentHealth <= 0)
+            {
+                _log.LogInfo($"[TurnManager] Skipping dead player slot {TurnOrder[CurrentTurnIndex]} at round start");
+                state.HasShotThisRound = true;
+                CurrentTurnIndex++;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        if (CurrentTurnIndex >= TurnOrder.Count)
+        {
+            // All players are dead — go to ALL_DONE so the damage phase fires
+            // (enemies will attack, game checks for total party wipe)
+            Phase = TurnPhase.ALL_DONE;
+            UpdateSnapshot();
+            _log.LogInfo($"[TurnManager] Round {RoundNumber}: all players dead, skipping to ALL_DONE");
+            return;
         }
 
         Phase = TurnPhase.PLAYER_AIMING;
@@ -114,10 +141,27 @@ public class TurnManager
 
     /// <summary>
     /// Current shot has resolved. Advance to the next player or ALL_DONE.
+    /// Skips dead players (CurrentHealth &lt;= 0).
     /// </summary>
     public void AdvanceTurn()
     {
         CurrentTurnIndex++;
+
+        // Skip dead players
+        while (CurrentTurnIndex < TurnOrder.Count)
+        {
+            var state = _coopState.GetPlayerState(TurnOrder[CurrentTurnIndex]);
+            if (state != null && state.CurrentHealth <= 0)
+            {
+                _log.LogInfo($"[TurnManager] Skipping dead player slot {TurnOrder[CurrentTurnIndex]} (hp={state.CurrentHealth})");
+                state.HasShotThisRound = true; // mark as having "shot" so AllPlayersHaveShot works
+                CurrentTurnIndex++;
+            }
+            else
+            {
+                break;
+            }
+        }
 
         if (CurrentTurnIndex >= TurnOrder.Count)
         {

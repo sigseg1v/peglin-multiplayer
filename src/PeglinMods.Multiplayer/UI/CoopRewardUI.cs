@@ -124,16 +124,20 @@ public class CoopRewardUI : MonoBehaviour
         {
             if (_overlayPanel == null) return;
 
-            // Hide overlay when entering Battle scene — reward/relic selection
-            // from the previous phase is over. Do NOT hide on other scene changes
-            // (e.g. MainMenu -> PostMainMenu is where relic selection happens).
+            // Hide overlay on scene changes:
+            // 1. When entering Battle (previous reward phase is over)
+            // 2. When leaving Battle to any other scene (post-battle rewards are done)
+            // 3. When entering a map scene (ensures stale overlays don't block input)
             var currentScene = SceneManager.GetActiveScene().name;
-            if (_lastSceneName != null && _lastSceneName != currentScene
-                && currentScene == "Battle")
+            if (_lastSceneName != null && _lastSceneName != currentScene)
             {
-                if (_currentState != DisplayState.Hidden)
+                bool shouldHide = currentScene == "Battle"
+                    || _lastSceneName == "Battle"
+                    || currentScene == "ForestMap" || currentScene == "CastleMap"
+                    || currentScene == "MinesMap" || currentScene == "CoreMap";
+                if (shouldHide && _currentState != DisplayState.Hidden)
                 {
-                    Log?.LogInfo($"[CoopRewardUI] Entering Battle from {_lastSceneName}, hiding overlay");
+                    Log?.LogInfo($"[CoopRewardUI] Scene change {_lastSceneName} -> {currentScene}, hiding overlay");
                     HideOverlay();
                     CoopRewardState.Reset();
                 }

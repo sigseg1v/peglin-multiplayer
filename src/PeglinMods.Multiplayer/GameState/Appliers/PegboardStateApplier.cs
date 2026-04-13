@@ -26,10 +26,19 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     private readonly ManualLogSource _log;
     private readonly PegIdentifier _pegId;
 
+    /// <summary>Tracks vines created on the client, keyed by sorted peg GUID pair.</summary>
+    private readonly Dictionary<string, GameObject> _clientVines = new Dictionary<string, GameObject>();
+
     public PegboardStateApplier(ManualLogSource log, PegIdentifier pegId)
     {
         _log = log;
         _pegId = pegId;
+    }
+
+    private static string VineKey(string guid1, string guid2)
+    {
+        return string.Compare(guid1, guid2, System.StringComparison.Ordinal) < 0
+            ? $"{guid1}|{guid2}" : $"{guid2}|{guid1}";
     }
 
     public void Apply(PegboardStateSnapshot snapshot)
@@ -272,6 +281,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 $"crit={snapshot.CritPegCount}, bomb={snapshot.BombPegCount}, " +
                 $"reset={snapshot.ResetPegCount}, bouncer={snapshot.BouncerPegCount}, " +
                 $"registry={_pegId.Count})");
+
+            // Sync bramball vines
+            SyncVines(snapshot, bc);
 
             LogActualPegState(clientPegs, clientBombs, clientBouncers);
 
@@ -831,5 +843,112 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         }
         _log.LogInfo($"[PegboardApplier] CLIENT ACTUAL: {active} active pegs " +
             $"(regular={regular}, crit={crits}, bomb={bombCount}, reset={resets}, bouncer={bouncerCount})");
+    }
+
+    /// <summary>
+    /// Create/destroy bramball vine visuals on the client to match the host snapshot.
+    /// Uses BattleController.CreateBramballVine() for proper prefab visuals,
+    /// then disables colliders so no gameplay interaction occurs on the client.
+    /// </summary>
+    private void SyncVines(PegboardStateSnapshot snapshot, BattleController bc)
+    {
+        try
+        {
+            // Clean up stale entries (destroyed GameObjects from scene changes)
+            var stale = new List<string>();
+            foreach (var kvp in _clientVines)
+            {
+                if (kvp.Value == null) stale.Add(kvp.Key);
+            }
+            foreach (var key in stale) _clientVines.Remove(key);
+
+            var hostVineKeys = new HashSet<string>();
+
+            if (snapshot.Vines != null && snapshot.Vines.Count > 0 && bc != null)
+            {
+                foreach (var vine in snapshot.Vines)
+                {
+                    if (string.IsNullOrEmpty(vine.Peg1Guid) || string.IsNullOrEmpty(vine.Peg2Guid))
+                        continue;
+
+                    var key = VineKey(vine.Peg1Guid, vine.Peg2Guid);
+                    hostVineKeys.Add(key);
+
+                    if (_clientVines.ContainsKey(key)) continue;
+
+                    var peg1 = _pegId.Find(vine.Peg1Guid);
+                    var peg2 = _pegId.Find(vine.Peg2Guid);
+                    if (peg1 == null || peg2 == null)
+                    {
+                        _log.LogWarning($"[PegboardApplier] Vine peg not found: " +
+                            $"peg1={vine.Peg1Guid}({peg1 != null}) peg2={vine.Peg2Guid}({peg2 != null})");
+                        continue;
+                    }
+
+                    try
+                    {
+                        var vineGo = bc.CreateBramballVine();
+                        var lr = vineGo.GetComponent<LineRenderer>();
+
+                        Vector3 pos1 = peg1 is LongPeg ? peg1.GetCenterOfPeg() : peg1.transform.position;
+                        Vector3 pos2 = peg2 is LongPeg ? peg2.GetCenterOfPeg() : peg2.transform.position;
+
+                        if (lr != null)
+                        {
+                            lr.SetPosition(0, pos1);
+                            lr.SetPosition(1, pos2);
+
+                            // Apply a vine material from the prefab's material list
+                            var vineComp = vineGo.GetComponent<Battle.Pachinko.Obstacles.PegBoardBramballVine>();
+                            if (vineComp != null && vineComp.vineMaterials != null && vineComp.vineMaterials.Count > 0)
+                            {
+                                int matIdx = UnityEngine.Random.Range(0, vineComp.vineMaterials.Count);
+                                lr.material = vineComp.vineMaterials[matIdx];
+                            }
+                        }
+
+                        vineGo.transform.position = (pos1 + pos2) / 2f;
+                        Vector3 to = pos2 - pos1;
+                        vineGo.transform.eulerAngles = new Vector3(0f, 0f,
+                            Vector3.SignedAngle(Vector3.up, to, Vector3.forward));
+
+                        // Disable ALL colliders — client vines are visual only
+                        foreach (var col in vineGo.GetComponentsInChildren<Collider2D>(true))
+                            col.enabled = false;
+
+                        _clientVines[key] = vineGo;
+                        _log.LogInfo($"[PegboardApplier] Created vine between {vine.Peg1Guid} and {vine.Peg2Guid}");
+                    }
+                    catch (Exception ex)
+                    {
+                        _log.LogWarning($"[PegboardApplier] Failed to create vine: {ex.Message}");
+                    }
+                }
+            }
+
+            // Remove client vines not present in host snapshot
+            var toRemove = new List<string>();
+            foreach (var kvp in _clientVines)
+            {
+                if (!hostVineKeys.Contains(kvp.Key))
+                {
+                    if (kvp.Value != null)
+                        UnityEngine.Object.Destroy(kvp.Value);
+                    toRemove.Add(kvp.Key);
+                }
+            }
+            foreach (var key in toRemove)
+                _clientVines.Remove(key);
+
+            if ((snapshot.Vines?.Count ?? 0) > 0 || _clientVines.Count > 0)
+            {
+                _log.LogInfo($"[PegboardApplier] Vine sync: host={snapshot.Vines?.Count ?? 0} " +
+                    $"client={_clientVines.Count} removed={toRemove.Count}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[PegboardApplier] SyncVines failed: {ex.Message}");
+        }
     }
 }

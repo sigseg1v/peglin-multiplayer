@@ -168,16 +168,19 @@ public sealed class CoopSubscriptions
                             $"hp {oldHp} -> {state.CurrentHealth} (raw={damage}, after buffs={effectiveDamage})");
                     }
 
-                    // Check if any player died
-                    if (_coopStateManager.AnyPlayerDead)
+                    // Check if ALL players died — only then trigger game over.
+                    // Individual dead players just skip turns until the battle ends.
+                    if (_coopStateManager.AllPlayersDead)
                     {
-                        _log.LogWarning("[CoopSubs] A co-op player has died! Triggering defeat.");
+                        _log.LogWarning("[CoopSubs] All co-op players have died! Triggering defeat.");
                         if (currentHealth > 0f)
                         {
-                            _log.LogInfo("[CoopSubs] Active player alive but another player died. " +
-                                "Setting active player health to 0 to trigger game over.");
                             phc.Damage(currentHealth, false);
                         }
+                    }
+                    else if (_coopStateManager.AnyPlayerDead)
+                    {
+                        _log.LogInfo("[CoopSubs] Some players dead, but not all — battle continues. Dead players will skip turns.");
                     }
                 }
             }
@@ -606,6 +609,18 @@ public sealed class CoopSubscriptions
                 _log.LogInfo("[CoopSubs] OnVictory: swapped to host (slot 0) before reward selection");
             }
             _coopStateManager.SaveActivePlayerState();
+
+            // Revive dead players with 1 HP so they can participate in rewards
+            // and continue to the next battle
+            foreach (var kvp in _coopStateManager.PlayerStates)
+            {
+                var state = kvp.Value;
+                if (state.IsInitialized && state.CurrentHealth <= 0)
+                {
+                    state.CurrentHealth = 1;
+                    _log.LogInfo($"[CoopSubs] OnVictory: revived dead player slot {kvp.Key} '{state.PlayerName}' with 1 HP");
+                }
+            }
 
             // Signal clients to open their native post-battle reward screen
             var services = MultiplayerPlugin.Services;

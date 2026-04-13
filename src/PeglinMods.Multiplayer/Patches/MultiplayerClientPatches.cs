@@ -2646,6 +2646,44 @@ public static class MultiplayerClientPatches
     }
 
     /// <summary>
+    /// In coop, prevent the game from triggering game over when the active player dies
+    /// unless ALL coop players are dead. Dead players just skip turns.
+    /// </summary>
+    [HarmonyPatch(typeof(PlayerHealthController), "CheckForDeathAndUpdateBar")]
+    [HarmonyPrefix]
+    public static bool PlayerHealthController_CheckForDeathAndUpdateBar_Prefix(PlayerHealthController __instance)
+    {
+        if (!IsHosting || !UI.LobbyUI.GameStartReceived) return true;
+
+        var services = MultiplayerPlugin.Services;
+        if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true) return true;
+        if (coopState.TotalPlayerCount < 2) return true;
+
+        // If health is still above 0, let the normal update run (just updates the bar)
+        var healthField = HarmonyLib.AccessTools.Field(typeof(PlayerHealthController), "_playerHealth");
+        var healthVar = healthField?.GetValue(__instance);
+        if (healthVar == null) return true;
+
+        var valueProp = healthVar.GetType().GetProperty("Value");
+        if (valueProp == null) return true;
+        float hp = (float)valueProp.GetValue(healthVar);
+
+        if (hp > 0f) return true; // not dead, let normal flow update the bar
+
+        // Active player is dead. Only allow game over if ALL players are dead.
+        if (!coopState.AllPlayersDead)
+        {
+            // Update the health bar text but do NOT trigger game over
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[ClientPatches] Active player died but other players alive — suppressing game over");
+            return false; // block CheckForDeathAndUpdateBar entirely
+        }
+
+        // All players dead — allow normal game over
+        return true;
+    }
+
+    /// <summary>
     /// Set to true by sync code while applying host gold state.
     /// </summary>
     internal static bool AllowCurrencySync;

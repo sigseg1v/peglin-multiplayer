@@ -207,6 +207,43 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
 
             snapshot.TotalPegCount = snapshot.Pegs.Count;
 
+            // Capture bramball vines (pairs of peg GUIDs)
+            try
+            {
+                var vinesField = HarmonyLib.AccessTools.Field(typeof(Battle.PegManager), "_vines");
+                var vines = vinesField?.GetValue(pm) as System.Collections.Generic.List<Battle.Pachinko.Obstacles.PegBoardBramballVine>;
+                if (vines != null && vines.Count > 0)
+                {
+                    var peg1Field = HarmonyLib.AccessTools.Field(typeof(Battle.Pachinko.Obstacles.PegBoardBramballVine), "_peg1");
+                    var peg2Field = HarmonyLib.AccessTools.Field(typeof(Battle.Pachinko.Obstacles.PegBoardBramballVine), "_peg2");
+
+                    foreach (var vine in vines)
+                    {
+                        if (vine == null) continue;
+                        var peg1 = peg1Field?.GetValue(vine) as Peg;
+                        var peg2 = peg2Field?.GetValue(vine) as Peg;
+                        if (peg1 == null || peg2 == null) continue;
+
+                        var guid1 = _pegId.GetGuid(peg1);
+                        var guid2 = _pegId.GetGuid(peg2);
+                        if (guid1 != null && guid2 != null)
+                        {
+                            snapshot.Vines.Add(new Snapshots.VineEntry
+                            {
+                                Peg1Guid = guid1,
+                                Peg2Guid = guid2,
+                            });
+                        }
+                    }
+
+                    _log.LogInfo($"[PegProvider] Captured {snapshot.Vines.Count} bramball vines from {vines.Count} in _vines list");
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning($"[PegProvider] Failed to capture vines: {ex.Message}");
+            }
+
             int bombsListCount = bombs?.Count ?? -1;
             _log.LogInfo($"[PegProvider] Captured {snapshot.TotalPegCount} pegs from PegManager " +
                 $"(crit={snapshot.CritPegCount}, bomb={snapshot.BombPegCount}, reset={snapshot.ResetPegCount}, " +

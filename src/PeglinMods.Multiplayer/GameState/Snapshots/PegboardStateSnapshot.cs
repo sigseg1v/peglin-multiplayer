@@ -5,6 +5,7 @@ namespace PeglinMods.Multiplayer.GameState.Snapshots;
 public class PegboardStateSnapshot
 {
     public List<PegEntry> Pegs { get; set; } = new List<PegEntry>();
+    public List<VineEntry> Vines { get; set; } = new List<VineEntry>();
     public int TotalPegCount { get; set; }
     public int CritPegCount { get; set; }
     public int BombPegCount { get; set; }
@@ -60,4 +61,10 @@ public class PegEntry
     public float? LpmParentPosX { get; set; }
     /// <summary>World Y of the LinearPegMovement parent (null if peg is not under LPM).</summary>
     public float? LpmParentPosY { get; set; }
+}
+
+public class VineEntry
+{
+    public string Peg1Guid { get; set; }
+    public string Peg2Guid { get; set; }
 }
