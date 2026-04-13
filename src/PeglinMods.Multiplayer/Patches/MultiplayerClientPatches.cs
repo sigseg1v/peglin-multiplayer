@@ -2604,6 +2604,142 @@ public static class MultiplayerClientPatches
     }
 
     // =========================================================================
+    // HOST: TEXT SCENARIO REWARD SHARING — share host rewards to all coop players
+    // =========================================================================
+
+    /// <summary>
+    /// When the host upgrades an orb during a TextScenario (forge, etc.),
+    /// upgrade a random upgradeable orb for each non-host coop player.
+    /// </summary>
+    [HarmonyPatch(typeof(DeckManager), "UpgradeSpecificOrb")]
+    [HarmonyPostfix]
+    public static void DeckManager_UpgradeSpecificOrb_SharePostfix(GameObject toUpgrade, GameObject __result)
+    {
+        if (!IsHosting) return;
+        if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != "TextScenario") return;
+        if (__result == null) return;
+
+        var services = MultiplayerPlugin.Services;
+        if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true) return;
+        if (coopState.TotalPlayerCount < 2) return;
+
+        try
+        {
+            // Save host state first so the upgrade is captured
+            coopState.SaveActivePlayerState();
+
+            foreach (var kvp in coopState.PlayerStates)
+            {
+                if (kvp.Key == coopState.ActivePlayerSlot) continue;
+
+                // Find upgradeable orbs in this player's deck
+                var upgradeableIndices = new System.Collections.Generic.List<int>();
+                for (int i = 0; i < kvp.Value.CompleteDeck.Count; i++)
+                {
+                    var orb = kvp.Value.CompleteDeck[i];
+                    try
+                    {
+                        var prefab = Loading.AssetLoading.Instance?.GetOrbPrefab(orb.PrefabName);
+                        if (prefab != null)
+                        {
+                            var attack = prefab.GetComponent<Battle.Attacks.Attack>();
+                            if (attack?.NextLevelPrefab != null)
+                                upgradeableIndices.Add(i);
+                        }
+                    }
+                    catch { }
+                }
+
+                if (upgradeableIndices.Count == 0)
+                {
+                    MultiplayerPlugin.Logger?.LogInfo(
+                        $"[CoopReward] TextScenario: slot {kvp.Key} has no upgradeable orbs");
+                    continue;
+                }
+
+                int idx = upgradeableIndices[UnityEngine.Random.Range(0, upgradeableIndices.Count)];
+                var orbToUpgrade = kvp.Value.CompleteDeck[idx];
+                try
+                {
+                    var orbPrefab = Loading.AssetLoading.Instance?.GetOrbPrefab(orbToUpgrade.PrefabName);
+                    var nextLevel = orbPrefab?.GetComponent<Battle.Attacks.Attack>()?.NextLevelPrefab;
+                    if (nextLevel != null)
+                    {
+                        string newName = nextLevel.name.Replace("(Clone)", "").Trim();
+                        int newLevel = nextLevel.GetComponent<Battle.Attacks.Attack>()?.Level ?? (orbToUpgrade.Level + 1);
+                        kvp.Value.CompleteDeck[idx] = new GameState.SerializedOrb
+                        {
+                            PrefabName = newName,
+                            Guid = orbToUpgrade.Guid,
+                            Level = newLevel,
+                        };
+                        MultiplayerPlugin.Logger?.LogInfo(
+                            $"[CoopReward] TextScenario: upgraded orb '{orbToUpgrade.PrefabName}' → '{newName}' for slot {kvp.Key}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MultiplayerPlugin.Logger?.LogWarning(
+                        $"[CoopReward] TextScenario: orb upgrade failed for slot {kvp.Key}: {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[CoopReward] TextScenario orb upgrade sharing failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// When the host gains a relic during a TextScenario (forge, etc.),
+    /// add the same relic to each non-host coop player's state.
+    /// </summary>
+    [HarmonyPatch(typeof(Relics.RelicManager), "AddRelic")]
+    [HarmonyPostfix]
+    public static void RelicManager_AddRelic_SharePostfix(Relics.Relic relic)
+    {
+        if (!IsHosting) return;
+        if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != "TextScenario") return;
+        if (relic == null) return;
+
+        var services = MultiplayerPlugin.Services;
+        if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true) return;
+        if (coopState.TotalPlayerCount < 2) return;
+
+        try
+        {
+            // Save host state first so the relic is captured
+            coopState.SaveActivePlayerState();
+
+            foreach (var kvp in coopState.PlayerStates)
+            {
+                if (kvp.Key == coopState.ActivePlayerSlot) continue;
+
+                // Check if player already has this relic
+                bool alreadyOwns = false;
+                foreach (var r in kvp.Value.OwnedRelics)
+                {
+                    if (r.Effect == (int)relic.effect) { alreadyOwns = true; break; }
+                }
+                if (alreadyOwns) continue;
+
+                kvp.Value.OwnedRelics.Add(new GameState.SerializedRelic
+                {
+                    Effect = (int)relic.effect,
+                    LocKey = relic.locKey ?? "",
+                    Rarity = (int)relic.globalRarity,
+                });
+                MultiplayerPlugin.Logger?.LogInfo(
+                    $"[CoopReward] TextScenario: added relic '{relic.locKey}' (effect={relic.effect}) to slot {kvp.Key}");
+            }
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[CoopReward] TextScenario relic sharing failed: {ex.Message}");
+        }
+    }
+
+    // =========================================================================
     // HOST: MULTIBALL SYNC — send additional ball spawns to client
     // =========================================================================
 

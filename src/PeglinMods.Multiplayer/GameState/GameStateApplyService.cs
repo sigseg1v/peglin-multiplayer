@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using BepInEx.Logging;
 using HarmonyLib;
@@ -96,6 +97,8 @@ public class GameStateApplyService
         Patches.MultiplayerClientPatches.AllowTextScenarioNavigation = false;
         _wasNavigating = false;
         _lastAppliedHighlightIndex = -1;
+        _lastAppliedSubtitle = null;
+        _lastAppliedResponseCount = -1;
         if (UI.MirrorEventUI.IsActive)
             UI.MirrorEventUI.Hide();
 
@@ -568,6 +571,8 @@ public class GameStateApplyService
     // =========================================================================
 
     private bool _wasNavigating;
+    private string _lastAppliedSubtitle;
+    private int _lastAppliedResponseCount = -1;
 
     private void ApplyTextScenarioState(FullGameStateSnapshot snapshot)
     {
@@ -577,12 +582,15 @@ public class GameStateApplyService
         if (ts == null || currentScene != "TextScenario")
         {
             _wasNavigating = false;
+            _lastAppliedSubtitle = null;
+            _lastAppliedResponseCount = -1;
             return;
         }
 
-        // Sync the host's hovered response button to the client's native dialogue UI
+        // Sync the host's dialogue text, responses, and hover highlight to client
         if (ts.IsActive)
         {
+            ApplyDialogueText(ts.SubtitleText, ts.Responses);
             ApplyResponseHighlight(ts.HighlightedIndex);
         }
 
@@ -594,6 +602,66 @@ public class GameStateApplyService
             ActivateClientNavigation();
         }
         _wasNavigating = ts.IsNavigating;
+    }
+
+    /// <summary>
+    /// Update the client's native dialogue UI subtitle text and response buttons
+    /// to match the host's current state. This keeps the client in sync as the
+    /// host advances through the conversation.
+    /// </summary>
+    private void ApplyDialogueText(string subtitleText, List<string> responses)
+    {
+        try
+        {
+            bool subtitleChanged = subtitleText != _lastAppliedSubtitle;
+            bool responsesChanged = (responses?.Count ?? 0) != _lastAppliedResponseCount;
+
+            if (!subtitleChanged && !responsesChanged) return;
+
+            var dialogueUI = UnityEngine.Object.FindObjectOfType<PixelCrushers.DialogueSystem.StandardDialogueUI>();
+            if (dialogueUI == null) return;
+
+            // Update NPC subtitle text
+            if (subtitleChanged && !string.IsNullOrEmpty(subtitleText))
+            {
+                var npcPanel = dialogueUI.conversationUIElements?.defaultNPCSubtitlePanel;
+                if (npcPanel?.subtitleText != null)
+                {
+                    npcPanel.subtitleText.text = subtitleText;
+                    _lastAppliedSubtitle = subtitleText;
+                }
+            }
+
+            // Update response buttons
+            if (responsesChanged && responses != null)
+            {
+                var menuPanel = dialogueUI.conversationUIElements?.defaultMenuPanel;
+                if (menuPanel?.buttons != null)
+                {
+                    for (int i = 0; i < menuPanel.buttons.Length; i++)
+                    {
+                        var btn = menuPanel.buttons[i];
+                        if (btn == null) continue;
+
+                        if (i < responses.Count && !string.IsNullOrEmpty(responses[i]))
+                        {
+                            btn.gameObject.SetActive(true);
+                            btn.text = responses[i];
+                        }
+                        else if (btn.gameObject.activeInHierarchy && btn.isVisible)
+                        {
+                            // Hide extra buttons that the host no longer shows
+                            btn.gameObject.SetActive(false);
+                        }
+                    }
+                    _lastAppliedResponseCount = responses.Count;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[ApplyService] ApplyDialogueText failed: {ex.Message}");
+        }
     }
 
     /// <summary>

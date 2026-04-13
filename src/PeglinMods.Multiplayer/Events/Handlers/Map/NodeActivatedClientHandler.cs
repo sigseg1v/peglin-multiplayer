@@ -41,6 +41,7 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
                 {
                     log?.LogInfo($"[NodeActivated] PegMinigame node — loading scene for spectating (asset={e.MapDataName})");
                     StaticGameData.dataToLoad = minigameData;
+                    GameState.Appliers.MapStateApplier.AwaitingHostSceneConfirmation = "PegMinigame";
                     MultiplayerClientPatches.AllowNextSceneLoad = true;
                     PeglinSceneLoader.Instance?.LoadScene(PeglinSceneLoader.Scene.PEG_MINIGAME);
                     return;
@@ -53,6 +54,7 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
                     log?.LogInfo($"[NodeActivated] TextScenario node — loading scene for spectating (asset={e.MapDataName})");
                     StaticGameData.dataToLoad = scenarioData;
                     TextScenarioHoverTracker.Reset();
+                    GameState.Appliers.MapStateApplier.AwaitingHostSceneConfirmation = "TextScenario";
                     MultiplayerClientPatches.AllowNextSceneLoad = true;
                     PeglinSceneLoader.Instance?.LoadScene(PeglinSceneLoader.Scene.TEXT_SCENARIO);
                     return;
@@ -64,6 +66,7 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
                 {
                     log?.LogInfo($"[NodeActivated] ShopScenario node — loading scene for interactive shopping (asset={e.MapDataName})");
                     StaticGameData.dataToLoad = shopData;
+                    GameState.Appliers.MapStateApplier.AwaitingHostSceneConfirmation = "ShopScenario";
                     MultiplayerClientPatches.AllowNextSceneLoad = true;
                     PeglinSceneLoader.Instance?.LoadScene(PeglinSceneLoader.Scene.SHOP_SCENARIO);
                     return;
@@ -75,6 +78,7 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
                 {
                     log?.LogInfo($"[NodeActivated] Treasure node — loading scene for native relic selection (asset={e.MapDataName})");
                     StaticGameData.dataToLoad = treasureData;
+                    GameState.Appliers.MapStateApplier.AwaitingHostSceneConfirmation = "Treasure";
                     MultiplayerClientPatches.AllowNextSceneLoad = true;
                     PeglinSceneLoader.Instance?.LoadScene(PeglinSceneLoader.Scene.TREASURE);
                     return;
@@ -116,7 +120,7 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
             StaticGameData.dataToLoad = match;
 
             // Load Battle scene — set flags so our patches allow it and ignore stale map syncs
-            GameState.Appliers.MapStateApplier.AwaitingHostBattleConfirmation = true;
+            GameState.Appliers.MapStateApplier.AwaitingHostSceneConfirmation = "Battle";
             var sceneLoader = PeglinSceneLoader.Instance;
             if (sceneLoader != null)
             {

@@ -62,11 +62,12 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
     private static float _lastRequestTime;
 
     /// <summary>
-    /// Set when the client loads Battle (via NodeActivated or MapApplier).
-    /// While true, stale map syncs (host still on ForestMap) are ignored.
-    /// Cleared when the host confirms it's on Battle (hostScene=Battle).
+    /// Set to a scene name when the client loads a scene via NodeActivated
+    /// before the host has confirmed it. While set, stale map syncs (host
+    /// still on the map scene) are ignored. Cleared when the host confirms
+    /// it's on the same scene.
     /// </summary>
-    public static bool AwaitingHostBattleConfirmation { get; set; }
+    public static string AwaitingHostSceneConfirmation { get; set; }
 
     public MapStateApplier(ManualLogSource log) => _log = log;
 
@@ -184,11 +185,12 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             {
                 _log.LogInfo($"[MapApplier] Already on scene '{currentScene}', static data updated.");
 
-                // Host confirmed it's on Battle — clear the awaiting flag
-                if (currentScene == "Battle" && AwaitingHostBattleConfirmation)
+                // Host confirmed the scene — clear the awaiting flag
+                if (!string.IsNullOrEmpty(AwaitingHostSceneConfirmation) &&
+                    string.Equals(currentScene, AwaitingHostSceneConfirmation, StringComparison.OrdinalIgnoreCase))
                 {
-                    AwaitingHostBattleConfirmation = false;
-                    _log.LogInfo("[MapApplier] Host confirmed Battle — cleared AwaitingHostBattleConfirmation");
+                    _log.LogInfo($"[MapApplier] Host confirmed '{currentScene}' — cleared AwaitingHostSceneConfirmation");
+                    AwaitingHostSceneConfirmation = null;
                 }
 
                 // Apply host's map node types to client
@@ -202,21 +204,17 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 return;
             }
 
-            // While awaiting host Battle confirmation, ignore stale map syncs.
-            // The client loaded Battle (via NodeActivated), but the host hasn't loaded
-            // it yet — heartbeats still say ForestMap. Once the host confirms Battle
-            // (hostScene=Battle), the flag clears and normal sync resumes.
-            if (currentScene == "Battle" && MapScenes.Contains(targetScene) && AwaitingHostBattleConfirmation)
+            // While awaiting host scene confirmation, ignore stale map syncs.
+            // The client loaded a scene (via NodeActivated), but the host hasn't loaded
+            // it yet — heartbeats still say ForestMap. Once the host confirms the scene,
+            // the flag clears and normal sync resumes.
+            if (!string.IsNullOrEmpty(AwaitingHostSceneConfirmation) &&
+                string.Equals(currentScene, AwaitingHostSceneConfirmation, StringComparison.OrdinalIgnoreCase) &&
+                MapScenes.Contains(targetScene))
             {
-                _log.LogInfo($"[MapApplier] Ignoring stale map sync '{targetScene}' — awaiting host Battle confirmation");
+                _log.LogInfo($"[MapApplier] Ignoring stale map sync '{targetScene}' — awaiting host '{AwaitingHostSceneConfirmation}' confirmation");
                 return;
             }
-
-            // Set flag when loading Battle so stale map syncs are ignored
-            if (targetScene == "Battle")
-                AwaitingHostBattleConfirmation = true;
-            else
-                AwaitingHostBattleConfirmation = false;
 
             _log.LogInfo($"[MapApplier] Scene change: '{currentScene}' -> '{targetScene}', loading...");
             LoadTargetScene(targetScene);
@@ -377,7 +375,7 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
     public static void ResetAllState()
     {
         ClientWaitingMessage = null;
-        AwaitingHostBattleConfirmation = false;
+        AwaitingHostSceneConfirmation = null;
         _lastRequestedScene = null;
         _lastRequestTime = 0;
         ResetNavigationState();
