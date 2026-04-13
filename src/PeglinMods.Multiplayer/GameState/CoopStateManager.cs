@@ -353,6 +353,12 @@ public class CoopStateManager
                     instance.name = orb.PrefabName;
                     instance.SetActive(false);
                     UnityEngine.Object.DontDestroyOnLoad(instance);
+                    // Each orb clone needs a unique instanceID so DeckManager.IsAttackUnique()
+                    // can distinguish duplicates. Without this, all clones from the same prefab
+                    // share the same instanceID, making IsAttackUnique always return true
+                    // (breaks Spinventoriginality / UNIQUE_ORBS_BUFF).
+                    var attack = instance.GetComponent<Battle.Attacks.Attack>();
+                    if (attack != null) attack.SetInstanceId();
                     if (!string.IsNullOrEmpty(orb.Guid) && _orbId != null)
                         _orbId.Register(instance, orb.Guid);
                     DeckManager.completeDeck.Add(instance);
@@ -380,6 +386,8 @@ public class CoopStateManager
                     instance.name = orb.PrefabName;
                     instance.SetActive(false);
                     UnityEngine.Object.DontDestroyOnLoad(instance);
+                    var attack = instance.GetComponent<Battle.Attacks.Attack>();
+                    if (attack != null) attack.SetInstanceId();
                     if (!string.IsNullOrEmpty(orb.Guid) && _orbId != null)
                         _orbId.Register(instance, orb.Guid);
                     deckMgr.battleDeck.Add(instance);

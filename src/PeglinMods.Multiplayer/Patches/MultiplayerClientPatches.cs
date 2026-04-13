@@ -2048,10 +2048,10 @@ public static class MultiplayerClientPatches
     /// </summary>
     [HarmonyPatch(typeof(BattleController), "DoAttack")]
     [HarmonyPrefix]
-    public static void BattleController_DoAttack_Prefix()
+    public static bool BattleController_DoAttack_Prefix()
     {
-        if (!IsHosting) return;
-        if (!UI.LobbyUI.GameStartReceived) return;
+        if (!IsHosting) return true;
+        if (!UI.LobbyUI.GameStartReceived) return true;
 
         // Clear the pending damage overlay — the attack is now resolving
         try
@@ -2064,16 +2064,20 @@ public static class MultiplayerClientPatches
 
         try
         {
-            var nonHostShots = Events.Subscriptions.CoopSubscriptions.ConsumeNonHostShotData();
-            if (nonHostShots == null || nonHostShots.Count == 0) return;
+            // Apply ALL players' damage directly (host included) instead of relying
+            // on the ShotBehavior physics pipeline, which can fail when the attack is
+            // restored from a prefab (RestoreAttackFromPrefab temp orb shots may not
+            // collide with enemies reliably).
+            var allShots = Events.Subscriptions.CoopSubscriptions.ConsumeNonHostShotData();
+            if (allShots == null || allShots.Count == 0) return true;
 
             var services = MultiplayerPlugin.Services;
-            if (services?.TryResolve<Utility.EnemyIdentifier>(out var enemyId) != true) return;
+            if (services?.TryResolve<Utility.EnemyIdentifier>(out var enemyId) != true) return true;
 
             var em = UnityEngine.Object.FindObjectOfType<EnemyManager>();
-            if (em == null) return;
+            if (em == null) return true;
 
-            foreach (var shot in nonHostShots)
+            foreach (var shot in allShots)
             {
                 if (shot.IsHeal || shot.Damage <= 0) continue;
 
@@ -2117,10 +2121,43 @@ public static class MultiplayerClientPatches
                         $"effects={shot.StatusEffectsToApply?.Count ?? 0}");
                 }
             }
+
+            // Dispatch AttackStarted event to client for visual animation.
+            // Use the host's (slot 0) shot data since the AttackManager_Attack_Postfix
+            // won't run (we're skipping DoAttack which calls AttackManager.Attack).
+            try
+            {
+                var hostShot = allShots.Find(s => s.SlotIndex == 0);
+                if (hostShot != null && services.TryResolve<IGameEventRegistry>(out var reg))
+                {
+                    reg.Dispatch(new Events.Network.Battle.AttackStartedEvent
+                    {
+                        AnimTrigger = "attack",
+                        TargetEnemyGuid = hostShot.TargetEnemyGuid,
+                        NumPegsHit = hostShot.NumPegsHit,
+                        IsCrit = hostShot.CriticalHitCount > 0,
+                        OrbName = hostShot.OrbPrefabName,
+                    });
+                }
+            }
+            catch { }
+
+            // Clean up the temp orb that was created for RestoreAttackFromPrefab
+            // (BattleController.OnAttackStarted is invoked by StartAttacking() which
+            // runs after DoAttack returns, so we don't invoke it here)
+            Events.Subscriptions.CoopSubscriptions.CleanupTempOrb();
+
+            // Skip the original DoAttack — damage was applied directly above.
+            // The caller (Update's DO_ATTACK case) still calls StartAttacking()
+            // after DoAttack returns, so the state machine advances to ATTACKING.
+            // EnemiesAnimating() keeps the ATTACKING state active until damage
+            // animations finish.
+            return false;
         }
         catch (System.Exception ex)
         {
             MultiplayerPlugin.Logger?.LogWarning($"[CoopAttack] Per-player damage resolution failed: {ex}");
+            return true; // Fall back to original DoAttack on error
         }
     }
 

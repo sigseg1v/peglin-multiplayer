@@ -963,11 +963,17 @@ public sealed class CoopSubscriptions
         public bool IsAoE;
         public bool IsHeal;
         public List<(Battle.StatusEffects.StatusEffectType Type, int Intensity)> StatusEffectsToApply;
+        public int NumPegsHit;
+        public int CriticalHitCount;
+        public string OrbPrefabName;
     }
 
     /// <summary>
-    /// Returns non-host players' accumulated shot data for per-player damage resolution.
+    /// Returns ALL players' accumulated shot data for per-player damage resolution.
     /// Called by the DoAttack Harmony prefix. Clears the data after consumption.
+    /// Host damage is included because the RestoreAttackFromPrefab → ShotBehavior
+    /// physics pipeline is unreliable (shots can miss due to collision/raycast issues).
+    /// Applying all damage directly via Enemy.Damage() is more robust.
     /// </summary>
     internal static List<PlayerAttackData> ConsumeNonHostShotData()
     {
@@ -977,7 +983,6 @@ public sealed class CoopSubscriptions
         var result = new List<PlayerAttackData>();
         foreach (var kvp in inst._accumulatedShotData)
         {
-            if (kvp.Key == 0) continue; // Skip host — handled by normal DoAttack
             var d = kvp.Value;
             result.Add(new PlayerAttackData
             {
@@ -988,6 +993,9 @@ public sealed class CoopSubscriptions
                 IsAoE = d.IsAoE,
                 IsHeal = d.IsHeal,
                 StatusEffectsToApply = d.StatusEffectsToApply,
+                NumPegsHit = d.NumPegsHit,
+                CriticalHitCount = d.CriticalHitCount,
+                OrbPrefabName = d.OrbPrefabName,
             });
         }
         inst._accumulatedShotData.Clear();
