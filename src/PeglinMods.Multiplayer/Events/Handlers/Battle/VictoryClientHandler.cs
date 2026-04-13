@@ -15,7 +15,7 @@ public sealed class VictoryClientHandler : IClientHandler<VictoryEvent>
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
             if (mode != null && mode.IsSpectating)
             {
-                MapStateApplier.ClientWaitingMessage = "Host is selecting rewards...";
+                MapStateApplier.ClientWaitingMessage = "Waiting for host...";
             }
 
             BattleController.OnVictory?.Invoke();

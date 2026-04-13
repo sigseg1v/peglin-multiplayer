@@ -37,7 +37,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             // Show waiting message when host is in post-battle state
             if (snapshot.BattleStateName == "AWAITING_POST_BATTLE_CONTROLLER")
             {
-                MapStateApplier.ClientWaitingMessage = "Host is choosing end-of-battle rewards...";
+                MapStateApplier.ClientWaitingMessage = "Waiting for host...";
             }
 
             if (snapshot.Enemies == null || snapshot.Enemies.Count == 0)
