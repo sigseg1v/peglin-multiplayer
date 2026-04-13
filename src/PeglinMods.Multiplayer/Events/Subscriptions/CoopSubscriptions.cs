@@ -43,6 +43,10 @@ public sealed class CoopSubscriptions
 
         // Status effects captured from the orb's IAffectEnemyOnHit components + relic effects
         public List<(Battle.StatusEffects.StatusEffectType Type, int Intensity)> StatusEffectsToApply;
+
+        // The Attack object reference at shot time — needed to restore into AttackManager
+        // at ALL_DONE so the host's DoAttack uses the correct orb, not the last-drawn one.
+        public Battle.Attacks.Attack AttackRef;
     }
 
     private readonly IMultiplayerMode _mode;
@@ -372,6 +376,7 @@ public sealed class CoopSubscriptions
             bool isAoE = false;
             bool isHeal = false;
             List<(Battle.StatusEffects.StatusEffectType, int)> capturedEffects = null;
+            Battle.Attacks.Attack capturedAttack = null;
             if (am != null)
             {
                 precomputedDamage = am.GetCurrentDamage(pegTally, dmgMult, dmgBonus, critCount);
@@ -380,6 +385,7 @@ public sealed class CoopSubscriptions
                 // Check attack type to determine targeting behavior
                 var attackField = AccessTools.Field(typeof(Battle.Attacks.AttackManager), "_attack");
                 var attack = attackField?.GetValue(am) as Battle.Attacks.Attack;
+                capturedAttack = attack;
                 if (attack is Battle.Attacks.SimpleAttack)
                     isAoE = true;
 
@@ -429,6 +435,7 @@ public sealed class CoopSubscriptions
                 IsHeal = isHeal,
                 PlayerName = playerName ?? $"Slot {activeSlot}",
                 StatusEffectsToApply = capturedEffects,
+                AttackRef = capturedAttack,
             };
 
             _log.LogInfo($"[CoopSubs] Saved shot data for slot {activeSlot}: " +
@@ -584,6 +591,22 @@ public sealed class CoopSubscriptions
             {
                 _coopStateManager.SwapToPlayer(0);
                 _log.LogInfo("[CoopSubs] ALL_DONE: swapped to host (slot 0) for attack phase");
+            }
+
+            // Restore the host's Attack into AttackManager._attack.
+            // The last DrawBall was for the last non-host player, so _attack points to
+            // their orb. DoAttack calls _attack.Fire() which uses the wrong damage formula
+            // unless we restore the host's Attack reference here.
+            if (_accumulatedShotData.TryGetValue(0, out var hostAttackData) && hostAttackData.AttackRef != null && bc != null)
+            {
+                var amField = AccessTools.Field(typeof(BattleController), "_attackManager");
+                var am = amField?.GetValue(bc) as Battle.Attacks.AttackManager;
+                if (am != null)
+                {
+                    var atkField = AccessTools.Field(typeof(Battle.Attacks.AttackManager), "_attack");
+                    atkField?.SetValue(am, hostAttackData.AttackRef);
+                    _log.LogInfo($"[CoopSubs] Restored host Attack: {hostAttackData.AttackRef.name}");
+                }
             }
 
             // DO NOT clear _accumulatedShotData — the DoAttack prefix reads it
