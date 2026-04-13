@@ -59,6 +59,7 @@ public class CoopPlayerVisuals : MonoBehaviour
     private string _lastScene = "";
     private GameObject _playerRef;
     private PlayerVisual _hostLabel;
+    private bool _updateErrorLogged; // throttle: log the NRE once, not every frame
 
     // Shared screen-space overlay canvas
     private static GameObject _overlayCanvasObj;
@@ -81,6 +82,7 @@ public class CoopPlayerVisuals : MonoBehaviour
                 CleanupVisuals();
                 _playerRef = null;
                 _inBattle = false;
+                _updateErrorLogged = false;
             }
 
             var services = MultiplayerPlugin.Services;
@@ -102,18 +104,27 @@ public class CoopPlayerVisuals : MonoBehaviour
             var summaries = LatestPlayerSummaries;
             if (summaries == null || summaries.Count <= 1) return;
 
+            // Re-find the player ref if it was destroyed (e.g. during attack animations)
             if (_playerRef == null)
             {
                 _playerRef = GameObject.FindGameObjectWithTag("Player");
                 if (_playerRef == null) return;
             }
 
+            // Camera.main can be null during transitions
+            if (Camera.main == null) return;
+
             EnsureVisuals(summaries);
             UpdateVisuals(summaries);
+            _updateErrorLogged = false; // reset throttle on success
         }
         catch (Exception ex)
         {
-            Log?.LogError($"[CoopPlayerVisuals] Update error: {ex.Message}");
+            if (!_updateErrorLogged)
+            {
+                Log?.LogWarning($"[CoopPlayerVisuals] Update error (will suppress repeats): {ex}");
+                _updateErrorLogged = true;
+            }
         }
     }
 
@@ -222,7 +233,11 @@ public class CoopPlayerVisuals : MonoBehaviour
             }
         }
 
-        // Host label (slot 0)
+        // Host label (slot 0) — recreate if panels were destroyed
+        if (_hostLabel != null && _hostLabel.NamePanel == null)
+        {
+            _hostLabel = null;
+        }
         if (_hostLabel == null && _playerRef != null)
         {
             CoopPlayerSummary hostSummary = null;
@@ -427,10 +442,11 @@ public class CoopPlayerVisuals : MonoBehaviour
     private void UpdateVisuals(List<CoopPlayerSummary> summaries)
     {
         if (_playerRef == null) return;
+        var cam = Camera.main;
+        if (cam == null) return;
 
         var basePos = _playerRef.transform.position;
         int activeSlot = LatestActiveSlot;
-        var cam = Camera.main;
 
         // Host scale highlight
         try
@@ -496,6 +512,8 @@ public class CoopPlayerVisuals : MonoBehaviour
     private void UpdatePlayerLabel(PlayerVisual visual, CoopPlayerSummary summary,
         Vector3 charPos, int activeSlot, Camera cam)
     {
+        if (visual == null || cam == null) return;
+
         // Update texts
         if (visual.HpText != null)
             visual.HpText.text = $"{summary.CurrentHealth:F0}/{summary.MaxHealth:F0}";
