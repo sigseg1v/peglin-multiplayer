@@ -95,16 +95,17 @@ public class GameStateApplyService
         TextScenarioHoverTracker.Reset();
         Patches.MultiplayerClientPatches.AllowTextScenarioNavigation = false;
         _wasNavigating = false;
-        if (UI.TextScenarioSpectatorUI.Instance != null)
-            UI.TextScenarioSpectatorUI.Instance.Hide();
+        _lastAppliedHighlightIndex = -1;
         if (UI.MirrorEventUI.IsActive)
             UI.MirrorEventUI.Hide();
 
-        // Reset shop/treasure bypass flags on any scene transition
+        // Reset shop/treasure/minigame bypass flags on any scene transition
         Patches.MultiplayerClientPatches.AllowShopLogic = false;
         Patches.MultiplayerClientPatches.AllowTreasureLogic = false;
+        Patches.MultiplayerClientPatches.AllowPegMinigameLogic = false;
         Patches.MultiplayerClientPatches.ClientShopPurchases.Clear();
         Events.Handlers.Coop.CoopRewardState.ClientTreasureChoiceSent = false;
+        Events.Handlers.Coop.CoopRewardState.ClientPegMinigameChoiceSent = false;
 
         var svc = MultiplayerPlugin.Services;
         IMultiplayerMode mpModeRef = null;
@@ -133,6 +134,26 @@ public class GameStateApplyService
                 Patches.MultiplayerClientPatches.ClientShopStartGold =
                     Currency.CurrencyManager.Instance?.GoldAmount ?? 0;
                 _log.LogInfo("[ApplyService] Client shop mode enabled — AllowShopLogic=true");
+            }
+        }
+
+        // PegMinigame scene: initialize wait-for-all on host, enable interactive play on client
+        if (scene.name == "PegMinigame")
+        {
+            if (isHosting && svc.TryResolve<CoopStateManager>(out var coopMgr3))
+            {
+                Events.Handlers.Coop.CoopRewardState.PegMinigamePhaseActive = true;
+                Events.Handlers.Coop.CoopRewardState.HostPegMinigameDone = false;
+                Events.Handlers.Coop.CoopRewardState.ClientPegMinigameChoicesReceived.Clear();
+                Events.Handlers.Coop.CoopRewardState.TotalPegMinigameClientsExpected = coopMgr3.TotalPlayerCount - 1;
+                Events.Handlers.Coop.CoopRewardState.PendingPegMinigameManager = null;
+                _log.LogInfo($"[ApplyService] PegMinigame phase initialized — expecting {coopMgr3.TotalPlayerCount - 1} client(s)");
+            }
+
+            if (isSpectating)
+            {
+                Patches.MultiplayerClientPatches.AllowPegMinigameLogic = true;
+                _log.LogInfo("[ApplyService] Client PegMinigame mode enabled — AllowPegMinigameLogic=true");
             }
         }
 
@@ -555,33 +576,14 @@ public class GameStateApplyService
 
         if (ts == null || currentScene != "TextScenario")
         {
-            // Not on TextScenario — hide spectator UI if it exists
-            if (UI.TextScenarioSpectatorUI.Instance != null)
-                UI.TextScenarioSpectatorUI.Instance.Hide();
             _wasNavigating = false;
             return;
         }
 
+        // Sync the host's hovered response button to the client's native dialogue UI
         if (ts.IsActive)
         {
-            // Dialogue is active — show spectator overlay
-            var spectatorUI = UI.TextScenarioSpectatorUI.Instance;
-            if (spectatorUI == null)
-            {
-                // Create the spectator UI component if it doesn't exist yet
-                var uiObj = new GameObject("TextScenarioSpectatorUIHost");
-                uiObj.hideFlags = HideFlags.HideAndDontSave;
-                UnityEngine.Object.DontDestroyOnLoad(uiObj);
-                spectatorUI = uiObj.AddComponent<UI.TextScenarioSpectatorUI>();
-            }
-
-            spectatorUI.UpdateDialogue(ts.SpeakerName, ts.SubtitleText, ts.Responses, ts.HighlightedIndex);
-        }
-        else
-        {
-            // Dialogue ended — hide spectator UI
-            if (UI.TextScenarioSpectatorUI.Instance != null)
-                UI.TextScenarioSpectatorUI.Instance.Hide();
+            ApplyResponseHighlight(ts.HighlightedIndex);
         }
 
         // Handle navigation transition: when host starts navigation phase,
@@ -592,6 +594,46 @@ public class GameStateApplyService
             ActivateClientNavigation();
         }
         _wasNavigating = ts.IsNavigating;
+    }
+
+    /// <summary>
+    /// Highlight the response button at the given index on the client's native
+    /// Dialogue System UI, mirroring the host's hover state.
+    /// </summary>
+    private int _lastAppliedHighlightIndex = -1;
+
+    private void ApplyResponseHighlight(int highlightedIndex)
+    {
+        if (highlightedIndex == _lastAppliedHighlightIndex) return;
+        _lastAppliedHighlightIndex = highlightedIndex;
+
+        try
+        {
+            var dialogueUI = UnityEngine.Object.FindObjectOfType<PixelCrushers.DialogueSystem.StandardDialogueUI>();
+            if (dialogueUI == null) return;
+
+            var menuPanel = dialogueUI.conversationUIElements?.defaultMenuPanel;
+            if (menuPanel?.buttons == null) return;
+
+            for (int i = 0; i < menuPanel.buttons.Length; i++)
+            {
+                var btn = menuPanel.buttons[i];
+                if (btn == null || !btn.gameObject.activeInHierarchy || !btn.isVisible) continue;
+
+                if (i == highlightedIndex && btn.button != null)
+                {
+                    // Use Unity's EventSystem to select this button, which triggers
+                    // the native UI highlight state (color transition, animation, etc.)
+                    var eventSystem = UnityEngine.EventSystems.EventSystem.current;
+                    if (eventSystem != null)
+                        eventSystem.SetSelectedGameObject(btn.gameObject);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[ApplyService] ApplyResponseHighlight failed: {ex.Message}");
+        }
     }
 
     private void ActivateClientNavigation()
@@ -605,6 +647,19 @@ public class GameStateApplyService
                 return;
             }
 
+            // Hide the dialogue text canvas — the host has moved to navigation
+            var textCanvasField = HarmonyLib.AccessTools.Field(typeof(RNG.Scenarios.DialogueSystemScenario), "mainTextAnimatorCanvas");
+            var textCanvas = textCanvasField?.GetValue(dss) as CanvasGroup;
+            if (textCanvas != null)
+                textCanvas.gameObject.SetActive(false);
+
+            // Stop the client's conversation if still active
+            if (PixelCrushers.DialogueSystem.DialogueManager.isConversationActive)
+            {
+                PixelCrushers.DialogueSystem.DialogueManager.StopConversation();
+                _log.LogInfo("[ApplyService] Stopped client conversation for navigation phase");
+            }
+
             // Find the navController field and activate it
             var navField = HarmonyLib.AccessTools.Field(typeof(RNG.Scenarios.DialogueSystemScenario), "navController");
             var navObj = navField?.GetValue(dss) as GameObject;
@@ -613,10 +668,6 @@ public class GameStateApplyService
                 navObj.SetActive(true);
                 _log.LogInfo("[ApplyService] Activated TextScenario navController for spectating");
             }
-
-            // Also hide the spectator UI during navigation
-            if (UI.TextScenarioSpectatorUI.Instance != null)
-                UI.TextScenarioSpectatorUI.Instance.Hide();
         }
         catch (Exception ex)
         {

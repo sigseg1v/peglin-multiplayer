@@ -105,6 +105,11 @@ public static class MultiplayerClientPatches
     internal static bool AllowTreasureLogic;
 
     /// <summary>
+    /// Set to true while the client is in the PegMinigame scene and allowed to play independently.
+    /// </summary>
+    internal static bool AllowPegMinigameLogic;
+
+    /// <summary>
     /// Tracks the relic effect chosen by the client during the post-battle
     /// boss/rare relic selection. Reset when the reward phase ends.
     /// -1 means no relic chosen (skipped or not yet selected).
@@ -2342,8 +2347,12 @@ public static class MultiplayerClientPatches
         // CLIENT-SIDE: intercept Fire() to capture aim and send ShootRequest to host.
         // PachinkoBall.Update() runs natively on client for aiming. When the player
         // clicks, it calls Fire(). We capture the aim direction and send it to host.
+        // Exception: during PegMinigame, the client fires independently.
         if (ShouldSuppressClientLogic)
         {
+            if (AllowPegMinigameLogic)
+                return true; // Let the client fire normally in PegMinigame
+
             if (UI.LobbyUI.GameStartReceived
                 && Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn
                 && !ClientShotSentThisTurn)
@@ -2424,6 +2433,7 @@ public static class MultiplayerClientPatches
     public static bool PegMinigameManager_CreateOrb_Prefix()
     {
         if (!ShouldSuppressClientLogic) return true;
+        if (AllowPegMinigameLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked PegMinigameManager.CreateOrb (spectating)");
         return false;
     }
@@ -2433,6 +2443,7 @@ public static class MultiplayerClientPatches
     public static bool PegMinigameManager_PrepareNavigationOrbForFiring_Prefix()
     {
         if (!ShouldSuppressClientLogic) return true;
+        if (AllowPegMinigameLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked PegMinigameManager.PrepareNavigationOrbForFiring (spectating)");
         return false;
     }
@@ -2442,10 +2453,12 @@ public static class MultiplayerClientPatches
     public static bool PegMinigameManager_HandleRewardSlotTriggerActivated_Prefix()
     {
         if (!ShouldSuppressClientLogic) return true;
+        if (AllowPegMinigameLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked PegMinigameManager.HandleRewardSlotTriggerActivated (spectating)");
         return false;
     }
 
+    // Client never navigates in PegMinigame — host controls scene transitions
     [HarmonyPatch(typeof(Peglin.PegMinigame.PegMinigameManager), "HandleNavigationSlotTriggerActivated")]
     [HarmonyPrefix]
     public static bool PegMinigameManager_HandleNavigationSlotTriggerActivated_Prefix()
@@ -2454,90 +2467,139 @@ public static class MultiplayerClientPatches
         return false;
     }
 
+    // Block FadeAndLoad: on client always (host controls navigation),
+    // on host if waiting for clients to finish
+    [HarmonyPatch(typeof(Peglin.PegMinigame.PegMinigameManager), "FadeAndLoad")]
+    [HarmonyPrefix]
+    public static bool PegMinigameManager_FadeAndLoad_Prefix(Peglin.PegMinigame.PegMinigameManager __instance)
+    {
+        // Client: always block navigation during interactive PegMinigame
+        if (ShouldSuppressClientLogic)
+        {
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked PegMinigameManager.FadeAndLoad on client");
+            return false;
+        }
+
+        // Host: gate on all clients being done
+        if (IsHosting && Events.Handlers.Coop.CoopRewardState.PegMinigamePhaseActive)
+        {
+            if (!Events.Handlers.Coop.CoopRewardState.AllClientPegMinigameChoicesReceived)
+            {
+                Events.Handlers.Coop.CoopRewardState.PendingPegMinigameManager = __instance;
+                Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = true;
+                MultiplayerPlugin.Logger?.LogInfo(
+                    "[CoopReward] PegMinigame: host waiting for clients before navigating " +
+                    $"({Events.Handlers.Coop.CoopRewardState.ClientPegMinigameChoicesReceived.Count}/{Events.Handlers.Coop.CoopRewardState.TotalPegMinigameClientsExpected})");
+                return false;
+            }
+            MultiplayerPlugin.Logger?.LogInfo("[CoopReward] PegMinigame: all clients done, host proceeding with navigation");
+        }
+
+        return true;
+    }
+
     // =========================================================================
-    // HOST: PEG MINIGAME REWARD SHARING — distribute rewards to all coop players
+    // COOP: PEG MINIGAME — independent play + wait-for-all
     // =========================================================================
 
     /// <summary>
     /// Prefix captures _indexSelected before HandleUpgradeOptionClicked resets it to -1.
+    /// Also marks HostPegMinigameDone on the host so FadeAndLoad can gate.
     /// </summary>
     [HarmonyPatch(typeof(Peglin.PegMinigame.PegMinigameManager), "HandleUpgradeOptionClicked")]
     [HarmonyPrefix]
-    public static void PegMinigameManager_HandleUpgradeOptionClicked_SharePrefix(
+    public static void PegMinigameManager_HandleUpgradeOptionClicked_Prefix(
+        PeglinUI.PostBattle.UpgradeOption.UpgradeType type,
         int ____indexSelected,
         ref int __state)
     {
         __state = ____indexSelected;
+
+        // Mark host as done with the reward phase (before FadeAndLoad is called inside the method)
+        if (____indexSelected >= 0
+            && type != PeglinUI.PostBattle.UpgradeOption.UpgradeType.INSPECT_ORB_FOR_UPGRADE
+            && IsHosting
+            && Events.Handlers.Coop.CoopRewardState.PegMinigamePhaseActive)
+        {
+            Events.Handlers.Coop.CoopRewardState.HostPegMinigameDone = true;
+            MultiplayerPlugin.Logger?.LogInfo("[CoopReward] PegMinigame: host finished reward selection");
+        }
     }
 
     /// <summary>
-    /// After the host grants a PegMinigame reward (orb or relic), add the same
-    /// reward to all other coop players' serialized state so everyone benefits.
+    /// Postfix: on CLIENT, send completion event to host. On HOST, save the active player state.
+    /// Each player picks their own reward independently — no sharing.
     /// </summary>
     [HarmonyPatch(typeof(Peglin.PegMinigame.PegMinigameManager), "HandleUpgradeOptionClicked")]
     [HarmonyPostfix]
-    public static void PegMinigameManager_HandleUpgradeOptionClicked_SharePostfix(
+    public static void PegMinigameManager_HandleUpgradeOptionClicked_Postfix(
         PeglinUI.PostBattle.UpgradeOption.UpgradeType type,
         MapDataPegMinigame ____mapData,
         int __state)
     {
         if (__state < 0) return; // no reward was selected
         if (type == PeglinUI.PostBattle.UpgradeOption.UpgradeType.INSPECT_ORB_FOR_UPGRADE) return;
-        if (type == PeglinUI.PostBattle.UpgradeOption.UpgradeType.SKIP) return;
-        if (!IsHosting) return;
 
         var services = MultiplayerPlugin.Services;
-        if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true) return;
-        if (coopState.TotalPlayerCount < 2) return;
+        if (services == null) return;
 
-        try
+        // CLIENT: send completion event to host
+        if (ShouldSuppressClientLogic && AllowPegMinigameLogic)
         {
-            if (____mapData?.Rewards == null || __state >= ____mapData.Rewards.Count) return;
-            var reward = ____mapData.Rewards[__state];
-            if (reward == null) return;
-
-            if (reward is Peglin.PegMinigame.OrbReward orbReward)
+            try
             {
-                var orb = orbReward.Orb;
-                if (orb == null) return;
-                string prefabName = orb.name.Replace("(Clone)", "").Trim();
-                int level = orb.GetComponent<Battle.Attacks.Attack>()?.Level ?? 0;
+                var evt = new Events.Network.Scenarios.PegMinigameCompleteEvent();
 
-                foreach (var kvp in coopState.PlayerStates)
+                if (type == PeglinUI.PostBattle.UpgradeOption.UpgradeType.SKIP)
                 {
-                    if (kvp.Key == coopState.ActivePlayerSlot) continue;
-                    kvp.Value.CompleteDeck.Add(new GameState.SerializedOrb
-                    {
-                        PrefabName = prefabName,
-                        Guid = null,
-                        Level = level,
-                    });
-                    MultiplayerPlugin.Logger?.LogInfo(
-                        $"[CoopReward] PegMinigame: added orb '{prefabName}' (lvl={level}) to slot {kvp.Key}");
+                    evt.Skipped = true;
+                    MultiplayerPlugin.Logger?.LogInfo("[CoopReward] PegMinigame client: skipped reward");
                 }
+                else if (____mapData?.Rewards != null && __state < ____mapData.Rewards.Count)
+                {
+                    var reward = ____mapData.Rewards[__state];
+                    if (reward is Peglin.PegMinigame.OrbReward orbReward && orbReward.Orb != null)
+                    {
+                        evt.ChosenOrbPrefabName = orbReward.Orb.name.Replace("(Clone)", "").Trim();
+                        evt.OrbLevel = orbReward.Orb.GetComponent<Battle.Attacks.Attack>()?.Level ?? 0;
+                        MultiplayerPlugin.Logger?.LogInfo(
+                            $"[CoopReward] PegMinigame client: chose orb '{evt.ChosenOrbPrefabName}' (lvl={evt.OrbLevel})");
+                    }
+                    else if (reward is Peglin.PegMinigame.RelicReward relicReward && relicReward.Relic != null)
+                    {
+                        evt.ChosenRelicEffect = (int)relicReward.Relic.effect;
+                        MultiplayerPlugin.Logger?.LogInfo(
+                            $"[CoopReward] PegMinigame client: chose relic '{relicReward.Relic.locKey}'");
+                    }
+                }
+
+                if (services.TryResolve<Network.IMessageSender>(out var sender))
+                    sender.Send(evt);
+
+                // Disable PegMinigame logic so subsequent CreateOrb/nav calls are blocked
+                AllowPegMinigameLogic = false;
+                Events.Handlers.Coop.CoopRewardState.ClientPegMinigameChoiceSent = true;
+                Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = true;
             }
-            else if (reward is Peglin.PegMinigame.RelicReward relicReward)
+            catch (Exception ex)
             {
-                var relic = relicReward.Relic;
-                if (relic == null) return;
-
-                foreach (var kvp in coopState.PlayerStates)
-                {
-                    if (kvp.Key == coopState.ActivePlayerSlot) continue;
-                    kvp.Value.OwnedRelics.Add(new GameState.SerializedRelic
-                    {
-                        Effect = (int)relic.effect,
-                        LocKey = relic.locKey ?? "",
-                        Rarity = (int)relic.globalRarity,
-                    });
-                    MultiplayerPlugin.Logger?.LogInfo(
-                        $"[CoopReward] PegMinigame: added relic '{relic.locKey}' (effect={relic.effect}) to slot {kvp.Key}");
-                }
+                MultiplayerPlugin.Logger?.LogWarning($"[CoopReward] PegMinigame client completion failed: {ex.Message}");
             }
+            return;
         }
-        catch (Exception ex)
+
+        // HOST: save active player state after reward granted
+        if (IsHosting && Events.Handlers.Coop.CoopRewardState.PegMinigamePhaseActive)
         {
-            MultiplayerPlugin.Logger?.LogWarning($"[CoopReward] PegMinigame reward sharing failed: {ex.Message}");
+            try
+            {
+                if (services.TryResolve<GameState.CoopStateManager>(out var coopState))
+                    coopState.SaveActivePlayerState();
+            }
+            catch (Exception ex)
+            {
+                MultiplayerPlugin.Logger?.LogWarning($"[CoopReward] PegMinigame host save failed: {ex.Message}");
+            }
         }
     }
 
@@ -2687,6 +2749,7 @@ public static class MultiplayerClientPatches
         if (AllowNativeRewardLogic) return true;
         if (AllowShopLogic) return true;
         if (AllowTreasureLogic) return true;
+        if (AllowPegMinigameLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked RelicManager.AddRelic on client");
         return false;
     }
@@ -2824,6 +2887,7 @@ public static class MultiplayerClientPatches
         if (!ShouldSuppressClientLogic) return true;
         if (AllowNativeRewardLogic) return true;
         if (AllowShopLogic) return true;
+        if (AllowPegMinigameLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DeckManager.AddOrbToDeck on client");
         return false;
     }
@@ -3098,28 +3162,34 @@ public static class MultiplayerClientPatches
     public static bool AllowMirrorEventLogic;
 
     /// <summary>
-    /// Block DialogueSystemScenario.DisableFadeCurtain on client.
-    /// This prevents the client from starting its own conversation.
+    /// Allow DisableFadeCurtain on client so the black curtain fades out and
+    /// the TextScenario scene (background, doodads) is visible. The native
+    /// Dialogue System UI will render on the client with correct fonts/layout.
     /// </summary>
     [HarmonyPatch(typeof(DialogueSystemScenario), "DisableFadeCurtain")]
     [HarmonyPrefix]
     public static bool DialogueSystemScenario_DisableFadeCurtain_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
-        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DialogueSystemScenario.DisableFadeCurtain (spectating)");
-        return false;
+        // Always allow — the curtain must fade out on the client too.
+        // StartConversation (called inside DisableFadeCurtain) is also allowed
+        // so the native dialogue UI renders. Response clicks are blocked separately.
+        if (ShouldSuppressClientLogic)
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] ALLOWING DisableFadeCurtain on client (native dialogue UI)");
+        return true;
     }
 
     /// <summary>
-    /// Block DialogueManager.StartConversation on client.
+    /// Allow StartConversation on client so the native Dialogue System UI renders
+    /// with proper fonts, sizing, and layout. The client sees the same dialogue as
+    /// the host. Response button clicks are blocked separately.
     /// </summary>
     [HarmonyPatch(typeof(DialogueManager), "StartConversation", typeof(string), typeof(UnityEngine.Transform), typeof(UnityEngine.Transform), typeof(int))]
     [HarmonyPrefix]
     public static bool DialogueManager_StartConversation_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
-        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DialogueManager.StartConversation (spectating)");
-        return false;
+        if (ShouldSuppressClientLogic)
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] ALLOWING StartConversation on client (native dialogue UI)");
+        return true;
     }
 
     /// <summary>
@@ -3134,6 +3204,26 @@ public static class MultiplayerClientPatches
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DialogueSystemScenario.ConversationEnded (spectating)");
         return false;
     }
+
+    /// <summary>
+    /// Block response button clicks on client during TextScenario.
+    /// The native dialogue UI is visible so the client sees the same text/choices
+    /// as the host, but only the host can click response buttons.
+    /// </summary>
+    [HarmonyPatch(typeof(StandardUIResponseButton), "OnClick")]
+    [HarmonyPrefix]
+    public static bool StandardUIResponseButton_OnClick_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked StandardUIResponseButton.OnClick (spectating)");
+        return false;
+    }
+
+    /// <summary>
+    /// Allow OnContinue on client — advancing through text pages is harmless
+    /// (doesn't affect game state). Only response clicks are blocked.
+    /// The client can read through dialogue at their own pace.
+    /// </summary>
 
     /// <summary>
     /// Track navigation state on host; block navigation on client unless we

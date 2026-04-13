@@ -115,6 +115,30 @@ public static class CoopRewardState
     /// <summary>True on client when the client has already sent their treasure completion event.</summary>
     public static bool ClientTreasureChoiceSent;
 
+    // --- PegMinigame wait-for-all ---
+
+    /// <summary>True when the PegMinigame phase is active (all players playing independently).</summary>
+    public static bool PegMinigamePhaseActive;
+
+    /// <summary>True when the host has finished the PegMinigame (chose Add/Skip and is ready to navigate).</summary>
+    public static bool HostPegMinigameDone;
+
+    /// <summary>Slot indices of clients who have sent their PegMinigameCompleteEvent.</summary>
+    public static System.Collections.Generic.HashSet<int> ClientPegMinigameChoicesReceived = new System.Collections.Generic.HashSet<int>();
+
+    /// <summary>Number of non-host players expected to finish the PegMinigame.</summary>
+    public static int TotalPegMinigameClientsExpected;
+
+    /// <summary>True when all clients have finished the PegMinigame.</summary>
+    public static bool AllClientPegMinigameChoicesReceived => TotalPegMinigameClientsExpected > 0
+        && ClientPegMinigameChoicesReceived.Count >= TotalPegMinigameClientsExpected;
+
+    /// <summary>Stored PegMinigameManager reference so host can resume navigation after all clients finish.</summary>
+    public static Peglin.PegMinigame.PegMinigameManager PendingPegMinigameManager;
+
+    /// <summary>True on client when the client has already sent their PegMinigame completion event.</summary>
+    public static bool ClientPegMinigameChoiceSent;
+
     // --- Post-battle relic choices (boss/rare) ---
 
     /// <summary>Host-provided relic choices for the post-battle boss/rare relic selection on the client.</summary>
@@ -149,6 +173,12 @@ public static class CoopRewardState
         TotalTreasureClientsExpected = 0;
         PendingChestController = null;
         ClientTreasureChoiceSent = false;
+        PegMinigamePhaseActive = false;
+        HostPegMinigameDone = false;
+        ClientPegMinigameChoicesReceived.Clear();
+        TotalPegMinigameClientsExpected = 0;
+        PendingPegMinigameManager = null;
+        ClientPegMinigameChoiceSent = false;
         PendingPostBattleRelicChoices = null;
     }
 }

@@ -296,6 +296,10 @@ public class CoopRewardUI : MonoBehaviour
         {
             _titleText.text = "Waiting for other players to choose a relic...";
         }
+        else if (CoopRewardState.PegMinigamePhaseActive)
+        {
+            _titleText.text = "Waiting for other players to finish...";
+        }
         else if (CoopRewardState.HostRelicSelectionActive)
         {
             var services = MultiplayerPlugin.Services;

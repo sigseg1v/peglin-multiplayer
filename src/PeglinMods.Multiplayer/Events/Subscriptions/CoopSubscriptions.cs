@@ -335,6 +335,18 @@ public sealed class CoopSubscriptions
         // so the game's natural DrawBall → DOTween → ArmBallForShot flow works.
         if (_turnManager.Phase == TurnPhase.ALL_DONE || _turnManager.Phase == TurnPhase.DAMAGE_PHASE)
         {
+            _accumulatedShotData.Clear();
+            PeglinMods.Multiplayer.UI.PendingDamageOverlay.ClearAll();
+
+            // Send clear event to client so its overlay resets too
+            try
+            {
+                var services = MultiplayerPlugin.Services;
+                if (services?.TryResolve<IGameEventRegistry>(out var reg) == true)
+                    reg.Dispatch(new Events.Network.Coop.PendingDamagePreviewEvent());
+            }
+            catch { }
+
             _turnManager.StartNewRound();
             _log.LogInfo($"[CoopSubs] New round {_turnManager.RoundNumber} started, slot {_turnManager.CurrentPlayerSlot}");
         }

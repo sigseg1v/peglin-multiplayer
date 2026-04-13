@@ -135,12 +135,11 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 // Fall through to normal scene load logic below
             }
 
-            // TextScenario: client loads the scene for spectating — don't block.
-            // Set a banner message so the client sees "Waiting for <name>..." at the top.
+            // TextScenario: client loads the scene with native dialogue UI.
+            // Show a non-dimming banner at the top so the client knows they're spectating.
             if (snapshot.ActiveScene == "TextScenario")
             {
-                var hostName = !string.IsNullOrEmpty(HostPlayerName) ? HostPlayerName : "host";
-                ClientWaitingMessage = $"Waiting for {hostName}...";
+                ClientWaitingMessage = "Host is completing event...";
                 _log.LogInfo("[MapApplier] Host is on TextScenario — client spectating");
                 // Fall through to normal scene handling (don't return)
             }
@@ -152,14 +151,11 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 // Fall through to normal scene load logic below
             }
 
-            // PegMinigame: client loads the scene for spectating — don't block.
-            // Set a banner message so the client sees "Waiting for <name>..." at the top.
+            // PegMinigame: client plays independently — no spectating banner needed.
             if (snapshot.ActiveScene == "PegMinigame")
             {
-                var hostName = !string.IsNullOrEmpty(HostPlayerName) ? HostPlayerName : "host";
-                ClientWaitingMessage = $"Waiting for {hostName}...";
-                _log.LogInfo("[MapApplier] Host is on PegMinigame — client spectating");
-                // Fall through to normal scene handling (don't return)
+                _log.LogInfo("[MapApplier] Host is on PegMinigame — client plays independently");
+                // Fall through to normal scene load logic below
             }
 
             // Act completion / win scenes — host clicks continue, client waits
@@ -179,9 +175,7 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             }
 
             // Clear waiting state — we're loading a real game scene
-            // (but keep the PegMinigame spectator banner)
-            if (snapshot.ActiveScene != "PegMinigame")
-                ClientWaitingMessage = null;
+            ClientWaitingMessage = null;
 
             var currentScene = SceneManager.GetActiveScene().name;
             var targetScene = snapshot.ActiveScene;

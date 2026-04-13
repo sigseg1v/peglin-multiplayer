@@ -40,5 +40,12 @@ public sealed class AllChoicesCompleteClientHandler : IClientHandler<AllChoicesC
             CoopRewardState.ClientTreasureChoiceSent = false;
             MultiplayerPlugin.Logger?.LogInfo("[CoopReward] Treasure phase ended");
         }
+        else if (networkEvent.Phase == "peg_minigame")
+        {
+            CoopRewardState.PegMinigamePhaseActive = false;
+            Patches.MultiplayerClientPatches.AllowPegMinigameLogic = false;
+            CoopRewardState.ClientPegMinigameChoiceSent = false;
+            MultiplayerPlugin.Logger?.LogInfo("[CoopReward] PegMinigame phase ended");
+        }
     }
 }
