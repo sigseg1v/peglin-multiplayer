@@ -338,6 +338,21 @@ public sealed class CoopSubscriptions
             _accumulatedShotData.Clear();
             PeglinMods.Multiplayer.UI.PendingDamageOverlay.ClearAll();
 
+            // Reset BattleController tallies so they don't carry over from the
+            // previous round's ALL_DONE restoration (where host tallies were
+            // written back for DoAttack). Without this, the next round's peg
+            // hits accumulate on top of the stale values.
+            var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
+            if (bc != null)
+            {
+                AccessTools.Field(typeof(BattleController), "_pegMultiplierDamageTally")?.SetValue(bc, 0);
+                AccessTools.Field(typeof(BattleController), "_criticalHitCount")?.SetValue(null, 0);
+                AccessTools.Field(typeof(BattleController), "_numPegsHit")?.SetValue(bc, 0);
+                AccessTools.Field(typeof(BattleController), "_cactusDamageTally")?.SetValue(bc, 0);
+                AccessTools.Field(typeof(BattleController), "_damageMultiplier")?.SetValue(bc, 1f);
+                AccessTools.Field(typeof(BattleController), "_damageBonus")?.SetValue(bc, 0);
+            }
+
             // Send clear event to client so its overlay resets too
             try
             {
