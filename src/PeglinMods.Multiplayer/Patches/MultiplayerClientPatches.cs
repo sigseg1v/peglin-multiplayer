@@ -3778,4 +3778,22 @@ public static class MultiplayerClientPatches
                 $"[ClientPatches] SetupRelicGrant postfix failed: {ex.Message}\n{ex.StackTrace}");
         }
     }
+
+    // =========================================================================
+    // Status effect UI suppression during non-host turns in coop
+    // =========================================================================
+
+    /// <summary>
+    /// Suppress status effect UI updates on the host when a non-host player's
+    /// state is active. This prevents the host's Peglin from visually gaining
+    /// Ballusion (or other status effects) from another player's relics during
+    /// their turn.
+    /// </summary>
+    [HarmonyPatch(typeof(Battle.StatusEffects.StatusEffectIconManager), nameof(Battle.StatusEffects.StatusEffectIconManager.UpdateStatusEffects))]
+    [HarmonyPrefix]
+    public static bool StatusEffectIconManager_UpdateStatusEffects_Prefix()
+    {
+        if (!GameState.CoopStateManager.SuppressStatusEffectUI) return true;
+        return false; // Skip the UI update — effects are still in the list for gameplay
+    }
 }

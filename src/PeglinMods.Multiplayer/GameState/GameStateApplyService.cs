@@ -956,9 +956,15 @@ public class GameStateApplyService
                         MaxHealth = summary.MaxHealth,
                         Gold = summary.Gold,
                     };
+                    // Use per-player status effects from the summary, not
+                    // snapshot.Player (which is the host's active player and may
+                    // be a different coop slot with different effects).
+                    if (summary.StatusEffects != null && summary.StatusEffects.Count > 0)
+                    {
+                        myPlayerState.StatusEffects = summary.StatusEffects;
+                    }
                     if (snapshot.Player != null)
                     {
-                        myPlayerState.StatusEffects = snapshot.Player.StatusEffects;
                         myPlayerState.IsSpedUp = snapshot.Player.IsSpedUp;
                         myPlayerState.SpeedupLevel = snapshot.Player.SpeedupLevel;
                     }

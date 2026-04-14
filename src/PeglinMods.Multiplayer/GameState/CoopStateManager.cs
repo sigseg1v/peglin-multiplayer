@@ -24,6 +24,14 @@ public class CoopStateManager
     public int ActivePlayerSlot { get; internal set; } = -1;
     public int TotalPlayerCount => PlayerStates.Count;
 
+    /// <summary>
+    /// When true, suppress status effect UI updates on the host machine.
+    /// Set to true when a non-host player's state is loaded into the singletons,
+    /// so the host's screen doesn't display the other player's status effects
+    /// (e.g. Ballusion from client's Flaunty Gauntlets during client's turn).
+    /// </summary>
+    public static bool SuppressStatusEffectUI { get; set; }
+
     public CoopStateManager(ManualLogSource log, PlayerRegistry playerRegistry)
     {
         _log = log;
@@ -949,6 +957,11 @@ public class CoopStateManager
     {
         try
         {
+            // Suppress status effect UI on host when loading a non-host player's state.
+            // This prevents the host's screen from showing the other player's effects
+            // (e.g. Ballusion from client's Flaunty Gauntlets during the client's turn).
+            SuppressStatusEffectUI = state.SlotIndex != 0;
+
             var statusCtrl = UnityEngine.Object.FindObjectOfType<Battle.StatusEffects.PlayerStatusEffectController>();
             if (statusCtrl == null)
             {
@@ -978,18 +991,23 @@ public class CoopStateManager
                 effects.Add(new Battle.StatusEffects.StatusEffect(effectType, saved.Intensity));
             }
 
-            // Update the UI to reflect the restored effects
-            var uiField = AccessTools.Field(typeof(Battle.StatusEffects.PlayerStatusEffectController), "_statusEffectUI");
-            var ui = uiField?.GetValue(statusCtrl) as Battle.StatusEffects.StatusEffectIconManager;
-            if (ui != null)
+            // Only update the status effect UI when loading the host's own state (slot 0).
+            // For non-host players, the effects are loaded into the list for correct gameplay
+            // calculations, but the UI stays showing the host's effects (or cleared).
+            if (state.SlotIndex == 0)
             {
-                try
+                var uiField = AccessTools.Field(typeof(Battle.StatusEffects.PlayerStatusEffectController), "_statusEffectUI");
+                var ui = uiField?.GetValue(statusCtrl) as Battle.StatusEffects.StatusEffectIconManager;
+                if (ui != null)
                 {
-                    ui.UpdateStatusEffects(effects.ToArray());
-                }
-                catch (Exception uiEx)
-                {
-                    _log.LogWarning($"[CoopState] LoadStatusEffects: UI update failed: {uiEx.Message}");
+                    try
+                    {
+                        ui.UpdateStatusEffects(effects.ToArray());
+                    }
+                    catch (Exception uiEx)
+                    {
+                        _log.LogWarning($"[CoopState] LoadStatusEffects: UI update failed: {uiEx.Message}");
+                    }
                 }
             }
 
