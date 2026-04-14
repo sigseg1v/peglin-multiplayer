@@ -98,6 +98,16 @@ public class CoopPlayerVisuals : MonoBehaviour
 
             _inBattle = true;
 
+            // In coop, the native StatusEffectIconManager draws icons above
+            // the single real Player GameObject — but in coop the real Player
+            // visually represents slot 0 and other slots are sprite clones.
+            // Showing the active slot's effects above slot 0's visual is
+            // wrong on the client (slot 1's effects appear over host) and
+            // transiently wrong on host (during non-host turns). Hide the
+            // native icon container and rely on the per-slot icons rendered
+            // by this component.
+            HideNativeStatusIcons();
+
             if (mode.IsHosting)
                 BuildHostSummaries(services);
 
@@ -624,60 +634,115 @@ public class CoopPlayerVisuals : MonoBehaviour
 
     private StatusIconEntry CreateStatusIcon(int effectType, int intensity, Transform parent)
     {
-        var icon = new GameObject($"StatusIcon_{effectType}");
-        icon.transform.SetParent(parent, false);
-
-        var rect = icon.AddComponent<RectTransform>();
-        rect.sizeDelta = new Vector2(38, 38);
-
-        // Add LayoutElement so HorizontalLayoutGroup respects preferred size
-        var le = icon.AddComponent<LayoutElement>();
-        le.preferredWidth = 38;
-        le.preferredHeight = 38;
-
-        // Icon image (status effect sprite)
-        var img = icon.AddComponent<Image>();
-        var sprite = GetStatusEffectSprite(effectType);
-        if (sprite != null)
+        try
         {
-            img.sprite = sprite;
-            img.preserveAspect = true;
+            // Create GO with RectTransform from the start. Using
+            // `new GameObject(name, typeof(RectTransform))` ensures the GO has
+            // a RectTransform (not a plain Transform) before any UI components
+            // are added, which is required for TextMeshProUGUI and Image.
+            var icon = new GameObject($"StatusIcon_{effectType}", typeof(RectTransform));
+            icon.transform.SetParent(parent, false);
+
+            var rect = icon.GetComponent<RectTransform>();
+            if (rect != null) rect.sizeDelta = new Vector2(38, 38);
+
+            // Add LayoutElement so HorizontalLayoutGroup respects preferred size
+            var le = icon.AddComponent<LayoutElement>();
+            if (le != null)
+            {
+                le.preferredWidth = 38;
+                le.preferredHeight = 38;
+            }
+
+            // Icon image (status effect sprite)
+            var img = icon.AddComponent<Image>();
+            if (img != null)
+            {
+                var sprite = GetStatusEffectSprite(effectType);
+                if (sprite != null)
+                {
+                    img.sprite = sprite;
+                    img.preserveAspect = true;
+                }
+                else
+                {
+                    // Fallback: tinted square with effect abbreviation
+                    img.color = new Color(0.4f, 0.3f, 0.6f, 0.8f);
+                }
+            }
+
+            // Intensity number overlaid at bottom-center. Create with
+            // RectTransform up-front so AddComponent<TextMeshProUGUI> doesn't
+            // silently fail on a plain Transform.
+            var textObj = new GameObject("Intensity", typeof(RectTransform));
+            textObj.transform.SetParent(icon.transform, false);
+            var tmp = textObj.AddComponent<TextMeshProUGUI>();
+            if (tmp == null)
+            {
+                Log?.LogWarning($"[CoopPlayerVisuals] AddComponent<TextMeshProUGUI> returned null for effect {effectType}");
+                return new StatusIconEntry { Root = icon, IconImage = img, IntensityText = null };
+            }
+
+            tmp.text = intensity > 999 ? (intensity / 1000) + "K" : intensity.ToString();
+            tmp.fontSize = 16;
+            tmp.fontStyle = FontStyles.Bold;
+            var font = GetGameFont();
+            if (font != null) tmp.font = font;
+            tmp.alignment = TextAlignmentOptions.Bottom;
+            tmp.color = Color.white;
+            tmp.outlineWidth = 0.35f;
+            tmp.outlineColor = Color.black;
+            tmp.enableWordWrapping = false;
+            tmp.overflowMode = TextOverflowModes.Overflow;
+            tmp.raycastTarget = false;
+
+            var textRect = tmp.rectTransform;
+            if (textRect != null)
+            {
+                textRect.anchorMin = Vector2.zero;
+                textRect.anchorMax = Vector2.one;
+                textRect.offsetMin = new Vector2(0, -2);
+                textRect.offsetMax = new Vector2(0, 0);
+            }
+
+            return new StatusIconEntry
+            {
+                Root = icon,
+                IconImage = img,
+                IntensityText = tmp,
+            };
         }
-        else
+        catch (Exception ex)
         {
-            // Fallback: tinted square with effect abbreviation
-            img.color = new Color(0.4f, 0.3f, 0.6f, 0.8f);
+            Log?.LogWarning($"[CoopPlayerVisuals] CreateStatusIcon({effectType}, {intensity}) failed: {ex}");
+            return null;
         }
+    }
 
-        // Intensity number overlaid at bottom-center
-        var textObj = new GameObject("Intensity");
-        textObj.transform.SetParent(icon.transform, false);
-        var tmp = textObj.AddComponent<TextMeshProUGUI>();
-        tmp.text = intensity > 999 ? (intensity / 1000) + "K" : intensity.ToString();
-        tmp.fontSize = 16;
-        tmp.fontStyle = FontStyles.Bold;
-        var font = GetGameFont();
-        if (font != null) tmp.font = font;
-        tmp.alignment = TextAlignmentOptions.Bottom;
-        tmp.color = Color.white;
-        tmp.outlineWidth = 0.35f;
-        tmp.outlineColor = Color.black;
-        tmp.enableWordWrapping = false;
-        tmp.overflowMode = TextOverflowModes.Overflow;
-        tmp.raycastTarget = false;
-
-        var textRect = tmp.rectTransform;
-        textRect.anchorMin = Vector2.zero;
-        textRect.anchorMax = Vector2.one;
-        textRect.offsetMin = new Vector2(0, -2);
-        textRect.offsetMax = new Vector2(0, 0);
-
-        return new StatusIconEntry
+    /// <summary>
+    /// Disable the native player StatusEffectIconManager's horizontal icon
+    /// container so native icons don't render above the real Player GameObject
+    /// (which visually represents slot 0 in coop). Per-slot icons are drawn
+    /// by CoopPlayerVisuals instead.
+    /// </summary>
+    private void HideNativeStatusIcons()
+    {
+        try
         {
-            Root = icon,
-            IconImage = img,
-            IntensityText = tmp,
-        };
+            var statusCtrl = FindObjectOfType<Battle.StatusEffects.PlayerStatusEffectController>();
+            if (statusCtrl == null) return;
+
+            var uiField = HarmonyLib.AccessTools.Field(
+                typeof(Battle.StatusEffects.PlayerStatusEffectController), "_statusEffectUI");
+            var ui = uiField?.GetValue(statusCtrl) as Battle.StatusEffects.StatusEffectIconManager;
+            if (ui == null) return;
+
+            if (ui.horizontalContainer != null && ui.horizontalContainer.gameObject.activeSelf)
+            {
+                ui.horizontalContainer.gameObject.SetActive(false);
+            }
+        }
+        catch { }
     }
 
     private static Battle.StatusEffects.StatusEffectData GetStatusEffectData()
