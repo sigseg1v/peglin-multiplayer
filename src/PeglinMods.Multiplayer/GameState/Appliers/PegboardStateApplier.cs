@@ -104,7 +104,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 }
 
                 // Phase 2: type-aware position match
-                // Prefer same-type: bombs→bombs, bouncers→bouncers, regulars→regulars
+                // STRICT same-type only: bombs→bombs, bouncers→bouncers, regulars→regulars.
+                // NO cross-type fallback — mixing types here was corrupting the _bombs list
+                // with unrelated entries and triggering GUID type mismatches every heartbeat.
                 if (peg == null)
                 {
                     if (entry.IsBomb)
@@ -113,10 +115,6 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         peg = FindClosestUnmatched(entry, null, null, clientBouncers, matchedPegs, 3f);
                     else
                         peg = FindClosestUnmatched(entry, clientPegs, null, null, matchedPegs, 1f);
-
-                    // Cross-type fallback only if same-type failed
-                    if (peg == null)
-                        peg = FindClosestUnmatched(entry, clientPegs, clientBombs, clientBouncers, matchedPegs, 2f);
 
                     if (peg != null)
                         posMatched++;
@@ -162,20 +160,27 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
 
             // ===== PHASE 3: Reposition unmatched client pegs to host positions =====
+            // Type-aware pools: bomb entries only take from clientBombs, bouncer
+            // entries from clientBouncers, regular entries from clientPegs.
+            // Cross-type grabs were scrambling bomb placement by reusing bombs
+            // as regular pegs and vice versa.
             if (unmatchedEntries.Count > 0)
             {
-                var availablePegs = new List<Peg>();
+                var availableRegulars = new List<Peg>();
+                var availableBombs = new List<Peg>();
+                var availableBouncers = new List<Peg>();
+
                 foreach (var p in clientPegs)
                 {
                     if (p != null && !matchedPegs.Contains(p))
-                        availablePegs.Add(p);
+                        availableRegulars.Add(p);
                 }
                 if (clientBombs != null)
                 {
                     foreach (var b in clientBombs)
                     {
                         if (b != null && !matchedPegs.Contains(b))
-                            availablePegs.Add(b);
+                            availableBombs.Add(b);
                     }
                 }
                 if (clientBouncers != null)
@@ -183,7 +188,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     foreach (var bo in clientBouncers)
                     {
                         if (bo != null && !matchedPegs.Contains(bo))
-                            availablePegs.Add(bo);
+                            availableBouncers.Add(bo);
                     }
                 }
 
@@ -193,15 +198,21 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
                 foreach (var entry in unmatchedEntries)
                 {
-                    Peg peg;
-                    if (availablePegs.Count > 0)
+                    Peg peg = null;
+                    List<Peg> pool = entry.IsBomb ? availableBombs
+                        : entry.IsBouncer ? availableBouncers
+                        : availableRegulars;
+
+                    if (pool.Count > 0)
                     {
-                        peg = availablePegs[availablePegs.Count - 1];
-                        availablePegs.RemoveAt(availablePegs.Count - 1);
+                        peg = pool[pool.Count - 1];
+                        pool.RemoveAt(pool.Count - 1);
                         repositioned++;
                     }
-                    else if (templatePeg != null)
+                    else if (!entry.IsBomb && !entry.IsBouncer && templatePeg != null)
                     {
+                        // Only clone regular pegs — bomb/bouncer prefabs aren't
+                        // in clientPegs and shouldn't be fabricated from regulars.
                         var clone = UnityEngine.Object.Instantiate(templatePeg, templatePeg.transform.parent);
                         clone.gameObject.SetActive(true);
                         peg = clone;
@@ -211,6 +222,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     else
                     {
                         missed++;
+                        _log.LogWarning($"[PegboardApplier] MISSED unmatched entry guid={entry.Guid} " +
+                            $"hostPos=({entry.PosX:F1},{entry.PosY:F1}) bomb={entry.IsBomb} bouncer={entry.IsBouncer} " +
+                            $"— no same-type client peg available");
                         continue;
                     }
 
@@ -247,18 +261,52 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     extrasRemoved++;
                 }
             }
+            // Aggressive cleanup of stale unmatched bombs: the client's own RNG
+            // bomb placement (via ConvertPegsToBombs) left bombs in _bombs that
+            // the host never sees. Deactivating them isn't enough — they stay in
+            // the list and re-trigger GUID type-mismatch warnings every heartbeat.
+            // REMOVE them from the _bombs list, clear the GUID registry, destroy the GO.
+            int staleBombsRemoved = 0;
             if (clientBombs != null)
             {
-                foreach (var bomb in clientBombs)
+                for (int i = clientBombs.Count - 1; i >= 0; i--)
                 {
-                    if (bomb != null && bomb.gameObject.activeSelf && !matchedPegs.Contains(bomb)
-                        && !matchedParents.Contains(bomb.transform))
+                    var bomb = clientBombs[i];
+                    if (bomb == null)
                     {
-                        bomb.gameObject.SetActive(false);
-                        extrasRemoved++;
+                        clientBombs.RemoveAt(i);
+                        continue;
                     }
+                    if (matchedPegs.Contains(bomb)) continue;
+                    if (matchedParents.Contains(bomb.transform)) continue;
+
+                    // Unmatched: host snapshot has no bomb corresponding to this
+                    // client bomb. It's stale (from client-side RNG placement or
+                    // a detonation the host rolled back). Purge it completely.
+                    var staleGuid = _pegId.GetGuid(bomb);
+                    if (!string.IsNullOrEmpty(staleGuid))
+                    {
+                        // Reflect into PegIdentifier internals — no public Remove.
+                        try
+                        {
+                            var g2p = HarmonyLib.AccessTools.Field(typeof(PegIdentifier), "_guidToPeg")
+                                ?.GetValue(_pegId) as System.Collections.IDictionary;
+                            var p2g = HarmonyLib.AccessTools.Field(typeof(PegIdentifier), "_pegToGuid")
+                                ?.GetValue(_pegId) as System.Collections.IDictionary;
+                            g2p?.Remove(staleGuid);
+                            p2g?.Remove(bomb);
+                        }
+                        catch { }
+                    }
+
+                    clientBombs.RemoveAt(i);
+                    try { UnityEngine.Object.Destroy(bomb.gameObject); } catch { }
+                    staleBombsRemoved++;
+                    extrasRemoved++;
                 }
             }
+            if (staleBombsRemoved > 0)
+                _log.LogWarning($"[PegboardApplier] Purged {staleBombsRemoved} stale client bombs (not in host snapshot)");
             if (clientBouncers != null)
             {
                 foreach (var bouncer in clientBouncers)
@@ -397,7 +445,26 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             return;
         }
 
-        if (HasMovementComponent(finalPeg))
+        // If ConvertPegToType created a new GO (bomb as child of original peg),
+        // snap PARENT first so the subsequent child-set lands at the right world pos.
+        // Setting child then parent double-offsets the child (parent delta propagates
+        // to child world-space) — we were seeing bombs at 2*hostPos - origPos.
+        if (finalPeg != originalPeg && originalPeg != null)
+        {
+            originalPeg.transform.position = hostPos;
+            var rb2 = originalPeg.GetComponent<Rigidbody2D>();
+            if (rb2 != null)
+            {
+                rb2.position = new Vector2(entry.PosX, entry.PosY);
+                if (rb2.bodyType != RigidbodyType2D.Static)
+                    rb2.velocity = Vector2.zero;
+            }
+        }
+
+        // Bombs always hard-snap — they must match host exactly every heartbeat
+        // per the "dumb canvas" rule. Lerp leaves visible drift that never converges.
+        bool isBomb = finalPeg is Bomb;
+        if (!isBomb && HasMovementComponent(finalPeg))
         {
             finalPeg.transform.position = Vector3.Lerp(
                 finalPeg.transform.position, hostPos, 0.15f);
@@ -412,19 +479,6 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 // Zero velocity on static pegs to prevent physics drift from position corrections
                 if (rb.bodyType != RigidbodyType2D.Static)
                     rb.velocity = Vector2.zero;
-            }
-        }
-
-        // If ConvertPegToType created a new GO, also snap the original (now parent)
-        if (finalPeg != originalPeg && originalPeg != null)
-        {
-            originalPeg.transform.position = hostPos;
-            var rb2 = originalPeg.GetComponent<Rigidbody2D>();
-            if (rb2 != null)
-            {
-                rb2.position = new Vector2(entry.PosX, entry.PosY);
-                if (rb2.bodyType != RigidbodyType2D.Static)
-                    rb2.velocity = Vector2.zero;
             }
         }
     }

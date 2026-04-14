@@ -1933,6 +1933,46 @@ public static class MultiplayerClientPatches
         }
     }
 
+    /// <summary>
+    /// Block client-side RNG bomb placement. The host is authoritative for which
+    /// pegs become bombs. If the client runs its own ConvertPegsToBombs (via
+    /// BattleController.CheckRelicsForStartingBombCount or PlayerStatusEffectController),
+    /// it uses seeded RNG to pick DIFFERENT pegs than the host, producing stale
+    /// bombs that never match the host's and leak into the _bombs list forever.
+    /// </summary>
+    [HarmonyPatch(typeof(PegManager), "ConvertPegsToBombs")]
+    [HarmonyPrefix]
+    public static bool PegManager_ConvertPegsToBombs_Prefix()
+    {
+        if (ShouldSuppressClientLogic)
+        {
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked PegManager.ConvertPegsToBombs — host drives bomb placement");
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Block client-side delayed bomb conversion coroutine. Called via
+    /// RegularPeg.StartDelayedBombConversion / LongPeg conversion paths during
+    /// relic triggers. Host-driven sync reconverts via the periodic snapshot.
+    /// Returns an empty IEnumerator to avoid StartCoroutine(null) crash.
+    /// </summary>
+    [HarmonyPatch(typeof(Peg), "WaitAndConvertToBomb")]
+    [HarmonyPrefix]
+    public static bool Peg_WaitAndConvertToBomb_Prefix(ref IEnumerator __result)
+    {
+        if (ShouldSuppressClientLogic)
+        {
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked Peg.WaitAndConvertToBomb — host drives bomb placement");
+            __result = EmptyEnumerator();
+            return false;
+        }
+        return true;
+    }
+
+    private static IEnumerator EmptyEnumerator() { yield break; }
+
     // =========================================================================
     // LIVE PENDING DAMAGE OVERLAY — update per peg hit during coop
     // =========================================================================
