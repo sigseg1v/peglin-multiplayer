@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Linq;
 using Battle;
 using Data;
@@ -3795,5 +3796,40 @@ public static class MultiplayerClientPatches
     {
         if (!GameState.CoopStateManager.SuppressStatusEffectUI) return true;
         return false; // Skip the UI update — effects are still in the list for gameplay
+    }
+
+    // =========================================================================
+    // Block client-side bomb throwing (THROW_BOMBS state machine)
+    // =========================================================================
+
+    private static readonly System.Reflection.FieldInfo _bombsRegularField =
+        AccessTools.Field(typeof(BattleController), "_bombsToThrowRegular");
+    private static readonly System.Reflection.FieldInfo _bombsRiggedField =
+        AccessTools.Field(typeof(BattleController), "_bombsToThrowRigged");
+
+    /// <summary>
+    /// Suppress the client's own ThrowAllBombs coroutine. Without this, the
+    /// client throws bombs using its local RNG (wrong positions), damages
+    /// enemies independently, and creates duplicate visuals alongside the
+    /// host's BombThrownEvent visual-only bombs. We zero the bomb counters
+    /// so the BattleController state machine transitions past THROW_BOMBS.
+    /// </summary>
+    [HarmonyPatch(typeof(BattleController), "ThrowAllBombs")]
+    [HarmonyPrefix]
+    public static bool BattleController_ThrowAllBombs_Prefix(
+        BattleController __instance, ref IEnumerator __result)
+    {
+        if (!ShouldSuppressClientLogic) return true;
+
+        _bombsRegularField?.SetValue(__instance, 0);
+        _bombsRiggedField?.SetValue(__instance, 0);
+
+        __result = EmptyCoroutine();
+        return false;
+    }
+
+    private static IEnumerator EmptyCoroutine()
+    {
+        yield break;
     }
 }

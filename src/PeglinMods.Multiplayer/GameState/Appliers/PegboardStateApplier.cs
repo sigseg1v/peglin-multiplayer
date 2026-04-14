@@ -515,10 +515,19 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         // Handle destroyed pegs
         if (entry.IsDestroyed)
         {
-            if (peg.gameObject.activeSelf && peg.pegType != Peg.PegType.DESTROYED)
+            if (peg.pegType != Peg.PegType.DESTROYED)
             {
-                try { peg.DestroyPeg(peg.pegType); }
-                catch { peg.gameObject.SetActive(false); }
+                if (peg.gameObject.activeSelf)
+                {
+                    try { peg.DestroyPeg(peg.pegType); }
+                    catch { peg.gameObject.SetActive(false); }
+                }
+                else
+                {
+                    // Already inactive (e.g. enemy-lobbed bombs that detonated) —
+                    // just set the type so the state matches the host.
+                    peg.pegType = Peg.PegType.DESTROYED;
+                }
                 destroyed++;
             }
             return;
