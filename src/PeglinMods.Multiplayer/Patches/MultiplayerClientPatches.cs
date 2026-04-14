@@ -1592,6 +1592,26 @@ public static class MultiplayerClientPatches
         return false;
     }
 
+    /// <summary>
+    /// Block ResolveNode on the client. MapController is DontDestroyOnLoad, so its
+    /// NodeSelected coroutine (started by walk completion) leaks across the scene
+    /// transition into TextScenario/Shop/Treasure/etc. Inside that coroutine,
+    /// DoNodeSelectionFadeOut finds the "Curtain"-tagged Image in the NEW scene
+    /// (e.g., the DialogueSystemScenario curtain) and fades it to fully black —
+    /// permanently hiding the dialogue UI.
+    ///
+    /// Scene transitions on the client are already handled by NodeActivatedClientHandler,
+    /// so we never need the client's own MapController.ResolveNode flow.
+    /// </summary>
+    [HarmonyPatch(typeof(Map.MapController), "ResolveNode")]
+    [HarmonyPrefix]
+    public static bool MapController_ResolveNode_Prefix()
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked MapController.ResolveNode (client — scene handled by NodeActivatedClientHandler)");
+        return false;
+    }
+
     // =========================================================================
     // BLOCK CLIENT AUTO-GENERATION — host controls all content
     // =========================================================================
