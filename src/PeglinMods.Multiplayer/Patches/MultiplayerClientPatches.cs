@@ -111,6 +111,12 @@ public static class MultiplayerClientPatches
     internal static bool AllowPegMinigameLogic;
 
     /// <summary>
+    /// Set to true while the client is in the TextScenario scene and allowed to
+    /// interact with native dialogue (mirror, altar, etc.).
+    /// </summary>
+    internal static bool AllowTextScenarioLogic;
+
+    /// <summary>
     /// Tracks the relic effect chosen by the client during the post-battle
     /// boss/rare relic selection. Reset when the reward phase ends.
     /// -1 means no relic chosen (skipped or not yet selected).
@@ -2619,6 +2625,8 @@ public static class MultiplayerClientPatches
         if (!IsHosting) return;
         if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != "TextScenario") return;
         if (__result == null) return;
+        // When TextScenarioPhaseActive, clients handle their own dialogue — don't double-apply
+        if (Events.Handlers.Coop.CoopRewardState.TextScenarioPhaseActive) return;
 
         var services = MultiplayerPlugin.Services;
         if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true) return;
@@ -2702,6 +2710,8 @@ public static class MultiplayerClientPatches
         if (!IsHosting) return;
         if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != "TextScenario") return;
         if (relic == null) return;
+        // When TextScenarioPhaseActive, clients handle their own dialogue — don't double-apply
+        if (Events.Handlers.Coop.CoopRewardState.TextScenarioPhaseActive) return;
 
         var services = MultiplayerPlugin.Services;
         if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true) return;
@@ -2887,6 +2897,7 @@ public static class MultiplayerClientPatches
         if (AllowShopLogic) return true;
         if (AllowTreasureLogic) return true;
         if (AllowPegMinigameLogic) return true;
+        if (AllowTextScenarioLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked RelicManager.AddRelic on client");
         return false;
     }
@@ -2945,6 +2956,7 @@ public static class MultiplayerClientPatches
         if (!ShouldSuppressClientLogic) return true;
         if (AllowNativeRewardLogic) return true;
         if (AllowShopLogic) return true;
+        if (AllowTextScenarioLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked PlayerHealthController.Damage on client");
         return false;
     }
@@ -3001,6 +3013,7 @@ public static class MultiplayerClientPatches
         if (AllowNativeRewardLogic) return true;
         if (AllowShopLogic) return true;
         if (AllowTreasureLogic) return true;
+        if (AllowTextScenarioLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked CurrencyManager.AddGold on client");
         return false;
     }
@@ -3013,6 +3026,7 @@ public static class MultiplayerClientPatches
         if (AllowCurrencySync) return true;
         if (AllowNativeRewardLogic) return true;
         if (AllowShopLogic) return true;
+        if (AllowTextScenarioLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked CurrencyManager.RemoveGold on client");
         return false;
     }
@@ -3025,6 +3039,7 @@ public static class MultiplayerClientPatches
         if (AllowNativeRewardLogic) return true;
         if (AllowShopLogic) return true;
         if (AllowPegMinigameLogic) return true;
+        if (AllowTextScenarioLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DeckManager.AddOrbToDeck on client");
         return false;
     }
@@ -3330,28 +3345,162 @@ public static class MultiplayerClientPatches
     }
 
     /// <summary>
-    /// Block DialogueSystemScenario.ConversationEnded on client.
-    /// Host controls when navigation starts.
+    /// DialogueSystemScenario.ConversationEnded —
+    /// Client: allow when AllowTextScenarioLogic (let native dialogue flow complete, then capture state).
+    /// Host: in coop, do wait-for-all before allowing StartNavigation.
     /// </summary>
     [HarmonyPatch(typeof(DialogueSystemScenario), "ConversationEnded")]
     [HarmonyPrefix]
-    public static bool DialogueSystemScenario_ConversationEnded_Prefix()
+    public static bool DialogueSystemScenario_ConversationEnded_Prefix(DialogueSystemScenario __instance)
     {
-        if (!ShouldSuppressClientLogic) return true;
-        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DialogueSystemScenario.ConversationEnded (spectating)");
-        return false;
+        if (!UI.LobbyUI.GameStartReceived)
+            return true; // Not in coop
+
+        if (ShouldSuppressClientLogic)
+        {
+            if (AllowTextScenarioLogic)
+            {
+                MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] ALLOWING DialogueSystemScenario.ConversationEnded (AllowTextScenarioLogic)");
+                // Don't call StartNavigation on client — just capture state and send to host.
+                // We return false and handle the post-dialogue logic ourselves.
+                CaptureAndSendTextScenarioState();
+                return false;
+            }
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DialogueSystemScenario.ConversationEnded (spectating)");
+            return false;
+        }
+
+        if (IsHosting && Events.Handlers.Coop.CoopRewardState.TextScenarioPhaseActive)
+        {
+            // HOST: save own state first
+            var services = MultiplayerPlugin.Services;
+            if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) == true)
+                coopState.SaveActivePlayerState();
+
+            Events.Handlers.Coop.CoopRewardState.HostTextScenarioDone = true;
+
+            if (Events.Handlers.Coop.CoopRewardState.AllClientTextScenarioChoicesReceived)
+            {
+                MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Host ConversationEnded — all clients done, proceeding");
+                Events.Handlers.Coop.CoopRewardState.TextScenarioPhaseActive = false;
+                Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = false;
+                if (services?.TryResolve<Events.IGameEventRegistry>(out var reg) == true)
+                    reg.Dispatch(new Events.Network.Coop.AllChoicesCompleteEvent { Phase = "text_scenario" });
+                return true; // Let ConversationEnded run normally (calls StartNavigation)
+            }
+            else
+            {
+                // Not all clients done — store reference and block
+                Events.Handlers.Coop.CoopRewardState.PendingDialogueSystemScenario = __instance;
+                Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = true;
+                MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Host ConversationEnded — waiting for clients to finish TextScenario");
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>
-    /// Block response button clicks on client during TextScenario.
-    /// The native dialogue UI is visible so the client sees the same text/choices
-    /// as the host, but only the host can click response buttons.
+    /// Captures the client's current deck/health/gold/relics after a TextScenario
+    /// dialogue completes and sends a TextScenarioCompleteEvent to the host.
+    /// </summary>
+    private static void CaptureAndSendTextScenarioState()
+    {
+        if (Events.Handlers.Coop.CoopRewardState.ClientTextScenarioChoiceSent) return;
+
+        try
+        {
+            AllowTextScenarioLogic = false;
+            Events.Handlers.Coop.CoopRewardState.ClientTextScenarioChoiceSent = true;
+
+            var evt = new Events.Network.Scenarios.TextScenarioCompleteEvent();
+
+            // Capture complete deck
+            Utility.OrbIdentifier orbId = null;
+            MultiplayerPlugin.Services?.TryResolve(out orbId);
+            if (DeckManager.completeDeck != null)
+            {
+                foreach (var orbGo in DeckManager.completeDeck)
+                {
+                    if (orbGo == null) continue;
+                    var attack = orbGo.GetComponent<Battle.Attacks.Attack>();
+                    var prefabName = orbGo.name.Replace("(Clone)", "").Trim();
+                    string guid = orbId?.GetGuid(orbGo);
+                    evt.CompleteDeck.Add(new GameState.SerializedOrb
+                    {
+                        PrefabName = prefabName,
+                        Guid = guid ?? System.Guid.NewGuid().ToString(),
+                        Level = attack?.Level ?? 1,
+                    });
+                }
+            }
+
+            // Capture health
+            var healthControllers = UnityEngine.Resources.FindObjectsOfTypeAll<PlayerHealthController>();
+            foreach (var hc in healthControllers)
+            {
+                if (hc != null)
+                {
+                    evt.CurrentHealth = hc.CurrentHealth;
+                    evt.MaxHealth = hc.MaxHealth;
+                    break;
+                }
+            }
+
+            // Capture gold
+            evt.Gold = Currency.CurrencyManager.Instance?.GoldAmount ?? 0;
+
+            // Capture relics via reflection (RelicManager._ownedRelics is private)
+            var relicManagers = UnityEngine.Resources.FindObjectsOfTypeAll<Relics.RelicManager>();
+            var ownedRelicsField = HarmonyLib.AccessTools.Field(typeof(Relics.RelicManager), "_ownedRelics");
+            foreach (var rm in relicManagers)
+            {
+                if (rm == null) continue;
+                var ownedDict = ownedRelicsField?.GetValue(rm)
+                    as System.Collections.Generic.Dictionary<Relics.RelicEffect, Relics.Relic>;
+                if (ownedDict == null) continue;
+                foreach (var kvp in ownedDict)
+                {
+                    var relic = kvp.Value;
+                    if (relic == null) continue;
+                    evt.Relics.Add(new GameState.SerializedRelic
+                    {
+                        Effect = (int)relic.effect,
+                        LocKey = relic.locKey,
+                        Rarity = (int)relic.globalRarity,
+                    });
+                }
+                break;
+            }
+
+            var services = MultiplayerPlugin.Services;
+            if (services?.TryResolve<Network.IMessageSender>(out var sender) == true)
+            {
+                sender.Send(evt);
+                MultiplayerPlugin.Logger?.LogInfo(
+                    $"[ClientPatch] Sent TextScenarioCompleteEvent: deck={evt.CompleteDeck.Count}, " +
+                    $"hp={evt.CurrentHealth}/{evt.MaxHealth}, gold={evt.Gold}, relics={evt.Relics.Count}");
+            }
+
+            Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = true;
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogError($"[ClientPatch] Failed to send TextScenarioCompleteEvent: {ex.Message}\n{ex.StackTrace}");
+        }
+    }
+
+    /// <summary>
+    /// Block response button clicks on client during TextScenario unless
+    /// AllowTextScenarioLogic is set (client making its own dialogue choices).
     /// </summary>
     [HarmonyPatch(typeof(StandardUIResponseButton), "OnClick")]
     [HarmonyPrefix]
     public static bool StandardUIResponseButton_OnClick_Prefix()
     {
         if (!ShouldSuppressClientLogic) return true;
+        if (AllowTextScenarioLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked StandardUIResponseButton.OnClick (spectating)");
         return false;
     }

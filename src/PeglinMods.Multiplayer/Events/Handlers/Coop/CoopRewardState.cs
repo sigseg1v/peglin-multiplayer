@@ -139,6 +139,30 @@ public static class CoopRewardState
     /// <summary>True on client when the client has already sent their PegMinigame completion event.</summary>
     public static bool ClientPegMinigameChoiceSent;
 
+    // --- TextScenario wait-for-all ---
+
+    /// <summary>True when the TextScenario dialogue phase is active (all players making choices).</summary>
+    public static bool TextScenarioPhaseActive;
+
+    /// <summary>True when the host has finished its own TextScenario dialogue.</summary>
+    public static bool HostTextScenarioDone;
+
+    /// <summary>Slot indices of clients who have sent their TextScenarioCompleteEvent.</summary>
+    public static System.Collections.Generic.HashSet<int> ClientTextScenarioChoicesReceived = new System.Collections.Generic.HashSet<int>();
+
+    /// <summary>Number of non-host players expected to finish the TextScenario.</summary>
+    public static int TotalTextScenarioClientsExpected;
+
+    /// <summary>True when all clients have finished the TextScenario.</summary>
+    public static bool AllClientTextScenarioChoicesReceived => TotalTextScenarioClientsExpected > 0
+        && ClientTextScenarioChoicesReceived.Count >= TotalTextScenarioClientsExpected;
+
+    /// <summary>Stored DialogueSystemScenario reference so host can resume navigation after all clients finish.</summary>
+    public static object PendingDialogueSystemScenario;
+
+    /// <summary>True on client when the client has already sent their TextScenario completion event.</summary>
+    public static bool ClientTextScenarioChoiceSent;
+
     // --- Post-battle relic choices (boss/rare) ---
 
     /// <summary>Host-provided relic choices for the post-battle boss/rare relic selection on the client.</summary>
@@ -180,5 +204,11 @@ public static class CoopRewardState
         PendingPegMinigameManager = null;
         ClientPegMinigameChoiceSent = false;
         PendingPostBattleRelicChoices = null;
+        TextScenarioPhaseActive = false;
+        HostTextScenarioDone = false;
+        ClientTextScenarioChoicesReceived.Clear();
+        TotalTextScenarioClientsExpected = 0;
+        PendingDialogueSystemScenario = null;
+        ClientTextScenarioChoiceSent = false;
     }
 }

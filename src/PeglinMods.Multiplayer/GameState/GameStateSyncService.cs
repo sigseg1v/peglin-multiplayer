@@ -161,15 +161,13 @@ public class GameStateSyncService : IGameStateSyncService
                 }
             }
 
-            // Dispatch mirror event start once when detected
+            // Mirror event detection — clients now handle TextScenario dialogue natively,
+            // so we no longer dispatch MirrorEventStartEvent. The client sees the same
+            // dialogue UI as the host and makes independent choices.
             if (snapshot.TextScenario?.IsMirrorEvent == true && !_mirrorEventDispatched)
             {
                 _mirrorEventDispatched = true;
-                _log.LogInfo($"{tag}Mirror event detected — dispatching MirrorEventStartEvent");
-                _registry.Dispatch(new Events.Network.Scenarios.MirrorEventStartEvent
-                {
-                    ScenarioName = snapshot.TextScenario.ScenarioName,
-                });
+                _log.LogInfo($"{tag}Mirror event detected — clients handle natively via AllowTextScenarioLogic");
             }
             else if (snapshot.TextScenario?.IsMirrorEvent != true)
             {

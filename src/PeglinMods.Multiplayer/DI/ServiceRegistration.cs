@@ -331,6 +331,7 @@ public static class ServiceRegistration
         // Scenario events (TextScenario / Mirror / Shop / Treasure)
         registry.Register(new ScenarioHandlers.MirrorEventStartServerHandler(), new ScenarioHandlers.MirrorEventStartClientHandler());
         registry.Register(new ScenarioHandlers.MirrorEventCompleteServerHandler(), new ScenarioHandlers.MirrorEventCompleteClientHandler());
+        registry.Register(new ScenarioHandlers.TextScenarioCompleteServerHandler(), new ScenarioHandlers.TextScenarioCompleteClientHandler());
         registry.Register(new ScenarioHandlers.ShopCompleteServerHandler(), new ScenarioHandlers.ShopCompleteClientHandler());
         registry.Register(new ScenarioHandlers.TreasureCompleteServerHandler(), new ScenarioHandlers.TreasureCompleteClientHandler());
         registry.Register(new ScenarioHandlers.PegMinigameCompleteServerHandler(), new ScenarioHandlers.PegMinigameCompleteClientHandler());

@@ -13,19 +13,9 @@ public sealed class MirrorEventStartClientHandler : IClientHandler<MirrorEventSt
 {
     public void Handle(MirrorEventStartEvent e)
     {
-        try
-        {
-            var mode = MultiplayerPlugin.Services?.Resolve<IMultiplayerMode>();
-            if (mode == null || !mode.IsSpectating) return;
-
-            MultiplayerPlugin.Logger?.LogInfo(
-                $"[MirrorEventStart] Received mirror event start — scenario='{e.ScenarioName}', showing interactive UI");
-
-            MirrorEventUI.Show();
-        }
-        catch (Exception ex)
-        {
-            MultiplayerPlugin.Logger?.LogError($"[MirrorEventStart] Handler failed: {ex.Message}");
-        }
+        // No-op: clients now handle TextScenario dialogue natively via AllowTextScenarioLogic.
+        // The custom MirrorEventUI is no longer shown.
+        MultiplayerPlugin.Logger?.LogInfo(
+            $"[MirrorEventStart] Received mirror event start — scenario='{e.ScenarioName}' (no-op, native dialogue handles this)");
     }
 }

@@ -102,13 +102,15 @@ public class GameStateApplyService
         if (UI.MirrorEventUI.IsActive)
             UI.MirrorEventUI.Hide();
 
-        // Reset shop/treasure/minigame bypass flags on any scene transition
+        // Reset shop/treasure/minigame/textscenario bypass flags on any scene transition
         Patches.MultiplayerClientPatches.AllowShopLogic = false;
         Patches.MultiplayerClientPatches.AllowTreasureLogic = false;
         Patches.MultiplayerClientPatches.AllowPegMinigameLogic = false;
+        Patches.MultiplayerClientPatches.AllowTextScenarioLogic = false;
         Patches.MultiplayerClientPatches.ClientShopPurchases.Clear();
         Events.Handlers.Coop.CoopRewardState.ClientTreasureChoiceSent = false;
         Events.Handlers.Coop.CoopRewardState.ClientPegMinigameChoiceSent = false;
+        Events.Handlers.Coop.CoopRewardState.ClientTextScenarioChoiceSent = false;
 
         var svc = MultiplayerPlugin.Services;
         IMultiplayerMode mpModeRef = null;
@@ -181,6 +183,28 @@ public class GameStateApplyService
             }
         }
 
+        // TextScenario scene: initialize wait-for-all on host, enable native dialogue on client
+        if (scene.name == "TextScenario")
+        {
+            if (isHosting && svc.TryResolve<CoopStateManager>(out var coopMgr4))
+            {
+                Events.Handlers.Coop.CoopRewardState.TextScenarioPhaseActive = true;
+                Events.Handlers.Coop.CoopRewardState.HostTextScenarioDone = false;
+                Events.Handlers.Coop.CoopRewardState.ClientTextScenarioChoicesReceived.Clear();
+                Events.Handlers.Coop.CoopRewardState.TotalTextScenarioClientsExpected = coopMgr4.TotalPlayerCount - 1;
+                Events.Handlers.Coop.CoopRewardState.PendingDialogueSystemScenario = null;
+                _log.LogInfo($"[ApplyService] TextScenario phase initialized — expecting {coopMgr4.TotalPlayerCount - 1} client(s)");
+            }
+
+            if (isSpectating)
+            {
+                Patches.MultiplayerClientPatches.AllowTextScenarioLogic = true;
+                Patches.MultiplayerClientPatches.AllowCurrencySync = true;
+                Patches.MultiplayerClientPatches.AllowRelicSync = true;
+                _log.LogInfo("[ApplyService] Client TextScenario mode enabled — AllowTextScenarioLogic=true");
+            }
+        }
+
         // Check if we have a pending snapshot for this scene
         if (_pendingSnapshot != null &&
             string.Equals(_pendingSnapshotScene, scene.name, StringComparison.OrdinalIgnoreCase))
@@ -247,6 +271,18 @@ public class GameStateApplyService
                     _mapApplier.Apply(snapshot.Map);
                 }
                 ApplyNonMapState(snapshot);
+                return;
+            }
+
+            // Client is on an interactive scene (Shop, Treasure, TextScenario, PegMinigame)
+            // but the host hasn't finished loading it yet — the host heartbeat still reports
+            // the previous scene. Don't transition the client back; just stay put.
+            if (IsClientInteractiveScene(clientScene))
+            {
+                _log.LogInfo($"[ApplyService] Client on interactive scene '{clientScene}' (host='{hostScene}') — skipping scene transition");
+                // Don't apply player state during TextScenario — client is modifying its own state
+                if (!Patches.MultiplayerClientPatches.AllowTextScenarioLogic)
+                    ApplyPlayerFromSnapshot(snapshot);
                 return;
             }
 
@@ -412,6 +448,14 @@ public class GameStateApplyService
         if (isCoop && Events.Handlers.Coop.CoopRewardState.ClientInNativeRewardPhase)
         {
             _log.LogInfo("[ApplyService] Skipping player/deck sync — client in native reward phase");
+            return;
+        }
+
+        // During TextScenario dialogue, the client is making independent choices
+        // that modify DeckManager/health/gold. Don't overwrite with heartbeat data.
+        if (isCoop && Patches.MultiplayerClientPatches.AllowTextScenarioLogic)
+        {
+            _log.LogInfo("[ApplyService] Skipping player/deck sync — client in TextScenario dialogue");
             return;
         }
 
@@ -870,6 +914,15 @@ public class GameStateApplyService
         scene == "ForestWinScene" || scene == "CastleWinScene" ||
         scene == "FinalWinScene" || scene == "CoreWinScene" ||
         scene == "RunSummary";
+
+    /// <summary>
+    /// Returns true if the client is on an interactive scene where it's actively
+    /// making choices. Heartbeat scene mismatches should NOT trigger transitions
+    /// away from these scenes — the host may simply not have loaded yet.
+    /// </summary>
+    private static bool IsClientInteractiveScene(string scene) =>
+        scene == "ShopScenario" || scene == "Treasure" ||
+        scene == "TextScenario" || scene == "PegMinigame";
 
     // =========================================================================
     // POST-BATTLE NAVIGATION
