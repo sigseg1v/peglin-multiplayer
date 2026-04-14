@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Battle;
 using BepInEx.Logging;
 using Currency;
@@ -21,7 +22,7 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
             ApplyHealth(snapshot);
             ApplyGold(snapshot);
             ApplySpeedup(snapshot);
-            LogStatusEffects(snapshot);
+            ApplyStatusEffects(snapshot);
 
             // === Post-apply verification ===
             VerifyPlayerState(snapshot);
@@ -120,15 +121,74 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
         catch { }
     }
 
-    private void LogStatusEffects(PlayerStateSnapshot snapshot)
+    /// <summary>
+    /// Apply the snapshot's status effects to the local PlayerStatusEffectController
+    /// (clear + rebuild the internal list) and refresh the StatusEffectIconManager UI
+    /// so the native buff icons above the player's head match the host's state.
+    ///
+    /// Runs on the client for its OWN slot — populated by
+    /// GameStateApplyService.ApplyPlayerSnapshot from the CoopPlayerSummary.StatusEffects
+    /// sent by the host each heartbeat. Enables Ballusion dodges, Intangiball caps,
+    /// Ballwark absorption, etc. to all work correctly for non-host players.
+    /// </summary>
+    private void ApplyStatusEffects(PlayerStateSnapshot snapshot)
     {
-        if (snapshot.StatusEffects == null || snapshot.StatusEffects.Count == 0)
-            return;
-
-        _log.LogInfo($"[PlayerApplier] Status effects ({snapshot.StatusEffects.Count}):");
-        foreach (var effect in snapshot.StatusEffects)
+        try
         {
-            _log.LogInfo($"  - {effect.EffectName} (type={effect.EffectType}, intensity={effect.Intensity})");
+            var statusCtrl = UnityEngine.Object.FindObjectOfType<Battle.StatusEffects.PlayerStatusEffectController>();
+            if (statusCtrl == null)
+            {
+                // Not in a battle scene — nothing to apply
+                return;
+            }
+
+            var effectsField = AccessTools.Field(typeof(Battle.StatusEffects.PlayerStatusEffectController), "_statusEffects");
+            var effects = effectsField?.GetValue(statusCtrl) as List<Battle.StatusEffects.StatusEffect>;
+            if (effects == null)
+            {
+                _log.LogWarning("[PlayerApplier] _statusEffects list is null; cannot apply status effects");
+                return;
+            }
+
+            // Clear existing effects and rebuild from snapshot
+            effects.Clear();
+
+            if (snapshot.StatusEffects != null)
+            {
+                foreach (var entry in snapshot.StatusEffects)
+                {
+                    var effectType = (Battle.StatusEffects.StatusEffectType)entry.EffectType;
+                    if (effectType == Battle.StatusEffects.StatusEffectType.None) continue;
+                    if (entry.Intensity <= 0) continue;
+                    effects.Add(new Battle.StatusEffects.StatusEffect(effectType, entry.Intensity));
+                }
+            }
+
+            // Refresh the native status effect UI (icons above the player's head)
+            var uiField = AccessTools.Field(typeof(Battle.StatusEffects.PlayerStatusEffectController), "_statusEffectUI");
+            var ui = uiField?.GetValue(statusCtrl) as Battle.StatusEffects.StatusEffectIconManager;
+            if (ui != null)
+            {
+                try
+                {
+                    ui.UpdateStatusEffects(effects.ToArray());
+                }
+                catch (Exception uiEx)
+                {
+                    _log.LogWarning($"[PlayerApplier] Status effect UI update failed: {uiEx.Message}");
+                }
+            }
+
+            if (effects.Count > 0)
+            {
+                var names = string.Join(", ", snapshot.StatusEffects.ConvertAll(
+                    e => $"{(Battle.StatusEffects.StatusEffectType)e.EffectType}={e.Intensity}"));
+                _log.LogInfo($"[PlayerApplier] Status effects applied ({effects.Count}): [{names}]");
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[PlayerApplier] ApplyStatusEffects failed: {ex.Message}");
         }
     }
 

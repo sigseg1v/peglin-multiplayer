@@ -427,6 +427,20 @@ public sealed class CoopSubscriptions
                     capturedEffects = CaptureOrbStatusEffects(attack, critCount);
                 }
 
+                // Apply self-granting post-attack status effects (Ballusion from Evasive
+                // Maneuvorb, Muscircle from Strongball, etc.) to the CURRENTLY LOADED
+                // player's PlayerStatusEffectController. We do this for ALL slots (host
+                // included) because the DoAttack Harmony prefix skips the native attack
+                // pipeline in coop mode, so CallPostAttackOperations never runs.
+                //
+                // Timing note: SaveActivePlayerState() is called immediately after this
+                // block, so these effects are persisted into CoopPlayerState.StatusEffects
+                // for the current shooter before we swap to the next player.
+                if (attack != null)
+                {
+                    ApplySelfPostAttackBuffs(attack, critCount, activeSlot);
+                }
+
                 // Capture the orb name for re-instantiation at ALL_DONE.
                 // The active ball is still alive here (not destroyed until DrawBall for next player).
                 // We store the prefab name so we can look it up via AssetLoading.GetOrbPrefab().
@@ -1215,6 +1229,67 @@ public sealed class CoopSubscriptions
             MultiplayerPlugin.Logger?.LogWarning($"[CoopSubs] CaptureOrbStatusEffects failed: {ex.Message}");
         }
         return effects.Count > 0 ? effects : null;
+    }
+
+    /// <summary>
+    /// Apply self-granting post-attack status effects (Ballusion from Evasive Maneuvorb,
+    /// Muscircle, Ballwark from shield pegs, etc.) to the currently loaded player's
+    /// PlayerStatusEffectController. This replicates the game's native
+    /// CallPostAttackOperations logic, which is skipped in coop because the DoAttack
+    /// Harmony prefix returns false.
+    ///
+    /// Invokes the component's own HandleAttackFinished method directly so that the
+    /// crit/shield-peg intensity scaling matches native behavior exactly.
+    /// </summary>
+    private static void ApplySelfPostAttackBuffs(Battle.Attacks.Attack attack, int critCount, int slotIndex)
+    {
+        try
+        {
+            var statusCtrl = UnityEngine.Object.FindObjectOfType<Battle.StatusEffects.PlayerStatusEffectController>();
+            if (statusCtrl == null) return;
+
+            int grantCount = 0;
+            int grantShieldCount = 0;
+
+            foreach (var grant in attack.GetComponents<Battle.Attacks.AttackBehaviours.GrantStatusAfterAttack>())
+            {
+                try
+                {
+                    grant.HandleAttackFinished(statusCtrl);
+                    grantCount++;
+                }
+                catch (Exception ex)
+                {
+                    MultiplayerPlugin.Logger?.LogWarning(
+                        $"[CoopSubs] GrantStatusAfterAttack.HandleAttackFinished failed: {ex.Message}");
+                }
+            }
+
+            foreach (var grant in attack.GetComponents<Battle.Attacks.AttackBehaviours.GrantStatusAfterAttackPerShieldPeg>())
+            {
+                try
+                {
+                    grant.HandleAttackFinished(statusCtrl);
+                    grantShieldCount++;
+                }
+                catch (Exception ex)
+                {
+                    MultiplayerPlugin.Logger?.LogWarning(
+                        $"[CoopSubs] GrantStatusAfterAttackPerShieldPeg.HandleAttackFinished failed: {ex.Message}");
+                }
+            }
+
+            if (grantCount > 0 || grantShieldCount > 0)
+            {
+                MultiplayerPlugin.Logger?.LogInfo(
+                    $"[CoopSubs] Applied self-buffs for slot {slotIndex}: " +
+                    $"GrantStatusAfterAttack={grantCount}, GrantStatusAfterAttackPerShieldPeg={grantShieldCount}, crits={critCount}");
+            }
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[CoopSubs] ApplySelfPostAttackBuffs failed: {ex.Message}");
+        }
     }
 
     /// <summary>
