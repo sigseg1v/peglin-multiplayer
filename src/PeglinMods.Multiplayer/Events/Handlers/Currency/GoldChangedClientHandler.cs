@@ -21,6 +21,22 @@ public sealed class GoldChangedClientHandler : IClientHandler<GoldChangedEvent>
                 return;
             }
 
+            // In coop, each player has their own gold and it is synced per-slot via
+            // the periodic PlayerState heartbeat. Host-side gold changes (e.g. the
+            // host purchasing items in their own shop) must NOT flow to the client's
+            // CurrencyManager — they'd desync the client's visible gold until the
+            // next heartbeat corrects it. The host already suppresses this dispatch
+            // in coop; this is defense in depth.
+            var services = global::PeglinMods.Multiplayer.MultiplayerPlugin.Services;
+            if (services != null
+                && services.TryResolve<global::PeglinMods.Multiplayer.GameState.CoopStateManager>(out var coop)
+                && coop.TotalPlayerCount > 1)
+            {
+                MultiplayerPlugin.Logger.LogInfo(
+                    $"Multiplayer: Ignoring GoldChanged in coop (host gold {networkEvent.NewAmount}, client gold is per-slot)");
+                return;
+            }
+
             MultiplayerPlugin.Logger.LogInfo($"Multiplayer: Gold changed {networkEvent.PreviousAmount} -> {networkEvent.NewAmount} ({(networkEvent.IsGain ? "+" : "")}{networkEvent.Delta})");
 
             var cm = UnityEngine.Object.FindObjectOfType<global::Currency.CurrencyManager>();

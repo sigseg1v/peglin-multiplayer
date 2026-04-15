@@ -36,6 +36,9 @@ public sealed class CurrencySubscriptions
         CurrencyManager.OnGoldRemoved -= OnGoldRemoved;
     }
 
+    private bool IsCoop =>
+        _coopStateManager != null && _coopStateManager.TotalPlayerCount > 1;
+
     private void OnGoldAdded(int originalAmount, int currencyChange, bool silent)
     {
         if (!IsHosting) return;
@@ -44,8 +47,15 @@ public sealed class CurrencySubscriptions
         // inactive players. The active player already receives it via the
         // CurrencyManager singleton. Gold spending (shops) goes through
         // OnGoldRemoved, which is NOT distributed — each player spends their own.
-        if (_coopStateManager != null && _coopStateManager.TotalPlayerCount > 1 && currencyChange > 0)
+        if (IsCoop && currencyChange > 0)
             _coopStateManager.DistributeGoldToInactivePlayers(currencyChange);
+
+        // In coop, each player has their own gold. The host's CurrencyManager
+        // reflects only whichever slot is active on the host — broadcasting its
+        // changes to the client would overwrite the client's own per-slot gold.
+        // Gold is synced per-slot via the PlayerState heartbeat, and client
+        // shop spending flows through ShopPurchaseEvent. Skip the broadcast.
+        if (IsCoop) return;
 
         _registry.Dispatch(new GoldChangedEvent
         {
@@ -59,6 +69,10 @@ public sealed class CurrencySubscriptions
     private void OnGoldRemoved(int originalAmount, int currencyChange, bool silent)
     {
         if (!IsHosting) return;
+
+        // In coop, skip broadcasting host spending — see OnGoldAdded for rationale.
+        if (IsCoop) return;
+
         _registry.Dispatch(new GoldChangedEvent
         {
             PreviousAmount = originalAmount,
