@@ -551,6 +551,19 @@ public class GameStateApplyService
                     _log.LogWarning($"[ApplyService] Coop: AllDecks missing slot {mySlotIdx}, falling back to orb-only");
                     SafeApply("Deck(coop-orb-only)", () => _deckApplier.ApplyActiveOrbOnly(snapshot.Deck));
                 }
+
+                // Aimer-orb sync for coop: AllDecks[mySlot].CurrentOrb is the
+                // player's OWN next orb (null for inactive slots). During the
+                // post-battle navigation phase the host is holding a
+                // NavigationOrb on its own slot — we need the client's aimer to
+                // show the navigation orb regardless of which slot is active.
+                // snapshot.Deck.CurrentOrb tracks the host's live active orb
+                // (e.g. "NavigationOrb(Clone)"), so apply it on top.
+                var hostActiveOrb = snapshot.Deck?.CurrentOrb;
+                if (!string.IsNullOrEmpty(hostActiveOrb) && hostActiveOrb.Contains("NavigationOrb"))
+                {
+                    SafeApply("Deck(coop-nav-orb)", () => _deckApplier.ApplyActiveOrbOnly(snapshot.Deck));
+                }
             }
             // In coop, use the heartbeat to keep IsMyTurn in sync.
             // TurnChangeEvent is a one-shot that can be missed if the client
@@ -936,6 +949,8 @@ public class GameStateApplyService
     /// MapStateSnapshot (cached on the host before currentNode is destroyed).
     /// Also resets pegs to match host's navigation state.
     /// </summary>
+    private string _lastNavOrbApplied;
+
     private void TriggerNavigationIfNeeded(FullGameStateSnapshot snapshot)
     {
         var battleState = snapshot.Enemies?.BattleStateName;
@@ -944,42 +959,50 @@ public class GameStateApplyService
         if (!isNav)
         {
             _navigationTriggered = false;
+            _lastNavOrbApplied = null;
             return;
         }
 
-        if (_navigationTriggered) return;
-
         try
         {
-            // Configure slot visuals from synced child node data
-            var navTypes = snapshot.Map?.NavChildNodeTypes;
-            if (navTypes != null && navTypes.Count > 0 && (snapshot.Map?.IsNavigating ?? false))
+            // One-shot: peg reset + initial slot icon layout. Safe to run once
+            // since the icons and peg state don't change mid-navigation.
+            if (!_navigationTriggered)
             {
-                _mapApplier.ApplyNavigationSlots(navTypes);
+                var navTypes = snapshot.Map?.NavChildNodeTypes;
+                if (navTypes != null && navTypes.Count > 0 && (snapshot.Map?.IsNavigating ?? false))
+                {
+                    _mapApplier.ApplyNavigationSlots(navTypes);
+                }
+
+                try
+                {
+                    var bc = UnityEngine.Object.FindObjectOfType<Battle.BattleController>();
+                    if (bc != null)
+                    {
+                        bc.PreparePegsForNavigation();
+                        bc.RemoveClearedPegs();
+                    }
+                }
+                catch { }
+
+                _navigationTriggered = true;
+                _log.LogInfo($"[ApplyService] Navigation triggered: {navTypes?.Count ?? 0} child nodes");
             }
 
-            // Update ClientBallRenderer to show NavigationOrb sprite
+            // Ball renderer update is not gated by _navigationTriggered: when
+            // navigation first enters, snapshot.Deck.CurrentOrb may still be
+            // empty (host hasn't drawn NavigationOrb yet), so we need to keep
+            // retrying on subsequent heartbeats until the orb actually populates.
             var activeOrb = snapshot.Deck?.CurrentOrb;
-            if (!string.IsNullOrEmpty(activeOrb) && activeOrb.Contains("NavigationOrb"))
+            if (!string.IsNullOrEmpty(activeOrb)
+                && activeOrb.Contains("NavigationOrb")
+                && activeOrb != _lastNavOrbApplied)
             {
                 ClientBallRenderer.Instance?.OnOrbDrawn(activeOrb);
+                _lastNavOrbApplied = activeOrb;
+                _log.LogInfo($"[ApplyService] NavigationOrb sprite applied: {activeOrb}");
             }
-
-            // Reset pegs for navigation — the host calls PreparePegsForNavigation()
-            // which resets all pegs to their base state (removes crit highlight, etc.)
-            try
-            {
-                var bc = UnityEngine.Object.FindObjectOfType<Battle.BattleController>();
-                if (bc != null)
-                {
-                    bc.PreparePegsForNavigation();
-                    bc.RemoveClearedPegs();
-                }
-            }
-            catch { }
-
-            _navigationTriggered = true;
-            _log.LogInfo($"[ApplyService] Navigation triggered: {navTypes?.Count ?? 0} child nodes, orb={activeOrb}");
         }
         catch (Exception ex)
         {

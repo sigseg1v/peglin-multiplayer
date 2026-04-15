@@ -61,6 +61,20 @@ public class CoopPlayerVisuals : MonoBehaviour
     private PlayerVisual _hostLabel;
     private bool _updateErrorLogged; // throttle: log the NRE once, not every frame
 
+    // Perf: cache expensive FindObjectOfType lookups, invalidated on scene change.
+    private Battle.StatusEffects.PlayerStatusEffectController _cachedStatusCtrl;
+
+    // Perf: throttle per-frame host summary build + native icon hide. Running
+    // FindObjectOfType<PlayerStatusEffectController>() every frame was the
+    // dominant source of client lag during non-host turns.
+    private float _lastHeavyTickTime;
+    private const float HeavyTickInterval = 0.2f; // 200ms
+
+    // Perf: reusable scratch collections to avoid per-frame GC allocations in
+    // UpdateStatusIcons (called every frame per player).
+    private readonly HashSet<int> _activeTypesScratch = new HashSet<int>();
+    private readonly List<int> _removeScratch = new List<int>();
+
     // Shared screen-space overlay canvas
     private static GameObject _overlayCanvasObj;
     private static Canvas _overlayCanvas;
@@ -83,6 +97,8 @@ public class CoopPlayerVisuals : MonoBehaviour
                 _playerRef = null;
                 _inBattle = false;
                 _updateErrorLogged = false;
+                _cachedStatusCtrl = null; // invalidate cache on scene change
+                _lastHeavyTickTime = 0f;
             }
 
             var services = MultiplayerPlugin.Services;
@@ -98,18 +114,29 @@ public class CoopPlayerVisuals : MonoBehaviour
 
             _inBattle = true;
 
-            // In coop, the native StatusEffectIconManager draws icons above
-            // the single real Player GameObject — but in coop the real Player
-            // visually represents slot 0 and other slots are sprite clones.
-            // Showing the active slot's effects above slot 0's visual is
-            // wrong on the client (slot 1's effects appear over host) and
-            // transiently wrong on host (during non-host turns). Hide the
-            // native icon container and rely on the per-slot icons rendered
-            // by this component.
-            HideNativeStatusIcons();
+            // Perf: the heavy work (FindObjectOfType for PlayerStatusEffectController,
+            // building host summaries with allocations, hiding the native icon bar)
+            // only needs to happen at UI-refresh rate, not every frame. Throttle to
+            // ~5Hz. Per-frame label positioning/scaling below still runs every frame
+            // so visuals remain smooth.
+            float now = Time.unscaledTime;
+            if (now - _lastHeavyTickTime >= HeavyTickInterval)
+            {
+                _lastHeavyTickTime = now;
 
-            if (mode.IsHosting)
-                BuildHostSummaries(services);
+                // In coop, the native StatusEffectIconManager draws icons above
+                // the single real Player GameObject — but in coop the real Player
+                // visually represents slot 0 and other slots are sprite clones.
+                // Showing the active slot's effects above slot 0's visual is
+                // wrong on the client (slot 1's effects appear over host) and
+                // transiently wrong on host (during non-host turns). Hide the
+                // native icon container and rely on the per-slot icons rendered
+                // by this component.
+                HideNativeStatusIcons();
+
+                if (mode.IsHosting)
+                    BuildHostSummaries(services);
+            }
 
             var summaries = LatestPlayerSummaries;
             if (summaries == null || summaries.Count <= 1) return;
@@ -149,7 +176,7 @@ public class CoopPlayerVisuals : MonoBehaviour
             List<StatusEffectEntry> liveEffects = null;
             try
             {
-                var statusCtrl = FindObjectOfType<Battle.StatusEffects.PlayerStatusEffectController>();
+                var statusCtrl = GetCachedStatusController();
                 if (statusCtrl != null)
                 {
                     var effectsList = HarmonyLib.AccessTools.Field(
@@ -337,8 +364,8 @@ public class CoopPlayerVisuals : MonoBehaviour
         if (font != null) tmpText.font = font;
         tmpText.alignment = TextAlignmentOptions.Center;
         tmpText.color = textColor;
-        tmpText.outlineWidth = 0.3f;
-        tmpText.outlineColor = Color.black;
+        try { tmpText.outlineWidth = 0.3f; } catch { }
+        try { tmpText.outlineColor = Color.black; } catch { }
         tmpText.enableWordWrapping = false;
         tmpText.overflowMode = TextOverflowModes.Overflow;
         tmpText.lineSpacing = -25f; // tighter line spacing for 2-line names
@@ -383,7 +410,7 @@ public class CoopPlayerVisuals : MonoBehaviour
                 80, 100,
                 "\u25C0", 64, arrowColor, new Color(0, 0, 0, 0),
                 out var arrowText);
-            arrowText.outlineWidth = 0.4f;
+            try { arrowText.outlineWidth = 0.4f; } catch { }
             arrowPanel.SetActive(false); // only visible for active player
 
             // Status icon container — horizontal row positioned above the name
@@ -578,25 +605,26 @@ public class CoopPlayerVisuals : MonoBehaviour
 
         bool hasEffects = effects != null && effects.Count > 0;
 
-        // Build set of current effect types for quick lookup
-        var activeTypes = new HashSet<int>();
+        // Perf: reuse instance scratch collections instead of allocating each frame.
+        _activeTypesScratch.Clear();
+        _removeScratch.Clear();
+
         if (hasEffects)
         {
             foreach (var e in effects)
-                if (e.Intensity > 0) activeTypes.Add(e.EffectType);
+                if (e.Intensity > 0) _activeTypesScratch.Add(e.EffectType);
         }
 
         // Remove icons for effects that are no longer active
-        var toRemove = new List<int>();
         foreach (var kvp in visual.StatusIcons)
         {
-            if (!activeTypes.Contains(kvp.Key))
+            if (!_activeTypesScratch.Contains(kvp.Key))
             {
                 try { if (kvp.Value.Root != null) Destroy(kvp.Value.Root); } catch { }
-                toRemove.Add(kvp.Key);
+                _removeScratch.Add(kvp.Key);
             }
         }
-        foreach (var key in toRemove)
+        foreach (var key in _removeScratch)
             visual.StatusIcons.Remove(key);
 
         if (!hasEffects)
@@ -690,8 +718,11 @@ public class CoopPlayerVisuals : MonoBehaviour
             if (font != null) tmp.font = font;
             tmp.alignment = TextAlignmentOptions.Bottom;
             tmp.color = Color.white;
-            tmp.outlineWidth = 0.35f;
-            tmp.outlineColor = Color.black;
+            // TMP outline width setter internally dereferences a material that may
+            // not be initialized on a freshly-created TMP_Text, throwing NRE from
+            // SetOutlineThickness. Wrap separately so the rest of the icon survives.
+            try { tmp.outlineWidth = 0.35f; } catch { }
+            try { tmp.outlineColor = Color.black; } catch { }
             tmp.enableWordWrapping = false;
             tmp.overflowMode = TextOverflowModes.Overflow;
             tmp.raycastTarget = false;
@@ -729,7 +760,7 @@ public class CoopPlayerVisuals : MonoBehaviour
     {
         try
         {
-            var statusCtrl = FindObjectOfType<Battle.StatusEffects.PlayerStatusEffectController>();
+            var statusCtrl = GetCachedStatusController();
             if (statusCtrl == null) return;
 
             var uiField = HarmonyLib.AccessTools.Field(
@@ -743,6 +774,21 @@ public class CoopPlayerVisuals : MonoBehaviour
             }
         }
         catch { }
+    }
+
+    /// <summary>
+    /// Cached lookup for PlayerStatusEffectController. FindObjectOfType walks the
+    /// full scene hierarchy and was measurably expensive when called every frame
+    /// from both HideNativeStatusIcons and BuildHostSummaries. The cache is
+    /// invalidated on scene change in Update (above).
+    /// </summary>
+    private Battle.StatusEffects.PlayerStatusEffectController GetCachedStatusController()
+    {
+        if (_cachedStatusCtrl == null)
+        {
+            _cachedStatusCtrl = FindObjectOfType<Battle.StatusEffects.PlayerStatusEffectController>();
+        }
+        return _cachedStatusCtrl;
     }
 
     private static Battle.StatusEffects.StatusEffectData GetStatusEffectData()

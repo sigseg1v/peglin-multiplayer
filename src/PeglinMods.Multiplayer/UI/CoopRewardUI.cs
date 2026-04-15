@@ -308,6 +308,12 @@ public class CoopRewardUI : MonoBehaviour
                 ? "Waiting for all players to choose their initial relic..."
                 : "Other players are choosing their initial relics...";
         }
+        else if (CoopRewardState.ClientInNativeRewardPhase || CoopRewardState.HostRewardPhaseActive)
+        {
+            // Post-battle reward — client picked from native BattleUpgradeCanvas
+            // and is now waiting for host to finish its own rewards and navigation.
+            _titleText.text = "Waiting for host...";
+        }
         else
         {
             _titleText.text = "Waiting...";
