@@ -3700,7 +3700,13 @@ public static class MultiplayerClientPatches
 
         if (ShouldSuppressClientLogic)
         {
-            // CLIENT: send shop results to host, then show waiting
+            // CLIENT: first click sends ShopCompleteEvent and shows waiting overlay.
+            // Subsequent clicks are silently ignored — the overlay already covers
+            // the screen, but the EventSystem can still route clicks to the
+            // button if the overlay canvas somehow doesn't block them.
+            if (Events.Handlers.Coop.CoopRewardState.ClientShopChoiceSent)
+                return false;
+
             try
             {
                 AllowShopLogic = false;
@@ -3723,6 +3729,7 @@ public static class MultiplayerClientPatches
                 }
 
                 ClientShopPurchases.Clear();
+                Events.Handlers.Coop.CoopRewardState.ClientShopChoiceSent = true;
             }
             catch (System.Exception ex)
             {
@@ -3731,21 +3738,35 @@ public static class MultiplayerClientPatches
 
             Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = true;
             Events.Handlers.Coop.CoopRewardState.ShopPhaseActive = true;
+            // Reset stale AllChoicesComplete from prior phases — otherwise
+            // CoopRewardUI.Update will early-return and never show the overlay.
+            Events.Handlers.Coop.CoopRewardState.AllChoicesComplete = false;
             MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Client finished shopping — waiting for other players");
             return false; // Block CloseStore navigation on client
         }
 
         if (IsHosting && Events.Handlers.Coop.CoopRewardState.ShopPhaseActive)
         {
-            // HOST: mark self as done, check if all clients finished
+            // HOST: idempotent — if already done and waiting, just silently block.
+            if (Events.Handlers.Coop.CoopRewardState.HostShopDone
+                && !Events.Handlers.Coop.CoopRewardState.AllClientShopChoicesReceived)
+            {
+                return false; // Still waiting — no log spam, overlay already visible.
+            }
+
+            // Mark self as done, check if all clients finished
             Events.Handlers.Coop.CoopRewardState.HostShopDone = true;
+            // Reset stale AllChoicesComplete from prior phases so the overlay appears.
+            Events.Handlers.Coop.CoopRewardState.AllChoicesComplete = false;
 
             if (Events.Handlers.Coop.CoopRewardState.AllClientShopChoicesReceived)
             {
                 MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Host CloseStore — all clients done, proceeding");
                 Events.Handlers.Coop.CoopRewardState.ShopPhaseActive = false;
                 Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = false;
-                // Dispatch AllChoicesComplete so clients can dismiss waiting UI
+                Events.Handlers.Coop.CoopRewardState.ShopCompletionProceeded = true;
+                // Dispatch AllChoicesComplete so clients transition to the
+                // "Waiting for host to pick next stage..." overlay.
                 var services = MultiplayerPlugin.Services;
                 if (services?.TryResolve<Events.IGameEventRegistry>(out var reg) == true)
                     reg.Dispatch(new Events.Network.Coop.AllChoicesCompleteEvent { Phase = "shop" });
@@ -3753,7 +3774,7 @@ public static class MultiplayerClientPatches
             }
             else
             {
-                // Not all clients done — store reference and block
+                // Not all clients done — store reference, flag waiting, block.
                 Events.Handlers.Coop.CoopRewardState.PendingShopManager = __instance;
                 Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = true;
                 MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Host CloseStore — waiting for clients to finish shopping");

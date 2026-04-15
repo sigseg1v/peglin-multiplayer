@@ -13,8 +13,16 @@ public sealed class AllChoicesCompleteClientHandler : IClientHandler<AllChoicesC
         MultiplayerPlugin.Logger?.LogInfo(
             $"[CoopReward] All choices complete for phase '{networkEvent.Phase}'");
 
-        CoopRewardState.AllChoicesComplete = true;
-        CoopRewardState.WaitingForOtherPlayers = false;
+        // NOTE: for the shop phase we deliberately do NOT set AllChoicesComplete=true.
+        // The host is now doing the post-shop navigation shot (still inside the
+        // ShopScenario scene), and the client must keep its overlay up with a
+        // different message until the scene actually changes. Dismissing the
+        // overlay here would let the client re-interact with the shop UI.
+        if (networkEvent.Phase != "shop")
+        {
+            CoopRewardState.AllChoicesComplete = true;
+            CoopRewardState.WaitingForOtherPlayers = false;
+        }
 
         // Clear native reward phase state on client
         if (networkEvent.Phase == "post_battle")
@@ -28,9 +36,12 @@ public sealed class AllChoicesCompleteClientHandler : IClientHandler<AllChoicesC
         }
         else if (networkEvent.Phase == "shop")
         {
+            // Keep the overlay up but switch to the "waiting for host nav" message.
             CoopRewardState.ShopPhaseActive = false;
+            CoopRewardState.ShopAwaitingHostNavigation = true;
+            CoopRewardState.WaitingForOtherPlayers = true;
             Patches.MultiplayerClientPatches.AllowShopLogic = false;
-            MultiplayerPlugin.Logger?.LogInfo("[CoopReward] Shop phase ended");
+            MultiplayerPlugin.Logger?.LogInfo("[CoopReward] Shop phase ended — awaiting host navigation shot");
         }
         else if (networkEvent.Phase == "treasure")
         {

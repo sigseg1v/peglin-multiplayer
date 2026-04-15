@@ -91,6 +91,20 @@ public static class CoopRewardState
     /// <summary>Stored ShopManager reference so host can call CloseStore after all clients finish.</summary>
     public static object PendingShopManager;
 
+    /// <summary>Host-side: set once the "all players done" branch has fired, to prevent
+    /// duplicate AllChoicesComplete dispatches and repeated CloseStore calls when the
+    /// client spams ShopCompleteEvents.</summary>
+    public static bool ShopCompletionProceeded;
+
+    /// <summary>Client-side: true after the client has sent their ShopCompleteEvent.
+    /// Subsequent Exit Store clicks on the client are silently ignored.</summary>
+    public static bool ClientShopChoiceSent;
+
+    /// <summary>Client-side: true once all players have finished shopping and the
+    /// host is doing the post-shop navigation shot. The waiting overlay stays up
+    /// with a different message until the scene changes.</summary>
+    public static bool ShopAwaitingHostNavigation;
+
     // --- Treasure wait-for-all ---
 
     /// <summary>True when the treasure relic selection phase is active.</summary>
@@ -191,6 +205,9 @@ public static class CoopRewardState
         ClientShopChoicesReceived.Clear();
         TotalShopClientsExpected = 0;
         PendingShopManager = null;
+        ShopCompletionProceeded = false;
+        ClientShopChoiceSent = false;
+        ShopAwaitingHostNavigation = false;
         TreasurePhaseActive = false;
         HostTreasureDone = false;
         ClientTreasureChoicesReceived.Clear();

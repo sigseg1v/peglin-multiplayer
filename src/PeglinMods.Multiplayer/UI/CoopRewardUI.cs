@@ -287,10 +287,20 @@ public class CoopRewardUI : MonoBehaviour
     {
         ClearButtons();
 
+        var services = MultiplayerPlugin.Services;
+        bool isHost = services?.TryResolve<IMultiplayerMode>(out var m) == true && m.IsHosting;
+
         // Use context-specific messages
-        if (CoopRewardState.ShopPhaseActive)
+        if (CoopRewardState.ShopAwaitingHostNavigation)
         {
-            _titleText.text = "Waiting for other players to finish shopping...";
+            // Client-side post-shop: all shopping done, host is picking next stage.
+            _titleText.text = "Waiting for host to select the next stage...";
+        }
+        else if (CoopRewardState.ShopPhaseActive)
+        {
+            _titleText.text = isHost
+                ? "Waiting for clients to finish shopping..."
+                : "Waiting for other players to finish shopping...";
         }
         else if (CoopRewardState.TreasurePhaseActive)
         {
@@ -302,8 +312,6 @@ public class CoopRewardUI : MonoBehaviour
         }
         else if (CoopRewardState.HostRelicSelectionActive)
         {
-            var services = MultiplayerPlugin.Services;
-            bool isHost = services?.TryResolve<IMultiplayerMode>(out var m) == true && m.IsHosting;
             _titleText.text = isHost
                 ? "Waiting for all players to choose their initial relic..."
                 : "Other players are choosing their initial relics...";

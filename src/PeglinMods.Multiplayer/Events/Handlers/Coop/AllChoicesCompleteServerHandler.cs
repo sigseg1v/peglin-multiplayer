@@ -17,8 +17,17 @@ public sealed class AllChoicesCompleteServerHandler : IServerHandler<AllChoicesC
 
         // Clear waiting state on the host — the ClientHandler does this on clients,
         // but only the ServerHandler runs on the host during Dispatch.
-        CoopRewardState.AllChoicesComplete = true;
         CoopRewardState.WaitingForOtherPlayers = false;
+
+        // For the shop phase, the host is about to do the post-shop navigation shot
+        // — must NOT set AllChoicesComplete=true or the CoopRewardUI will keep
+        // dismissing the overlay on the host too (fine) but more importantly the
+        // host's shop-phase-active state gets reset by the overlay dismiss. Just
+        // clear WaitingForOtherPlayers and let CloseStore proceed normally.
+        if (networkEvent.Phase != "shop")
+        {
+            CoopRewardState.AllChoicesComplete = true;
+        }
 
         if (networkEvent.Phase == "post_battle")
         {

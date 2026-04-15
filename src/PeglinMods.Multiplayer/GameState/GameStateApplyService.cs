@@ -118,9 +118,19 @@ public class GameStateApplyService
         bool isHosting = mpModeRef?.IsHosting == true;
         bool isSpectating = mpModeRef?.IsSpectating == true;
 
-        // Shop scene: initialize wait-for-all on host, enable shopping on client
+        // Shop scene: initialize wait-for-all on host, enable shopping on client.
+        // NOTE: AllChoicesComplete lingers from prior phases (e.g. text_scenario)
+        // and suppresses the waiting overlay in CoopRewardUI if not cleared — that
+        // was the root cause of the "Exit Store button does nothing" bug. Reset
+        // every shop-related state here on both sides.
         if (scene.name == "ShopScenario")
         {
+            Events.Handlers.Coop.CoopRewardState.AllChoicesComplete = false;
+            Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = false;
+            Events.Handlers.Coop.CoopRewardState.ShopCompletionProceeded = false;
+            Events.Handlers.Coop.CoopRewardState.ClientShopChoiceSent = false;
+            Events.Handlers.Coop.CoopRewardState.ShopAwaitingHostNavigation = false;
+
             if (isHosting && svc.TryResolve<CoopStateManager>(out var coopMgr))
             {
                 Events.Handlers.Coop.CoopRewardState.ShopPhaseActive = true;
@@ -133,6 +143,9 @@ public class GameStateApplyService
 
             if (isSpectating)
             {
+                // The client needs ShopPhaseActive flagged too so the overlay's
+                // ShowWaiting() picks the right text ("finish shopping" vs generic).
+                Events.Handlers.Coop.CoopRewardState.ShopPhaseActive = true;
                 Patches.MultiplayerClientPatches.AllowShopLogic = true;
                 Patches.MultiplayerClientPatches.AllowCurrencySync = true;
                 Patches.MultiplayerClientPatches.AllowRelicSync = true;

@@ -66,12 +66,17 @@ public sealed class ShopCompleteClientHandler : IClientHandler<ShopCompleteEvent
                 $"[ShopComplete] Updated slot {slot.SlotIndex}: deck={playerState.CompleteDeck.Count}, " +
                 $"relics={playerState.OwnedRelics.Count}, gold={playerState.Gold}");
 
-            // Track completion
+            // Track completion (HashSet — duplicate add is a no-op)
             CoopRewardState.ClientShopChoicesReceived.Add(slot.SlotIndex);
 
-            // Check if all done
-            if (CoopRewardState.HostShopDone && CoopRewardState.AllClientShopChoicesReceived)
+            // Check if all done — idempotent: only proceed once even if the
+            // client spams ShopCompleteEvents (happens when the client's Exit
+            // Store button is clicked repeatedly before the scene changes).
+            if (CoopRewardState.HostShopDone
+                && CoopRewardState.AllClientShopChoicesReceived
+                && !CoopRewardState.ShopCompletionProceeded)
             {
+                CoopRewardState.ShopCompletionProceeded = true;
                 MultiplayerPlugin.Logger?.LogInfo("[ShopComplete] All players finished shopping — proceeding");
                 CoopRewardState.WaitingForOtherPlayers = false;
                 CoopRewardState.ShopPhaseActive = false;
