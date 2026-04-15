@@ -8,6 +8,7 @@ using PeglinMods.Multiplayer.GameState.Snapshots;
 using PeglinMods.Multiplayer.Multiplayer;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
@@ -48,6 +49,49 @@ public class CoopPlayerVisuals : MonoBehaviour
         public GameObject Root;
         public Image IconImage;
         public TextMeshProUGUI IntensityText;
+        public StatusIconHoverHandler Hover;
+    }
+
+    /// <summary>
+    /// Pointer hover handler that shows the native StatusEffect tooltip on
+    /// mouse-over and hides it on mouse-exit. The world anchor position is
+    /// updated every frame by UpdateStatusIcons so the tooltip appears next
+    /// to the correct character (host vs. clone).
+    /// </summary>
+    internal class StatusIconHoverHandler : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+    {
+        public Battle.StatusEffects.StatusEffectType EffectType;
+        public Vector3 WorldAnchor;
+        private bool _tooltipShowing;
+
+        public void OnPointerEnter(PointerEventData eventData)
+        {
+            if (_tooltipShowing) return;
+            var mgr = TooltipManager.Instance;
+            if (mgr == null) return;
+            try
+            {
+                mgr.ShowTooltipStatusEffect(EffectType, WorldAnchor, new Vector3(1f, -1f), isOnPlayer: true);
+                _tooltipShowing = true;
+            }
+            catch { }
+        }
+
+        public void OnPointerExit(PointerEventData eventData)
+        {
+            if (!_tooltipShowing) return;
+            try { TooltipManager.Instance?.HideTooltip(); } catch { }
+            _tooltipShowing = false;
+        }
+
+        private void OnDisable()
+        {
+            if (_tooltipShowing)
+            {
+                try { TooltipManager.Instance?.HideTooltip(); } catch { }
+                _tooltipShowing = false;
+            }
+        }
     }
 
     // Cache the game's StatusEffectData ScriptableObject for icon sprites
@@ -310,6 +354,9 @@ public class CoopPlayerVisuals : MonoBehaviour
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920, 1080);
         scaler.matchWidthOrHeight = 0.5f;
+        // Raycaster is required so pointer events reach the status icon
+        // hover handlers (for tooltip display on hover).
+        _overlayCanvasObj.AddComponent<GraphicRaycaster>();
         _overlayCanvasRect = _overlayCanvasObj.GetComponent<RectTransform>();
     }
 
@@ -352,6 +399,8 @@ public class CoopPlayerVisuals : MonoBehaviour
         // Background
         var bgImg = panel.AddComponent<Image>();
         bgImg.color = bgColor;
+        // Name/HP/arrow panels must not steal clicks from the game underneath.
+        bgImg.raycastTarget = false;
 
         // Text
         var textObj = new GameObject("Text");
@@ -369,6 +418,7 @@ public class CoopPlayerVisuals : MonoBehaviour
         tmpText.enableWordWrapping = false;
         tmpText.overflowMode = TextOverflowModes.Overflow;
         tmpText.lineSpacing = -25f; // tighter line spacing for 2-line names
+        tmpText.raycastTarget = false;
 
         var textRect = tmpText.rectTransform;
         textRect.anchorMin = Vector2.zero;
@@ -418,10 +468,10 @@ public class CoopPlayerVisuals : MonoBehaviour
             var iconContainer = new GameObject($"CoopStatusIcons_Slot{summary.SlotIndex}");
             iconContainer.transform.SetParent(_overlayCanvasObj.transform, false);
             var containerRect = iconContainer.AddComponent<RectTransform>();
-            containerRect.sizeDelta = new Vector2(300, 42);
+            containerRect.sizeDelta = new Vector2(380, 56);
             containerRect.pivot = new Vector2(0.5f, 0.5f);
             var layout = iconContainer.AddComponent<HorizontalLayoutGroup>();
-            layout.spacing = 2;
+            layout.spacing = 6;
             layout.childAlignment = TextAnchor.MiddleCenter;
             layout.childForceExpandWidth = false;
             layout.childForceExpandHeight = false;
@@ -658,6 +708,15 @@ public class CoopPlayerVisuals : MonoBehaviour
 
         visual.StatusIconContainer.SetActive(true);
         PositionPanelAtWorld(visual.StatusIconContainer, charPos + new Vector3(0, 2.6f, 0), cam);
+
+        // Update the hover world-anchor for each icon so the tooltip appears
+        // next to the correct character (host vs. clone). charPos comes from
+        // the real player GO / clone, which can move during animations.
+        var tooltipAnchor = charPos + new Vector3(0, 2.2f, 0);
+        foreach (var kvp in visual.StatusIcons)
+        {
+            if (kvp.Value.Hover != null) kvp.Value.Hover.WorldAnchor = tooltipAnchor;
+        }
     }
 
     private StatusIconEntry CreateStatusIcon(int effectType, int intensity, Transform parent)
@@ -672,17 +731,18 @@ public class CoopPlayerVisuals : MonoBehaviour
             icon.transform.SetParent(parent, false);
 
             var rect = icon.GetComponent<RectTransform>();
-            if (rect != null) rect.sizeDelta = new Vector2(38, 38);
+            if (rect != null) rect.sizeDelta = new Vector2(50, 50);
 
             // Add LayoutElement so HorizontalLayoutGroup respects preferred size
             var le = icon.AddComponent<LayoutElement>();
             if (le != null)
             {
-                le.preferredWidth = 38;
-                le.preferredHeight = 38;
+                le.preferredWidth = 50;
+                le.preferredHeight = 50;
             }
 
-            // Icon image (status effect sprite)
+            // Icon image (status effect sprite). raycastTarget = true so the
+            // hover handler receives pointer events for the tooltip.
             var img = icon.AddComponent<Image>();
             if (img != null)
             {
@@ -697,7 +757,12 @@ public class CoopPlayerVisuals : MonoBehaviour
                     // Fallback: tinted square with effect abbreviation
                     img.color = new Color(0.4f, 0.3f, 0.6f, 0.8f);
                 }
+                img.raycastTarget = true;
             }
+
+            // Hover handler — shows the native tooltip on pointer-enter.
+            var hover = icon.AddComponent<StatusIconHoverHandler>();
+            hover.EffectType = (Battle.StatusEffects.StatusEffectType)effectType;
 
             // Intensity number overlaid at bottom-center. Create with
             // RectTransform up-front so AddComponent<TextMeshProUGUI> doesn't
@@ -712,11 +777,11 @@ public class CoopPlayerVisuals : MonoBehaviour
             }
 
             tmp.text = intensity > 999 ? (intensity / 1000) + "K" : intensity.ToString();
-            tmp.fontSize = 16;
+            tmp.fontSize = 32;
             tmp.fontStyle = FontStyles.Bold;
             var font = GetGameFont();
             if (font != null) tmp.font = font;
-            tmp.alignment = TextAlignmentOptions.Bottom;
+            tmp.alignment = TextAlignmentOptions.BottomRight;
             tmp.color = Color.white;
             // TMP outline width setter internally dereferences a material that may
             // not be initialized on a freshly-created TMP_Text, throwing NRE from
@@ -727,13 +792,17 @@ public class CoopPlayerVisuals : MonoBehaviour
             tmp.overflowMode = TextOverflowModes.Overflow;
             tmp.raycastTarget = false;
 
+            // Anchor the intensity number to the bottom-right corner and let
+            // it overflow slightly outside the icon so it sits at the corner
+            // rather than inset deep into the icon.
             var textRect = tmp.rectTransform;
             if (textRect != null)
             {
-                textRect.anchorMin = Vector2.zero;
-                textRect.anchorMax = Vector2.one;
-                textRect.offsetMin = new Vector2(0, -2);
-                textRect.offsetMax = new Vector2(0, 0);
+                textRect.anchorMin = new Vector2(1f, 0f);
+                textRect.anchorMax = new Vector2(1f, 0f);
+                textRect.pivot = new Vector2(1f, 0f);
+                textRect.sizeDelta = new Vector2(44, 30);
+                textRect.anchoredPosition = new Vector2(8, -6);
             }
 
             return new StatusIconEntry
@@ -741,6 +810,7 @@ public class CoopPlayerVisuals : MonoBehaviour
                 Root = icon,
                 IconImage = img,
                 IntensityText = tmp,
+                Hover = hover,
             };
         }
         catch (Exception ex)
