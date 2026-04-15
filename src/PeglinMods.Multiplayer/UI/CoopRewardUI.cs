@@ -291,10 +291,17 @@ public class CoopRewardUI : MonoBehaviour
         bool isHost = services?.TryResolve<IMultiplayerMode>(out var m) == true && m.IsHosting;
 
         // Use context-specific messages
-        if (CoopRewardState.ShopAwaitingHostNavigation)
+        if (CoopRewardState.ShopAwaitingHostNavigation
+            || CoopRewardState.TextScenarioAwaitingHostNavigation)
         {
-            // Client-side post-shop: all shopping done, host is picking next stage.
+            // Client-side post-shop/event: choice is done, host is picking next stage.
             _titleText.text = "Waiting for host to select the next stage...";
+        }
+        else if (CoopRewardState.TextScenarioPhaseActive)
+        {
+            _titleText.text = isHost
+                ? "Waiting for clients to finish the event..."
+                : "Waiting for other players to finish the event...";
         }
         else if (CoopRewardState.ShopPhaseActive)
         {

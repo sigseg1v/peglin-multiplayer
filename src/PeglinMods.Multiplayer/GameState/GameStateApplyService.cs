@@ -199,6 +199,10 @@ public class GameStateApplyService
         // TextScenario scene: initialize wait-for-all on host, enable native dialogue on client
         if (scene.name == "TextScenario")
         {
+            // Clear cross-phase leakage from previous TextScenario / shop / etc.
+            Events.Handlers.Coop.CoopRewardState.ClientTextScenarioChoiceSent = false;
+            Events.Handlers.Coop.CoopRewardState.TextScenarioAwaitingHostNavigation = false;
+
             if (isHosting && svc.TryResolve<CoopStateManager>(out var coopMgr4))
             {
                 Events.Handlers.Coop.CoopRewardState.TextScenarioPhaseActive = true;
@@ -211,6 +215,10 @@ public class GameStateApplyService
 
             if (isSpectating)
             {
+                // Flag phase active on the client too so ShowWaiting() picks the
+                // "finish the event" text while this player is still pre-choice or
+                // has just sent their completion event.
+                Events.Handlers.Coop.CoopRewardState.TextScenarioPhaseActive = true;
                 Patches.MultiplayerClientPatches.AllowTextScenarioLogic = true;
                 Patches.MultiplayerClientPatches.AllowCurrencySync = true;
                 Patches.MultiplayerClientPatches.AllowRelicSync = true;

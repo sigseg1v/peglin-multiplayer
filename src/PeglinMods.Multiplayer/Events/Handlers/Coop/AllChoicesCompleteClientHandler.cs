@@ -13,12 +13,14 @@ public sealed class AllChoicesCompleteClientHandler : IClientHandler<AllChoicesC
         MultiplayerPlugin.Logger?.LogInfo(
             $"[CoopReward] All choices complete for phase '{networkEvent.Phase}'");
 
-        // NOTE: for the shop phase we deliberately do NOT set AllChoicesComplete=true.
-        // The host is now doing the post-shop navigation shot (still inside the
-        // ShopScenario scene), and the client must keep its overlay up with a
-        // different message until the scene actually changes. Dismissing the
-        // overlay here would let the client re-interact with the shop UI.
-        if (networkEvent.Phase != "shop")
+        // NOTE: for shop/text_scenario phases we deliberately do NOT set
+        // AllChoicesComplete=true. The host is now doing the post-event navigation
+        // shot (still inside the ShopScenario/TextScenario scene), and the client
+        // must keep its overlay up with a "Waiting for host..." message until the
+        // scene actually changes. Dismissing the overlay here would let the client
+        // re-interact with the event UI or leave them staring at a blank scene
+        // with no indicator that they're waiting.
+        if (networkEvent.Phase != "shop" && networkEvent.Phase != "text_scenario")
         {
             CoopRewardState.AllChoicesComplete = true;
             CoopRewardState.WaitingForOtherPlayers = false;
@@ -42,6 +44,16 @@ public sealed class AllChoicesCompleteClientHandler : IClientHandler<AllChoicesC
             CoopRewardState.WaitingForOtherPlayers = true;
             Patches.MultiplayerClientPatches.AllowShopLogic = false;
             MultiplayerPlugin.Logger?.LogInfo("[CoopReward] Shop phase ended — awaiting host navigation shot");
+        }
+        else if (networkEvent.Phase == "text_scenario")
+        {
+            // Keep the overlay up — host is still inside TextScenario doing the
+            // post-event navigation shot to pick the next stage on the map.
+            CoopRewardState.TextScenarioPhaseActive = false;
+            CoopRewardState.TextScenarioAwaitingHostNavigation = true;
+            CoopRewardState.WaitingForOtherPlayers = true;
+            Patches.MultiplayerClientPatches.AllowTextScenarioLogic = false;
+            MultiplayerPlugin.Logger?.LogInfo("[CoopReward] TextScenario phase ended — awaiting host navigation shot");
         }
         else if (networkEvent.Phase == "treasure")
         {

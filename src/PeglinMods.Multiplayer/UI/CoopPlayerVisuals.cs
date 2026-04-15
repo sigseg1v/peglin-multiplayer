@@ -707,7 +707,7 @@ public class CoopPlayerVisuals : MonoBehaviour
         }
 
         visual.StatusIconContainer.SetActive(true);
-        PositionPanelAtWorld(visual.StatusIconContainer, charPos + new Vector3(0, 2.6f, 0), cam);
+        PositionPanelAtWorld(visual.StatusIconContainer, charPos + new Vector3(0, 2.9f, 0), cam);
 
         // Update the hover world-anchor for each icon so the tooltip appears
         // next to the correct character (host vs. clone). charPos comes from

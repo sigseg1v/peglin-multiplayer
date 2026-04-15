@@ -3681,6 +3681,30 @@ public static class MultiplayerClientPatches
 
             ClientShopPurchases.Add(purchase);
             MultiplayerPlugin.Logger?.LogInfo($"[ClientPatch] Tracked shop purchase: {purchase.Type} '{purchase.Name}' cost={purchase.Cost}");
+
+            // Send immediately so host deducts gold + applies orb/relic BEFORE the
+            // next heartbeat. Without this, the heartbeat syncs the old (stale) gold
+            // value back to the client between purchases, masking the deduction.
+            try
+            {
+                var services = MultiplayerPlugin.Services;
+                if (services?.TryResolve<Network.IMessageSender>(out var sender) == true)
+                {
+                    sender.Send(new Events.Network.Scenarios.ShopPurchaseEvent
+                    {
+                        Type = purchase.Type,
+                        Name = purchase.Name,
+                        Cost = purchase.Cost,
+                        RelicEffect = purchase.RelicEffect,
+                    });
+                    MultiplayerPlugin.Logger?.LogInfo(
+                        $"[ClientPatch] Sent ShopPurchaseEvent: {purchase.Type} '{purchase.Name}' cost={purchase.Cost}");
+                }
+            }
+            catch (System.Exception sendEx)
+            {
+                MultiplayerPlugin.Logger?.LogWarning($"[ClientPatch] Failed to send ShopPurchaseEvent: {sendEx.Message}");
+            }
         }
         catch (System.Exception ex)
         {
@@ -4061,5 +4085,199 @@ public static class MultiplayerClientPatches
     private static IEnumerator EmptyCoroutine()
     {
         yield break;
+    }
+
+    // =========================================================================
+    // CLIENT: override Take-Relic UIs to roll a single random local relic
+    //
+    // During Treasure and TextScenario-relic events, the client's RelicManager
+    // queues are not seeded the same way as the host's (the host seeds via RNG
+    // at run init, which is blocked on the client). This causes the native UIs
+    // to show 5 copies of a single broken "Blastic Powder" fallback relic.
+    //
+    // Per product direction: the client picks their own random relic. If they
+    // accept it, it's added to their local RelicManager and synced up to host
+    // via TreasureCompleteEvent / TextScenarioCompleteEvent. Host and client
+    // don't need the SAME relic — each player picks their own.
+    // =========================================================================
+
+    /// <summary>Set of RelicEffects the player already owns (so we don't offer dupes).</summary>
+    private static System.Collections.Generic.HashSet<int> GetOwnedEffects(Relics.RelicManager rm)
+    {
+        var owned = new System.Collections.Generic.HashSet<int>();
+        if (rm == null) return owned;
+        try
+        {
+            var ownedField = AccessTools.Field(typeof(Relics.RelicManager), "_ownedRelics");
+            var dict = ownedField?.GetValue(rm)
+                as System.Collections.Generic.Dictionary<Relics.RelicEffect, Relics.Relic>;
+            if (dict != null)
+            {
+                foreach (var k in dict.Keys) owned.Add((int)k);
+            }
+        }
+        catch { }
+        return owned;
+    }
+
+    /// <summary>Pick a random Relic prefab matching <paramref name="rarity"/> that isn't already owned.</summary>
+    private static Relics.Relic PickRandomLocalRelic(Relics.RelicRarity rarity, Relics.RelicManager rm)
+    {
+        try
+        {
+            var owned = GetOwnedEffects(rm);
+            var all = UnityEngine.Resources.FindObjectsOfTypeAll<Relics.Relic>();
+            // Relic is a ScriptableObject, so all returned are assets (no scene filtering needed).
+            var candidates = new System.Collections.Generic.List<Relics.Relic>();
+            foreach (var r in all)
+            {
+                if (r == null) continue;
+                if (r.globalRarity != rarity) continue;
+                if (owned.Contains((int)r.effect)) continue;
+                candidates.Add(r);
+            }
+            if (candidates.Count == 0)
+            {
+                // Fallback: allow any rarity if pool empty
+                foreach (var r in all)
+                {
+                    if (r == null) continue;
+                    if (owned.Contains((int)r.effect)) continue;
+                    candidates.Add(r);
+                }
+            }
+            if (candidates.Count == 0) return null;
+            return candidates[UnityEngine.Random.Range(0, candidates.Count)];
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatch] PickRandomLocalRelic failed: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// CLIENT-ONLY prefix: when the native Treasure UI asks BattleUpgradeCanvas
+    /// to set up a relic grant, roll a single local random relic and display only
+    /// that one icon. Prevents the "5 bugged Blastic Powder" artifact from broken
+    /// client-side relic queues.
+    /// </summary>
+    [HarmonyPatch(typeof(PeglinUI.PostBattle.BattleUpgradeCanvas), "SetupRelicGrant")]
+    [HarmonyPrefix]
+    public static bool BattleUpgradeCanvas_SetupRelicGrant_ClientOverride_Prefix(
+        PeglinUI.PostBattle.BattleUpgradeCanvas __instance,
+        Relics.RelicRarity rarity,
+        bool isTreasure)
+    {
+        // Only intercept on client AND only when the client is driving treasure UI themselves
+        if (!ShouldSuppressClientLogic) return true;
+        if (!AllowTreasureLogic) return true;
+
+        try
+        {
+            var mainOptionsField = AccessTools.Field(typeof(PeglinUI.PostBattle.BattleUpgradeCanvas), "_mainOptionsPanel");
+            var relicPanelField = AccessTools.Field(typeof(PeglinUI.PostBattle.BattleUpgradeCanvas), "_relicPanel");
+            var stateField = AccessTools.Field(typeof(PeglinUI.PostBattle.BattleUpgradeCanvas), "_state");
+            var rarityField = AccessTools.Field(typeof(PeglinUI.PostBattle.BattleUpgradeCanvas), "_relicGrantRarity");
+            var relicManagerField = AccessTools.Field(typeof(PeglinUI.PostBattle.BattleUpgradeCanvas), "_relicManager");
+
+            var mainOptions = mainOptionsField?.GetValue(__instance) as GameObject;
+            var relicPanel = relicPanelField?.GetValue(__instance) as GameObject;
+            var relicManager = relicManagerField?.GetValue(__instance) as Relics.RelicManager;
+            if (relicPanel == null) return true; // fall through
+
+            mainOptions?.SetActive(false);
+            relicPanel.SetActive(true);
+
+            if (stateField != null && stateField.FieldType.IsEnum)
+            {
+                try { stateField.SetValue(__instance, System.Enum.Parse(stateField.FieldType, "RELIC")); }
+                catch { }
+            }
+            rarityField?.SetValue(__instance, rarity);
+
+            var relic = PickRandomLocalRelic(rarity, relicManager);
+            var icons = relicPanel.GetComponentsInChildren<RelicIcon>(true);
+            for (int i = 0; i < icons.Length; i++)
+            {
+                if (i == 0 && relic != null)
+                {
+                    icons[i].SetRelic(relic);
+                    icons[i].shouldShowTooltip = false;
+                    icons[i].transform.parent.gameObject.SetActive(true);
+                }
+                else
+                {
+                    icons[i].transform.parent.gameObject.SetActive(false);
+                }
+            }
+
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[ClientPatch] Treasure relic grant overridden to single local relic " +
+                $"'{relic?.locKey ?? "<none>"}' rarity={rarity} (isTreasure={isTreasure})");
+            return false; // Skip original
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning(
+                $"[ClientPatch] SetupRelicGrant client override failed, falling through: {ex.Message}");
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// CLIENT-ONLY prefix: when TextScenarioInteractions.OfferRelic is called,
+    /// replace the seeded-queue logic with a single local random relic. Same
+    /// reason as above — the client's queues are broken.
+    /// </summary>
+    [HarmonyPatch(typeof(Scenarios.TextScenarioInteractions), "OfferRelic")]
+    [HarmonyPrefix]
+    public static bool TextScenarioInteractions_OfferRelic_ClientOverride_Prefix(
+        Scenarios.TextScenarioInteractions __instance,
+        Relics.RelicRarity rarity)
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        if (!AllowTextScenarioLogic) return true;
+
+        try
+        {
+            var relicPanelField = AccessTools.Field(typeof(Scenarios.TextScenarioInteractions), "relicPanel");
+            var skipButtonField = AccessTools.Field(typeof(Scenarios.TextScenarioInteractions), "skipRelicButton");
+            var rmField = AccessTools.Field(typeof(Scenarios.TextScenarioInteractions), "relicManager");
+
+            var relicPanel = relicPanelField?.GetValue(__instance) as GameObject;
+            var skipButton = skipButtonField?.GetValue(__instance) as UnityEngine.UI.Button;
+            var relicManager = rmField?.GetValue(__instance) as Relics.RelicManager;
+            if (relicPanel == null) return true;
+
+            relicPanel.SetActive(true);
+
+            var relic = PickRandomLocalRelic(rarity, relicManager);
+            var icons = relicPanel.GetComponentsInChildren<RelicIcon>(true);
+            for (int i = 0; i < icons.Length; i++)
+            {
+                if (i == 0 && relic != null)
+                {
+                    icons[i].SetRelic(relic);
+                    icons[i].transform.parent.gameObject.SetActive(true);
+                }
+                else
+                {
+                    icons[i].transform.parent.gameObject.SetActive(false);
+                }
+            }
+            skipButton?.gameObject.SetActive(true);
+
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[ClientPatch] TextScenario OfferRelic overridden to single local relic " +
+                $"'{relic?.locKey ?? "<none>"}' rarity={rarity}");
+            return false;
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning(
+                $"[ClientPatch] OfferRelic client override failed, falling through: {ex.Message}");
+            return true;
+        }
     }
 }

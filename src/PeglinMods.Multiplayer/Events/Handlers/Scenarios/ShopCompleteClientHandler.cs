@@ -48,23 +48,17 @@ public sealed class ShopCompleteClientHandler : IClientHandler<ShopCompleteEvent
                 return;
             }
 
-            // Apply each purchase to the player's state
-            if (e.Purchases != null)
+            // NOTE: purchases have already been applied individually via per-purchase
+            // ShopPurchaseEvents. This event is just the "done shopping" signal — used
+            // only to reconcile the final gold value (in case of drift) and to trigger
+            // the wait-for-all completion transition.
+            if (e.RemainingGold > 0 || playerState.Gold != e.RemainingGold)
             {
-                foreach (var purchase in e.Purchases)
-                {
-                    if (purchase.Type == "orb")
-                        ApplyOrbPurchase(playerState, purchase);
-                    else if (purchase.Type == "relic")
-                        ApplyRelicPurchase(playerState, purchase);
-                }
+                playerState.Gold = e.RemainingGold;
             }
-
-            // Update gold
-            playerState.Gold = e.RemainingGold;
             MultiplayerPlugin.Logger?.LogInfo(
-                $"[ShopComplete] Updated slot {slot.SlotIndex}: deck={playerState.CompleteDeck.Count}, " +
-                $"relics={playerState.OwnedRelics.Count}, gold={playerState.Gold}");
+                $"[ShopComplete] Finalized slot {slot.SlotIndex}: deck={playerState.CompleteDeck.Count}, " +
+                $"relics={playerState.OwnedRelics.Count}, gold={playerState.Gold} (e.RemainingGold={e.RemainingGold})");
 
             // Track completion (HashSet — duplicate add is a no-op)
             CoopRewardState.ClientShopChoicesReceived.Add(slot.SlotIndex);

@@ -40,6 +40,11 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
                 PegLayoutName = (StaticGameData.dataToLoad as Data.MapDataBattle)?.pegLayout?.name,
             };
 
+            // Capture seeded node data so TextScenario/Treasure RNG rolls match on the client.
+            // Without this the waterfall "?" event and treasure rareRelicChanceRoll diverge
+            // between host and client (host might pick relic path, client might pick fight).
+            CaptureSeededNodeData(snapshot);
+
             // Capture map nodes and MapController's internal floor count
             if (MapScenes.Contains(currentScene))
             {
@@ -77,6 +82,35 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
         {
             _log.LogWarning($"MapStateProvider.Capture failed: {ex.Message}");
             return null;
+        }
+    }
+
+    private void CaptureSeededNodeData(MapStateSnapshot snapshot)
+    {
+        try
+        {
+            var seeded = StaticGameData.seededNodeData;
+            if (seeded == null) return;
+
+            if (seeded is Map.SeededTextScenarioNodeData textNode)
+            {
+                snapshot.SeededNodeKind = "text_scenario";
+                if (textNode.randomState != null)
+                {
+                    snapshot.SeededNodeInitSeed = textNode.randomState.initializationSeed;
+                    snapshot.SeededNodeTimesUsed = textNode.randomState.timesUsed;
+                }
+            }
+            else if (seeded is Map.SeededTreasureNodeData treasureNode)
+            {
+                snapshot.SeededNodeKind = "treasure";
+                snapshot.SeededTreasureRareRelicRoll = treasureNode.rareRelicChanceRoll;
+                snapshot.SeededTreasureMimicRoll = treasureNode.mimicChallengeChanceRoll;
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[MapProvider] CaptureSeededNodeData failed: {ex.Message}");
         }
     }
 

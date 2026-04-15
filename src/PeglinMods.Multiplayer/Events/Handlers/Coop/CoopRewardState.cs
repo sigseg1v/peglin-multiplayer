@@ -177,6 +177,11 @@ public static class CoopRewardState
     /// <summary>True on client when the client has already sent their TextScenario completion event.</summary>
     public static bool ClientTextScenarioChoiceSent;
 
+    /// <summary>Client-side: true once all players have finished the TextScenario and the
+    /// host is doing the post-event navigation shot. The waiting overlay stays up with a
+    /// "Waiting for host..." message until the scene actually changes away.</summary>
+    public static bool TextScenarioAwaitingHostNavigation;
+
     // --- Post-battle relic choices (boss/rare) ---
 
     /// <summary>Host-provided relic choices for the post-battle boss/rare relic selection on the client.</summary>
@@ -227,5 +232,6 @@ public static class CoopRewardState
         TotalTextScenarioClientsExpected = 0;
         PendingDialogueSystemScenario = null;
         ClientTextScenarioChoiceSent = false;
+        TextScenarioAwaitingHostNavigation = false;
     }
 }

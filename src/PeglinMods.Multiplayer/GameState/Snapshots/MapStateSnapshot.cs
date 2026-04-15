@@ -29,6 +29,33 @@ public class MapStateSnapshot
     public string RandomStateJson { get; set; }
 
     /// <summary>
+    /// StaticGameData.seededNodeData's type discriminator — "text_scenario",
+    /// "treasure", or null if no seeded node is active. Ensures the client
+    /// reconstructs the right subclass.
+    /// </summary>
+    public string SeededNodeKind { get; set; }
+
+    /// <summary>
+    /// initializationSeed from the seeded node's SerializableRandomState.
+    /// Combined with SeededNodeTimesUsed, lets the client re-derive the exact
+    /// Random.state the host uses when entering a seeded scenario/treasure scene.
+    /// Without this, host and client diverge on e.g. "waterfall: relic vs fight".
+    /// </summary>
+    public int? SeededNodeInitSeed { get; set; }
+
+    /// <summary>timesUsed counter on the seeded node's SerializableRandomState.</summary>
+    public int? SeededNodeTimesUsed { get; set; }
+
+    /// <summary>
+    /// Treasure-specific: rareRelicChanceRoll from SeededTreasureNodeData so the
+    /// client picks the same rarity as the host.
+    /// </summary>
+    public float? SeededTreasureRareRelicRoll { get; set; }
+
+    /// <summary>Treasure-specific: mimicChallengeChanceRoll.</summary>
+    public float? SeededTreasureMimicRoll { get; set; }
+
+    /// <summary>
     /// Map nodes with their positions and room types — for client verification.
     /// Only populated when on a map scene.
     /// </summary>

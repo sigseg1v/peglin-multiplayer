@@ -105,6 +105,9 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             if (!string.IsNullOrEmpty(snapshot.RandomStateJson))
                 MultiplayerClientPatches.PendingRngStateToRestore = snapshot.RandomStateJson;
 
+            // Sync seededNodeData so TextScenario/Treasure RNG rolls match.
+            ApplySeededNodeData(snapshot);
+
             // Scenes where the client can't follow — show waiting message instead
             if (snapshot.ActiveScene == "PostMainMenu")
             {
@@ -222,6 +225,68 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         catch (Exception ex)
         {
             _log.LogError($"[MapApplier] Apply failed: {ex.Message}\n{ex.StackTrace}");
+        }
+    }
+
+    /// <summary>
+    /// Rebuild StaticGameData.seededNodeData on the client to mirror the host's
+    /// active seeded node. This makes DialogueSystemScenario.Awake and
+    /// ChestScenarioController.OpenChest produce the same RNG rolls on both
+    /// sides (fixes "waterfall: relic vs fight" divergence and treasure rare-roll
+    /// divergence).
+    /// </summary>
+    private void ApplySeededNodeData(MapStateSnapshot snapshot)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(snapshot.SeededNodeKind))
+            {
+                // Host has no active seeded node — clear ours to avoid stale state
+                StaticGameData.seededNodeData = null;
+                return;
+            }
+
+            if (snapshot.SeededNodeKind == "text_scenario")
+            {
+                var node = StaticGameData.seededNodeData as SeededTextScenarioNodeData;
+                if (node == null)
+                {
+                    node = new SeededTextScenarioNodeData();
+                    StaticGameData.seededNodeData = node;
+                }
+                if (snapshot.SeededNodeInitSeed.HasValue && snapshot.SeededNodeTimesUsed.HasValue)
+                {
+                    // Only rebuild if seed/timesUsed changed — avoid re-iterating the
+                    // SerializableRandomState forward iteration every heartbeat.
+                    if (node.randomState == null
+                        || node.randomState.initializationSeed != snapshot.SeededNodeInitSeed.Value
+                        || node.randomState.timesUsed != snapshot.SeededNodeTimesUsed.Value)
+                    {
+                        node.randomState = new SerializableRandomState(
+                            snapshot.SeededNodeInitSeed.Value,
+                            snapshot.SeededNodeTimesUsed.Value);
+                        _log.LogInfo(
+                            $"[MapApplier] Synced SeededTextScenarioNodeData: initSeed={snapshot.SeededNodeInitSeed}, timesUsed={snapshot.SeededNodeTimesUsed}");
+                    }
+                }
+            }
+            else if (snapshot.SeededNodeKind == "treasure")
+            {
+                var node = StaticGameData.seededNodeData as SeededTreasureNodeData;
+                if (node == null)
+                {
+                    node = new SeededTreasureNodeData();
+                    StaticGameData.seededNodeData = node;
+                }
+                if (snapshot.SeededTreasureRareRelicRoll.HasValue)
+                    node.rareRelicChanceRoll = snapshot.SeededTreasureRareRelicRoll.Value;
+                if (snapshot.SeededTreasureMimicRoll.HasValue)
+                    node.mimicChallengeChanceRoll = snapshot.SeededTreasureMimicRoll.Value;
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[MapApplier] ApplySeededNodeData failed: {ex.Message}");
         }
     }
 
