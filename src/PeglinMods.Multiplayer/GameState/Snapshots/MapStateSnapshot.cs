@@ -55,6 +55,18 @@ public class MapStateSnapshot
     /// <summary>Treasure-specific: mimicChallengeChanceRoll.</summary>
     public float? SeededTreasureMimicRoll { get; set; }
 
+    /// <summary>Shop-specific: rareRelicChanceRoll from SeededShopNodeData.</summary>
+    public float? SeededShopRareRelicRoll { get; set; }
+
+    /// <summary>Shop-specific: shopRelicChanceRoll from SeededShopNodeData.</summary>
+    public float? SeededShopRelicRoll { get; set; }
+
+    /// <summary>Shop-specific: orb prefab names from SeededShopNodeData.shopOrbs.</summary>
+    public List<string> SeededShopOrbNames { get; set; }
+
+    /// <summary>Shop-specific: orb rarities (PachinkoBall.OrbRarity int values).</summary>
+    public List<int> SeededShopOrbRarities { get; set; }
+
     /// <summary>
     /// Map nodes with their positions and room types — for client verification.
     /// Only populated when on a map scene.

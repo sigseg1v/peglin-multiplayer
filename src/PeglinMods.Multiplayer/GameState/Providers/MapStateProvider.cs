@@ -107,6 +107,25 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
                 snapshot.SeededTreasureRareRelicRoll = treasureNode.rareRelicChanceRoll;
                 snapshot.SeededTreasureMimicRoll = treasureNode.mimicChallengeChanceRoll;
             }
+            else if (seeded is Map.SeededShopNodeData shopNode)
+            {
+                snapshot.SeededNodeKind = "shop";
+                snapshot.SeededShopRareRelicRoll = shopNode.rareRelicChanceRoll;
+                snapshot.SeededShopRelicRoll = shopNode.shopRelicChanceRoll;
+
+                if (shopNode.shopOrbs != null)
+                {
+                    var names = new System.Collections.Generic.List<string>();
+                    var rarities = new System.Collections.Generic.List<int>();
+                    foreach (var entry in shopNode.shopOrbs)
+                    {
+                        names.Add(entry.orb != null ? entry.orb.name : "");
+                        rarities.Add((int)entry.orbRarity);
+                    }
+                    snapshot.SeededShopOrbNames = names;
+                    snapshot.SeededShopOrbRarities = rarities;
+                }
+            }
         }
         catch (Exception ex)
         {

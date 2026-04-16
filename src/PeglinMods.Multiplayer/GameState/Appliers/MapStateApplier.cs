@@ -283,6 +283,44 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 if (snapshot.SeededTreasureMimicRoll.HasValue)
                     node.mimicChallengeChanceRoll = snapshot.SeededTreasureMimicRoll.Value;
             }
+            else if (snapshot.SeededNodeKind == "shop")
+            {
+                var node = StaticGameData.seededNodeData as SeededShopNodeData;
+                if (node == null)
+                {
+                    node = new SeededShopNodeData();
+                    StaticGameData.seededNodeData = node;
+                }
+                if (snapshot.SeededShopRareRelicRoll.HasValue)
+                    node.rareRelicChanceRoll = snapshot.SeededShopRareRelicRoll.Value;
+                if (snapshot.SeededShopRelicRoll.HasValue)
+                    node.shopRelicChanceRoll = snapshot.SeededShopRelicRoll.Value;
+
+                if (snapshot.SeededShopOrbNames != null && snapshot.SeededShopOrbRarities != null
+                    && snapshot.SeededShopOrbNames.Count == snapshot.SeededShopOrbRarities.Count)
+                {
+                    var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
+                    var dm = dms.Length > 0 ? dms[0] : null;
+                    if (dm != null)
+                    {
+                        var orbs = new SeededOrbAndRarity[snapshot.SeededShopOrbNames.Count];
+                        for (int i = 0; i < orbs.Length; i++)
+                        {
+                            var prefab = dm.GetOrbPrefabFromName(snapshot.SeededShopOrbNames[i]);
+                            orbs[i] = new SeededOrbAndRarity(
+                                prefab, (PachinkoBall.OrbRarity)snapshot.SeededShopOrbRarities[i]);
+                        }
+                        node.shopOrbs = orbs;
+                        _log.LogInfo(
+                            $"[MapApplier] Synced SeededShopNodeData: rareRoll={node.rareRelicChanceRoll:F3}, " +
+                            $"shopRoll={node.shopRelicChanceRoll:F3}, orbs={orbs.Length}");
+                    }
+                    else
+                    {
+                        _log.LogWarning("[MapApplier] DeckManager not found — cannot resolve shop orbs");
+                    }
+                }
+            }
         }
         catch (Exception ex)
         {
