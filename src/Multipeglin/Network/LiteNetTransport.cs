@@ -17,6 +17,7 @@ public class LiteNetTransport : INetworkTransport, INetEventListener
     public event Action<int, byte[]> OnDataReceived;
     public event Action<int> OnClientConnected;
     public event Action<int> OnDisconnected;
+    public event Action OnConnectionRejected;
 
     public void StartHost(int port)
     {
@@ -64,7 +65,10 @@ public class LiteNetTransport : INetworkTransport, INetEventListener
     public void OnPeerDisconnected(NetPeer peer, DisconnectInfo disconnectInfo)
     {
         _peers.Remove(peer.Id);
-        OnDisconnected?.Invoke(peer.Id);
+        if (!IsHost && disconnectInfo.Reason == DisconnectReason.ConnectionRejected)
+            OnConnectionRejected?.Invoke();
+        else
+            OnDisconnected?.Invoke(peer.Id);
     }
 
     public void OnNetworkReceive(NetPeer peer, NetPacketReader reader, byte channelNumber, DeliveryMethod deliveryMethod)

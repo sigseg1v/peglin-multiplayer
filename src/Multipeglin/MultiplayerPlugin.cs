@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using BepInEx;
 using BepInEx.Logging;
 using HarmonyLib;
@@ -20,6 +21,12 @@ public class MultiplayerPlugin : BaseUnityPlugin
     public static MultiplayerPlugin Instance { get; private set; }
     public static IServiceContainer Services { get; private set; }
     public new static ManualLogSource Logger { get; private set; }
+
+    /// <summary>
+    /// Patch targets that were declared but not found at runtime.
+    /// Non-null and non-empty means the game may have been updated.
+    /// </summary>
+    public static IReadOnlyList<string> MissingPatches { get; private set; }
 
     private Harmony _harmony;
     private FileLogger _fileLogger;
@@ -65,7 +72,15 @@ public class MultiplayerPlugin : BaseUnityPlugin
             _modObject.AddComponent<CoopRewardUI>();
 
             _harmony = new Harmony(MultiplayerPluginInfo.GUID);
-            _harmony.PatchAll();
+            try
+            {
+                _harmony.PatchAll();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError($"Harmony PatchAll failed: {ex}");
+                MissingPatches = new List<string> { $"PatchAll failed: {ex.Message}" };
+            }
 
             int patchCount = 0;
             foreach (var method in _harmony.GetPatchedMethods())
@@ -74,6 +89,19 @@ public class MultiplayerPlugin : BaseUnityPlugin
                 patchCount++;
             }
             Logger.LogInfo($"Harmony total patches applied: {patchCount}");
+
+            // Validate all declared patch targets exist at runtime
+            if (MissingPatches == null)
+            {
+                var missing = PatchValidator.FindMissingPatchTargets(Logger);
+                if (missing.Count > 0)
+                {
+                    Logger.LogWarning($"[PatchValidator] {missing.Count} patch target(s) not found:");
+                    foreach (var p in missing)
+                        Logger.LogWarning($"  Missing: {p}");
+                    MissingPatches = missing;
+                }
+            }
 
             Logger.LogInfo($"{MultiplayerPluginInfo.NAME} v{MultiplayerPluginInfo.VERSION} loaded");
         }

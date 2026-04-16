@@ -67,6 +67,8 @@ public class MultiplayerUI : MonoBehaviour
     private GameObject _turnIndicatorPanel;
     private TextMeshProUGUI _turnIndicatorText;
 
+    // Connection error dialog
+    private GameObject _errorPanel;
 
     // Static access for menu button and player name
     private static MultiplayerUI _instance;
@@ -86,10 +88,23 @@ public class MultiplayerUI : MonoBehaviour
 
             _transport.OnClientConnected += peerId => OnConnected();
             _transport.OnDisconnected += peerId => OnDisconnected();
+            _transport.OnConnectionRejected += OnConnectionRejected;
 
             CreateCanvas();
             CreateOverlay();
             HideOverlay();
+
+            // Show warning if patch targets are missing (game was probably updated)
+            var missing = MultiplayerPlugin.MissingPatches;
+            if (missing != null && missing.Count > 0)
+            {
+                ShowErrorDialog(
+                    $"Multipeglin v{MultiplayerPluginInfo.VERSION} was built for " +
+                    $"Peglin v{MultiplayerPluginInfo.COMPILED_GAME_VERSION}.\n\n" +
+                    $"{missing.Count} game method(s) could not be found.\n" +
+                    "A game update may have affected the mod.\n" +
+                    "Check for a mod update.");
+            }
 
             Log?.LogInfo("MultiplayerUI initialized");
         }
@@ -261,6 +276,18 @@ public class MultiplayerUI : MonoBehaviour
         var backBtn = CreateButton(_mainPanel.transform, "BackBtn", "Close",
             new Color(0.35f, 0.2f, 0.2f, 1f), new Vector2(0, -224), new Vector2(480, 88));
         backBtn.onClick.AddListener(HideOverlay);
+
+        // Version text
+        var ver = CreateText(_mainPanel.transform, "VersionText",
+            $"Multipeglin v{MultiplayerPluginInfo.VERSION}", 20);
+        ver.color = new Color(0.5f, 0.5f, 0.5f, 0.8f);
+        ver.raycastTarget = false;
+        var verRect = ver.rectTransform;
+        verRect.anchorMin = new Vector2(0.5f, 0.5f);
+        verRect.anchorMax = new Vector2(0.5f, 0.5f);
+        verRect.pivot = new Vector2(0.5f, 0.5f);
+        verRect.anchoredPosition = new Vector2(0, -310);
+        verRect.sizeDelta = new Vector2(480, 30);
     }
 
     private void OnNameChanged(string name)
@@ -333,6 +360,18 @@ public class MultiplayerUI : MonoBehaviour
         var cancelBtn = CreateButton(_joinPanel.transform, "CancelBtn", "Back",
             new Color(0.35f, 0.2f, 0.2f, 1f), new Vector2(0, -248), new Vector2(480, 88));
         cancelBtn.onClick.AddListener(OnCancelJoinClicked);
+
+        // Version text
+        var ver = CreateText(_joinPanel.transform, "VersionText",
+            $"Multipeglin v{MultiplayerPluginInfo.VERSION}", 20);
+        ver.color = new Color(0.5f, 0.5f, 0.5f, 0.8f);
+        ver.raycastTarget = false;
+        var verRect = ver.rectTransform;
+        verRect.anchorMin = new Vector2(0.5f, 0.5f);
+        verRect.anchorMax = new Vector2(0.5f, 0.5f);
+        verRect.pivot = new Vector2(0.5f, 0.5f);
+        verRect.anchoredPosition = new Vector2(0, -310);
+        verRect.sizeDelta = new Vector2(480, 30);
 
         _joinPanel.SetActive(false);
     }
@@ -758,6 +797,62 @@ public class MultiplayerUI : MonoBehaviour
             _turnIndicatorPanel.SetActive(false);
         _overlayPanel?.SetActive(true);
         ShowMainPanel();
+    }
+
+    private void OnConnectionRejected()
+    {
+        Log?.LogWarning($"Connection rejected (version mismatch). Local version: {MultiplayerPluginInfo.VERSION}");
+
+        var dispatcher = Utility.MainThreadDispatcher.Instance;
+        if (dispatcher != null)
+            dispatcher.Enqueue(HandleConnectionRejected);
+        else
+            HandleConnectionRejected();
+    }
+
+    private void HandleConnectionRejected()
+    {
+        // Clean up transport and mode without full DisconnectAndReset (we never left main menu)
+        _transport.Stop();
+        _multiplayerMode.Disable();
+        Utility.FileLogger.RoleTag = null;
+
+        ShowErrorDialog(
+            "Failed to connect to host.\n" +
+            $"Your version: {MultiplayerPluginInfo.VERSION}\n\n" +
+            "Make sure you and the host have the\nsame version of Multipeglin installed.");
+    }
+
+    private void ShowErrorDialog(string message)
+    {
+        if (_errorPanel != null)
+            Destroy(_errorPanel);
+
+        _errorPanel = new GameObject("ErrorPanel");
+        _errorPanel.transform.SetParent(_canvasObj.transform, false);
+        var bg = _errorPanel.AddComponent<Image>();
+        bg.color = new Color(0, 0, 0, 0.9f);
+        StretchFill(_errorPanel.GetComponent<RectTransform>());
+
+        var box = CreatePanel(_errorPanel.transform, "ErrorBox",
+            new Color(0.15f, 0.1f, 0.1f, 1f), new Vector2(700, 280));
+
+        var msgText = CreateText(box.transform, "ErrorMessage", message, 26);
+        msgText.enableWordWrapping = true;
+        var msgRect = msgText.rectTransform;
+        msgRect.anchorMin = new Vector2(0.5f, 0.5f);
+        msgRect.anchorMax = new Vector2(0.5f, 0.5f);
+        msgRect.pivot = new Vector2(0.5f, 0.5f);
+        msgRect.anchoredPosition = new Vector2(0, 30);
+        msgRect.sizeDelta = new Vector2(620, 160);
+
+        var okBtn = CreateButton(box.transform, "OkBtn", "Ok",
+            new Color(0.3f, 0.3f, 0.5f, 1f), new Vector2(0, -100), new Vector2(200, 56));
+        okBtn.onClick.AddListener(() =>
+        {
+            Destroy(_errorPanel);
+            _errorPanel = null;
+        });
     }
 
     // --- Helpers ---
