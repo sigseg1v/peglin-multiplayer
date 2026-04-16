@@ -1,9 +1,12 @@
 using Battle;
 using Battle.Enemies;
 using BepInEx.Logging;
+using HarmonyLib;
 using PeglinMods.Multiplayer.Events.Network.Enemy;
+using PeglinMods.Multiplayer.GameState;
 using PeglinMods.Multiplayer.Multiplayer;
 using PeglinMods.Multiplayer.Utility;
+using UnityEngine;
 
 namespace PeglinMods.Multiplayer.Events.Subscriptions;
 
@@ -12,16 +15,21 @@ public sealed class EnemySubscriptions
     private readonly IGameEventRegistry _registry;
     private readonly EnemyIdentifier _enemyIdentifier;
     private readonly ManualLogSource _log;
+    private readonly CoopStateManager _coopStateManager;
 
-    public EnemySubscriptions(IGameEventRegistry registry, EnemyIdentifier enemyIdentifier, ManualLogSource log)
+    public EnemySubscriptions(IGameEventRegistry registry, EnemyIdentifier enemyIdentifier, ManualLogSource log,
+        CoopStateManager coopStateManager = null)
     {
         _registry = registry;
         _enemyIdentifier = enemyIdentifier;
         _log = log;
+        _coopStateManager = coopStateManager;
     }
 
     private static bool IsHosting =>
         MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var mode) == true && mode.IsHosting;
+
+    private int PlayerCount => _coopStateManager?.TotalPlayerCount ?? 1;
 
     public void Subscribe()
     {
@@ -45,6 +53,13 @@ public sealed class EnemySubscriptions
     private void OnEnemySpawned(Enemy enemy)
     {
         if (!IsHosting) return;
+
+        // Scale enemy stats by coop player count before capturing/dispatching, so
+        // the client receives the already-scaled values through the heartbeat and
+        // the host's MeleeAttack/RangedAttack coroutines pick up the scaled damage
+        // fields when the enemy takes its turn.
+        ApplyCoopScaling(enemy);
+
         _registry.Dispatch(new EnemySpawnedEvent
         {
             EnemyId = _enemyIdentifier.GetId(enemy),
@@ -55,6 +70,48 @@ public sealed class EnemySubscriptions
             MeleeDamage = enemy.DamagePerMeleeAttack,
             RangedDamage = enemy.DamagePerRangedAttack
         });
+    }
+
+    /// <summary>
+    /// Scale enemy HP and damage based on the number of coop players.
+    ///   hp  *= 1 + 2   * (players - 1)
+    ///   dmg  = Ceil(dmg * (1 + 0.2 * (players - 1)))
+    /// Called from OnEnemySpawned (which fires inside Enemy.Initialize AFTER
+    /// _maxHealth is set and BEFORE UpdateHealthBar), so the bar picks up the
+    /// scaled values automatically on the host. Client HP is synced via the
+    /// EnemyStateApplier heartbeat.
+    /// </summary>
+    private void ApplyCoopScaling(Enemy enemy)
+    {
+        int players = PlayerCount;
+        if (players <= 1) return;
+
+        float hpMult = 1f + 2f * (players - 1);
+        float dmgMult = 1f + 0.2f * (players - 1);
+
+        try
+        {
+            var maxHealthField = AccessTools.Field(typeof(Enemy), "_maxHealth");
+            float oldMax = enemy.maxHealth;
+            float newMax = oldMax * hpMult;
+            maxHealthField?.SetValue(enemy, newMax);
+            // Initialize has just done `CurrentHealth = maxHealth;` — keep them in sync.
+            enemy.CurrentHealth = newMax;
+
+            float oldMelee = enemy.DamagePerMeleeAttack;
+            float oldRanged = enemy.DamagePerRangedAttack;
+            enemy.DamagePerMeleeAttack = Mathf.Ceil(oldMelee * dmgMult);
+            enemy.DamagePerRangedAttack = Mathf.Ceil(oldRanged * dmgMult);
+
+            _log.LogInfo(
+                $"[EnemyScale] {enemy.name} players={players} hp {oldMax:F0}->{newMax:F0} "
+                + $"melee {oldMelee:F1}->{enemy.DamagePerMeleeAttack:F0} "
+                + $"ranged {oldRanged:F1}->{enemy.DamagePerRangedAttack:F0}");
+        }
+        catch (System.Exception ex)
+        {
+            _log.LogWarning($"[EnemyScale] failed to scale {enemy?.name}: {ex.Message}");
+        }
     }
 
     private void OnEnemyDamaged(Enemy enemy, long damage, Enemy.EnemyDamageSource source)

@@ -359,7 +359,7 @@ public static class ServiceRegistration
     {
         new BattleEventSubscriptions(registry, multiplayerMode).Subscribe();
         new HealthSubscriptions(registry, log).Subscribe();
-        new EnemySubscriptions(registry, enemyIdentifier, log).Subscribe();
+        new EnemySubscriptions(registry, enemyIdentifier, log, coopStateManager).Subscribe();
         new DeckSubscriptions(registry, orbIdentifier, log).Subscribe();
         new RelicSubscriptions(registry, log).Subscribe();
         new CurrencySubscriptions(registry, log, coopStateManager).Subscribe();
