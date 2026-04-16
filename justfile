@@ -1,4 +1,4 @@
-# PeglinMods development commands
+# Multipeglin development commands
 # All scripts use PowerShell (pwsh) for cross-platform compatibility.
 
 set shell := ["pwsh", "-NoProfile", "-Command"]
@@ -6,8 +6,8 @@ set shell := ["pwsh", "-NoProfile", "-Command"]
 root := justfile_directory()
 src := root / "src"
 game := root / "release"
-plugins := game / "BepInEx" / "plugins" / "PeglinMods"
-logfile := game / "BepInEx" / "logs" / "peglinmods_dev.log"
+plugins := game / "BepInEx" / "plugins" / "Multipeglin"
+logfile := game / "BepInEx" / "logs" / "multipeglin_dev.log"
 
 bepinex_version := "5.4.23.2"
 bepinex_zip := "BepInEx_win_x64_" + bepinex_version + ".zip"
@@ -16,14 +16,14 @@ bepinex_cache := root / "vendor" / bepinex_zip
 
 # Build debug
 build:
-    dotnet build '{{src}}/PeglinMods.sln' -c Debug --nologo
+    dotnet build '{{src}}/Multipeglin.sln' -c Debug --nologo
 
 # Build release and copy to build/
 publish:
-    dotnet build '{{src}}/PeglinMods.sln' -c Release --nologo; \
+    dotnet build '{{src}}/Multipeglin.sln' -c Release --nologo; \
     New-Item -ItemType Directory -Path '{{root}}/build' -Force | Out-Null; \
-    Copy-Item '{{src}}/PeglinMods.Core/bin/Release/netstandard2.1/PeglinMods.Core.dll' '{{root}}/build/'; \
-    Copy-Item '{{src}}/PeglinMods.Multiplayer/bin/Release/netstandard2.1/PeglinMods.Multiplayer.dll' '{{root}}/build/'; \
+    Copy-Item '{{src}}/Multipeglin.Core/bin/Release/netstandard2.1/Multipeglin.Core.dll' '{{root}}/build/'; \
+    Copy-Item '{{src}}/Multipeglin/bin/Release/netstandard2.1/Multipeglin.dll' '{{root}}/build/'; \
     Write-Host "`nPublish output:"; \
     Get-ChildItem '{{root}}/build/*.dll' | Format-Table Name, Length
 
@@ -49,15 +49,15 @@ setup:
 [private]
 copy-plugins config="Debug":
     New-Item -ItemType Directory -Path '{{plugins}}' -Force | Out-Null; \
-    $bin = '{{src}}/PeglinMods.Multiplayer/bin/{{config}}/netstandard2.1'; \
-    Copy-Item '{{src}}/PeglinMods.Core/bin/{{config}}/netstandard2.1/PeglinMods.Core.dll' '{{plugins}}/'; \
-    Copy-Item "$bin/PeglinMods.Multiplayer.dll" '{{plugins}}/'; \
+    $bin = '{{src}}/Multipeglin/bin/{{config}}/netstandard2.1'; \
+    Copy-Item '{{src}}/Multipeglin.Core/bin/{{config}}/netstandard2.1/Multipeglin.Core.dll' '{{plugins}}/'; \
+    Copy-Item "$bin/Multipeglin.dll" '{{plugins}}/'; \
     Copy-Item "$bin/LiteNetLib.dll" '{{plugins}}/'; \
     Copy-Item "$bin/NLog.dll" '{{plugins}}/'
 
 # Build debug, deploy to game dir, launch game, tail logs
 dev: setup
-    dotnet build '{{src}}/PeglinMods.sln' -c Debug --nologo -v quiet; \
+    dotnet build '{{src}}/Multipeglin.sln' -c Debug --nologo -v quiet; \
     just copy-plugins Debug; \
     New-Item -ItemType Directory -Path (Split-Path '{{logfile}}') -Force | Out-Null; \
     [IO.File]::Create('{{logfile}}').Close(); \
@@ -69,18 +69,18 @@ dev: setup
     Get-Content '{{logfile}}' -Wait
 
 # Build, deploy, launch TWO windowed instances for multiplayer testing.
-# Both host and client write to peglinmods_shared.log with [HOST]/[CLIENT] tags.
+# Both host and client write to multipeglin_shared.log with [HOST]/[CLIENT] tags.
 # Optional: pass level to force a starting act, e.g. just dev-multi 3 (Mines)
 #   Acts: 1=Forest, 2=Castle, 3=Mines, 4=Core
 #   With floor: just dev-multi 3-2
 # Optional: set PEGLIN_SEED env var for deterministic seeds, e.g.
 #   PEGLIN_SEED=12345 just dev-multi 2
 dev-multi level="": setup
-    dotnet build '{{src}}/PeglinMods.sln' -c Debug --nologo -v quiet; \
+    dotnet build '{{src}}/Multipeglin.sln' -c Debug --nologo -v quiet; \
     just copy-plugins Debug; \
     $logsDir = Split-Path '{{logfile}}'; \
     New-Item -ItemType Directory -Path $logsDir -Force | Out-Null; \
-    $sharedLog = Join-Path $logsDir 'peglinmods_shared.log'; \
+    $sharedLog = Join-Path $logsDir 'multipeglin_shared.log'; \
     [IO.File]::Create($sharedLog).Close(); \
     $windowArgs = @('-screen-fullscreen','0','-screen-width','1280','-screen-height','720'); \
     $compatBase = "$HOME/.steam/steam/steamapps/compatdata"; \
@@ -89,15 +89,15 @@ dev-multi level="": setup
         Write-Host "==> Force level: {{level}}"; \
     } \
     Write-Host '==> Launching PEGLIN1 (windowed)...'; \
-    $env:PEGLINMODS_INSTANCE = 'PEGLIN1'; \
+    $env:MULTIPEGLIN_INSTANCE = 'PEGLIN1'; \
     $env:STEAM_COMPAT_DATA_PATH = "$compatBase/1296610"; \
     Start-Process pwsh -ArgumentList (@('-NoProfile','-File','{{root}}/launch.ps1') + $windowArgs); \
     Start-Sleep 2; \
     Write-Host '==> Launching PEGLIN2 (windowed)...'; \
-    $env:PEGLINMODS_INSTANCE = 'PEGLIN2'; \
+    $env:MULTIPEGLIN_INSTANCE = 'PEGLIN2'; \
     $env:STEAM_COMPAT_DATA_PATH = "$compatBase/1296611"; \
     Start-Process pwsh -ArgumentList (@('-NoProfile','-File','{{root}}/launch.ps1') + $windowArgs); \
-    Remove-Item Env:\PEGLINMODS_INSTANCE,Env:\STEAM_COMPAT_DATA_PATH,Env:\PEGLIN_MULTI_DEBUG_FORCE_LEVEL -ErrorAction SilentlyContinue; \
+    Remove-Item Env:\MULTIPEGLIN_INSTANCE,Env:\STEAM_COMPAT_DATA_PATH,Env:\PEGLIN_MULTI_DEBUG_FORCE_LEVEL -ErrorAction SilentlyContinue; \
     Write-Host "==> Tailing shared log (Ctrl+C to stop)"; \
     Write-Host "    Log: $sharedLog`n"; \
     Start-Sleep 1; \
@@ -105,7 +105,7 @@ dev-multi level="": setup
 
 # Deploy plugin to game dir without launching
 deploy: setup
-    dotnet build '{{src}}/PeglinMods.sln' -c Debug --nologo -v quiet; \
+    dotnet build '{{src}}/Multipeglin.sln' -c Debug --nologo -v quiet; \
     just copy-plugins Debug; \
     Write-Host "Deployed to {{plugins}}"
 
@@ -117,21 +117,21 @@ thunderstore := root / "thunderstore"
 
 # Build Release, create Thunderstore package zip in dist/
 package:
-    dotnet build '{{src}}/PeglinMods.sln' -c Release --nologo; \
+    dotnet build '{{src}}/Multipeglin.sln' -c Release --nologo; \
     $version = (Get-Content '{{thunderstore}}/manifest.json' | ConvertFrom-Json).version_number; \
     $dist = '{{root}}/dist'; \
     $staging = Join-Path $dist 'staging'; \
     Remove-Item $staging -Recurse -Force -ErrorAction SilentlyContinue; \
     New-Item -ItemType Directory -Path $staging -Force | Out-Null; \
-    $bin = '{{src}}/PeglinMods.Multiplayer/bin/Release/netstandard2.1'; \
+    $bin = '{{src}}/Multipeglin/bin/Release/netstandard2.1'; \
     Copy-Item '{{thunderstore}}/manifest.json' $staging/; \
     Copy-Item '{{thunderstore}}/icon.png' $staging/; \
     Copy-Item '{{thunderstore}}/README.md' $staging/; \
-    Copy-Item '{{src}}/PeglinMods.Core/bin/Release/netstandard2.1/PeglinMods.Core.dll' $staging/; \
-    Copy-Item "$bin/PeglinMods.Multiplayer.dll" $staging/; \
+    Copy-Item '{{src}}/Multipeglin.Core/bin/Release/netstandard2.1/Multipeglin.Core.dll' $staging/; \
+    Copy-Item "$bin/Multipeglin.dll" $staging/; \
     Copy-Item "$bin/LiteNetLib.dll" $staging/; \
     Copy-Item "$bin/NLog.dll" $staging/; \
-    $zipName = "PeglinMods_Multiplayer-$version.zip"; \
+    $zipName = "Multipeglin-$version.zip"; \
     $zipPath = Join-Path $dist $zipName; \
     Remove-Item $zipPath -Force -ErrorAction SilentlyContinue; \
     Compress-Archive -Path "$staging/*" -DestinationPath $zipPath; \
@@ -144,8 +144,8 @@ package:
 # Clean build artifacts
 clean:
     Remove-Item '{{root}}/build','{{root}}/dist','{{root}}/vendor' -Recurse -Force -ErrorAction SilentlyContinue; \
-    Remove-Item '{{src}}/PeglinMods.Core/bin','{{src}}/PeglinMods.Core/obj' -Recurse -Force -ErrorAction SilentlyContinue; \
-    Remove-Item '{{src}}/PeglinMods.Multiplayer/bin','{{src}}/PeglinMods.Multiplayer/obj' -Recurse -Force -ErrorAction SilentlyContinue; \
+    Remove-Item '{{src}}/Multipeglin.Core/bin','{{src}}/Multipeglin.Core/obj' -Recurse -Force -ErrorAction SilentlyContinue; \
+    Remove-Item '{{src}}/Multipeglin/bin','{{src}}/Multipeglin/obj' -Recurse -Force -ErrorAction SilentlyContinue; \
     Write-Host 'Cleaned'
 
 # Remove BepInEx from release/ (restore to vanilla)

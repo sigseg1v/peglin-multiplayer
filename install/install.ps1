@@ -1,5 +1,5 @@
-# PeglinMods Installer
-# Installs BepInEx 5 and PeglinMods.Core into a Peglin game directory.
+# Multipeglin Installer
+# Installs BepInEx 5 and Multipeglin into a Peglin game directory.
 # BepInEx and our plugin are bundled alongside this script.
 #
 # Usage:
@@ -14,7 +14,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $BepInExVersion = "5.4.23.2"
-$PluginDllName = "PeglinMods.Core.dll"
+$PluginDllName = "Multipeglin.Core.dll"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 $BepInExBundle = Join-Path $ScriptDir "bepinex"
@@ -26,7 +26,7 @@ function Write-Err($msg)   { Write-Host "[ERROR] $msg" -ForegroundColor Red }
 function Write-Step($msg)  { Write-Host "==> $msg" -ForegroundColor Cyan }
 
 if ($Help) {
-    Write-Host "PeglinMods Installer"
+    Write-Host "Multipeglin Installer"
     Write-Host ""
     Write-Host "Usage:"
     Write-Host "  ./install.ps1                     Auto-detect Peglin game directory"
@@ -34,7 +34,7 @@ if ($Help) {
     Write-Host ""
     Write-Host "This script will:"
     Write-Host "  1. Install BepInEx $BepInExVersion (mod loader framework)"
-    Write-Host "  2. Install PeglinMods.Core (crash reporter disable + mod infrastructure)"
+    Write-Host "  2. Install Multipeglin (cooperative multiplayer mod)"
     Write-Host ""
     Write-Host "To uninstall, run: ./uninstall.ps1 /path/to/Peglin"
     exit 0
@@ -47,8 +47,8 @@ if (-not (Test-Path (Join-Path $BepInExBundle "winhttp.dll"))) {
     exit 1
 }
 
-if (-not (Test-Path (Join-Path $PluginsBundle "PeglinMods/$PluginDllName"))) {
-    Write-Err "Plugin bundle not found at: $PluginsBundle/PeglinMods/$PluginDllName"
+if (-not (Test-Path (Join-Path $PluginsBundle "Multipeglin/$PluginDllName"))) {
+    Write-Err "Plugin bundle not found at: $PluginsBundle/Multipeglin/$PluginDllName"
     Write-Err "Run 'just publish --package' first to create the distributable package."
     exit 1
 }
@@ -90,7 +90,7 @@ if (-not (Test-Path (Join-Path $GameDir "Peglin.exe"))) {
 
 Write-Host ""
 Write-Host "========================================="
-Write-Host "  PeglinMods Installer"
+Write-Host "  Multipeglin Installer"
 Write-Host "========================================="
 Write-Host ""
 Write-Info "Game directory: $GameDir"
@@ -111,12 +111,12 @@ foreach ($dir in @("plugins", "patchers", "config")) {
 
 Write-Info "BepInEx $BepInExVersion installed"
 
-# --- Install PeglinMods ---
-Write-Step "Installing PeglinMods.Core..."
-$PluginDest = Join-Path $GameDir "BepInEx/plugins/PeglinMods"
+# --- Install Multipeglin ---
+Write-Step "Installing Multipeglin..."
+$PluginDest = Join-Path $GameDir "BepInEx/plugins/Multipeglin"
 New-Item -ItemType Directory -Path $PluginDest -Force | Out-Null
-Copy-Item (Join-Path $PluginsBundle "PeglinMods/*") $PluginDest -Recurse -Force
-Write-Info "Copied PeglinMods to BepInEx/plugins/"
+Copy-Item (Join-Path $PluginsBundle "Multipeglin/*") $PluginDest -Recurse -Force
+Write-Info "Copied Multipeglin to BepInEx/plugins/"
 
 # --- Configure BepInEx ---
 $CfgPath = Join-Path $GameDir "BepInEx/config/BepInEx.cfg"
@@ -144,7 +144,7 @@ Write-Host "========================================="
 Write-Host "  Installation Complete!"
 Write-Host "========================================="
 Write-Host ""
-Write-Info "BepInEx $BepInExVersion + PeglinMods.Core installed to:"
+Write-Info "BepInEx $BepInExVersion + Multipeglin installed to:"
 Write-Info "  $GameDir"
 Write-Host ""
 

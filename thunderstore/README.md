@@ -1,4 +1,4 @@
-# PeglinMods Multiplayer
+# Multipeglin
 
 Cooperative multiplayer mod for Peglin. Play through runs together with friends!
 
@@ -15,7 +15,7 @@ Cooperative multiplayer mod for Peglin. Play through runs together with friends!
 Install via [r2modman](https://thunderstore.io/package/ebkr/r2modman/) or
 [Thunderstore Mod Manager](https://www.overwolf.com/app/Thunderstore-Thunderstore_Mod_Manager).
 
-**Manual installation:** Extract all DLLs to `BepInEx/plugins/PeglinMods/`.
+**Manual installation:** Extract all DLLs to `BepInEx/plugins/Multipeglin/`.
 
 ## Usage
 

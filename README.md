@@ -1,6 +1,6 @@
-# PeglinMods
+# Multipeglin
 
-A modding framework and multiplayer mode for [Peglin](https://store.steampowered.com/app/1296610/Peglin/) (v2.0.7, Unity 2022.3, Mono).
+A cooperative multiplayer mod for [Peglin](https://store.steampowered.com/app/1296610/Peglin/) (v2.0.7, Unity 2022.3, Mono).
 
 Built with BepInEx 5 + HarmonyX. Cross-platform: Windows (native) and Linux (Proton/Wine).
 All scripts use PowerShell (pwsh) for portability.
@@ -18,6 +18,7 @@ That's it. On first run it downloads BepInEx automatically.
 ```bash
 just build      # compile (debug)
 just publish    # compile (release) + copy DLLs to build/
+just package    # compile (release) + create Thunderstore package zip in dist/
 just setup      # download + install BepInEx into release/ (auto-run by dev/deploy)
 just deploy     # build + deploy plugin into release/BepInEx/plugins/
 just dev        # build + deploy + launch game + tail logs
@@ -38,10 +39,10 @@ just uninstall  # remove BepInEx from release/ (restore to vanilla)
 
 ```
 src/
-  PeglinMods.Core/         Core plugin: crash reporter disable, Harmony bootstrap
-  PeglinMods.Multiplayer/    Multiplayer mode
+  Multipeglin.Core/        Core plugin: Harmony bootstrap
+  Multipeglin/             Multiplayer mod
+thunderstore/              Thunderstore packaging (manifest, icon, README)
 release/                   Game files (do not modify directly)
-install/                   Install/uninstall scripts for end users
 ```
 
 ## Development Workflow
@@ -62,7 +63,6 @@ Cooperative multiplayer with per-player classes, decks, relics, and turn-based b
 The host's game events are captured via static delegate subscriptions, serialized as JSON, and sent over LiteNetLib UDP to the multiplayer client, which replays them by invoking the same game delegates locally.
 
 ## Architecture
-
 
 Key design:
 - **Event-sourced host-authoritative** networking
