@@ -113,6 +113,34 @@ deploy: setup
 log:
     Get-Content '{{logfile}}' -Wait
 
+thunderstore := root / "thunderstore"
+
+# Build Release, create Thunderstore package zip in dist/
+package:
+    dotnet build '{{src}}/PeglinMods.sln' -c Release --nologo; \
+    $version = (Get-Content '{{thunderstore}}/manifest.json' | ConvertFrom-Json).version_number; \
+    $dist = '{{root}}/dist'; \
+    $staging = Join-Path $dist 'staging'; \
+    Remove-Item $staging -Recurse -Force -ErrorAction SilentlyContinue; \
+    New-Item -ItemType Directory -Path $staging -Force | Out-Null; \
+    $bin = '{{src}}/PeglinMods.Multiplayer/bin/Release/netstandard2.1'; \
+    Copy-Item '{{thunderstore}}/manifest.json' $staging/; \
+    Copy-Item '{{thunderstore}}/icon.png' $staging/; \
+    Copy-Item '{{thunderstore}}/README.md' $staging/; \
+    Copy-Item '{{src}}/PeglinMods.Core/bin/Release/netstandard2.1/PeglinMods.Core.dll' $staging/; \
+    Copy-Item "$bin/PeglinMods.Multiplayer.dll" $staging/; \
+    Copy-Item "$bin/LiteNetLib.dll" $staging/; \
+    Copy-Item "$bin/NLog.dll" $staging/; \
+    $zipName = "PeglinMods_Multiplayer-$version.zip"; \
+    $zipPath = Join-Path $dist $zipName; \
+    Remove-Item $zipPath -Force -ErrorAction SilentlyContinue; \
+    Compress-Archive -Path "$staging/*" -DestinationPath $zipPath; \
+    Remove-Item $staging -Recurse -Force; \
+    $size = [math]::Round((Get-Item $zipPath).Length / 1KB, 1); \
+    Write-Host "`nPackage created: dist/$zipName ($size KB)"; \
+    Write-Host 'Contents:'; \
+    [System.IO.Compression.ZipFile]::OpenRead($zipPath).Entries | ForEach-Object { Write-Host "  $_" }
+
 # Clean build artifacts
 clean:
     Remove-Item '{{root}}/build','{{root}}/dist','{{root}}/vendor' -Recurse -Force -ErrorAction SilentlyContinue; \

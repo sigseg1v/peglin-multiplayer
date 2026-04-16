@@ -17,8 +17,6 @@ public class Plugin : BaseUnityPlugin
         Instance = this;
         Logger = base.Logger;
 
-        CrashReporterDisabler.Disable(Logger);
-
         _harmony = new Harmony(PluginInfo.PLUGIN_GUID);
         _harmony.PatchAll();
 
