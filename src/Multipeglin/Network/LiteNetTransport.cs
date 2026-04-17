@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using LiteNetLib;
+using LiteNetLib.Utils;
 
 namespace Multipeglin.Network;
 
@@ -17,7 +18,7 @@ public class LiteNetTransport : INetworkTransport, INetEventListener
     public event Action<int, byte[]> OnDataReceived;
     public event Action<int> OnClientConnected;
     public event Action<int> OnDisconnected;
-    public event Action OnConnectionRejected;
+    public event Action<string> OnConnectionRejected;
 
     public void StartHost(int port)
     {
@@ -66,9 +67,20 @@ public class LiteNetTransport : INetworkTransport, INetEventListener
     {
         _peers.Remove(peer.Id);
         if (!IsHost && disconnectInfo.Reason == DisconnectReason.ConnectionRejected)
-            OnConnectionRejected?.Invoke();
+        {
+            string reason = "version";
+            try
+            {
+                if (disconnectInfo.AdditionalData != null && disconnectInfo.AdditionalData.AvailableBytes > 0)
+                    reason = disconnectInfo.AdditionalData.GetString();
+            }
+            catch { }
+            OnConnectionRejected?.Invoke(reason);
+        }
         else
+        {
             OnDisconnected?.Invoke(peer.Id);
+        }
     }
 
     public void OnNetworkReceive(NetPeer peer, NetPacketReader reader, byte channelNumber, DeliveryMethod deliveryMethod)
@@ -80,7 +92,27 @@ public class LiteNetTransport : INetworkTransport, INetEventListener
 
     public void OnConnectionRequest(ConnectionRequest request)
     {
-        request.AcceptIfKey(NetworkConfig.ConnectionKey);
+        // Check connection key (version match)
+        string key;
+        try { key = request.Data.GetString(); }
+        catch { request.Reject(); return; }
+
+        if (key != NetworkConfig.ConnectionKey)
+        {
+            request.Reject();
+            return;
+        }
+
+        // Check player capacity
+        if (_peers.Count >= NetworkConfig.MaxClients)
+        {
+            var writer = new NetDataWriter();
+            writer.Put("full");
+            request.Reject(writer);
+            return;
+        }
+
+        request.Accept();
     }
 
     public void OnNetworkError(System.Net.IPEndPoint endPoint, System.Net.Sockets.SocketError socketError) { }

@@ -18,5 +18,5 @@ public interface INetworkTransport
     event Action<int, byte[]> OnDataReceived;
     event Action<int> OnClientConnected;
     event Action<int> OnDisconnected;
-    event Action OnConnectionRejected;
+    event Action<string> OnConnectionRejected;
 }

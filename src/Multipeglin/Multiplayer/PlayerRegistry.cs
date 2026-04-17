@@ -10,7 +10,7 @@ public class PlayerRegistry
     private int _nextSlotIndex;
 
     /// <summary>Register the host as slot 0.</summary>
-    public PlayerSlot RegisterHost(string playerName)
+    public PlayerSlot RegisterHost(string playerName, string gameVersion, string modVersion)
     {
         var slot = new PlayerSlot
         {
@@ -20,6 +20,8 @@ public class PlayerRegistry
             IsHost = true,
             ChosenClass = 0,
             IsReady = true,
+            GameVersion = gameVersion,
+            ModVersion = modVersion,
         };
         _allSlots.Add(slot);
         _nextSlotIndex = 1;
@@ -27,7 +29,7 @@ public class PlayerRegistry
     }
 
     /// <summary>Register a newly connected client, returns the assigned slot.</summary>
-    public PlayerSlot RegisterClient(int peerId, string playerName)
+    public PlayerSlot RegisterClient(int peerId, string playerName, string gameVersion, string modVersion)
     {
         var slot = new PlayerSlot
         {
@@ -37,6 +39,8 @@ public class PlayerRegistry
             IsHost = false,
             ChosenClass = 0,
             IsReady = false,
+            GameVersion = gameVersion,
+            ModVersion = modVersion,
         };
         _slotsByPeerId[peerId] = slot;
         _allSlots.Add(slot);

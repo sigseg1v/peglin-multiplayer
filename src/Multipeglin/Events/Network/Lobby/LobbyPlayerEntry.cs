@@ -8,4 +8,6 @@ public class LobbyPlayerEntry
     public string ChosenClassName { get; set; }
     public bool IsReady { get; set; }
     public bool IsHost { get; set; }
+    public string GameVersion { get; set; }
+    public string ModVersion { get; set; }
 }

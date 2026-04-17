@@ -8,4 +8,6 @@ public class PlayerSlot
     public bool IsHost { get; set; }
     public int ChosenClass { get; set; }
     public bool IsReady { get; set; }
+    public string GameVersion { get; set; }
+    public string ModVersion { get; set; }
 }

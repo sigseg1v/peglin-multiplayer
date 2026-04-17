@@ -8,6 +8,7 @@ using Multipeglin.Events.Handlers;
 using Multipeglin.Network;
 using Multipeglin.Multiplayer;
 using Multipeglin.GameState.Appliers;
+using Steamworks;
 using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -36,7 +37,6 @@ public class MultiplayerUI : MonoBehaviour
     private GameObject _multiplayerPanel;
 
     // Main panel elements
-    private TMP_InputField _nameInput;
     private Button _hostButton;
     private Button _joinButton;
 
@@ -88,7 +88,26 @@ public class MultiplayerUI : MonoBehaviour
 
             _transport.OnClientConnected += peerId => OnConnected();
             _transport.OnDisconnected += peerId => OnDisconnected();
-            _transport.OnConnectionRejected += OnConnectionRejected;
+            _transport.OnConnectionRejected += reason => OnConnectionRejected(reason);
+
+            // Auto-detect player name: env var > Steam display name > fallback
+            var envName = Environment.GetEnvironmentVariable("MULTIPEGLIN_PLAYER_NAME");
+            if (!string.IsNullOrEmpty(envName))
+            {
+                LocalPlayerName = envName;
+            }
+            else
+            {
+                try
+                {
+                    if (SteamManager.Initialized)
+                        LocalPlayerName = SteamFriends.GetPersonaName();
+                }
+                catch { }
+            }
+            if (string.IsNullOrEmpty(LocalPlayerName))
+                LocalPlayerName = "Player";
+            Log?.LogInfo($"Player name: {LocalPlayerName}");
 
             CreateCanvas();
             CreateOverlay();
@@ -245,42 +264,25 @@ public class MultiplayerUI : MonoBehaviour
         var mainRect = _mainPanel.GetComponent<RectTransform>() ?? _mainPanel.AddComponent<RectTransform>();
         StretchFill(mainRect);
 
-        // Name label
-        var nameLabel = CreateText(_mainPanel.transform, "NameLabel", "Name:", 29);
-        var nameLabelRect = nameLabel.rectTransform;
-        nameLabelRect.anchorMin = new Vector2(0.5f, 0.5f);
-        nameLabelRect.anchorMax = new Vector2(0.5f, 0.5f);
-        nameLabelRect.pivot = new Vector2(0.5f, 0.5f);
-        nameLabelRect.anchoredPosition = new Vector2(0, 120);
-        nameLabelRect.sizeDelta = new Vector2(480, 40);
-
-        // Name input
-        _nameInput = CreateInputField(_mainPanel.transform, "NameInput",
-            "Enter your name...", new Vector2(0, 72), new Vector2(480, 64));
-        _nameInput.characterLimit = 20;
-        _nameInput.onValueChanged.AddListener(OnNameChanged);
-
-        // Host button (disabled until name entered)
+        // Host button
         _hostButton = CreateButton(_mainPanel.transform, "HostBtn", "Host Game",
-            new Color(0.2f, 0.55f, 0.25f, 1f), new Vector2(0, -16), new Vector2(480, 88));
+            new Color(0.2f, 0.55f, 0.25f, 1f), new Vector2(0, 40), new Vector2(480, 88));
         _hostButton.onClick.AddListener(OnHostClicked);
-        _hostButton.interactable = false;
 
-        // Join button (disabled until name entered)
+        // Join button
         _joinButton = CreateButton(_mainPanel.transform, "JoinBtn", "Join Game",
-            new Color(0.2f, 0.35f, 0.6f, 1f), new Vector2(0, -120), new Vector2(480, 88));
+            new Color(0.2f, 0.35f, 0.6f, 1f), new Vector2(0, -64), new Vector2(480, 88));
         _joinButton.onClick.AddListener(OnJoinClicked);
-        _joinButton.interactable = false;
 
         // Back button
         var backBtn = CreateButton(_mainPanel.transform, "BackBtn", "Close",
-            new Color(0.35f, 0.2f, 0.2f, 1f), new Vector2(0, -224), new Vector2(480, 88));
+            new Color(0.35f, 0.2f, 0.2f, 1f), new Vector2(0, -168), new Vector2(480, 88));
         backBtn.onClick.AddListener(HideOverlay);
 
         // Version text
         var ver = CreateText(_mainPanel.transform, "VersionText",
-            $"Multipeglin v{MultiplayerPluginInfo.VERSION}", 20);
-        ver.color = new Color(0.5f, 0.5f, 0.5f, 0.8f);
+            $"Multipeglin v{MultiplayerPluginInfo.VERSION}", 40);
+        ver.color = Color.white;
         ver.raycastTarget = false;
         var verRect = ver.rectTransform;
         verRect.anchorMin = new Vector2(0.5f, 0.5f);
@@ -288,14 +290,6 @@ public class MultiplayerUI : MonoBehaviour
         verRect.pivot = new Vector2(0.5f, 0.5f);
         verRect.anchoredPosition = new Vector2(0, -310);
         verRect.sizeDelta = new Vector2(480, 30);
-    }
-
-    private void OnNameChanged(string name)
-    {
-        var hasName = !string.IsNullOrWhiteSpace(name);
-        _hostButton.interactable = hasName;
-        _joinButton.interactable = hasName;
-        LocalPlayerName = name.Trim();
     }
 
     private void CreateHostPanel(Transform parent)
@@ -363,8 +357,8 @@ public class MultiplayerUI : MonoBehaviour
 
         // Version text
         var ver = CreateText(_joinPanel.transform, "VersionText",
-            $"Multipeglin v{MultiplayerPluginInfo.VERSION}", 20);
-        ver.color = new Color(0.5f, 0.5f, 0.5f, 0.8f);
+            $"Multipeglin v{MultiplayerPluginInfo.VERSION}", 40);
+        ver.color = Color.white;
         ver.raycastTarget = false;
         var verRect = ver.rectTransform;
         verRect.anchorMin = new Vector2(0.5f, 0.5f);
@@ -696,7 +690,7 @@ public class MultiplayerUI : MonoBehaviour
 
             // Register host in PlayerRegistry
             if (MultiplayerPlugin.Services?.TryResolve<Multiplayer.PlayerRegistry>(out var registry) == true)
-                registry.RegisterHost(LocalPlayerName);
+                registry.RegisterHost(LocalPlayerName, Application.version ?? "unknown", MultiplayerPluginInfo.VERSION);
 
             Log.LogInfo($"Started hosting on port {NetworkConfig.DefaultPort}");
             ShowLobby();
@@ -799,28 +793,36 @@ public class MultiplayerUI : MonoBehaviour
         ShowMainPanel();
     }
 
-    private void OnConnectionRejected()
+    private void OnConnectionRejected(string reason)
     {
-        Log?.LogWarning($"Connection rejected (version mismatch). Local version: {MultiplayerPluginInfo.VERSION}");
+        Log?.LogWarning($"Connection rejected (reason={reason}). Local version: {MultiplayerPluginInfo.VERSION}");
 
         var dispatcher = Utility.MainThreadDispatcher.Instance;
         if (dispatcher != null)
-            dispatcher.Enqueue(HandleConnectionRejected);
+            dispatcher.Enqueue(() => HandleConnectionRejected(reason));
         else
-            HandleConnectionRejected();
+            HandleConnectionRejected(reason);
     }
 
-    private void HandleConnectionRejected()
+    private void HandleConnectionRejected(string reason)
     {
         // Clean up transport and mode without full DisconnectAndReset (we never left main menu)
         _transport.Stop();
         _multiplayerMode.Disable();
         Utility.FileLogger.RoleTag = null;
 
-        ShowErrorDialog(
-            "Failed to connect to host.\n" +
-            $"Your version: {MultiplayerPluginInfo.VERSION}\n\n" +
-            "Make sure you and the host have the\nsame version of Multipeglin installed.");
+        if (reason == "full")
+        {
+            ShowErrorDialog(
+                "Game is at the maximum number of players,\nunable to join.");
+        }
+        else
+        {
+            ShowErrorDialog(
+                "Failed to connect to host.\n" +
+                $"Your version: {MultiplayerPluginInfo.VERSION}\n\n" +
+                "Make sure you and the host have the\nsame version of Multipeglin installed.");
+        }
     }
 
     private void ShowErrorDialog(string message)

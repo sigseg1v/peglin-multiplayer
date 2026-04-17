@@ -27,6 +27,8 @@ public static class LobbyHelper
                 ChosenClassName = GetClassName(s.ChosenClass),
                 IsReady = s.IsReady,
                 IsHost = s.IsHost,
+                GameVersion = s.GameVersion,
+                ModVersion = s.ModVersion,
             }).ToList()
         };
 

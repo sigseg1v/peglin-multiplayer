@@ -44,6 +44,7 @@ public static class LobbyUI
         public Button LeftArrow;
         public Button RightArrow;
         public TextMeshProUGUI ReadyText;
+        public TextMeshProUGUI VersionText;
         public int SlotIndex;
         public bool IsLocalPlayer;
     }
@@ -154,6 +155,8 @@ public static class LobbyUI
                     ChosenClassName = LobbyHelper.GetClassName(slot.ChosenClass),
                     IsReady = slot.IsReady,
                     IsHost = slot.IsHost,
+                    GameVersion = slot.GameVersion,
+                    ModVersion = slot.ModVersion,
                 });
             }
         }
@@ -175,6 +178,11 @@ public static class LobbyUI
             _playerRows[i].Root.SetActive(false);
 
         // Update each row
+        var localGameVer = UnityEngine.Application.version ?? "unknown";
+        var localModVer = MultiplayerPluginInfo.VERSION;
+        var localVersionTag = $"Peglin {localGameVer} (mod {localModVer})";
+        bool hasVersionMismatch = false;
+
         for (int i = 0; i < players.Count; i++)
         {
             var entry = players[i];
@@ -214,6 +222,17 @@ public static class LobbyUI
                     ? "<color=#88FF88>READY</color>"
                     : "<color=#FF8888>NOT READY</color>";
             }
+
+            // Version text in column 4
+            var gameVer = row.IsLocalPlayer ? localGameVer : (entry.GameVersion ?? "?");
+            var modVer = row.IsLocalPlayer ? localModVer : (entry.ModVersion ?? "?");
+            var versionTag = $"Peglin {gameVer} (mod {modVer})";
+            bool versionMatch = versionTag == localVersionTag;
+            if (!versionMatch) hasVersionMismatch = true;
+            row.VersionText.text = versionTag;
+            row.VersionText.color = versionMatch
+                ? new Color(0.53f, 1f, 0.53f)
+                : new Color(1f, 0.4f, 0.4f);
         }
 
         // Start button (host only)
@@ -230,11 +249,20 @@ public static class LobbyUI
             _startButton.gameObject.SetActive(isHost);
             if (isHost)
             {
-                var allReady = true;
-                foreach (var p in players)
-                    if (!p.IsHost && !p.IsReady) { allReady = false; break; }
-                var hasClients = players.Count > 1;
-                _startButton.interactable = allReady && hasClients;
+                if (hasVersionMismatch)
+                {
+                    _startButton.interactable = false;
+                    _startButtonText.text = "Unable to start, version mismatch";
+                }
+                else
+                {
+                    var allReady = true;
+                    foreach (var p in players)
+                        if (!p.IsHost && !p.IsReady) { allReady = false; break; }
+                    var hasClients = players.Count > 1;
+                    _startButton.interactable = allReady && hasClients;
+                    _startButtonText.text = "Start Game";
+                }
             }
         }
 
@@ -273,7 +301,7 @@ public static class LobbyUI
         rowRect.anchorMax = new Vector2(0.5f, 0.5f);
         rowRect.pivot = new Vector2(0.5f, 0.5f);
         rowRect.anchoredPosition = new Vector2(0, yBase);
-        rowRect.sizeDelta = new Vector2(840, 56);
+        rowRect.sizeDelta = new Vector2(920, 56);
 
         var row = new PlayerRow { Root = rowObj };
 
@@ -307,15 +335,25 @@ public static class LobbyUI
             new Color(0.3f, 0.3f, 0.4f, 1f), new Vector2(80, 0), new Vector2(44, 44));
         row.RightArrow.onClick.AddListener(() => OnClassArrow(ri, 1));
 
-        // Column 3: Ready status text (right side)
+        // Column 3: Ready status text (shifted left to make room for version)
         row.ReadyText = createText(rowObj.transform, $"Ready_{rowIndex}", "", 28);
         var readyRect = row.ReadyText.rectTransform;
         readyRect.anchorMin = new Vector2(0.5f, 0.5f);
         readyRect.anchorMax = new Vector2(0.5f, 0.5f);
         readyRect.pivot = new Vector2(0.5f, 0.5f);
-        readyRect.anchoredPosition = new Vector2(280, 0);
-        readyRect.sizeDelta = new Vector2(200, 44);
+        readyRect.anchoredPosition = new Vector2(180, 0);
+        readyRect.sizeDelta = new Vector2(160, 44);
         row.ReadyText.alignment = TextAlignmentOptions.Center;
+
+        // Column 4: Version info (right side)
+        row.VersionText = createText(rowObj.transform, $"Version_{rowIndex}", "", 18);
+        var verRect = row.VersionText.rectTransform;
+        verRect.anchorMin = new Vector2(0.5f, 0.5f);
+        verRect.anchorMax = new Vector2(0.5f, 0.5f);
+        verRect.pivot = new Vector2(0.5f, 0.5f);
+        verRect.anchoredPosition = new Vector2(380, 0);
+        verRect.sizeDelta = new Vector2(260, 44);
+        row.VersionText.alignment = TextAlignmentOptions.Left;
 
         _playerRows.Add(row);
     }
