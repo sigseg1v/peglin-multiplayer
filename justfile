@@ -155,7 +155,7 @@ clean:
     Remove-Item '{{src}}/Multipeglin/bin','{{src}}/Multipeglin/obj' -Recurse -Force -ErrorAction SilentlyContinue; \
     Write-Host 'Cleaned'
 
-# Remove BepInEx from release/ (restore to vanilla)
+# Remove BepInEx from release/ and reset Proton prefixes (restore to vanilla)
 uninstall:
     foreach ($f in @('winhttp.dll','doorstop_config.ini','.doorstop_version')) { \
         $p = Join-Path '{{game}}' $f; \
@@ -163,4 +163,13 @@ uninstall:
     }; \
     $bep = Join-Path '{{game}}' 'BepInEx'; \
     if (Test-Path $bep) { Remove-Item $bep -Recurse -Force }; \
-    Write-Host 'BepInEx removed from release/'
+    Write-Host 'BepInEx removed from release/'; \
+    $compatBase = "$HOME/.steam/steam/steamapps/compatdata"; \
+    foreach ($id in @('1296610','1296611')) { \
+        $pfx = Join-Path $compatBase $id; \
+        if (Test-Path $pfx) { \
+            Remove-Item $pfx -Recurse -Force; \
+            Write-Host "Removed Proton prefix: $pfx"; \
+        } \
+    }; \
+    Write-Host 'Proton prefixes cleared (will be recreated on next launch)'

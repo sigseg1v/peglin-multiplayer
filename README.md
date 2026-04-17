@@ -25,7 +25,7 @@ just dev        # build + deploy + launch game + tail logs
 just dev-multi  # build + deploy + launch two game instances (host + client)
 just log        # tail the dev log file
 just clean      # remove build artifacts
-just uninstall  # remove BepInEx from release/ (restore to vanilla)
+just uninstall  # remove BepInEx + reset Proton prefixes (full reset)
 ```
 
 ## Prerequisites
@@ -71,3 +71,30 @@ Key design:
 - **System.Text.Json** serialization
 - **Dependency injection** via lightweight service container
 - **Version checking** with handshake protocol on connect
+
+## Troubleshooting
+
+**Game crashes immediately on launch (no window, no logs)**
+
+The Proton/Wine prefix is likely corrupted. Run:
+```bash
+just uninstall
+just dev
+```
+This removes BepInEx **and** deletes the Proton prefixes at `~/.steam/steam/steamapps/compatdata/1296610/` and `1296611/`. Proton recreates them automatically on the next launch.
+
+Signs of a corrupted prefix: the game crashes with exit code 1 before writing `Player.log`, BepInEx `LogOutput.log` is stale or missing, and `steam-*.log` shows `err:steam:run_process Failed to create process ... : 2`.
+
+**Game works through Steam but not `just dev`**
+
+Same fix — the prefix was set up by Steam (inside its pressure-vessel container) and may not be compatible with a direct `proton run` invocation. Resetting it with `just uninstall` lets Proton rebuild it cleanly.
+
+**`just dev-multi` — first instance crashes, second works**
+
+The first instance uses prefix `1296610` and the second uses `1296611`. If only the first crashes, the `1296610` prefix is corrupted. `just uninstall` resets both.
+
+**BepInEx loads but game crashes shortly after**
+
+Check `release/BepInEx/LogOutput.log` and `Player.log` (in the Proton prefix under `drive_c/users/steamuser/AppData/LocalLow/Red Nexus Games Inc/Peglin/`). Common causes:
+- Stale plugin DLLs in `release/BepInEx/plugins/` — run `just clean && just dev`
+- BepInEx cache out of sync — delete `release/BepInEx/cache/` and relaunch
