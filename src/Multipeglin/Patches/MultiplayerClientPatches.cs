@@ -4291,6 +4291,12 @@ public static class MultiplayerClientPatches
             return true;
 
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] SKIP_STEAM_INIT set, skipping SteamManager.Awake");
+
+        // Set the singleton so Initialized returns false without creating new GameObjects
+        var field = typeof(SteamManager).GetField("s_instance",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        field?.SetValue(null, __instance);
+
         UnityEngine.Object.DontDestroyOnLoad(__instance.gameObject);
         return false;
     }
