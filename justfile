@@ -88,18 +88,21 @@ dev-multi level="": setup
         $env:PEGLIN_MULTI_DEBUG_FORCE_LEVEL = '{{level}}'; \
         Write-Host "==> Force level: {{level}}"; \
     } \
+    $env:SKIP_STEAM_INIT = '1'; \
     Write-Host '==> Launching PEGLIN1 (windowed)...'; \
     $env:MULTIPEGLIN_INSTANCE = 'PEGLIN1'; \
     $env:MULTIPEGLIN_PLAYER_NAME = 'PEGLIN1'; \
     $env:STEAM_COMPAT_DATA_PATH = "$compatBase/1296610"; \
     Start-Process pwsh -ArgumentList (@('-NoProfile','-File','{{root}}/launch.ps1') + $windowArgs); \
-    Start-Sleep 2; \
+    Start-Sleep 5; \
     Write-Host '==> Launching PEGLIN2 (windowed)...'; \
     $env:MULTIPEGLIN_INSTANCE = 'PEGLIN2'; \
     $env:MULTIPEGLIN_PLAYER_NAME = 'PEGLIN2'; \
     $env:STEAM_COMPAT_DATA_PATH = "$compatBase/1296611"; \
+    $env:SteamAppId = '0'; \
+    $env:SteamGameId = '0'; \
     Start-Process pwsh -ArgumentList (@('-NoProfile','-File','{{root}}/launch.ps1') + $windowArgs); \
-    Remove-Item Env:\MULTIPEGLIN_INSTANCE,Env:\MULTIPEGLIN_PLAYER_NAME,Env:\STEAM_COMPAT_DATA_PATH,Env:\PEGLIN_MULTI_DEBUG_FORCE_LEVEL -ErrorAction SilentlyContinue; \
+    Remove-Item Env:\MULTIPEGLIN_INSTANCE,Env:\MULTIPEGLIN_PLAYER_NAME,Env:\STEAM_COMPAT_DATA_PATH,Env:\PEGLIN_MULTI_DEBUG_FORCE_LEVEL,Env:\SKIP_STEAM_INIT,Env:\SteamAppId,Env:\SteamGameId -ErrorAction SilentlyContinue; \
     Write-Host "==> Tailing shared log (Ctrl+C to stop)"; \
     Write-Host "    Log: $sharedLog`n"; \
     Start-Sleep 1; \

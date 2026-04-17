@@ -4280,4 +4280,18 @@ public static class MultiplayerClientPatches
             return true;
         }
     }
+
+    // --- SteamManager: skip Steam init in dev-multi to allow multiple instances ---
+
+    [HarmonyPatch(typeof(SteamManager), "Awake")]
+    [HarmonyPrefix]
+    public static bool SteamManager_Awake_Prefix(SteamManager __instance)
+    {
+        if (System.Environment.GetEnvironmentVariable("SKIP_STEAM_INIT") != "1")
+            return true;
+
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] SKIP_STEAM_INIT set, skipping SteamManager.Awake");
+        UnityEngine.Object.DontDestroyOnLoad(__instance.gameObject);
+        return false;
+    }
 }
