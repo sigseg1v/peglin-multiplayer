@@ -178,6 +178,14 @@ public sealed class CoopSubscriptions
                             $"hp {oldHp} -> {state.CurrentHealth} (raw={damage}, after buffs={effectiveDamage})");
                     }
 
+                    // Update _healthBeforeAttack so that if OnTurnComplete fires again
+                    // from a board-reload extra enemy turn (_skipPlayerTurnCount > 0),
+                    // only the INCREMENTAL damage is distributed. Without this, the
+                    // stale value from OnAttackStarted causes cumulative double-counting
+                    // because the game skips StartAttacking() during reload turns
+                    // (goes directly to BattleState.ATTACKING).
+                    _healthBeforeAttack = currentHealth;
+
                     // Check if ALL players died — only then trigger game over.
                     // Individual dead players just skip turns until the battle ends.
                     if (_coopStateManager.AllPlayersDead)
