@@ -334,7 +334,7 @@ public class MultiplayerUI : MonoBehaviour
             ssRect.sizeDelta = new Vector2(480, 30);
 
             _advancedToggleButton = CreateButton(_mainPanel.transform, "AdvancedToggle",
-                "Advanced: Direct IP \u25BE",
+                "Advanced: Direct IP",
                 new Color(0.25f, 0.25f, 0.3f, 1f), new Vector2(0, -64), new Vector2(360, 48));
             _advancedToggleButton.onClick.AddListener(OnAdvancedToggleClicked);
 
@@ -398,7 +398,7 @@ public class MultiplayerUI : MonoBehaviour
         {
             var label = _advancedToggleButton.GetComponentInChildren<TextMeshProUGUI>();
             if (label != null)
-                label.text = _advancedIpVisible ? "Advanced: Direct IP \u25B4" : "Advanced: Direct IP \u25BE";
+                label.text = "Advanced: Direct IP";
         }
     }
 
@@ -513,20 +513,47 @@ public class MultiplayerUI : MonoBehaviour
 
     private void OnInviteFriendClicked()
     {
-        if (_steamTransport == null) return;
+        Log?.LogInfo("[Invite] Clicked");
+        if (_steamTransport == null)
+        {
+            Log?.LogWarning("[Invite] No Steam transport");
+            return;
+        }
         var lobbyId = _steamTransport.HostedLobbyId;
         if (!lobbyId.IsValid())
         {
-            Log?.LogWarning("Invite Friend clicked but no hosted lobby id");
+            Log?.LogWarning("[Invite] No hosted lobby id");
             return;
         }
-        try
+
+        uint appId = 0;
+        try { appId = SteamUtils.GetAppID().m_AppId; } catch { }
+        string joinUrl = $"steam://joinlobby/{appId}/{lobbyId.m_SteamID}/{SteamUser.GetSteamID().m_SteamID}";
+
+        bool overlayEnabled = false;
+        try { overlayEnabled = SteamUtils.IsOverlayEnabled(); } catch (Exception ex) { Log?.LogWarning($"[Invite] IsOverlayEnabled threw: {ex.Message}"); }
+        Log?.LogInfo($"[Invite] appId={appId} lobby={lobbyId.m_SteamID} overlayEnabled={overlayEnabled} joinUrl={joinUrl}");
+
+        try { GUIUtility.systemCopyBuffer = joinUrl; } catch (Exception ex) { Log?.LogWarning($"[Invite] Clipboard copy failed: {ex.Message}"); }
+
+        if (overlayEnabled)
         {
-            SteamFriends.ActivateGameOverlayInviteDialog(lobbyId);
+            try
+            {
+                SteamFriends.ActivateGameOverlayInviteDialog(lobbyId);
+                Log?.LogInfo("[Invite] ActivateGameOverlayInviteDialog called");
+            }
+            catch (Exception ex)
+            {
+                Log?.LogError($"[Invite] ActivateGameOverlayInviteDialog failed: {ex}");
+            }
         }
-        catch (Exception ex)
+
+        if (_lobbyStatusText != null)
         {
-            Log?.LogError($"ActivateGameOverlayInviteDialog failed: {ex}");
+            _lobbyStatusText.text = overlayEnabled
+                ? "Invite sent — also copied join link to clipboard"
+                : "Overlay unavailable — join link copied to clipboard";
         }
     }
 
