@@ -22,7 +22,12 @@ public class MultiplayerUI : MonoBehaviour
 
     // Services
     private INetworkTransport _transport;
+    private ISteamTransport _steamTransport; // null when Steam unavailable
+    private TransportRouter _router;
     private IMultiplayerMode _multiplayerMode;
+
+    // Peglin's Steam app ID — we piggyback on the game's registration (no dev account).
+    private static readonly AppId_t PeglinAppId = new AppId_t(1296610);
 
     // Root canvas
     private GameObject _canvasObj;
@@ -39,6 +44,19 @@ public class MultiplayerUI : MonoBehaviour
     // Main panel elements
     private Button _hostButton;
     private Button _joinButton;
+    private Button _hostSteamButton;
+    private Button _joinFriendButton;
+    private GameObject _advancedIpContainer; // legacy Host/Join IP buttons; hidden until toggled
+    private Button _advancedToggleButton;
+    private bool _advancedIpVisible;
+
+    // Friend-list panel (Steam join flow)
+    private GameObject _friendListPanel;
+    private GameObject _friendListContent;
+    private TextMeshProUGUI _friendListStatusText;
+
+    // Invite Friend button (created on lobby panel when hosting via Steam)
+    private Button _inviteFriendButton;
 
     // Join panel elements
     private TMP_InputField _codeInput;
@@ -85,10 +103,15 @@ public class MultiplayerUI : MonoBehaviour
             _instance = this;
             _transport = MultiplayerPlugin.Services.Resolve<INetworkTransport>();
             _multiplayerMode = MultiplayerPlugin.Services.Resolve<IMultiplayerMode>();
+            MultiplayerPlugin.Services.TryResolve<ISteamTransport>(out _steamTransport);
+            MultiplayerPlugin.Services.TryResolve<TransportRouter>(out _router);
 
             _transport.OnClientConnected += peerId => OnConnected();
             _transport.OnDisconnected += peerId => OnDisconnected();
             _transport.OnConnectionRejected += reason => OnConnectionRejected(reason);
+
+            if (_steamTransport != null)
+                _steamTransport.OnAutoJoinStarted += OnOverlayJoinStarted;
 
             // Auto-detect player name: env var > Steam display name > fallback
             var envName = Environment.GetEnvironmentVariable("MULTIPEGLIN_PLAYER_NAME");
@@ -264,20 +287,71 @@ public class MultiplayerUI : MonoBehaviour
         var mainRect = _mainPanel.GetComponent<RectTransform>() ?? _mainPanel.AddComponent<RectTransform>();
         StretchFill(mainRect);
 
-        // Host button
-        _hostButton = CreateButton(_mainPanel.transform, "HostBtn", "Host Game",
-            new Color(0.2f, 0.55f, 0.25f, 1f), new Vector2(0, 40), new Vector2(480, 88));
-        _hostButton.onClick.AddListener(OnHostClicked);
+        bool steamAvailable = _steamTransport != null;
 
-        // Join button
-        _joinButton = CreateButton(_mainPanel.transform, "JoinBtn", "Join Game",
-            new Color(0.2f, 0.35f, 0.6f, 1f), new Vector2(0, -64), new Vector2(480, 88));
-        _joinButton.onClick.AddListener(OnJoinClicked);
+        if (steamAvailable)
+        {
+            _hostSteamButton = CreateButton(_mainPanel.transform, "HostSteamBtn", "Host (Steam)",
+                new Color(0.2f, 0.55f, 0.25f, 1f), new Vector2(0, 120), new Vector2(480, 88));
+            _hostSteamButton.onClick.AddListener(OnHostSteamClicked);
 
-        // Back button
-        var backBtn = CreateButton(_mainPanel.transform, "BackBtn", "Close",
-            new Color(0.35f, 0.2f, 0.2f, 1f), new Vector2(0, -168), new Vector2(480, 88));
-        backBtn.onClick.AddListener(HideOverlay);
+            _joinFriendButton = CreateButton(_mainPanel.transform, "JoinFriendBtn", "Join Friend",
+                new Color(0.2f, 0.35f, 0.6f, 1f), new Vector2(0, 16), new Vector2(480, 88));
+            _joinFriendButton.onClick.AddListener(OnJoinFriendClicked);
+
+            var steamStatus = CreateText(_mainPanel.transform, "SteamStatus",
+                $"Steam: {LocalPlayerName}", 22);
+            steamStatus.color = new Color(0.7f, 0.85f, 0.7f, 1f);
+            steamStatus.raycastTarget = false;
+            var ssRect = steamStatus.rectTransform;
+            ssRect.anchorMin = new Vector2(0.5f, 0.5f);
+            ssRect.anchorMax = new Vector2(0.5f, 0.5f);
+            ssRect.pivot = new Vector2(0.5f, 0.5f);
+            ssRect.anchoredPosition = new Vector2(0, 196);
+            ssRect.sizeDelta = new Vector2(480, 30);
+
+            _advancedToggleButton = CreateButton(_mainPanel.transform, "AdvancedToggle",
+                "Advanced: Direct IP \u25BE",
+                new Color(0.25f, 0.25f, 0.3f, 1f), new Vector2(0, -64), new Vector2(360, 48));
+            _advancedToggleButton.onClick.AddListener(OnAdvancedToggleClicked);
+
+            _advancedIpContainer = new GameObject("AdvancedIpContainer");
+            _advancedIpContainer.transform.SetParent(_mainPanel.transform, false);
+            var advRect = _advancedIpContainer.AddComponent<RectTransform>();
+            advRect.anchorMin = new Vector2(0.5f, 0.5f);
+            advRect.anchorMax = new Vector2(0.5f, 0.5f);
+            advRect.pivot = new Vector2(0.5f, 0.5f);
+            advRect.anchoredPosition = Vector2.zero;
+            advRect.sizeDelta = new Vector2(480, 160);
+
+            _hostButton = CreateButton(_advancedIpContainer.transform, "HostBtn", "Host (Direct IP)",
+                new Color(0.3f, 0.45f, 0.3f, 1f), new Vector2(0, -116), new Vector2(420, 64));
+            _hostButton.onClick.AddListener(OnHostClicked);
+
+            _joinButton = CreateButton(_advancedIpContainer.transform, "JoinBtn", "Join (Direct IP)",
+                new Color(0.3f, 0.35f, 0.5f, 1f), new Vector2(0, -184), new Vector2(420, 64));
+            _joinButton.onClick.AddListener(OnJoinClicked);
+
+            _advancedIpContainer.SetActive(false);
+
+            var backBtn = CreateButton(_mainPanel.transform, "BackBtn", "Close",
+                new Color(0.35f, 0.2f, 0.2f, 1f), new Vector2(0, -260), new Vector2(360, 56));
+            backBtn.onClick.AddListener(HideOverlay);
+        }
+        else
+        {
+            _hostButton = CreateButton(_mainPanel.transform, "HostBtn", "Host Game",
+                new Color(0.2f, 0.55f, 0.25f, 1f), new Vector2(0, 40), new Vector2(480, 88));
+            _hostButton.onClick.AddListener(OnHostClicked);
+
+            _joinButton = CreateButton(_mainPanel.transform, "JoinBtn", "Join Game",
+                new Color(0.2f, 0.35f, 0.6f, 1f), new Vector2(0, -64), new Vector2(480, 88));
+            _joinButton.onClick.AddListener(OnJoinClicked);
+
+            var backBtn = CreateButton(_mainPanel.transform, "BackBtn", "Close",
+                new Color(0.35f, 0.2f, 0.2f, 1f), new Vector2(0, -168), new Vector2(480, 88));
+            backBtn.onClick.AddListener(HideOverlay);
+        }
 
         // Version text
         var ver = CreateText(_mainPanel.transform, "VersionText",
@@ -290,6 +364,19 @@ public class MultiplayerUI : MonoBehaviour
         verRect.pivot = new Vector2(0.5f, 0.5f);
         verRect.anchoredPosition = new Vector2(0, -310);
         verRect.sizeDelta = new Vector2(480, 30);
+    }
+
+    private void OnAdvancedToggleClicked()
+    {
+        _advancedIpVisible = !_advancedIpVisible;
+        if (_advancedIpContainer != null)
+            _advancedIpContainer.SetActive(_advancedIpVisible);
+        if (_advancedToggleButton != null)
+        {
+            var label = _advancedToggleButton.GetComponentInChildren<TextMeshProUGUI>();
+            if (label != null)
+                label.text = _advancedIpVisible ? "Advanced: Direct IP \u25B4" : "Advanced: Direct IP \u25BE";
+        }
     }
 
     private void CreateHostPanel(Transform parent)
@@ -387,6 +474,12 @@ public class MultiplayerUI : MonoBehaviour
         statusRect.anchoredPosition = new Vector2(0, 160);
         statusRect.sizeDelta = new Vector2(640, 36);
 
+        // Invite Friend button (only meaningful when hosting via Steam; toggled in UpdateLobbyPanel)
+        _inviteFriendButton = CreateButton(_lobbyPanel.transform, "InviteFriendBtn", "Invite Friend",
+            new Color(0.2f, 0.45f, 0.55f, 1f), new Vector2(0, -250), new Vector2(400, 56));
+        _inviteFriendButton.onClick.AddListener(OnInviteFriendClicked);
+        _inviteFriendButton.gameObject.SetActive(false);
+
         // Disconnect button at the bottom
         var disconnectBtn = CreateButton(_lobbyPanel.transform, "DisconnectBtn", "Disconnect",
             new Color(0.5f, 0.2f, 0.2f, 1f), new Vector2(0, -310), new Vector2(400, 56));
@@ -395,16 +488,212 @@ public class MultiplayerUI : MonoBehaviour
         _lobbyPanel.SetActive(false);
     }
 
+    private void OnInviteFriendClicked()
+    {
+        if (_steamTransport == null) return;
+        var lobbyId = _steamTransport.HostedLobbyId;
+        if (!lobbyId.IsValid())
+        {
+            Log?.LogWarning("Invite Friend clicked but no hosted lobby id");
+            return;
+        }
+        try
+        {
+            SteamFriends.ActivateGameOverlayInviteDialog(lobbyId);
+        }
+        catch (Exception ex)
+        {
+            Log?.LogError($"ActivateGameOverlayInviteDialog failed: {ex}");
+        }
+    }
+
+    private void CreateFriendListPanel(Transform parent)
+    {
+        _friendListPanel = new GameObject("FriendListPanel");
+        _friendListPanel.transform.SetParent(parent, false);
+        var rect = _friendListPanel.GetComponent<RectTransform>() ?? _friendListPanel.AddComponent<RectTransform>();
+        StretchFill(rect);
+
+        var title = CreateText(_friendListPanel.transform, "FriendsTitle", "Friends in Peglin", 30);
+        var titleRect = title.rectTransform;
+        titleRect.anchorMin = new Vector2(0.5f, 0.5f);
+        titleRect.anchorMax = new Vector2(0.5f, 0.5f);
+        titleRect.pivot = new Vector2(0.5f, 0.5f);
+        titleRect.anchoredPosition = new Vector2(0, 210);
+        titleRect.sizeDelta = new Vector2(640, 40);
+
+        // Scroll viewport
+        var viewport = new GameObject("Viewport");
+        viewport.transform.SetParent(_friendListPanel.transform, false);
+        var vpImg = viewport.AddComponent<Image>();
+        vpImg.color = new Color(0.08f, 0.08f, 0.1f, 1f);
+        viewport.AddComponent<RectMask2D>();
+        var vpRect = viewport.GetComponent<RectTransform>();
+        vpRect.anchorMin = new Vector2(0.5f, 0.5f);
+        vpRect.anchorMax = new Vector2(0.5f, 0.5f);
+        vpRect.pivot = new Vector2(0.5f, 0.5f);
+        vpRect.anchoredPosition = new Vector2(0, 0);
+        vpRect.sizeDelta = new Vector2(760, 340);
+
+        _friendListContent = new GameObject("Content");
+        _friendListContent.transform.SetParent(viewport.transform, false);
+        var contentRect = _friendListContent.AddComponent<RectTransform>();
+        contentRect.anchorMin = new Vector2(0, 1);
+        contentRect.anchorMax = new Vector2(1, 1);
+        contentRect.pivot = new Vector2(0.5f, 1);
+        contentRect.anchoredPosition = Vector2.zero;
+        contentRect.sizeDelta = new Vector2(0, 0);
+
+        _friendListStatusText = CreateText(_friendListPanel.transform, "FriendsStatus", "", 22);
+        _friendListStatusText.color = new Color(0.8f, 0.8f, 0.3f, 1f);
+        var stRect = _friendListStatusText.rectTransform;
+        stRect.anchorMin = new Vector2(0.5f, 0.5f);
+        stRect.anchorMax = new Vector2(0.5f, 0.5f);
+        stRect.pivot = new Vector2(0.5f, 0.5f);
+        stRect.anchoredPosition = new Vector2(0, -195);
+        stRect.sizeDelta = new Vector2(640, 36);
+
+        var refreshBtn = CreateButton(_friendListPanel.transform, "RefreshBtn", "Refresh",
+            new Color(0.25f, 0.4f, 0.55f, 1f), new Vector2(-160, -250), new Vector2(260, 56));
+        refreshBtn.onClick.AddListener(PopulateFriendList);
+
+        var backBtn = CreateButton(_friendListPanel.transform, "FriendsBackBtn", "Back",
+            new Color(0.35f, 0.2f, 0.2f, 1f), new Vector2(160, -250), new Vector2(260, 56));
+        backBtn.onClick.AddListener(() =>
+        {
+            _friendListPanel.SetActive(false);
+            ShowMainPanel();
+        });
+
+        _friendListPanel.SetActive(false);
+    }
+
+    private void ShowFriendListPanel()
+    {
+        _mainPanel.SetActive(false);
+        _hostPanel.SetActive(false);
+        _joinPanel.SetActive(false);
+        _lobbyPanel.SetActive(false);
+
+        if (_friendListPanel == null)
+        {
+            // Use the same parent as the other panels
+            var parent = _mainPanel.transform.parent;
+            CreateFriendListPanel(parent);
+        }
+        _friendListPanel.SetActive(true);
+        PopulateFriendList();
+    }
+
+    private void PopulateFriendList()
+    {
+        if (_friendListContent == null) return;
+
+        // Clear existing rows
+        for (int i = _friendListContent.transform.childCount - 1; i >= 0; i--)
+            Destroy(_friendListContent.transform.GetChild(i).gameObject);
+
+        int found = 0;
+        try
+        {
+            int total = SteamFriends.GetFriendCount(EFriendFlags.k_EFriendFlagImmediate);
+            for (int i = 0; i < total; i++)
+            {
+                var fid = SteamFriends.GetFriendByIndex(i, EFriendFlags.k_EFriendFlagImmediate);
+                if (!SteamFriends.GetFriendGamePlayed(fid, out FriendGameInfo_t info)) continue;
+                if (info.m_gameID.AppID() != PeglinAppId) continue;
+                if (!info.m_steamIDLobby.IsValid()) continue;
+
+                var name = SteamFriends.GetFriendPersonaName(fid);
+                AddFriendRow(found, name, info.m_steamIDLobby);
+                found++;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log?.LogError($"PopulateFriendList failed: {ex}");
+            _friendListStatusText.text = "Failed to read Steam friends list.";
+            return;
+        }
+
+        _friendListStatusText.text = found == 0
+            ? "No friends are hosting a Multipeglin lobby right now."
+            : $"{found} friend{(found == 1 ? "" : "s")} hosting.";
+    }
+
+    private void AddFriendRow(int index, string name, CSteamID lobbyId)
+    {
+        var row = new GameObject($"Friend_{index}");
+        row.transform.SetParent(_friendListContent.transform, false);
+        var rRect = row.AddComponent<RectTransform>();
+        rRect.anchorMin = new Vector2(0, 1);
+        rRect.anchorMax = new Vector2(1, 1);
+        rRect.pivot = new Vector2(0.5f, 1);
+        rRect.anchoredPosition = new Vector2(0, -index * 64 - 8);
+        rRect.sizeDelta = new Vector2(-20, 56);
+
+        var bg = row.AddComponent<Image>();
+        bg.color = new Color(0.15f, 0.15f, 0.18f, 1f);
+
+        var nameText = CreateText(row.transform, "Name", name, 26);
+        nameText.alignment = TextAlignmentOptions.MidlineLeft;
+        var nameRect = nameText.rectTransform;
+        nameRect.anchorMin = new Vector2(0, 0);
+        nameRect.anchorMax = new Vector2(1, 1);
+        nameRect.offsetMin = new Vector2(20, 0);
+        nameRect.offsetMax = new Vector2(-180, 0);
+
+        var joinBtn = CreateButton(row.transform, "JoinBtn", "Join",
+            new Color(0.2f, 0.45f, 0.25f, 1f), Vector2.zero, new Vector2(140, 44));
+        var jbRect = joinBtn.GetComponent<RectTransform>();
+        jbRect.anchorMin = new Vector2(1, 0.5f);
+        jbRect.anchorMax = new Vector2(1, 0.5f);
+        jbRect.pivot = new Vector2(1, 0.5f);
+        jbRect.anchoredPosition = new Vector2(-16, 0);
+        var lobbyCapture = lobbyId;
+        joinBtn.onClick.AddListener(() => OnJoinLobbyClicked(lobbyCapture));
+    }
+
+    private void OnJoinLobbyClicked(CSteamID lobbyId)
+    {
+        if (_steamTransport == null) return;
+        try
+        {
+            _router?.UseSteam();
+            _multiplayerMode.EnableSpectating();
+            Utility.FileLogger.RoleTag = "CLIENT";
+            if (_multiplayerMode is MultiplayerMode mode)
+                mode.ClientMode = ClientMode.Mirror;
+            _steamTransport.JoinSteamLobby(lobbyId);
+            _friendListStatusText.text = "Joining...";
+            Log.LogInfo($"Joining Steam lobby {lobbyId.m_SteamID}");
+        }
+        catch (Exception ex)
+        {
+            Log.LogError($"Failed to join Steam lobby: {ex}");
+            _friendListStatusText.text = $"Error: {ex.Message}";
+        }
+    }
+
     private void UpdateLobbyPanel()
     {
         if (_lobbyStatusText == null) return;
 
+        bool steamActive = _router != null && _router.ActiveIsSteam;
         if (_multiplayerMode.IsHosting)
-            _lobbyStatusText.text = $"Hosting on port {NetworkConfig.DefaultPort}";
+        {
+            _lobbyStatusText.text = steamActive
+                ? "Hosting via Steam lobby"
+                : $"Hosting on port {NetworkConfig.DefaultPort}";
+        }
         else if (_transport.IsConnected)
             _lobbyStatusText.text = "Connected";
         else
             _lobbyStatusText.text = "Connecting...";
+
+        // Invite Friend button: only while hosting via Steam
+        if (_inviteFriendButton != null)
+            _inviteFriendButton.gameObject.SetActive(_multiplayerMode.IsHosting && steamActive);
 
         // Delegate to LobbyUI for the class select / ready system
         LobbyUI.UpdateLobbyUI(
@@ -600,6 +889,7 @@ public class MultiplayerUI : MonoBehaviour
         _hostPanel.SetActive(false);
         _joinPanel.SetActive(false);
         _lobbyPanel.SetActive(false);
+        if (_friendListPanel != null) _friendListPanel.SetActive(false);
     }
 
     private void ShowLobby()
@@ -608,6 +898,7 @@ public class MultiplayerUI : MonoBehaviour
         _hostPanel.SetActive(false);
         _joinPanel.SetActive(false);
         _lobbyPanel.SetActive(true);
+        if (_friendListPanel != null) _friendListPanel.SetActive(false);
         // Hide the waiting panel (MapStateApplier shows it for MainMenu)
         if (_waitingPanel != null)
             _waitingPanel.SetActive(false);
@@ -670,6 +961,7 @@ public class MultiplayerUI : MonoBehaviour
         _hostPanel.SetActive(false);
         _joinPanel.SetActive(true);
         _lobbyPanel.SetActive(false);
+        if (_friendListPanel != null) _friendListPanel.SetActive(false);
         _statusText.text = _lastConnectionStatus;
     }
 
@@ -684,6 +976,7 @@ public class MultiplayerUI : MonoBehaviour
     {
         try
         {
+            _router?.UseLite();
             _multiplayerMode.EnableHosting();
             _transport.StartHost(NetworkConfig.DefaultPort);
             Utility.FileLogger.RoleTag = "HOST";
@@ -700,6 +993,75 @@ public class MultiplayerUI : MonoBehaviour
             Log.LogError($"Failed to start hosting: {ex}");
             _lastConnectionStatus = $"Error: {ex.Message}";
             ShowMainPanel();
+        }
+    }
+
+    private void OnHostSteamClicked()
+    {
+        if (_steamTransport == null || _router == null)
+        {
+            Log?.LogWarning("Host (Steam) clicked but Steam transport unavailable");
+            return;
+        }
+        try
+        {
+            _router.UseSteam();
+            _multiplayerMode.EnableHosting();
+            _steamTransport.StartHost(0);
+            Utility.FileLogger.RoleTag = "HOST";
+
+            if (MultiplayerPlugin.Services?.TryResolve<Multiplayer.PlayerRegistry>(out var registry) == true)
+                registry.RegisterHost(LocalPlayerName, Application.version ?? "unknown", MultiplayerPluginInfo.VERSION);
+
+            Log.LogInfo("Started Steam lobby hosting");
+            ShowLobby();
+        }
+        catch (Exception ex)
+        {
+            Log.LogError($"Failed to start Steam hosting: {ex}");
+            _lastConnectionStatus = $"Error: {ex.Message}";
+            ShowMainPanel();
+        }
+    }
+
+    private void OnJoinFriendClicked()
+    {
+        if (_steamTransport == null)
+        {
+            Log?.LogWarning("Join Friend clicked but Steam transport unavailable");
+            return;
+        }
+        ShowFriendListPanel();
+    }
+
+    private void OnOverlayJoinStarted()
+    {
+        // Fired when the user clicks "Join Game" from the Steam overlay or
+        // accepts an invite while the game is running. Transition to lobby view.
+        var dispatcher = Utility.MainThreadDispatcher.Instance;
+        if (dispatcher != null)
+            dispatcher.Enqueue(HandleOverlayJoinStarted);
+        else
+            HandleOverlayJoinStarted();
+    }
+
+    private void HandleOverlayJoinStarted()
+    {
+        try
+        {
+            _router?.UseSteam();
+            _multiplayerMode.EnableSpectating();
+            Utility.FileLogger.RoleTag = "CLIENT";
+            if (_multiplayerMode is MultiplayerMode mode)
+                mode.ClientMode = ClientMode.Mirror;
+
+            _overlayPanel.SetActive(true);
+            ShowLobby();
+            Log.LogInfo("Steam overlay auto-join started");
+        }
+        catch (Exception ex)
+        {
+            Log.LogError($"HandleOverlayJoinStarted failed: {ex}");
         }
     }
 
@@ -727,6 +1089,7 @@ public class MultiplayerUI : MonoBehaviour
         try
         {
             _statusText.text = $"Connecting to {ip}:{port}...";
+            _router?.UseLite();
             _multiplayerMode.EnableSpectating();
             Utility.FileLogger.RoleTag = "CLIENT";
             if (_multiplayerMode is MultiplayerMode mode)

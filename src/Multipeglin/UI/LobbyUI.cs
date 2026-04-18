@@ -419,6 +419,13 @@ public static class LobbyUI
             });
         }
 
+        // Close the Steam lobby (if any) so late joiners can't enter mid-run.
+        if (services.TryResolve<ISteamTransport>(out var steam))
+        {
+            try { steam.CloseLobbyOnStart(); }
+            catch (Exception ex) { MultiplayerPlugin.Logger?.LogWarning($"[Lobby] CloseLobbyOnStart failed: {ex.Message}"); }
+        }
+
         // Broadcast game start
         eventRegistry.Dispatch(new GameStartEvent { FinalPlayers = finalPlayers });
 

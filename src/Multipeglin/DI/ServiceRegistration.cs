@@ -36,6 +36,8 @@ using Multipeglin.Network;
 using Multipeglin.Network.Protocol;
 using Multipeglin.Multiplayer;
 using Multipeglin.Utility;
+using Steamworks;
+using System;
 
 namespace Multipeglin.DI;
 
@@ -50,8 +52,8 @@ public static class ServiceRegistration
         Phase2a_TypeRegistry(container);
         log.LogInfo("[DI] Phase 2b: JsonNetworkSerializer...");
         Phase2b_Serializer(container);
-        log.LogInfo("[DI] Phase 2c: LiteNetTransport...");
-        Phase2c_Transport(container);
+        log.LogInfo("[DI] Phase 2c: Transport...");
+        Phase2c_Transport(container, log);
 
         log.LogInfo("[DI] Phase 3: Events...");
         Phase3_Events(container, log);
@@ -90,10 +92,32 @@ public static class ServiceRegistration
         container.RegisterSingleton<INetworkSerializer>(serializer);
     }
 
-    private static void Phase2c_Transport(ServiceContainer container)
+    private static void Phase2c_Transport(ServiceContainer container, ManualLogSource log)
     {
-        var transport = new LiteNetTransport();
-        container.RegisterSingleton<INetworkTransport>(transport);
+        var lite = new LiteNetTransport();
+
+        bool steamReady = false;
+        try { steamReady = SteamManager.Initialized; } catch { steamReady = false; }
+        var skipSteam = Environment.GetEnvironmentVariable("SKIP_STEAM_INIT") == "1";
+
+        SteamTransport steam = null;
+        if (steamReady && !skipSteam)
+        {
+            steam = new SteamTransport();
+        }
+
+        var router = new TransportRouter(lite, steam);
+        container.RegisterSingleton<TransportRouter>(router);
+        container.RegisterSingleton<INetworkTransport>(router);
+        if (steam != null)
+        {
+            container.RegisterSingleton<ISteamTransport>(router);
+            log.LogInfo("[DI] Transport router active=Steam (Steam connected; Direct IP available via Advanced)");
+        }
+        else
+        {
+            log.LogInfo($"[DI] Transport router active=LiteNet (steamReady={steamReady}, skipSteam={skipSteam})");
+        }
     }
 
     private static void Phase3_Events(ServiceContainer container, ManualLogSource log)
