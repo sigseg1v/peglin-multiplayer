@@ -7,7 +7,7 @@ root := justfile_directory()
 src := root / "src"
 game := root / "release"
 plugins := game / "BepInEx" / "plugins" / "Multipeglin"
-logfile := game / "BepInEx" / "logs" / "multipeglin_dev.log"
+logfile := game / "BepInEx" / "logs" / "multipeglin_shared.log"
 
 bepinex_version := "5.4.23.2"
 bepinex_zip := "BepInEx_win_x64_" + bepinex_version + ".zip"
