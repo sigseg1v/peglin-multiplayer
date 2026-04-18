@@ -36,8 +36,6 @@ using Multipeglin.Network;
 using Multipeglin.Network.Protocol;
 using Multipeglin.Multiplayer;
 using Multipeglin.Utility;
-using Steamworks;
-using System;
 
 namespace Multipeglin.DI;
 
@@ -94,30 +92,16 @@ public static class ServiceRegistration
 
     private static void Phase2c_Transport(ServiceContainer container, ManualLogSource log)
     {
+        // SteamTransport is attached later from MultiplayerUI.Start (PreMainMenu scene).
+        // Touching SteamManager.Initialized here — during plugin Awake, before any scene
+        // loads — auto-instantiates a SteamManager GameObject that doesn't survive, and
+        // leaves Steamworks in an uninitialized state by the time the user clicks Host.
         var lite = new LiteNetTransport();
-
-        bool steamReady = false;
-        try { steamReady = SteamManager.Initialized; } catch { steamReady = false; }
-        var skipSteam = Environment.GetEnvironmentVariable("SKIP_STEAM_INIT") == "1";
-
-        SteamTransport steam = null;
-        if (steamReady && !skipSteam)
-        {
-            steam = new SteamTransport();
-        }
-
-        var router = new TransportRouter(lite, steam);
+        var router = new TransportRouter(lite, null);
         container.RegisterSingleton<TransportRouter>(router);
         container.RegisterSingleton<INetworkTransport>(router);
-        if (steam != null)
-        {
-            container.RegisterSingleton<ISteamTransport>(router);
-            log.LogInfo("[DI] Transport router active=Steam (Steam connected; Direct IP available via Advanced)");
-        }
-        else
-        {
-            log.LogInfo($"[DI] Transport router active=LiteNet (steamReady={steamReady}, skipSteam={skipSteam})");
-        }
+        container.RegisterSingleton<ISteamTransport>(router);
+        log.LogInfo("[DI] Transport router registered (Steam will attach at UI start if available)");
     }
 
     private static void Phase3_Events(ServiceContainer container, ManualLogSource log)

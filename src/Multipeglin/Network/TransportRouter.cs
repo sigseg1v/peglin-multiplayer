@@ -16,7 +16,7 @@ public class TransportRouter : INetworkTransport, ISteamTransport
     private static ManualLogSource Log => MultiplayerPlugin.Logger;
 
     private readonly LiteNetTransport _lite;
-    private readonly SteamTransport _steam; // null when Steam is unavailable
+    private SteamTransport _steam; // null until AttachSteam is called
     private INetworkTransport _active;
 
     public bool HasSteam => _steam != null;
@@ -27,21 +27,30 @@ public class TransportRouter : INetworkTransport, ISteamTransport
     public TransportRouter(LiteNetTransport lite, SteamTransport steam)
     {
         _lite = lite;
-        _steam = steam;
-        _active = steam != null ? (INetworkTransport)steam : lite;
+        _active = lite;
 
         _lite.OnDataReceived += (p, d) => OnDataReceived?.Invoke(p, d);
         _lite.OnClientConnected += p => OnClientConnected?.Invoke(p);
         _lite.OnDisconnected += p => OnDisconnected?.Invoke(p);
         _lite.OnConnectionRejected += r => OnConnectionRejected?.Invoke(r);
 
-        if (_steam != null)
-        {
-            _steam.OnDataReceived += (p, d) => OnDataReceived?.Invoke(p, d);
-            _steam.OnClientConnected += p => OnClientConnected?.Invoke(p);
-            _steam.OnDisconnected += p => OnDisconnected?.Invoke(p);
-            _steam.OnConnectionRejected += r => OnConnectionRejected?.Invoke(r);
-        }
+        if (steam != null) AttachSteam(steam);
+    }
+
+    /// <summary>
+    /// Late-bind a SteamTransport once Peglin's own SteamManager has initialized.
+    /// Called from MultiplayerUI.Start (PreMainMenu scene) — not from DI, which
+    /// runs in plugin Awake before any scene loads.
+    /// </summary>
+    public void AttachSteam(SteamTransport steam)
+    {
+        if (steam == null || _steam != null) return;
+        _steam = steam;
+        _steam.OnDataReceived += (p, d) => OnDataReceived?.Invoke(p, d);
+        _steam.OnClientConnected += p => OnClientConnected?.Invoke(p);
+        _steam.OnDisconnected += p => OnDisconnected?.Invoke(p);
+        _steam.OnConnectionRejected += r => OnConnectionRejected?.Invoke(r);
+        Log?.LogInfo("[Router] Steam transport attached");
     }
 
     public void UseLite()

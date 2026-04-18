@@ -103,8 +103,31 @@ public class MultiplayerUI : MonoBehaviour
             _instance = this;
             _transport = MultiplayerPlugin.Services.Resolve<INetworkTransport>();
             _multiplayerMode = MultiplayerPlugin.Services.Resolve<IMultiplayerMode>();
-            MultiplayerPlugin.Services.TryResolve<ISteamTransport>(out _steamTransport);
             MultiplayerPlugin.Services.TryResolve<TransportRouter>(out _router);
+
+            // Late-attach SteamTransport now that Peglin's own SteamManager has initialized.
+            // Doing this in DI (plugin Awake) touches SteamManager.Initialized before any
+            // scene loads, which force-instantiates a SteamManager that doesn't survive.
+            if (_router != null && !_router.HasSteam
+                && Environment.GetEnvironmentVariable("SKIP_STEAM_INIT") != "1")
+            {
+                try
+                {
+                    if (SteamManager.Initialized)
+                    {
+                        _router.AttachSteam(new SteamTransport());
+                    }
+                    else
+                    {
+                        Log?.LogInfo("[Steam] SteamManager not initialized — Steam UI disabled");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log?.LogWarning($"[Steam] Attach failed: {ex.Message}");
+                }
+            }
+            _steamTransport = (_router != null && _router.HasSteam) ? _router : null;
 
             _transport.OnClientConnected += peerId => OnConnected();
             _transport.OnDisconnected += peerId => OnDisconnected();
