@@ -110,6 +110,31 @@ dev-multi level="": setup
     Start-Sleep 1; \
     Get-Content $sharedLog -Wait
 
+# Launch one game instance with Steam enabled against Spacewar AppID (480).
+# Run this on TWO machines (e.g. main PC + laptop/VM with a free Steam account) to
+# test Steam networking end-to-end without both owning Peglin. BOTH machines must
+# use this recipe — Steam lobbies/friends/P2P are scoped per-AppID, so a 1296610
+# instance and a 480 instance can't see each other.
+dev-network-player: setup
+    dotnet build '{{src}}/Multipeglin.sln' -c Debug --nologo -v quiet; \
+    just copy-plugins Debug; \
+    New-Item -ItemType Directory -Path (Split-Path '{{logfile}}') -Force | Out-Null; \
+    [IO.File]::Create('{{logfile}}').Close(); \
+    $steamAppId = Join-Path '{{game}}' 'steam_appid.txt'; \
+    $steamAppIdBak = "$steamAppId.netplayer"; \
+    if (Test-Path $steamAppId) { Move-Item $steamAppId $steamAppIdBak -Force }; \
+    Set-Content -Path $steamAppId -Value '480' -NoNewline; \
+    Write-Host '==> Using Spacewar AppID (480) for Steam networking'; \
+    Write-Host '==> Launching game...'; \
+    Start-Process pwsh -ArgumentList '-NoProfile','-File','{{root}}/launch.ps1'; \
+    Start-Sleep 5; \
+    Remove-Item $steamAppId -Force -ErrorAction SilentlyContinue; \
+    if (Test-Path $steamAppIdBak) { Move-Item $steamAppIdBak $steamAppId -Force }; \
+    Write-Host "==> Tailing logs (Ctrl+C to stop)"; \
+    Write-Host "    Log: {{logfile}}`n"; \
+    Start-Sleep 1; \
+    Get-Content '{{logfile}}' -Wait
+
 # Deploy plugin to game dir without launching
 deploy: setup
     dotnet build '{{src}}/Multipeglin.sln' -c Debug --nologo -v quiet; \
