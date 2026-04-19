@@ -141,13 +141,13 @@ dev-network-player: setup _restore-appid
         Write-Host '==> Using Spacewar AppID (480) for Steam networking'; \
         Write-Host '==> Launching game...'; \
         Start-Process pwsh -ArgumentList '-NoProfile','-File','{{root}}/launch.ps1'; \
-        Write-Host '==> Waiting for game to finish reading steam_appid.txt...'; \
-        $deadline = (Get-Date).AddSeconds(90); \
+        Write-Host '==> Waiting for Steam init to consume steam_appid.txt...'; \
+        $deadline = (Get-Date).AddSeconds(120); \
         while ((Get-Date) -lt $deadline) { \
-            if ((Test-Path '{{logfile}}') -and ((Get-Content '{{logfile}}' -Raw) -match 'Multipeglin v')) { break } \
+            if ((Test-Path '{{logfile}}') -and ((Get-Content '{{logfile}}' -Raw) -match '\[Steam\] Transport constructed')) { break } \
             Start-Sleep -Milliseconds 500; \
         } \
-        Start-Sleep 2; \
+        Start-Sleep 1; \
         Remove-Item $steamAppId -Force -ErrorAction SilentlyContinue; \
         if (Test-Path $steamAppIdBak) { Move-Item $steamAppIdBak $steamAppId -Force }; \
         Write-Host "==> Tailing logs (Ctrl+C to stop)"; \
