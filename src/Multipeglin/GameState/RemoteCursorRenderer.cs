@@ -172,18 +172,18 @@ public class RemoteCursorRenderer : MonoBehaviour
         icon.raycastTarget = false;
         icon.color = WithAlpha(SlotColor(slotIndex), Alpha);
 
-        // Number label to the right of the cursor tip.
+        // Number label above-left of the cursor tip.
         var labelGo = new GameObject("Label");
         labelGo.transform.SetParent(root.transform, worldPositionStays: false);
         var labelRect = labelGo.AddComponent<RectTransform>();
         labelRect.sizeDelta = new Vector2(40f, 24f);
-        labelRect.pivot = new Vector2(0f, 0.5f);
-        labelRect.anchoredPosition = new Vector2(22f, -16f);
+        labelRect.pivot = new Vector2(1f, 0.5f);
+        labelRect.anchoredPosition = new Vector2(-4f, 16f);
         var label = labelGo.AddComponent<TextMeshProUGUI>();
         label.text = (slotIndex + 1).ToString();
         label.fontSize = 22f;
         label.fontStyle = FontStyles.Bold;
-        label.alignment = TextAlignmentOptions.MidlineLeft;
+        label.alignment = TextAlignmentOptions.MidlineRight;
         label.raycastTarget = false;
         label.color = WithAlpha(SlotColor(slotIndex), Alpha);
         // Outline via a shadow so the number stays readable against busy scenes.
