@@ -194,8 +194,8 @@ public sealed class PendingDamageOverlay : MonoBehaviour
                 var bgRect = bgImg.rectTransform;
                 bgRect.anchorMin = Vector2.zero;
                 bgRect.anchorMax = Vector2.one;
-                bgRect.offsetMin = new Vector2(-4f, -2f);
-                bgRect.offsetMax = new Vector2(4f, 2f);
+                bgRect.offsetMin = new Vector2(-4f, 3f);
+                bgRect.offsetMax = new Vector2(4f, 7f);
 
                 panel.Label = CreateLabel(panel.Root.transform);
                 _panels[guid] = panel;

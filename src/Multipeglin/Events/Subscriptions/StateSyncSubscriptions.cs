@@ -65,6 +65,13 @@ public sealed class StateSyncSubscriptions
             _sync.SyncPlayer();
         });
 
+        // Sync player immediately when damage is dealt so the client HP UI
+        // updates within a frame instead of waiting ~2s for the next heartbeat.
+        // Fires on enemy attacks, self-damage, and status effect ticks.
+        PlayerHealthController.OnPlayerDamaged += (_) => SafeSync("PlayerDamaged", () => _sync.SyncPlayer());
+        PlayerHealthController.OnPlayerHealed += (_) => SafeSync("PlayerHealed", () => _sync.SyncPlayer());
+        PlayerHealthController.OnPlayerMaxHealthChanged += (_) => SafeSync("PlayerMaxHealthChanged", () => _sync.SyncPlayer());
+
         // Sync after shot completes (peg states changed from hits)
         BattleController.OnShotComplete += () => SafeSync("ShotComplete", () =>
         {

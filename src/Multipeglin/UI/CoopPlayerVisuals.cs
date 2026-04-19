@@ -102,7 +102,9 @@ public class CoopPlayerVisuals : MonoBehaviour
     private bool _inBattle;
     private string _lastScene = "";
     private GameObject _playerRef;
-    private PlayerVisual _localLabel;
+    // Labels for slot 0 (host) which always occupies the "main" position
+    // (_playerRef). Clones (in _visuals) are used for all slots > 0.
+    private PlayerVisual _hostLabel;
     private bool _updateErrorLogged; // throttle: log the NRE once, not every frame
 
     // Perf: cache expensive FindObjectOfType lookups, invalidated on scene change.
@@ -298,49 +300,60 @@ public class CoopPlayerVisuals : MonoBehaviour
 
     private void OnDestroy() => CleanupVisuals();
 
+    private const int HostSlot = 0;
+
     private void EnsureVisuals(List<CoopPlayerSummary> summaries)
     {
         int localSlot = GetLocalSlotIndex();
 
-        // Remove stale visuals (slots no longer in summaries, or slots that are
-        // now the local slot — _playerRef represents the local slot directly).
+        CoopPlayerSummary hostSummary = null;
+        foreach (var s in summaries)
+            if (s.SlotIndex == HostSlot) { hostSummary = s; break; }
+
+        // Remove stale clones. Slot 0 (host) never has a clone — it uses
+        // _playerRef at the "main" position.
         for (int i = _visuals.Count - 1; i >= 0; i--)
         {
             var v = _visuals[i];
             bool found = false;
             foreach (var s in summaries)
                 if (s.SlotIndex == v.SlotIndex) { found = true; break; }
-            if (!found || v.SpriteClone == null || v.SlotIndex == localSlot)
+            if (!found || v.SpriteClone == null || v.SlotIndex == HostSlot)
             {
                 DestroyVisual(v);
                 _visuals.RemoveAt(i);
             }
         }
 
-        // Local label — attaches to the real scene Player GameObject (_playerRef),
-        // whose sprite was loaded with the local player's chosenClass and thus
-        // already matches the local slot visually. Works for host (localSlot=0)
-        // and for clients (localSlot=whatever slot they occupy).
-        if (_localLabel != null && _localLabel.NamePanel == null)
-            _localLabel = null;
-        if (_localLabel != null && _localLabel.SlotIndex != localSlot)
+        // Host label — attaches to the real scene Player GameObject (_playerRef),
+        // which occupies the rightmost "main" position. On the host that's already
+        // the host's own character; on the client we override _playerRef's sprite
+        // below so it also shows the host's class.
+        if (_hostLabel != null && _hostLabel.NamePanel == null)
+            _hostLabel = null;
+        if (_hostLabel == null && _playerRef != null && hostSummary != null)
+            _hostLabel = CreatePlayerLabels(hostSummary, spriteClone: null);
+
+        // On client (localSlot != 0), override the main Player's sprite to
+        // display the host's class. Retry each Ensure tick so a transient
+        // lookup miss (switcher not active yet) self-corrects.
+        if (localSlot != HostSlot && hostSummary != null && _playerRef != null)
         {
-            DestroyPanels(_localLabel);
-            _localLabel = null;
-        }
-        if (_localLabel == null && _playerRef != null && localSlot >= 0)
-        {
-            CoopPlayerSummary localSummary = null;
-            foreach (var s in summaries)
-                if (s.SlotIndex == localSlot) { localSummary = s; break; }
-            if (localSummary != null)
-                _localLabel = CreatePlayerLabels(localSummary, spriteClone: null);
+            var sr = _playerRef.GetComponentInChildren<SpriteRenderer>();
+            if (sr != null)
+            {
+                var hostSprite = GetClassBaseSprite(hostSummary.ChosenClass);
+                if (hostSprite != null && sr.sprite != hostSprite)
+                    sr.sprite = hostSprite;
+            }
         }
 
-        // Clones + labels for every slot except the local slot.
+        // Clones + labels for every slot > 0 (host is the only one that uses
+        // _playerRef). This keeps slot 0 at the main position and every
+        // higher-numbered slot fanning out to the left on every machine.
         foreach (var summary in summaries)
         {
-            if (summary.SlotIndex == localSlot) continue;
+            if (summary.SlotIndex == HostSlot) continue;
             bool exists = false;
             foreach (var v in _visuals)
                 if (v.SlotIndex == summary.SlotIndex) { exists = true; break; }
@@ -557,29 +570,28 @@ public class CoopPlayerVisuals : MonoBehaviour
 
         var basePos = _playerRef.transform.position;
         int activeSlot = LatestActiveSlot;
-        int localSlot = _localLabel?.SlotIndex ?? GetLocalSlotIndex();
 
-        // Local-player scale highlight on _playerRef
+        // Scale the "main" (slot 0) position when the host is active.
         try
         {
-            float localScale = (activeSlot == localSlot) ? 1.15f : 1f;
+            float localScale = (activeSlot == HostSlot) ? 1.15f : 1f;
             _playerRef.transform.localScale = Vector3.Lerp(
                 _playerRef.transform.localScale, Vector3.one * localScale, Time.deltaTime * 5f);
         }
         catch { }
 
-        // Update local-slot label (attached to _playerRef)
-        if (_localLabel != null)
+        // Update host label (attached to _playerRef = main position).
+        if (_hostLabel != null)
         {
-            CoopPlayerSummary localSummary = null;
+            CoopPlayerSummary hostSummary = null;
             foreach (var s in summaries)
-                if (s.SlotIndex == localSlot) { localSummary = s; break; }
+                if (s.SlotIndex == HostSlot) { hostSummary = s; break; }
 
-            if (localSummary != null)
-                UpdatePlayerLabel(_localLabel, localSummary, basePos, activeSlot, cam);
+            if (hostSummary != null)
+                UpdatePlayerLabel(_hostLabel, hostSummary, basePos, activeSlot, cam);
         }
 
-        // Update clone labels
+        // Update clone labels — slot N sits -2.5*N units to the left of host.
         foreach (var visual in _visuals)
         {
             if (visual.SpriteClone == null) continue;
@@ -589,11 +601,7 @@ public class CoopPlayerVisuals : MonoBehaviour
                 if (s.SlotIndex == visual.SlotIndex) { summary = s; break; }
             if (summary == null) continue;
 
-            // Slot ordering: host (slot 0) is rightmost, each higher slot sits
-            // further left. Local player sprite stays at basePos; remote clones
-            // are offset by (remoteSlot - localSlot). Positive diff → left, negative → right.
-            int slotDiff = visual.SlotIndex - localSlot;
-            var offset = new Vector3(-2.5f * slotDiff, -0.2f * Mathf.Abs(slotDiff), 0);
+            var offset = new Vector3(-2.5f * visual.SlotIndex, -0.2f * visual.SlotIndex, 0);
             visual.SpriteClone.transform.position = basePos + offset;
 
             var clonePos = visual.SpriteClone.transform.position;
@@ -950,10 +958,10 @@ public class CoopPlayerVisuals : MonoBehaviour
             DestroyVisual(v);
         _visuals.Clear();
 
-        if (_localLabel != null)
+        if (_hostLabel != null)
         {
-            DestroyPanels(_localLabel);
-            _localLabel = null;
+            DestroyPanels(_hostLabel);
+            _hostLabel = null;
         }
     }
 
