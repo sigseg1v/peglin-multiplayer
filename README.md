@@ -23,6 +23,7 @@ just setup      # download + install BepInEx into release/ (auto-run by dev/depl
 just deploy     # build + deploy plugin into release/BepInEx/plugins/
 just dev        # build + deploy + launch game + tail logs
 just dev-multi  # build + deploy + launch two game instances (host + client)
+just dev-network-player  # build + deploy + launch one instance under Steam's Spacewar AppID (480) for real cross-machine Steam networking tests
 just log        # tail the dev log file
 just clean      # remove build artifacts
 just uninstall  # remove BepInEx + reset Proton prefixes (full reset)
@@ -55,6 +56,18 @@ release/                   Game files (do not modify directly)
 2. Launch the game, click **Multiplayer** on the main menu.
    - **Host**: Click Host Game. Share the displayed IP:PORT code.
    - **Join**: Click Join Game. Enter the host's address and click Connect.
+
+### Testing Steam networking across two machines
+
+`just dev-multi` starts two instances on one machine, but both skip Steam init so they can't exercise the Steam transport. To test real Steam lobbies / friend joins / overlay invites on two separate machines, use:
+
+```bash
+just dev-network-player
+```
+
+Run it on **both** machines. It swaps `release/steam_appid.txt` to Valve's free **Spacewar** AppID (`480`) for the duration of the launch, so Steam lets any account host and join lobbies without owning Peglin on that account. The recipe restores the original AppID (`1296610`) on exit, on Ctrl+C, and as a dependency of `just dev` / `just dev-multi` / `just deploy` so a crashed run never leaves Spacewar set.
+
+Both machines must run `dev-network-player` — the friend-list filter only matches players whose current AppID equals the local process's AppID, so a Spacewar host is invisible to a vanilla-Peglin joiner and vice versa.
 
 ## Multiplayer
 

@@ -17,15 +17,21 @@ public class ClientBallRenderer : MonoBehaviour
 
     private GameObject _ballObject;
     private SpriteRenderer _ballRenderer;
+    private TrailRenderer _trailRenderer;
     private Vector2 _targetPos;
     private Vector2 _velocity;
     private float _lastUpdateTime;
+    private bool _hasReceivedPosition;
     private bool _isActive;
     private bool _isAiming; // True between BallUsed (orb drawn) and ShotFired
     private Vector2 _aimDirection;
     private Vector3 _spawnPos;
     private bool _renderCopied; // True once material+sorting copied from a real renderer
     private string _currentOrbName; // Name of the orb currently being displayed (for stale detection)
+
+    // Higher = snappier, lower = smoother. ~25 gives ~40ms time-constant, which hides
+    // 50ms-spaced updates while still converging before they feel laggy.
+    private const float PositionSmoothRate = 25f;
 
     // Additional multiball visuals
     private readonly List<GameObject> _multiballs = new List<GameObject>();
@@ -154,9 +160,17 @@ public class ClientBallRenderer : MonoBehaviour
 
         _velocity = Vector2.zero;
         _lastUpdateTime = Time.time;
+        _hasReceivedPosition = false;
         _isAiming = false;
         _isActive = true;
         _ballObject.SetActive(true);
+
+        if (_trailRenderer != null)
+        {
+            _trailRenderer.Clear();
+            _trailRenderer.enabled = true;
+            _trailRenderer.emitting = true;
+        }
     }
 
     private void UpdateBallSprite(string orbName)
@@ -221,11 +235,45 @@ public class ClientBallRenderer : MonoBehaviour
                     _ballRenderer.sortingOrder = 100;
                     _ballObject.transform.localScale = orbGo.transform.localScale * 0.8f;
                     _renderCopied = true;
-                    return;
                 }
+
+                var orbTrail = orbGo.GetComponentInChildren<TrailRenderer>();
+                ApplyTrailFromPrefab(orbTrail);
             }
         }
         catch { }
+    }
+
+    private void ApplyTrailFromPrefab(TrailRenderer prefabTrail)
+    {
+        if (_ballObject == null) return;
+        if (_trailRenderer == null)
+        {
+            _trailRenderer = _ballObject.AddComponent<TrailRenderer>();
+            _trailRenderer.emitting = false;
+        }
+        if (prefabTrail == null) return;
+
+        _trailRenderer.time = prefabTrail.time;
+        _trailRenderer.minVertexDistance = prefabTrail.minVertexDistance;
+        _trailRenderer.widthCurve = prefabTrail.widthCurve;
+        _trailRenderer.widthMultiplier = prefabTrail.widthMultiplier;
+        _trailRenderer.colorGradient = prefabTrail.colorGradient;
+        _trailRenderer.startColor = prefabTrail.startColor;
+        _trailRenderer.endColor = prefabTrail.endColor;
+        _trailRenderer.startWidth = prefabTrail.startWidth;
+        _trailRenderer.endWidth = prefabTrail.endWidth;
+        _trailRenderer.textureMode = prefabTrail.textureMode;
+        _trailRenderer.alignment = prefabTrail.alignment;
+        _trailRenderer.numCornerVertices = prefabTrail.numCornerVertices;
+        _trailRenderer.numCapVertices = prefabTrail.numCapVertices;
+        _trailRenderer.shadowCastingMode = prefabTrail.shadowCastingMode;
+        _trailRenderer.receiveShadows = prefabTrail.receiveShadows;
+        _trailRenderer.sortingLayerID = prefabTrail.sortingLayerID;
+        _trailRenderer.sortingOrder = prefabTrail.sortingOrder + 1;
+        _trailRenderer.autodestruct = false;
+        if (prefabTrail.sharedMaterial != null)
+            _trailRenderer.sharedMaterial = prefabTrail.sharedMaterial;
     }
 
     public void UpdateBallPosition(float posX, float posY, float velX, float velY, float timestamp)
@@ -236,8 +284,14 @@ public class ClientBallRenderer : MonoBehaviour
         _velocity = new Vector2(velX, velY);
         _lastUpdateTime = Time.time;
 
-        // Snap to position (with slight smoothing in Update)
-        _ballObject.transform.position = new Vector3(posX, posY, -1f);
+        // First update after launch seeds the visible position so the trail starts
+        // at the host's first reported sample instead of spawn + a long gap.
+        if (!_hasReceivedPosition)
+        {
+            _hasReceivedPosition = true;
+            _ballObject.transform.position = new Vector3(posX, posY, -1f);
+            if (_trailRenderer != null) _trailRenderer.Clear();
+        }
     }
 
     public void OnMultiballSpawned(float posX, float posY, float velX, float velY, string orbName)
@@ -290,7 +344,14 @@ public class ClientBallRenderer : MonoBehaviour
     public void OnBallDestroyed()
     {
         _isActive = false;
+        _hasReceivedPosition = false;
         _currentOrbName = null;
+        if (_trailRenderer != null)
+        {
+            _trailRenderer.emitting = false;
+            _trailRenderer.Clear();
+            _trailRenderer.enabled = false;
+        }
         if (_ballObject != null)
             _ballObject.SetActive(false);
 
@@ -320,16 +381,21 @@ public class ClientBallRenderer : MonoBehaviour
             return;
         }
 
-        if (!_isActive) return;
+        if (!_isActive || !_hasReceivedPosition) return;
 
-        // Flight phase: extrapolate position using velocity between network updates
+        // Flight phase: extrapolate from the last host sample using velocity + gravity,
+        // then smoothly lerp the visible position toward it. Snap-free; this hides
+        // 50ms-spaced packets and tolerates the occasional late/dropped update.
         float dt = Time.time - _lastUpdateTime;
-        if (dt > 0f && dt < 0.2f)
-        {
-            var extrapolated = _targetPos + _velocity * dt;
-            extrapolated.y += -9.81f * dt * dt * 0.5f;
-            _ballObject.transform.position = new Vector3(extrapolated.x, extrapolated.y, -1f);
-        }
+        if (dt > 0.25f) dt = 0.25f; // clamp so stalls don't launch the ball off-screen
+
+        var predicted = _targetPos + _velocity * dt;
+        predicted.y += -9.81f * dt * dt * 0.5f;
+
+        var current = (Vector2)_ballObject.transform.position;
+        float t = 1f - Mathf.Exp(-PositionSmoothRate * Time.deltaTime);
+        var lerped = Vector2.Lerp(current, predicted, t);
+        _ballObject.transform.position = new Vector3(lerped.x, lerped.y, -1f);
     }
 
     private void CreateBall()
