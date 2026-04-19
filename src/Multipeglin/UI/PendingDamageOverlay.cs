@@ -181,7 +181,22 @@ public sealed class PendingDamageOverlay : MonoBehaviour
             {
                 panel = new EnemyPanel { Root = new GameObject($"PendingDmg_{guid}") };
                 panel.Root.transform.SetParent(_canvasObj.transform, false);
-                panel.Root.AddComponent<RectTransform>();
+                var rootRect = panel.Root.AddComponent<RectTransform>();
+                rootRect.sizeDelta = new Vector2(200, 40);
+                rootRect.pivot = new Vector2(0.5f, 1f);
+
+                // Translucent black background behind the damage text
+                var bgObj = new GameObject("BG");
+                bgObj.transform.SetParent(panel.Root.transform, false);
+                var bgImg = bgObj.AddComponent<Image>();
+                bgImg.color = new Color(0f, 0f, 0f, 0.75f);
+                bgImg.raycastTarget = false;
+                var bgRect = bgImg.rectTransform;
+                bgRect.anchorMin = Vector2.zero;
+                bgRect.anchorMax = Vector2.one;
+                bgRect.offsetMin = new Vector2(-4f, -2f);
+                bgRect.offsetMax = new Vector2(4f, 2f);
+
                 panel.Label = CreateLabel(panel.Root.transform);
                 _panels[guid] = panel;
             }
@@ -216,7 +231,7 @@ public sealed class PendingDamageOverlay : MonoBehaviour
                 continue;
             }
 
-            var worldPos = enemy.transform.position + new Vector3(0f, 1.8f, 0f);
+            var worldPos = enemy.transform.position + new Vector3(0.6f, 2.05f, 0f);
             var screenPos = cam.WorldToScreenPoint(worldPos);
             if (screenPos.z < 0)
             {
@@ -260,11 +275,11 @@ public sealed class PendingDamageOverlay : MonoBehaviour
         var obj = new GameObject("Label_Damage");
         obj.transform.SetParent(parent, false);
         var tmp = obj.AddComponent<TextMeshProUGUI>();
-        tmp.fontSize = 104;
+        tmp.fontSize = 35;
         tmp.fontStyle = FontStyles.Bold;
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.color = new Color(1f, 0.2f, 0.2f);
-        tmp.outlineWidth = 0.35f;
+        tmp.outlineWidth = 0.2f;
         tmp.outlineColor = Color.black;
         tmp.enableWordWrapping = false;
         tmp.overflowMode = TextOverflowModes.Overflow;
@@ -273,9 +288,13 @@ public sealed class PendingDamageOverlay : MonoBehaviour
         var font = GetGameFont();
         if (font != null) tmp.font = font;
 
+        // Fill the parent panel (which holds the translucent BG)
         var rect = tmp.rectTransform;
-        rect.sizeDelta = new Vector2(600, 120);
-        rect.pivot = new Vector2(0.5f, 1f); // anchor at top-center
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+        rect.pivot = new Vector2(0.5f, 0.5f);
 
         return tmp;
     }

@@ -3185,6 +3185,35 @@ public static class MultiplayerClientPatches
     }
 
     /// <summary>
+    /// Hide the native HP bar + health text when in a multiplayer session (host or
+    /// client). The per-player HP bars rendered under each sprite replace it, and
+    /// the freed canvas slot is used for the Skip Turn button.
+    /// </summary>
+    [HarmonyPatch(typeof(PlayerHealthController), "OnEnable")]
+    [HarmonyPostfix]
+    public static void PlayerHealthController_OnEnable_Postfix(PlayerHealthController __instance)
+    {
+        try
+        {
+            if (MultiplayerPlugin.Services == null) return;
+            if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode)) return;
+            if (!mode.IsHosting && !mode.IsSpectating) return;
+
+            var healthTextField = HarmonyLib.AccessTools.Field(typeof(PlayerHealthController), "_healthText");
+            if (healthTextField?.GetValue(__instance) is UnityEngine.Component healthText && healthText != null)
+                healthText.gameObject.SetActive(false);
+
+            var barField = HarmonyLib.AccessTools.Field(typeof(PlayerHealthController), "_barScript");
+            if (barField?.GetValue(__instance) is UnityEngine.Component barScript && barScript != null)
+                barScript.gameObject.SetActive(false);
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatch] Hide HP bar failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Set to true by sync code while applying host gold state.
     /// </summary>
     internal static bool AllowCurrencySync;

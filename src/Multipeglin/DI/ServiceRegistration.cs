@@ -340,6 +340,7 @@ public static class ServiceRegistration
         registry.Register(new CoopHandlers.PostBattleGoldSpentServerHandler(), new CoopHandlers.PostBattleGoldSpentClientHandler());
         registry.Register(new CoopHandlers.PostBattleRelicChoicesServerHandler(), new CoopHandlers.PostBattleRelicChoicesClientHandler());
         registry.Register(new CoopHandlers.OrbDiscardRequestServerHandler(), new CoopHandlers.OrbDiscardRequestClientHandler());
+        registry.Register(new CoopHandlers.SkipTurnRequestServerHandler(), new CoopHandlers.SkipTurnRequestClientHandler());
 
         // Scenario events (TextScenario / Mirror / Shop / Treasure)
         registry.Register(new ScenarioHandlers.MirrorEventStartServerHandler(), new ScenarioHandlers.MirrorEventStartClientHandler());

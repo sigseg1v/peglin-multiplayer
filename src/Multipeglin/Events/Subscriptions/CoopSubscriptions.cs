@@ -410,6 +410,35 @@ public sealed class CoopSubscriptions
             _log.LogInfo($"[CoopSubs] New round {_turnManager.RoundNumber} started, slot {_turnManager.CurrentPlayerSlot}");
         }
         BroadcastTurnChange();
+
+        // Defensive: if the newly-active player is dead (e.g. a DoT killed them
+        // between rounds and TurnManager's skip loop missed it for any reason),
+        // auto-skip them to avoid softlock. Loops until we land on a live slot
+        // or the whole round ends.
+        SkipActiveSlotIfDead("OnAwaitingShot");
+    }
+
+    /// <summary>
+    /// If the active turn slot has 0 HP while Phase==PLAYER_AIMING, run
+    /// SkipCurrentTurn. Repeats until a live player is current or the round ends.
+    /// </summary>
+    private void SkipActiveSlotIfDead(string reason)
+    {
+        if (!_mode.IsHosting) return;
+        if (_coopStateManager.TotalPlayerCount < 2) return;
+
+        int safety = 0;
+        while (_turnManager.Phase == TurnPhase.PLAYER_AIMING && safety++ < 16)
+        {
+            int slot = _turnManager.CurrentPlayerSlot;
+            if (slot < 0) break;
+            var state = _coopStateManager.GetPlayerState(slot);
+            if (state == null || !state.IsInitialized) break;
+            if (state.CurrentHealth > 0) break;
+
+            _log.LogInfo($"[CoopSubs] Auto-skip dead slot {slot} (hp=0) source={reason}");
+            SkipCurrentTurn(slot, $"auto-skip dead ({reason})");
+        }
     }
 
     /// <summary>
@@ -740,6 +769,84 @@ public sealed class CoopSubscriptions
         {
             BroadcastTurnChange();
             _log.LogInfo($"[CoopSubs] Shot complete — Phase={_turnManager.Phase}, slot={_turnManager.CurrentPlayerSlot}");
+        }
+    }
+
+    // =========================================================================
+    // SKIP TURN — record a zero-damage shot for the active slot, advance turn
+    // =========================================================================
+
+    /// <summary>
+    /// Host-only: skip the active player's turn by recording a zero-damage shot
+    /// and driving the normal post-shot flow. If more players remain, swaps and
+    /// draws the next ball. If everyone has shot, forces BattleController into
+    /// PRE_ATTACK_SPAWN_CHECK so the attack phase proceeds.
+    /// </summary>
+    public void SkipCurrentTurn(int requestingSlot, string source)
+    {
+        if (!_mode.IsHosting) return;
+        if (_coopStateManager.TotalPlayerCount < 2) return;
+
+        int activeSlot = _coopStateManager.ActivePlayerSlot;
+        if (requestingSlot != activeSlot)
+        {
+            _log.LogWarning($"[CoopSubs] SkipCurrentTurn denied — requester {requestingSlot} is not active slot {activeSlot} (source={source})");
+            return;
+        }
+        if (_turnManager.Phase != TurnPhase.PLAYER_AIMING)
+        {
+            _log.LogWarning($"[CoopSubs] SkipCurrentTurn denied — Phase is {_turnManager.Phase}, not PLAYER_AIMING (source={source})");
+            return;
+        }
+
+        _log.LogInfo($"[CoopSubs] SkipCurrentTurn source={source}, slot={activeSlot}");
+
+        // Zero out peg tallies so the accumulated shot records as zero damage.
+        var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
+        if (bc != null)
+        {
+            try
+            {
+                AccessTools.Field(typeof(BattleController), "_pegMultiplierDamageTally")?.SetValue(bc, 0);
+                AccessTools.Field(typeof(BattleController), "_criticalHitCount")?.SetValue(null, 0);
+                AccessTools.Field(typeof(BattleController), "_numPegsHit")?.SetValue(bc, 0);
+                AccessTools.Field(typeof(BattleController), "_cactusDamageTally")?.SetValue(bc, 0);
+                AccessTools.Field(typeof(BattleController), "_damageMultiplier")?.SetValue(bc, 1f);
+                AccessTools.Field(typeof(BattleController), "_damageBonus")?.SetValue(bc, 0);
+            }
+            catch (Exception ex) { _log.LogWarning($"[CoopSubs] Skip: tally reset failed: {ex.Message}"); }
+
+            // Destroy the aim ball and zero the remaining counter so physics
+            // doesn't fire a free shot once we return control.
+            try
+            {
+                var activeBallField = AccessTools.Field(typeof(BattleController), "_activePachinkoBall");
+                if (activeBallField?.GetValue(bc) is GameObject activeBall)
+                {
+                    UnityEngine.Object.Destroy(activeBall);
+                    activeBallField.SetValue(bc, null);
+                }
+                AccessTools.Field(typeof(BattleController), "_remainingPachinkoBalls")?.SetValue(bc, 0);
+            }
+            catch (Exception ex) { _log.LogWarning($"[CoopSubs] Skip: clear ball failed: {ex.Message}"); }
+        }
+
+        // Run the normal post-shot flow. This records the zero-damage shot,
+        // marks MarkShotFired, saves state, advances turn, and for PLAYER_AIMING
+        // (more players left) swaps + DrawBalls the next player.
+        OnShotComplete();
+
+        // If no one else is left, push BattleController into the attack phase
+        // since there's no natural AWAITING_SHOT_COMPLETION transition to ride on
+        // (we suppressed ball physics).
+        if (_turnManager.Phase == TurnPhase.ALL_DONE)
+        {
+            try
+            {
+                BattleController.CurrentBattleState = BattleController.BattleState.PRE_ATTACK_SPAWN_CHECK;
+                _log.LogInfo("[CoopSubs] Skip: forced BattleState -> PRE_ATTACK_SPAWN_CHECK");
+            }
+            catch (Exception ex) { _log.LogWarning($"[CoopSubs] Skip: state transition failed: {ex.Message}"); }
         }
     }
 
