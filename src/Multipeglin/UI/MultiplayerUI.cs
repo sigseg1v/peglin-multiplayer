@@ -547,8 +547,6 @@ public class MultiplayerUI : MonoBehaviour
         try { overlayEnabled = SteamUtils.IsOverlayEnabled(); } catch (Exception ex) { Log?.LogWarning($"[Invite] IsOverlayEnabled threw: {ex.Message}"); }
         Log?.LogInfo($"[Invite] appId={appId} lobby={lobbyId.m_SteamID} overlayEnabled={overlayEnabled} joinUrl={joinUrl}");
 
-        try { GUIUtility.systemCopyBuffer = joinUrl; } catch (Exception ex) { Log?.LogWarning($"[Invite] Clipboard copy failed: {ex.Message}"); }
-
         if (overlayEnabled)
         {
             try
@@ -560,8 +558,13 @@ public class MultiplayerUI : MonoBehaviour
             {
                 Log?.LogError($"[Invite] ActivateGameOverlayInviteDialog failed: {ex}");
             }
+            return;
         }
 
+        // Overlay unavailable (common under Proton when game wasn't launched via Steam):
+        // copy the join URL to clipboard and flash confirmation so the host can paste it
+        // to a friend manually via Steam chat.
+        try { GUIUtility.systemCopyBuffer = joinUrl; } catch (Exception ex) { Log?.LogWarning($"[Invite] Clipboard copy failed: {ex.Message}"); }
         _inviteCopiedFlashUntil = Time.unscaledTime + 3f;
     }
 
@@ -758,24 +761,27 @@ public class MultiplayerUI : MonoBehaviour
         if (_inviteFriendButton != null)
             _inviteFriendButton.gameObject.SetActive(_multiplayerMode.IsHosting && steamActive);
 
-        // Persistent join-link line: always visible while hosting via Steam so the user
-        // can share it manually when the Steam overlay is unavailable (common under Proton).
+        // Join-link line: shown only as a fallback when the Steam overlay is unavailable
+        // (e.g. running under Proton or launched outside Steam). When the overlay works,
+        // the Invite Friend button opens the normal Steam invite dialog and no URL is shown.
         if (_lobbyJoinLinkText != null)
         {
+            bool show = false;
             if (_multiplayerMode.IsHosting && steamActive && _steamTransport != null)
             {
                 var lobbyId = _steamTransport.HostedLobbyId;
-                if (lobbyId.IsValid())
+                bool overlayEnabled = false;
+                try { overlayEnabled = SteamUtils.IsOverlayEnabled(); } catch { }
+                if (lobbyId.IsValid() && !overlayEnabled)
                 {
                     uint appId = 0;
                     try { appId = SteamUtils.GetAppID().m_AppId; } catch { }
                     _lobbyJoinLinkText.text =
                         $"steam://joinlobby/{appId}/{lobbyId.m_SteamID}/{SteamUser.GetSteamID().m_SteamID}";
-                    _lobbyJoinLinkText.gameObject.SetActive(true);
+                    show = true;
                 }
-                else _lobbyJoinLinkText.gameObject.SetActive(false);
             }
-            else _lobbyJoinLinkText.gameObject.SetActive(false);
+            _lobbyJoinLinkText.gameObject.SetActive(show);
         }
 
         // Delegate to LobbyUI for the class select / ready system
