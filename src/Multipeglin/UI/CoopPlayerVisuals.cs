@@ -102,7 +102,7 @@ public class CoopPlayerVisuals : MonoBehaviour
     private bool _inBattle;
     private string _lastScene = "";
     private GameObject _playerRef;
-    private PlayerVisual _hostLabel;
+    private PlayerVisual _localLabel;
     private bool _updateErrorLogged; // throttle: log the NRE once, not every frame
 
     // Perf: cache expensive FindObjectOfType lookups, invalidated on scene change.
@@ -300,38 +300,47 @@ public class CoopPlayerVisuals : MonoBehaviour
 
     private void EnsureVisuals(List<CoopPlayerSummary> summaries)
     {
-        // Remove stale visuals
+        int localSlot = GetLocalSlotIndex();
+
+        // Remove stale visuals (slots no longer in summaries, or slots that are
+        // now the local slot — _playerRef represents the local slot directly).
         for (int i = _visuals.Count - 1; i >= 0; i--)
         {
             var v = _visuals[i];
             bool found = false;
             foreach (var s in summaries)
                 if (s.SlotIndex == v.SlotIndex) { found = true; break; }
-            if (!found || v.SpriteClone == null)
+            if (!found || v.SpriteClone == null || v.SlotIndex == localSlot)
             {
                 DestroyVisual(v);
                 _visuals.RemoveAt(i);
             }
         }
 
-        // Host label (slot 0) — recreate if panels were destroyed
-        if (_hostLabel != null && _hostLabel.NamePanel == null)
+        // Local label — attaches to the real scene Player GameObject (_playerRef),
+        // whose sprite was loaded with the local player's chosenClass and thus
+        // already matches the local slot visually. Works for host (localSlot=0)
+        // and for clients (localSlot=whatever slot they occupy).
+        if (_localLabel != null && _localLabel.NamePanel == null)
+            _localLabel = null;
+        if (_localLabel != null && _localLabel.SlotIndex != localSlot)
         {
-            _hostLabel = null;
+            DestroyPanels(_localLabel);
+            _localLabel = null;
         }
-        if (_hostLabel == null && _playerRef != null)
+        if (_localLabel == null && _playerRef != null && localSlot >= 0)
         {
-            CoopPlayerSummary hostSummary = null;
+            CoopPlayerSummary localSummary = null;
             foreach (var s in summaries)
-                if (s.SlotIndex == 0) { hostSummary = s; break; }
-            if (hostSummary != null)
-                _hostLabel = CreatePlayerLabels(hostSummary, spriteClone: null);
+                if (s.SlotIndex == localSlot) { localSummary = s; break; }
+            if (localSummary != null)
+                _localLabel = CreatePlayerLabels(localSummary, spriteClone: null);
         }
 
-        // Non-host clones + labels
+        // Clones + labels for every slot except the local slot.
         foreach (var summary in summaries)
         {
-            if (summary.SlotIndex == 0) continue;
+            if (summary.SlotIndex == localSlot) continue;
             bool exists = false;
             foreach (var v in _visuals)
                 if (v.SlotIndex == summary.SlotIndex) { exists = true; break; }
@@ -339,6 +348,18 @@ public class CoopPlayerVisuals : MonoBehaviour
 
             var visual = CreatePlayerVisual(summary);
             if (visual != null) _visuals.Add(visual);
+        }
+    }
+
+    private static int GetLocalSlotIndex()
+    {
+        try
+        {
+            return Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
+        }
+        catch
+        {
+            return -1;
         }
     }
 
@@ -510,7 +531,7 @@ public class CoopPlayerVisuals : MonoBehaviour
             if (originalRenderer != null)
             {
                 var sr = clone.AddComponent<SpriteRenderer>();
-                sr.sprite = originalRenderer.sprite;
+                sr.sprite = GetClassBaseSprite(summary.ChosenClass) ?? originalRenderer.sprite;
                 sr.material = originalRenderer.material;
                 sr.sortingLayerID = originalRenderer.sortingLayerID;
                 sr.sortingOrder = originalRenderer.sortingOrder - 1;
@@ -534,25 +555,44 @@ public class CoopPlayerVisuals : MonoBehaviour
 
         var basePos = _playerRef.transform.position;
         int activeSlot = LatestActiveSlot;
+        int localSlot = _localLabel?.SlotIndex ?? GetLocalSlotIndex();
 
-        // Host scale highlight
+        // Local-player scale highlight on _playerRef
         try
         {
-            float hostScale = (activeSlot == 0) ? 1.15f : 1f;
+            float localScale = (activeSlot == localSlot) ? 1.15f : 1f;
             _playerRef.transform.localScale = Vector3.Lerp(
-                _playerRef.transform.localScale, Vector3.one * hostScale, Time.deltaTime * 5f);
+                _playerRef.transform.localScale, Vector3.one * localScale, Time.deltaTime * 5f);
         }
         catch { }
 
-        // Update host label (slot 0)
-        if (_hostLabel != null)
+        // Update local-slot label (attached to _playerRef)
+        if (_localLabel != null)
         {
-            CoopPlayerSummary hostSummary = null;
+            CoopPlayerSummary localSummary = null;
             foreach (var s in summaries)
-                if (s.SlotIndex == 0) { hostSummary = s; break; }
+                if (s.SlotIndex == localSlot) { localSummary = s; break; }
 
-            if (hostSummary != null)
-                UpdatePlayerLabel(_hostLabel, hostSummary, basePos, activeSlot, cam);
+            if (localSummary != null)
+                UpdatePlayerLabel(_localLabel, localSummary, basePos, activeSlot, cam);
+        }
+
+        // Build deterministic display ranks for clones so that slot 0's
+        // "(0,0) offset" doesn't overlap _playerRef when the local slot isn't 0.
+        // Ordering: ascending SlotIndex, skipping the local slot; rank starts at 1.
+        var cloneRank = new Dictionary<int, int>();
+        int rank = 1;
+        for (int i = 0; i < summaries.Count; i++)
+        {
+            int lowestUnassigned = int.MaxValue;
+            foreach (var s in summaries)
+            {
+                if (s.SlotIndex == localSlot) continue;
+                if (cloneRank.ContainsKey(s.SlotIndex)) continue;
+                if (s.SlotIndex < lowestUnassigned) lowestUnassigned = s.SlotIndex;
+            }
+            if (lowestUnassigned == int.MaxValue) break;
+            cloneRank[lowestUnassigned] = rank++;
         }
 
         // Update clone labels
@@ -565,8 +605,10 @@ public class CoopPlayerVisuals : MonoBehaviour
                 if (s.SlotIndex == visual.SlotIndex) { summary = s; break; }
             if (summary == null) continue;
 
-            // Position clone: offset left per slot
-            var offset = new Vector3(-2.5f * visual.SlotIndex, -0.2f * visual.SlotIndex, 0);
+            // Position clone at its display rank (1..N) so each remote player
+            // appears at a consistent offset from the local player's sprite.
+            int displayRank = cloneRank.TryGetValue(visual.SlotIndex, out var r) ? r : visual.SlotIndex;
+            var offset = new Vector3(-2.5f * displayRank, -0.2f * displayRank, 0);
             visual.SpriteClone.transform.position = basePos + offset;
 
             var clonePos = visual.SpriteClone.transform.position;
@@ -915,10 +957,10 @@ public class CoopPlayerVisuals : MonoBehaviour
             DestroyVisual(v);
         _visuals.Clear();
 
-        if (_hostLabel != null)
+        if (_localLabel != null)
         {
-            DestroyPanels(_hostLabel);
-            _hostLabel = null;
+            DestroyPanels(_localLabel);
+            _localLabel = null;
         }
     }
 
@@ -945,6 +987,30 @@ public class CoopPlayerVisuals : MonoBehaviour
             case 2: return new Color(1f, 0.8f, 0.7f);
             case 3: return new Color(0.8f, 1f, 0.7f);
             default: return new Color(0.9f, 0.9f, 0.9f);
+        }
+    }
+
+    // The scene's real Player GameObject carries a PeglinClassAnimationSwitcher
+    // with base sprites for all four classes baked in. Pick the one matching
+    // this slot's chosen class so each clone renders as the correct character.
+    private static Sprite GetClassBaseSprite(int chosenClass)
+    {
+        try
+        {
+            var switcher = UnityEngine.Object.FindObjectOfType<Peglin.PeglinClassAnimationSwitcher>();
+            if (switcher == null) return null;
+
+            switch ((Peglin.ClassSystem.Class)chosenClass)
+            {
+                case Peglin.ClassSystem.Class.Balladin: return switcher.balladinBaseSprite;
+                case Peglin.ClassSystem.Class.Roundrel: return switcher.roundrelBaseSprite;
+                case Peglin.ClassSystem.Class.Spinventor: return switcher.spinventorBaseSprite;
+                default: return switcher.peglinBaseSprite;
+            }
+        }
+        catch
+        {
+            return null;
         }
     }
 

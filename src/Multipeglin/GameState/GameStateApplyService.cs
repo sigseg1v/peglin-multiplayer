@@ -170,6 +170,9 @@ public class GameStateApplyService
 
             if (isSpectating)
             {
+                // Flag phase active on the client so ShowWaiting() picks descriptive
+                // "finish the event" text once the client sends their completion.
+                Events.Handlers.Coop.CoopRewardState.PegMinigamePhaseActive = true;
                 Patches.MultiplayerClientPatches.AllowPegMinigameLogic = true;
                 _log.LogInfo("[ApplyService] Client PegMinigame mode enabled — AllowPegMinigameLogic=true");
             }
@@ -190,6 +193,9 @@ public class GameStateApplyService
 
             if (isSpectating)
             {
+                // Flag phase active on the client so ShowWaiting() picks the
+                // "choose a relic" text once the client sends their completion.
+                Events.Handlers.Coop.CoopRewardState.TreasurePhaseActive = true;
                 Patches.MultiplayerClientPatches.AllowTreasureLogic = true;
                 Patches.MultiplayerClientPatches.AllowRelicSync = true;
                 _log.LogInfo("[ApplyService] Client treasure mode enabled — AllowTreasureLogic=true");

@@ -337,8 +337,12 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         StaticGameData.chosenNextNodeIndex = snapshot.ChosenNextNodeIndex;
         StaticGameData.hasReachedBoss = snapshot.HasReachedBoss;
 
-        if (Enum.IsDefined(typeof(Class), snapshot.ChosenClass))
-            StaticGameData.chosenClass = (Class)snapshot.ChosenClass;
+        // Do NOT overwrite StaticGameData.chosenClass from the host's snapshot.
+        // The client sets their own class in GameStartClientHandler from their
+        // lobby selection. The snapshot's ChosenClass reflects whichever player's
+        // state is currently hot-swapped into the host's singletons, which
+        // would cause the client's player sprite to flicker to the wrong class
+        // every heartbeat. Per-slot classes come through CoopPlayerState instead.
 
         // If the host sent a battle name, find and set the correct MapDataBattle
         // so BattleController.Awake loads the right encounter

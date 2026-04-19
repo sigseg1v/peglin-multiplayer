@@ -337,6 +337,7 @@ public static class ServiceRegistration
         registry.Register(new CoopHandlers.AllChoicesCompleteServerHandler(), new CoopHandlers.AllChoicesCompleteClientHandler());
         registry.Register(new CoopHandlers.PostBattleStartServerHandler(), new CoopHandlers.PostBattleStartClientHandler());
         registry.Register(new CoopHandlers.PostBattleCompleteServerHandler(), new CoopHandlers.PostBattleCompleteClientHandler());
+        registry.Register(new CoopHandlers.PostBattleGoldSpentServerHandler(), new CoopHandlers.PostBattleGoldSpentClientHandler());
         registry.Register(new CoopHandlers.PostBattleRelicChoicesServerHandler(), new CoopHandlers.PostBattleRelicChoicesClientHandler());
         registry.Register(new CoopHandlers.OrbDiscardRequestServerHandler(), new CoopHandlers.OrbDiscardRequestClientHandler());
 

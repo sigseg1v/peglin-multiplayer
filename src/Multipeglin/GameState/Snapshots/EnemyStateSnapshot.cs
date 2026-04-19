@@ -11,6 +11,12 @@ public class EnemyStateSnapshot
 
     /// <summary>Upcoming enemy prefab names from EnemyInfoManager (visual preview list).</summary>
     public List<string> UpcomingEnemyNames { get; set; } = new List<string>();
+
+    /// <summary>BattleController.pachinkoBallSpawnLocation. Bosses like SlimeBoss mutate this
+    /// each turn to alternate aim origin; the client must mirror the host's value so its
+    /// ball-spawn position matches during the client's own aim turn.</summary>
+    public float BallSpawnX { get; set; }
+    public float BallSpawnY { get; set; }
 }
 
 public class EnemyEntry

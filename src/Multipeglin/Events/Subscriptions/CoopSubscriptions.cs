@@ -71,6 +71,13 @@ public sealed class CoopSubscriptions
     private float _healthBeforeAttack;
 
     /// <summary>
+    /// Tracks damage that has already been distributed via OnPlayerDamaged
+    /// (the reactive path) during the current attack window. OnTurnComplete
+    /// uses this to avoid double-distributing the same damage.
+    /// </summary>
+    private float _damageDistributedSinceAttackStart;
+
+    /// <summary>
     /// Singleton instance so the BattleController.Awake Postfix can re-subscribe.
     /// The game's static delegates may lose subscribers across scene loads,
     /// so we re-subscribe at the start of every battle.
@@ -126,16 +133,60 @@ public sealed class CoopSubscriptions
             if (phc == null)
             {
                 _healthBeforeAttack = 0f;
+                _damageDistributedSinceAttackStart = 0f;
                 return;
             }
 
             _healthBeforeAttack = phc.CurrentHealth;
+            _damageDistributedSinceAttackStart = 0f;
         }
         catch (Exception ex)
         {
             _log.LogWarning($"[CoopSubs] OnAttackStarted failed: {ex.Message}");
             _healthBeforeAttack = 0f;
+            _damageDistributedSinceAttackStart = 0f;
         }
+    }
+
+    /// <summary>
+    /// Distribute damage to every non-active player's CoopPlayerState, applying
+    /// their individual defensive buffs. Called from OnPlayerDamaged (reactive,
+    /// catches every phc.Damage() source including red-bomb detonations) and
+    /// from OnTurnComplete (residual reconciliation).
+    /// </summary>
+    public void DistributeDamageToNonActive(float rawDamage, string source)
+    {
+        if (!_mode.IsHosting) return;
+        if (_coopStateManager.TotalPlayerCount < 2) return;
+        if (rawDamage <= 0f) return;
+
+        int activeSlot = _coopStateManager.ActivePlayerSlot;
+        foreach (var state in _coopStateManager.PlayerStates.Values)
+        {
+            if (state.SlotIndex == activeSlot) continue;
+
+            float oldHp = state.CurrentHealth;
+            float effectiveDamage = ApplyDefensiveBuffs(state, rawDamage);
+            state.CurrentHealth = Mathf.Max(0f, state.CurrentHealth - effectiveDamage);
+            _log.LogInfo($"[CoopSubs] DistributeDamage({source}) slot {state.SlotIndex} ({state.PlayerName}): " +
+                $"hp {oldHp} -> {state.CurrentHealth} (raw={rawDamage}, after buffs={effectiveDamage})");
+        }
+    }
+
+    /// <summary>
+    /// Called from HealthSubscriptions.OnPlayerDamaged on every phc.Damage() call.
+    /// Distributes the damage immediately to non-active players so damage sources
+    /// that bypass the OnAttackStarted/OnTurnComplete window (e.g. red bomb mid-turn)
+    /// still hit every player.
+    /// </summary>
+    public void HandleImmediateDamage(float amount)
+    {
+        if (!_mode.IsHosting) return;
+        if (_coopStateManager.TotalPlayerCount < 2) return;
+        if (amount <= 0f) return;
+
+        DistributeDamageToNonActive(amount, "OnPlayerDamaged");
+        _damageDistributedSinceAttackStart += amount;
     }
 
     /// <summary>
@@ -150,56 +201,41 @@ public sealed class CoopSubscriptions
 
         try
         {
-            // --- Distribute enemy damage to all players ---
+            // --- Reconcile any residual damage that wasn't distributed via OnPlayerDamaged ---
+            // DistributeDamageToNonActive handles the common path (every phc.Damage() call).
+            // But some damage sources (e.g. red bomb detonation mid-turn, delayed explosions)
+            // can bypass the OnPlayerDamaged dispatch window. The _healthBeforeAttack delta
+            // catches any leftover damage and distributes it the same way.
             var phc = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
             if (phc != null)
             {
                 float currentHealth = phc.CurrentHealth;
-                float damage = _healthBeforeAttack - currentHealth;
+                float damage = _healthBeforeAttack - currentHealth - _damageDistributedSinceAttackStart;
 
                 if (damage > 0f)
                 {
-                    // Save the active player's state so it reflects the damage already taken
                     _coopStateManager.SaveActivePlayerState();
+                    DistributeDamageToNonActive(damage, "OnTurnComplete-residual");
+                    _damageDistributedSinceAttackStart += damage;
+                }
 
-                    // Apply damage to all non-active players, respecting their
-                    // individual defensive buffs (Ballusion, Intangiball, Ballwark).
-                    // The active player already had these checked via the normal
-                    // PlayerHealthController.Damage() flow.
-                    int activeSlot = _coopStateManager.ActivePlayerSlot;
-                    foreach (var state in _coopStateManager.PlayerStates.Values)
+                // Update _healthBeforeAttack so that if OnTurnComplete fires again
+                // from a board-reload extra enemy turn (_skipPlayerTurnCount > 0),
+                // only the INCREMENTAL damage is reconciled on the next pass.
+                _healthBeforeAttack = currentHealth;
+                _damageDistributedSinceAttackStart = 0f;
+
+                if (_coopStateManager.AllPlayersDead)
+                {
+                    _log.LogWarning("[CoopSubs] All co-op players have died! Triggering defeat.");
+                    if (currentHealth > 0f)
                     {
-                        if (state.SlotIndex == activeSlot) continue;
-
-                        float oldHp = state.CurrentHealth;
-                        float effectiveDamage = ApplyDefensiveBuffs(state, damage);
-                        state.CurrentHealth = Mathf.Max(0f, state.CurrentHealth - effectiveDamage);
-                        _log.LogInfo($"[CoopSubs] Slot {state.SlotIndex} ({state.PlayerName}): " +
-                            $"hp {oldHp} -> {state.CurrentHealth} (raw={damage}, after buffs={effectiveDamage})");
+                        phc.Damage(currentHealth, false);
                     }
-
-                    // Update _healthBeforeAttack so that if OnTurnComplete fires again
-                    // from a board-reload extra enemy turn (_skipPlayerTurnCount > 0),
-                    // only the INCREMENTAL damage is distributed. Without this, the
-                    // stale value from OnAttackStarted causes cumulative double-counting
-                    // because the game skips StartAttacking() during reload turns
-                    // (goes directly to BattleState.ATTACKING).
-                    _healthBeforeAttack = currentHealth;
-
-                    // Check if ALL players died — only then trigger game over.
-                    // Individual dead players just skip turns until the battle ends.
-                    if (_coopStateManager.AllPlayersDead)
-                    {
-                        _log.LogWarning("[CoopSubs] All co-op players have died! Triggering defeat.");
-                        if (currentHealth > 0f)
-                        {
-                            phc.Damage(currentHealth, false);
-                        }
-                    }
-                    else if (_coopStateManager.AnyPlayerDead)
-                    {
-                        _log.LogInfo("[CoopSubs] Some players dead, but not all — battle continues. Dead players will skip turns.");
-                    }
+                }
+                else if (_coopStateManager.AnyPlayerDead)
+                {
+                    _log.LogInfo("[CoopSubs] Some players dead, but not all — battle continues. Dead players will skip turns.");
                 }
             }
 

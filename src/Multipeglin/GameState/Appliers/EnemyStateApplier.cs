@@ -40,6 +40,15 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                 MapStateApplier.ClientWaitingMessage = "Waiting for host...";
             }
 
+            // Sync pachinkoBallSpawnLocation so boss fights (SlimeBoss) which alternate
+            // this position each turn keep the client's aim origin aligned with the host.
+            if (snapshot.BallSpawnX != 0f || snapshot.BallSpawnY != 0f)
+            {
+                var spawnBc = UnityEngine.Object.FindObjectOfType<Battle.BattleController>();
+                if (spawnBc != null)
+                    spawnBc.pachinkoBallSpawnLocation = new UnityEngine.Vector2(snapshot.BallSpawnX, snapshot.BallSpawnY);
+            }
+
             if (snapshot.Enemies == null || snapshot.Enemies.Count == 0)
             {
                 _log.LogInfo("[EnemyApplier] No enemies in snapshot.");

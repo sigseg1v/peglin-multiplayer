@@ -282,11 +282,13 @@ public class CoopStateManager
                 {
                     if (orb == null) continue;
                     var attack = orb.GetComponent<Battle.Attacks.Attack>();
+                    var persist = orb.GetComponent<Battle.Pachinko.PersistentOrb>();
                     state.CompleteDeck.Add(new SerializedOrb
                     {
                         PrefabName = orb.name.Replace("(Clone)", "").Trim(),
                         Guid = _orbId?.GetGuid(orb),
                         Level = attack?.Level ?? 0,
+                        RemainingPersistence = persist != null ? persist.remainingPersistence : -1,
                     });
                 }
             }
@@ -298,11 +300,13 @@ public class CoopStateManager
                 {
                     if (orb == null) continue;
                     var attack = orb.GetComponent<Battle.Attacks.Attack>();
+                    var persist = orb.GetComponent<Battle.Pachinko.PersistentOrb>();
                     state.BattleDeck.Add(new SerializedOrb
                     {
                         PrefabName = orb.name.Replace("(Clone)", "").Trim(),
                         Guid = _orbId?.GetGuid(orb),
                         Level = attack?.Level ?? 0,
+                        RemainingPersistence = persist != null ? persist.remainingPersistence : -1,
                     });
                 }
             }
@@ -369,6 +373,11 @@ public class CoopStateManager
                     if (attack != null) attack.SetInstanceId();
                     if (!string.IsNullOrEmpty(orb.Guid) && _orbId != null)
                         _orbId.Register(instance, orb.Guid);
+                    if (orb.RemainingPersistence >= 0)
+                    {
+                        var persist = instance.GetComponent<Battle.Pachinko.PersistentOrb>();
+                        if (persist != null) persist.remainingPersistence = orb.RemainingPersistence;
+                    }
                     DeckManager.completeDeck.Add(instance);
                 }
                 else
@@ -398,6 +407,11 @@ public class CoopStateManager
                     if (attack != null) attack.SetInstanceId();
                     if (!string.IsNullOrEmpty(orb.Guid) && _orbId != null)
                         _orbId.Register(instance, orb.Guid);
+                    if (orb.RemainingPersistence >= 0)
+                    {
+                        var persist = instance.GetComponent<Battle.Pachinko.PersistentOrb>();
+                        if (persist != null) persist.remainingPersistence = orb.RemainingPersistence;
+                    }
                     deckMgr.battleDeck.Add(instance);
                 }
             }
@@ -762,7 +776,10 @@ public class CoopStateManager
             var phc = UnityEngine.Object.FindObjectOfType<Battle.PlayerHealthController>();
             if (phc != null)
             {
-                state.CurrentHealth = phc.CurrentHealth;
+                // Clamp negative HP to 0. Enemy attacks exceeding remaining HP set the
+                // FloatVariable to a negative value; without clamping the saved state
+                // shows -5/100 on the client and TurnManager races vs game-over flow.
+                state.CurrentHealth = Mathf.Max(0f, phc.CurrentHealth);
 
                 var maxField = AccessTools.Field(typeof(Battle.PlayerHealthController), "_maxPlayerHealth");
                 var maxVar = maxField?.GetValue(phc);

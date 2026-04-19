@@ -309,16 +309,20 @@ public static class MultiplayerClientPatches
                 }
             }
 
-            // Right-click to discard orb — send request to host
+            // Right-click or Backspace to discard orb — send request to host.
+            // Backspace is the default Rewired "Back" action the native OrbDiscardButton
+            // listens for; we mirror that here because the native path is blocked on
+            // the client (discards route through OrbDiscardRequestEvent to host).
             if (_clientBallInitialized && !_clientDiscardSentThisTurn
-                && UnityEngine.Input.GetMouseButtonDown(1))
+                && (UnityEngine.Input.GetMouseButtonDown(1)
+                    || UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.Backspace)))
             {
                 var services = MultiplayerPlugin.Services;
                 if (services?.TryResolve<Network.IMessageSender>(out var sender) == true)
                 {
                     sender.Send(new Events.Network.Coop.OrbDiscardRequestEvent());
                     _clientDiscardSentThisTurn = true;
-                    MultiplayerPlugin.Logger?.LogInfo("[ClientAim] Sent OrbDiscardRequest to host (right-click)");
+                    MultiplayerPlugin.Logger?.LogInfo("[ClientAim] Sent OrbDiscardRequest to host");
                 }
             }
         }
@@ -984,6 +988,11 @@ public static class MultiplayerClientPatches
 
         var services = MultiplayerPlugin.Services;
         if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true) return;
+
+        // Clear stale reward/relic-selection state from any previous run. Without this,
+        // flags like HostHasChosenRelic and the various *PhaseActive bools persist from
+        // the prior game and prevent the starting relic UI from advancing on the second run.
+        Events.Handlers.Coop.CoopRewardState.Reset();
 
         var gameStartEvent = UI.LobbyUI.LatestGameStartEvent;
         if (gameStartEvent?.FinalPlayers != null)
@@ -2183,14 +2192,29 @@ public static class MultiplayerClientPatches
                         if (target == null) continue;
                     }
 
-                    target.Damage(shot.Damage, screenshake: false, 0.25f, 1f, unblockable: false,
-                        Battle.Enemies.Enemy.EnemyDamageSource.TargetedAttack);
-                    ApplyStatusEffectsToEnemy(target, shot.StatusEffectsToApply);
+                    // Pierce: if the player's orb has ShotType.PIERCE, also damage
+                    // up to N enemies behind the target (farther slot indices).
+                    // Sphear is the canonical pierce orb — without this, the damage
+                    // replay only hits the front enemy and pierce is invisible in coop.
+                    int pierceCount = GetOrbPierceCount(shot.OrbPrefabName);
+                    var pierceTargets = new System.Collections.Generic.List<Battle.Enemies.Enemy> { target };
+                    if (pierceCount > 0)
+                    {
+                        pierceTargets.AddRange(GetEnemiesBehindTarget(em, target, pierceCount));
+                    }
+
+                    foreach (var t in pierceTargets)
+                    {
+                        if (t == null || t.CurrentHealth <= 0f) continue;
+                        t.Damage(shot.Damage, screenshake: false, 0.25f, 1f, unblockable: false,
+                            Battle.Enemies.Enemy.EnemyDamageSource.TargetedAttack);
+                        ApplyStatusEffectsToEnemy(t, shot.StatusEffectsToApply);
+                    }
 
                     MultiplayerPlugin.Logger?.LogInfo(
                         $"[CoopAttack] {shot.PlayerName} (slot {shot.SlotIndex}): " +
-                        $"{shot.Damage} damage to {target.name} (guid={shot.TargetEnemyGuid}), " +
-                        $"effects={shot.StatusEffectsToApply?.Count ?? 0}");
+                        $"{shot.Damage} damage to {target.name} (+{pierceTargets.Count - 1} pierced, " +
+                        $"orb={shot.OrbPrefabName}), effects={shot.StatusEffectsToApply?.Count ?? 0}");
                 }
             }
 
@@ -2260,6 +2284,86 @@ public static class MultiplayerClientPatches
                     $"[CoopAttack] Failed to apply {type}({intensity}) to {enemy.name}: {ex.Message}");
             }
         }
+    }
+
+    private static readonly System.Collections.Generic.Dictionary<string, int> _orbPierceCache
+        = new System.Collections.Generic.Dictionary<string, int>();
+
+    /// <summary>
+    /// Reads ShotBehavior._shotType / _enemiesToPierce off the orb prefab's
+    /// serialized shot prefab so coop damage replay preserves pierce behavior
+    /// (Sphear etc.) without running the physics pipeline. Zero = not pierce.
+    /// </summary>
+    private static int GetOrbPierceCount(string orbPrefabName)
+    {
+        if (string.IsNullOrEmpty(orbPrefabName)) return 0;
+        if (_orbPierceCache.TryGetValue(orbPrefabName, out int cached)) return cached;
+
+        int result = 0;
+        try
+        {
+            var orbPrefab = Loading.AssetLoading.Instance?.GetOrbPrefab(orbPrefabName);
+            if (orbPrefab != null)
+            {
+                var projAttack = orbPrefab.GetComponent<Battle.Attacks.ProjectileAttack>();
+                if (projAttack != null)
+                {
+                    var shotPrefabField = AccessTools.Field(typeof(Battle.Attacks.ProjectileAttack), "_shotPrefab");
+                    var shotPrefabGO = shotPrefabField?.GetValue(projAttack) as UnityEngine.GameObject;
+                    if (shotPrefabGO != null)
+                    {
+                        var sb = shotPrefabGO.GetComponent<Battle.Attacks.ShotBehavior>();
+                        if (sb != null)
+                        {
+                            var typeField = AccessTools.Field(typeof(Battle.Attacks.ShotBehavior), "_shotType");
+                            var countField = AccessTools.Field(typeof(Battle.Attacks.ShotBehavior), "_enemiesToPierce");
+                            var shotType = (Battle.Attacks.ShotBehavior.ShotType)(typeField?.GetValue(sb) ?? 0);
+                            int enemiesToPierce = (int)(countField?.GetValue(sb) ?? 0);
+                            if (shotType == Battle.Attacks.ShotBehavior.ShotType.PIERCE)
+                                result = enemiesToPierce;
+                        }
+                    }
+                }
+            }
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[CoopAttack] GetOrbPierceCount({orbPrefabName}) failed: {ex.Message}");
+        }
+
+        _orbPierceCache[orbPrefabName] = result;
+        return result;
+    }
+
+    /// <summary>
+    /// Living enemies at slot indices behind the target (farther from the player),
+    /// sorted nearest-first so pierce chains through them in order. Used to
+    /// simulate pierce for replayed shots that bypass physics.
+    /// </summary>
+    private static System.Collections.Generic.List<Battle.Enemies.Enemy> GetEnemiesBehindTarget(
+        EnemyManager em, Battle.Enemies.Enemy target, int count)
+    {
+        var result = new System.Collections.Generic.List<Battle.Enemies.Enemy>();
+        if (em == null || target == null || count <= 0) return result;
+
+        float targetSlot;
+        try { targetSlot = em.GetSlotIndexForEnemy(target, out bool _); }
+        catch { return result; }
+
+        var candidates = new System.Collections.Generic.List<(Battle.Enemies.Enemy e, float slot)>();
+        foreach (var e in em.Enemies)
+        {
+            if (e == null || e == target || e.CurrentHealth <= 0f) continue;
+            float slot;
+            try { slot = em.GetSlotIndexForEnemy(e, out bool _); } catch { continue; }
+            if (slot > targetSlot)
+                candidates.Add((e, slot));
+        }
+        candidates.Sort((a, b) => a.slot.CompareTo(b.slot));
+
+        for (int i = 0; i < candidates.Count && result.Count < count; i++)
+            result.Add(candidates[i].e);
+        return result;
     }
 
     // =========================================================================
@@ -2647,6 +2751,10 @@ public static class MultiplayerClientPatches
                 AllowPegMinigameLogic = false;
                 Events.Handlers.Coop.CoopRewardState.ClientPegMinigameChoiceSent = true;
                 Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = true;
+                // Flag phase so ShowWaiting() picks descriptive text; clear any stale
+                // AllChoicesComplete from a prior phase that would hide the overlay.
+                Events.Handlers.Coop.CoopRewardState.PegMinigamePhaseActive = true;
+                Events.Handlers.Coop.CoopRewardState.AllChoicesComplete = false;
             }
             catch (Exception ex)
             {
@@ -3049,9 +3157,26 @@ public static class MultiplayerClientPatches
         // Active player is dead. Only allow game over if ALL players are dead.
         if (!coopState.AllPlayersDead)
         {
-            // Update the health bar text but do NOT trigger game over
+            // Clamp the FloatVariable to 0 so downstream reads (CoopState save,
+            // heartbeat health sync, UI bar) don't see negative HP. Without this,
+            // the dead player displays as -5/100 and TurnManager may race with
+            // native flow that reads the negative value mid-cleanup.
+            try
+            {
+                var setMethod = healthVar.GetType().GetMethod("Set", new[] { typeof(float) });
+                if (setMethod != null && hp < 0f)
+                    setMethod.Invoke(healthVar, new object[] { 0f });
+            }
+            catch { }
+
+            // Also clamp the active player's stored CoopPlayerState so TurnManager
+            // reads exactly 0 (not a negative) when deciding to skip this slot.
+            var activeState = coopState.GetPlayerState(coopState.ActivePlayerSlot);
+            if (activeState != null && activeState.CurrentHealth < 0f)
+                activeState.CurrentHealth = 0f;
+
             MultiplayerPlugin.Logger?.LogInfo(
-                $"[ClientPatches] Active player died but other players alive — suppressing game over");
+                $"[ClientPatches] Active player (slot {coopState.ActivePlayerSlot}) died but other players alive — suppressing game over, clamped hp to 0");
             return false; // block CheckForDeathAndUpdateBar entirely
         }
 
@@ -3089,6 +3214,35 @@ public static class MultiplayerClientPatches
         if (AllowTextScenarioLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked CurrencyManager.RemoveGold on client");
         return false;
+    }
+
+    /// <summary>
+    /// Post-battle gold deduction sync: when the client spends gold on the native
+    /// BattleUpgradeCanvas (heal, max HP, orb upgrade, orb add), notify the host
+    /// immediately so CoopPlayerState.Gold is updated before the next heartbeat
+    /// (which would otherwise reset the client's local gold to the stale value).
+    /// </summary>
+    [HarmonyPatch(typeof(Currency.CurrencyManager), "RemoveGold")]
+    [HarmonyPostfix]
+    public static void CurrencyManager_RemoveGold_Postfix(int amount)
+    {
+        if (!ShouldSuppressClientLogic) return;
+        if (!AllowNativeRewardLogic) return;
+        if (AllowCurrencySync) return;
+        if (amount <= 0) return;
+        try
+        {
+            var services = MultiplayerPlugin.Services;
+            if (services?.TryResolve<Network.IMessageSender>(out var sender) == true)
+            {
+                sender.Send(new Events.Network.Coop.PostBattleGoldSpentEvent { Amount = amount });
+                MultiplayerPlugin.Logger?.LogInfo($"[ClientPatch] Sent PostBattleGoldSpentEvent amount={amount}");
+            }
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatch] Failed to send PostBattleGoldSpentEvent: {ex.Message}");
+        }
     }
 
     [HarmonyPatch(typeof(DeckManager), "AddOrbToDeck")]
@@ -3544,6 +3698,9 @@ public static class MultiplayerClientPatches
             }
 
             Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = true;
+            // Reset stale AllChoicesComplete from a prior phase so CoopRewardUI
+            // doesn't early-return and keep the overlay hidden.
+            Events.Handlers.Coop.CoopRewardState.AllChoicesComplete = false;
         }
         catch (System.Exception ex)
         {
@@ -3916,6 +4073,13 @@ public static class MultiplayerClientPatches
                 MultiplayerPlugin.Logger?.LogInfo($"[ClientPatch] Client accepted treasure relic '{relic.locKey}' — sent TreasureCompleteEvent");
             }
             Events.Handlers.Coop.CoopRewardState.ClientTreasureChoiceSent = true;
+            // Show the waiting overlay once this player is done. AcceptRelic only
+            // closes the in-scene relic panel; the chest scene stays until every
+            // client finishes, so without this the client sits on the scene with
+            // no feedback.
+            Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = true;
+            Events.Handlers.Coop.CoopRewardState.TreasurePhaseActive = true;
+            Events.Handlers.Coop.CoopRewardState.AllChoicesComplete = false;
         }
         catch (System.Exception ex)
         {
@@ -4280,6 +4444,19 @@ public static class MultiplayerClientPatches
             return true;
         }
     }
+
+    // --- SlimeBoss: block client-side pachinkoBallSpawnLocation mutation ---
+    // SlimeBoss.UpdatePachinkoPos() alternates the ball spawn location each turn
+    // by incrementing a local counter. On the client this runs independently of
+    // the host, so the two sides drift out of sync (host spawns left, client spawns
+    // right, etc.). The heartbeat EnemyStateSnapshot carries the host's authoritative
+    // pachinkoBallSpawnLocation — block the client-side mutation so only the
+    // heartbeat applier writes to it.
+
+    [HarmonyPatch(typeof(Battle.SlimeBoss), "UpdatePachinkoPos")]
+    [HarmonyPrefix]
+    public static bool SlimeBoss_UpdatePachinkoPos_Prefix()
+        => !ShouldSuppressClientLogic;
 
     // --- SteamManager: skip Steam init in dev-multi to allow multiple instances ---
 

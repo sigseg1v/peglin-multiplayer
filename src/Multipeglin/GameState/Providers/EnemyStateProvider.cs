@@ -36,6 +36,11 @@ public class EnemyStateProvider : IGameStateProvider<EnemyStateSnapshot>
                     snapshot.BattleState = (int)state;
                     snapshot.BattleStateName = state.ToString();
                 }
+
+                // Ball spawn location — bosses like SlimeBoss alternate this each turn.
+                // Sent so the client's aim ball appears at the same origin as the host.
+                snapshot.BallSpawnX = bc.pachinkoBallSpawnLocation.x;
+                snapshot.BallSpawnY = bc.pachinkoBallSpawnLocation.y;
             }
 
             // Enemies

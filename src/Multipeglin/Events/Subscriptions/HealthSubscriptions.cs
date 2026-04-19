@@ -43,6 +43,13 @@ public sealed class HealthSubscriptions
     private void OnPlayerDamaged(float amount)
     {
         if (!IsHosting) return;
+
+        // In coop, distribute this damage to every non-active player immediately.
+        // Some damage sources (red bomb detonations, delayed effects) fire outside
+        // the OnAttackStarted/OnTurnComplete delta window, so the reactive hook is
+        // the only path that captures them for non-active players.
+        CoopSubscriptions.Instance?.HandleImmediateDamage(amount);
+
         _registry.Dispatch(new PlayerDamagedEvent
         {
             Damage = amount,

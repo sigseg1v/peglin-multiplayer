@@ -46,6 +46,12 @@ public class SerializedOrb
     public string PrefabName { get; set; }
     public string Guid { get; set; }
     public int Level { get; set; }
+
+    /// <summary>PersistentOrb.remainingPersistence — tracks multi-draw orbs like Orbelisk.
+    /// -1 = orb has no PersistentOrb component; otherwise the saved persistence counter.
+    /// Without this, re-instantiating clones on swap resets the counter and the orb keeps
+    /// being drawn every turn.</summary>
+    public int RemainingPersistence { get; set; } = -1;
 }
 
 public class SerializedRelic

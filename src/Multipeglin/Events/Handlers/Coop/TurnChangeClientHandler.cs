@@ -69,19 +69,31 @@ public sealed class TurnChangeClientHandler : IClientHandler<TurnChangeEvent>
         // Clear client target indicator on the host when turns change
         TargetSelectClientHandler.ClearClientTarget();
 
+        // Reset the discard counter + refresh the OrbDiscardButton text on every
+        // turn change. The game normally resets NumShotsDiscarded in DrawBall /
+        // OnAttackStarted, but the client's ball is created locally so those
+        // paths don't fire. Resetting for all clients (not just IsMyTurn) keeps
+        // the UI at "0/N" while spectating too.
+        try
+        {
+            var bc = Object.FindObjectOfType<BattleCtrl>();
+            if (bc != null) bc.NumShotsDiscarded = 0;
+
+            var btn = Object.FindObjectOfType<global::UI.OrbDisplay.OrbDiscardButton>();
+            if (btn != null)
+            {
+                var m = HarmonyLib.AccessTools.Method(typeof(global::UI.OrbDisplay.OrbDiscardButton), "UpdateDiscardCount");
+                m?.Invoke(btn, null);
+            }
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[TurnChange] Discard UI refresh failed: {ex.Message}");
+        }
+
         if (IsMyTurn)
         {
             TurnMessage = "Your turn! Aim and shoot.";
-
-            // Reset the discard counter so the client UI shows "0/N" at the start
-            // of each turn. The game normally resets NumShotsDiscarded in DrawBall,
-            // but the client's ball is created locally (not via the game's DrawBall).
-            try
-            {
-                var bc = Object.FindObjectOfType<BattleCtrl>();
-                if (bc != null) bc.NumShotsDiscarded = 0;
-            }
-            catch { }
         }
         else if (networkEvent.TurnPhase == nameof(GameState.TurnPhase.PLAYER_AIMING))
         {
