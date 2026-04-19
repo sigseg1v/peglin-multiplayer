@@ -216,57 +216,46 @@ public class RemoteCursorRenderer : MonoBehaviour
         }
     }
 
-    // Simple filled arrow pointing up-left, drawn into a small texture.
+    // Simple filled right triangle with the tip at top-left (pivot anchor).
+    // Vertices:
+    //   A = (0, h-1)   tip — sits exactly on the cursor's target point
+    //   B = (0, 0)     bottom-left
+    //   C = (w-1, h-1) top-right
     private static Sprite BuildCursorSprite()
     {
-        const int w = 24, h = 32;
-        var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
-        tex.filterMode = FilterMode.Bilinear;
-        tex.wrapMode = TextureWrapMode.Clamp;
+        const int w = 22, h = 22;
+        var tex = new Texture2D(w, h, TextureFormat.RGBA32, false)
+        {
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp,
+        };
         var clear = new Color32(0, 0, 0, 0);
         var white = new Color32(255, 255, 255, 255);
-        var black = new Color32(0, 0, 0, 255);
+
+        Vector2 a = new Vector2(0, h - 1);
+        Vector2 b = new Vector2(0, 0);
+        Vector2 c = new Vector2(w - 1, h - 1);
 
         for (int y = 0; y < h; y++)
         for (int x = 0; x < w; x++)
-            tex.SetPixel(x, y, clear);
-
-        // Arrow pixels: classic cursor silhouette anchored at top-left (0, h-1).
-        for (int y = 0; y < h; y++)
-        {
-            int fillMax = Mathf.Clamp((h - 1 - y), 0, w - 1);
-            // Tail thins out after ~2/3 of height.
-            int limit = y < h * 0.65f ? fillMax : Mathf.Clamp(fillMax - (int)((y - h * 0.65f) * 0.8f), 0, w - 1);
-            for (int x = 0; x <= limit; x++)
-                tex.SetPixel(x, h - 1 - y, white);
-        }
-
-        // 1-pixel black outline.
-        var outline = new Texture2D(w, h, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear };
-        for (int y = 0; y < h; y++)
-        for (int x = 0; x < w; x++)
-            outline.SetPixel(x, y, clear);
-
-        for (int y = 0; y < h; y++)
-        for (int x = 0; x < w; x++)
-        {
-            if (tex.GetPixel(x, y).a > 0.5f) continue;
-            bool neighbor =
-                (x > 0   && tex.GetPixel(x - 1, y).a > 0.5f) ||
-                (x < w-1 && tex.GetPixel(x + 1, y).a > 0.5f) ||
-                (y > 0   && tex.GetPixel(x, y - 1).a > 0.5f) ||
-                (y < h-1 && tex.GetPixel(x, y + 1).a > 0.5f);
-            if (neighbor) outline.SetPixel(x, y, black);
-        }
-
-        for (int y = 0; y < h; y++)
-        for (int x = 0; x < w; x++)
-        {
-            var o = outline.GetPixel(x, y);
-            if (o.a > 0.5f) tex.SetPixel(x, y, o);
-        }
+            tex.SetPixel(x, y, PointInTriangle(new Vector2(x, y), a, b, c) ? white : clear);
 
         tex.Apply();
+        // Pivot at (0, 1) = top-left so positioning the rect at the target
+        // screen point lands the tip on the cursor position.
         return Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0f, 1f), 100f);
     }
+
+    private static bool PointInTriangle(Vector2 p, Vector2 a, Vector2 b, Vector2 c)
+    {
+        float d1 = Sign(p, a, b);
+        float d2 = Sign(p, b, c);
+        float d3 = Sign(p, c, a);
+        bool hasNeg = d1 < 0 || d2 < 0 || d3 < 0;
+        bool hasPos = d1 > 0 || d2 > 0 || d3 > 0;
+        return !(hasNeg && hasPos);
+    }
+
+    private static float Sign(Vector2 p1, Vector2 p2, Vector2 p3)
+        => (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
 }
