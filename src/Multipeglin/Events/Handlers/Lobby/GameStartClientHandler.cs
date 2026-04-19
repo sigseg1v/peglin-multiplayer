@@ -35,6 +35,11 @@ public sealed class GameStartClientHandler : IClientHandler<GameStartEvent>
                     // Set StartingOrbs/StartingRelics from ClassLoadoutData so GameInit
                     // can initialize the deck properly when the client enters the game
                     Patches.MultiplayerClientPatches.SetStartingLoadoutFromClass(chosenClass);
+
+                    // Mirror into CruciballManager.currentClass — PeglinClassAnimationSwitcher
+                    // reads this at battle scene OnEnable to pick the base sprite / animator,
+                    // and we skip the native class-select flow entirely in multiplayer.
+                    Patches.MultiplayerClientPatches.SetCruciballManagerClass(chosenClass);
                 }
 
                 // Set PlayerRegistry.LocalSlot so other handlers can identify this client's slot.

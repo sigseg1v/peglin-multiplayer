@@ -531,7 +531,9 @@ public class CoopPlayerVisuals : MonoBehaviour
             if (originalRenderer != null)
             {
                 var sr = clone.AddComponent<SpriteRenderer>();
-                sr.sprite = GetClassBaseSprite(summary.ChosenClass) ?? originalRenderer.sprite;
+                // Leave sprite null if the switcher lookup fails — UpdateVisuals
+                // retries every frame so a transient miss self-corrects.
+                sr.sprite = GetClassBaseSprite(summary.ChosenClass);
                 sr.material = originalRenderer.material;
                 sr.sortingLayerID = originalRenderer.sortingLayerID;
                 sr.sortingOrder = originalRenderer.sortingOrder - 1;
@@ -603,10 +605,18 @@ public class CoopPlayerVisuals : MonoBehaviour
                 visual.SpriteClone.transform.localScale,
                 Vector3.one * targetScale, Time.deltaTime * 5f);
 
-            // Tint
+            // Tint + sprite (retry sprite lookup each frame until the switcher is
+            // findable, so a clone created before the Player became active still
+            // converges to the correct class sprite).
             var sr = visual.SpriteClone.GetComponent<SpriteRenderer>();
             if (sr != null)
             {
+                if (sr.sprite == null)
+                {
+                    var classSprite = GetClassBaseSprite(summary.ChosenClass);
+                    if (classSprite != null) sr.sprite = classSprite;
+                }
+
                 var baseColor = GetSlotColor(visual.SlotIndex);
                 sr.color = (activeSlot == visual.SlotIndex)
                     ? Color.Lerp(sr.color, Color.white, Time.deltaTime * 3f)
@@ -980,7 +990,15 @@ public class CoopPlayerVisuals : MonoBehaviour
     {
         try
         {
+            // FindObjectOfType misses inactive objects; fall back to
+            // FindObjectsOfTypeAll so a briefly-inactive Player prefab still
+            // resolves the switcher and gives us the right per-class sprite.
             var switcher = UnityEngine.Object.FindObjectOfType<Peglin.PeglinClassAnimationSwitcher>();
+            if (switcher == null)
+            {
+                var all = Resources.FindObjectsOfTypeAll<Peglin.PeglinClassAnimationSwitcher>();
+                if (all != null && all.Length > 0) switcher = all[0];
+            }
             if (switcher == null) return null;
 
             switch ((Peglin.ClassSystem.Class)chosenClass)

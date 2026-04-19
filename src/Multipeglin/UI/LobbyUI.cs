@@ -433,7 +433,9 @@ public static class LobbyUI
         var hostSlot = registry.GetHostSlot();
         if (hostSlot != null)
         {
-            StaticGameData.chosenClass = (Peglin.ClassSystem.Class)hostSlot.ChosenClass;
+            var hostClass = (Peglin.ClassSystem.Class)hostSlot.ChosenClass;
+            StaticGameData.chosenClass = hostClass;
+            Patches.MultiplayerClientPatches.SetCruciballManagerClass(hostClass);
             MultiplayerPlugin.Logger?.LogInfo($"[Lobby] Starting game: host class={hostSlot.ChosenClass}, {finalPlayers.Count} players");
         }
 

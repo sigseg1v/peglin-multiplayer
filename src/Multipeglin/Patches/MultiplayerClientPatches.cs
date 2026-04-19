@@ -179,6 +179,34 @@ public static class MultiplayerClientPatches
     }
 
     /// <summary>
+    /// Mirror the class choice into CruciballManager.currentClass. The native
+    /// class-select UI normally does this via SetRunCruciballLevelAndClass, but
+    /// we skip that flow in multiplayer (lobby already picked the class). Without
+    /// this, PeglinClassAnimationSwitcher.OnEnable in the Battle scene sees the
+    /// default class and renders the local player as plain Peglin regardless of
+    /// the lobby choice.
+    /// </summary>
+    public static void SetCruciballManagerClass(Peglin.ClassSystem.Class chosenClass)
+    {
+        try
+        {
+            var cms = Resources.FindObjectsOfTypeAll<Cruciball.CruciballManager>();
+            if (cms == null || cms.Length == 0)
+            {
+                MultiplayerPlugin.Logger?.LogWarning("[ClientPatches] CruciballManager not found — class sprite may be wrong");
+                return;
+            }
+            var cm = cms[0];
+            cm.currentClass = chosenClass;
+            MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Set CruciballManager.currentClass = {chosenClass}");
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] SetCruciballManagerClass failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Look up the ClassLoadoutData for the given class and set StaticGameData.StartingOrbs
     /// and StaticGameData.StartingRelics so GameInit.Start() can initialize the deck properly.
     /// </summary>
