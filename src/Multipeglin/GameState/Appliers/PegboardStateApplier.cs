@@ -620,8 +620,10 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
         }
 
-        // Force peg type to match host (skip for bouncers — they don't support conversion)
-        if (!(peg is BouncerPeg))
+        // Force peg type to match host. Bouncers (rubber) DO get synced — when the host
+        // shuffles peg types (e.g. random peg field, shuffle stages), the bouncer's peg
+        // slot on the client must reflect host state. Without this, rubber pegs stay
+        // pinned to whatever positions the client started with.
         {
             var targetType = (Peg.PegType)entry.PegType;
             if (peg.pegType != targetType)

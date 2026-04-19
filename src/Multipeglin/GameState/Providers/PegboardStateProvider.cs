@@ -61,6 +61,20 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                 if (!destroyed)
                 {
                     try { cleared = peg.IsDisabled(); } catch { }
+                    // LongPeg collider stays enabled for TimeToDisappear (~0.5s) after
+                    // being hit, even though logically it's been "popped" — its _hit
+                    // flag is the authoritative signal. Treat _hit=true as cleared so
+                    // the client doesn't race-resurrect it on heartbeat.
+                    if (!cleared && peg is LongPeg)
+                    {
+                        try
+                        {
+                            var hitField = HarmonyLib.AccessTools.Field(typeof(LongPeg), "_hit");
+                            if ((bool)(hitField?.GetValue(peg) ?? false))
+                                cleared = true;
+                        }
+                        catch { }
+                    }
                     // _cleared flag tracks "was this peg ever cleared this battle" — controls
                     // the previously-cleared background visual (dot/different color after refresh).
                     try

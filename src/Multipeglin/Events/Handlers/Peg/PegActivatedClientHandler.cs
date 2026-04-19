@@ -28,6 +28,29 @@ public sealed class PegActivatedClientHandler : IClientHandler<PegActivatedEvent
             // Skip bombs — heartbeat handles bomb state
             if (peg is Bomb) return;
 
+            // BouncerPeg never pops — it bounces and accumulates damage over N hits.
+            // Previously we SetActive(false)'d it, which hid it after the first hit
+            // and prevented the user from perceiving subsequent hits. Heartbeat keeps
+            // the bouncer's visual state in sync; nothing to do here.
+            if (peg is global::Battle.BouncerPeg) return;
+
+            // LongPeg pops once on host then lingers ~0.5s before SetActiveStatus(false).
+            // Previously we SetActive(false)'d immediately, which made the heartbeat
+            // racing against the 0.5s window resurrect the peg every sync — user saw
+            // the peg "stuck" after a hit. Instead, mark _cleared=true and let the
+            // heartbeat drive the fade (provider now reports IsCleared once host's
+            // _hit flag is set, below, so the applier correctly force-pops it).
+            if (peg is LongPeg)
+            {
+                try
+                {
+                    var clearedField = AccessTools.Field(typeof(global::Peg), "_cleared");
+                    clearedField?.SetValue(peg, true);
+                }
+                catch { }
+                return;
+            }
+
             // Do the visual pop directly — don't call PegActivated() because
             // it accesses relicManager (null on client pegs → NRE) and runs
             // game logic (relic effects, status effects, attack resolution).
@@ -64,7 +87,7 @@ public sealed class PegActivatedClientHandler : IClientHandler<PegActivatedEvent
                 }
                 else
                 {
-                    // Fallback for non-RegularPeg types: just deactivate
+                    // Fallback for other non-Regular/Bouncer/Long peg types: just deactivate
                     peg.gameObject.SetActive(false);
                 }
             }
