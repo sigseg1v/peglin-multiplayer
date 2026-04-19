@@ -68,6 +68,8 @@ public class MultiplayerUI : MonoBehaviour
 
     // Lobby panel elements
     private TextMeshProUGUI _lobbyStatusText;
+    private TextMeshProUGUI _lobbyJoinLinkText;
+    private float _inviteCopiedFlashUntil;
 
     // Multiplayer panel elements (client fullscreen event feed)
     private TextMeshProUGUI _multiplayerFeedText;
@@ -497,6 +499,17 @@ public class MultiplayerUI : MonoBehaviour
         statusRect.anchoredPosition = new Vector2(0, 160);
         statusRect.sizeDelta = new Vector2(640, 36);
 
+        // Persistent join-link line (steam://joinlobby/... when hosting via Steam)
+        _lobbyJoinLinkText = CreateText(_lobbyPanel.transform, "LobbyJoinLink", "", 16);
+        _lobbyJoinLinkText.color = new Color(0.55f, 0.75f, 0.95f, 1f);
+        _lobbyJoinLinkText.enableWordWrapping = true;
+        var linkRect = _lobbyJoinLinkText.rectTransform;
+        linkRect.anchorMin = new Vector2(0.5f, 0.5f);
+        linkRect.anchorMax = new Vector2(0.5f, 0.5f);
+        linkRect.pivot = new Vector2(0.5f, 0.5f);
+        linkRect.anchoredPosition = new Vector2(0, 120);
+        linkRect.sizeDelta = new Vector2(780, 44);
+
         // Invite Friend button (only meaningful when hosting via Steam; toggled in UpdateLobbyPanel)
         _inviteFriendButton = CreateButton(_lobbyPanel.transform, "InviteFriendBtn", "Invite Friend",
             new Color(0.2f, 0.45f, 0.55f, 1f), new Vector2(0, -250), new Vector2(400, 56));
@@ -549,12 +562,7 @@ public class MultiplayerUI : MonoBehaviour
             }
         }
 
-        if (_lobbyStatusText != null)
-        {
-            _lobbyStatusText.text = overlayEnabled
-                ? "Invite sent — also copied join link to clipboard"
-                : "Overlay unavailable — join link copied to clipboard";
-        }
+        _inviteCopiedFlashUntil = Time.unscaledTime + 3f;
     }
 
     private void CreateFriendListPanel(Transform parent)
@@ -730,7 +738,12 @@ public class MultiplayerUI : MonoBehaviour
         if (_lobbyStatusText == null) return;
 
         bool steamActive = _router != null && _router.ActiveIsSteam;
-        if (_multiplayerMode.IsHosting)
+        bool flashActive = Time.unscaledTime < _inviteCopiedFlashUntil;
+        if (flashActive)
+        {
+            _lobbyStatusText.text = "Join link copied to clipboard — paste to a friend in Steam chat";
+        }
+        else if (_multiplayerMode.IsHosting)
         {
             _lobbyStatusText.text = steamActive
                 ? "Hosting via Steam lobby"
@@ -744,6 +757,26 @@ public class MultiplayerUI : MonoBehaviour
         // Invite Friend button: only while hosting via Steam
         if (_inviteFriendButton != null)
             _inviteFriendButton.gameObject.SetActive(_multiplayerMode.IsHosting && steamActive);
+
+        // Persistent join-link line: always visible while hosting via Steam so the user
+        // can share it manually when the Steam overlay is unavailable (common under Proton).
+        if (_lobbyJoinLinkText != null)
+        {
+            if (_multiplayerMode.IsHosting && steamActive && _steamTransport != null)
+            {
+                var lobbyId = _steamTransport.HostedLobbyId;
+                if (lobbyId.IsValid())
+                {
+                    uint appId = 0;
+                    try { appId = SteamUtils.GetAppID().m_AppId; } catch { }
+                    _lobbyJoinLinkText.text =
+                        $"steam://joinlobby/{appId}/{lobbyId.m_SteamID}/{SteamUser.GetSteamID().m_SteamID}";
+                    _lobbyJoinLinkText.gameObject.SetActive(true);
+                }
+                else _lobbyJoinLinkText.gameObject.SetActive(false);
+            }
+            else _lobbyJoinLinkText.gameObject.SetActive(false);
+        }
 
         // Delegate to LobbyUI for the class select / ready system
         LobbyUI.UpdateLobbyUI(
