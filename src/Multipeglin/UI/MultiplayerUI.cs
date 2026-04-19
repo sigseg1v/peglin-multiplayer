@@ -63,7 +63,6 @@ public class MultiplayerUI : MonoBehaviour
     // Join panel elements
     private TMP_InputField _codeInput;
     private TextMeshProUGUI _statusText;
-    private Toggle _diagToggle;
 
     // Host panel elements
     private TextMeshProUGUI _hostInfoText;
@@ -449,10 +448,6 @@ public class MultiplayerUI : MonoBehaviour
         _codeInput = CreateInputField(_joinPanel.transform, "CodeInput",
             "IP:PORT", new Vector2(0, 32), new Vector2(560, 72));
         _codeInput.text = $"127.0.0.1:{NetworkConfig.DefaultPort}";
-
-        // Diagnostics mode toggle
-        _diagToggle = CreateToggle(_joinPanel.transform, "DiagToggle", "Diagnostics Mode",
-            new Vector2(0, -40), new Vector2(480, 40));
 
         // Connect button
         var connectBtn = CreateButton(_joinPanel.transform, "ConnectBtn", "Connect",
@@ -1219,7 +1214,7 @@ public class MultiplayerUI : MonoBehaviour
             _multiplayerMode.EnableSpectating();
             Utility.FileLogger.RoleTag = "CLIENT";
             if (_multiplayerMode is MultiplayerMode mode)
-                mode.ClientMode = _diagToggle != null && _diagToggle.isOn ? ClientMode.Diagnostics : ClientMode.Mirror;
+                mode.ClientMode = ClientMode.Mirror;
             _transport.Connect(ip, port);
             Log.LogInfo($"Connecting to {ip}:{port}");
             // OnConnected callback will switch to lobby panel
