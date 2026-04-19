@@ -44,19 +44,21 @@ public sealed class SkipTurnButton : MonoBehaviour
         }
         if (!mode.IsHosting && !mode.IsSpectating) { SetVisible(false); return; }
 
-        bool inBattle = BattleCtrl.CurrentBattleState == BattleCtrl.BattleState.AWAITING_SHOT;
-        if (!inBattle) { SetVisible(false); return; }
-
         bool myTurn;
         if (mode.IsHosting)
         {
-            // Host: use TurnManager directly (client-side static is also updated but TM is source of truth)
+            // Host: gate on local BattleController + TurnManager (both local authority).
+            bool inBattle = BattleCtrl.CurrentBattleState == BattleCtrl.BattleState.AWAITING_SHOT;
+            if (!inBattle) { SetVisible(false); return; }
             if (!MultiplayerPlugin.Services.TryResolve<GameState.TurnManager>(out var tm))
             { SetVisible(false); return; }
             myTurn = tm.Phase == GameState.TurnPhase.PLAYER_AIMING && tm.CurrentPlayerSlot == 0;
         }
         else
         {
+            // Client: trust host-authoritative "is my turn" flag alone. Don't gate on local
+            // BattleController state, which may lag behind the turn-change event and would
+            // otherwise cause the button to flicker or not appear at all.
             myTurn = TurnChangeClientHandler.IsMyTurn;
         }
 
@@ -117,12 +119,12 @@ public sealed class SkipTurnButton : MonoBehaviour
         _button.colors = colors;
         _button.onClick.AddListener(OnClick);
 
-        // Anchor bottom-left where the HP bar used to be.
+        // Anchor middle-left: above the discard buttons, below the coop peglin sprites.
         var rect = _buttonObj.GetComponent<RectTransform>();
-        rect.anchorMin = new Vector2(0f, 0f);
-        rect.anchorMax = new Vector2(0f, 0f);
-        rect.pivot = new Vector2(0f, 0f);
-        rect.anchoredPosition = new Vector2(40f, 90f);
+        rect.anchorMin = new Vector2(0f, 0.5f);
+        rect.anchorMax = new Vector2(0f, 0.5f);
+        rect.pivot = new Vector2(0f, 0.5f);
+        rect.anchoredPosition = new Vector2(40f, 0f);
         rect.sizeDelta = new Vector2(260f, 70f);
 
         // Dark border frame behind the fill

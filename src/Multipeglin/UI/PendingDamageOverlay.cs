@@ -182,7 +182,7 @@ public sealed class PendingDamageOverlay : MonoBehaviour
                 panel = new EnemyPanel { Root = new GameObject($"PendingDmg_{guid}") };
                 panel.Root.transform.SetParent(_canvasObj.transform, false);
                 var rootRect = panel.Root.AddComponent<RectTransform>();
-                rootRect.sizeDelta = new Vector2(200, 40);
+                rootRect.sizeDelta = new Vector2(50, 22);
                 rootRect.pivot = new Vector2(0.5f, 1f);
 
                 // Translucent black background behind the damage text
@@ -231,7 +231,7 @@ public sealed class PendingDamageOverlay : MonoBehaviour
                 continue;
             }
 
-            var worldPos = enemy.transform.position + new Vector3(0.6f, 2.05f, 0f);
+            var worldPos = enemy.transform.position + new Vector3(0.6f, 2.55f, 0f);
             var screenPos = cam.WorldToScreenPoint(worldPos);
             if (screenPos.z < 0)
             {

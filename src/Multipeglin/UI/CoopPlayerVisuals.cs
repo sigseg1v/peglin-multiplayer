@@ -577,24 +577,6 @@ public class CoopPlayerVisuals : MonoBehaviour
                 UpdatePlayerLabel(_localLabel, localSummary, basePos, activeSlot, cam);
         }
 
-        // Build deterministic display ranks for clones so that slot 0's
-        // "(0,0) offset" doesn't overlap _playerRef when the local slot isn't 0.
-        // Ordering: ascending SlotIndex, skipping the local slot; rank starts at 1.
-        var cloneRank = new Dictionary<int, int>();
-        int rank = 1;
-        for (int i = 0; i < summaries.Count; i++)
-        {
-            int lowestUnassigned = int.MaxValue;
-            foreach (var s in summaries)
-            {
-                if (s.SlotIndex == localSlot) continue;
-                if (cloneRank.ContainsKey(s.SlotIndex)) continue;
-                if (s.SlotIndex < lowestUnassigned) lowestUnassigned = s.SlotIndex;
-            }
-            if (lowestUnassigned == int.MaxValue) break;
-            cloneRank[lowestUnassigned] = rank++;
-        }
-
         // Update clone labels
         foreach (var visual in _visuals)
         {
@@ -605,10 +587,11 @@ public class CoopPlayerVisuals : MonoBehaviour
                 if (s.SlotIndex == visual.SlotIndex) { summary = s; break; }
             if (summary == null) continue;
 
-            // Position clone at its display rank (1..N) so each remote player
-            // appears at a consistent offset from the local player's sprite.
-            int displayRank = cloneRank.TryGetValue(visual.SlotIndex, out var r) ? r : visual.SlotIndex;
-            var offset = new Vector3(-2.5f * displayRank, -0.2f * displayRank, 0);
+            // Slot ordering: host (slot 0) is rightmost, each higher slot sits
+            // further left. Local player sprite stays at basePos; remote clones
+            // are offset by (remoteSlot - localSlot). Positive diff → left, negative → right.
+            int slotDiff = visual.SlotIndex - localSlot;
+            var offset = new Vector3(-2.5f * slotDiff, -0.2f * Mathf.Abs(slotDiff), 0);
             visual.SpriteClone.transform.position = basePos + offset;
 
             var clonePos = visual.SpriteClone.transform.position;

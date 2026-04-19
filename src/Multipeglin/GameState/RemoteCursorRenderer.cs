@@ -178,7 +178,7 @@ public class RemoteCursorRenderer : MonoBehaviour
         var labelRect = labelGo.AddComponent<RectTransform>();
         labelRect.sizeDelta = new Vector2(40f, 24f);
         labelRect.pivot = new Vector2(1f, 0.5f);
-        labelRect.anchoredPosition = new Vector2(-4f, 16f);
+        labelRect.anchoredPosition = new Vector2(-4f, -17f);
         var label = labelGo.AddComponent<TextMeshProUGUI>();
         label.text = (slotIndex + 1).ToString();
         label.fontSize = 22f;
