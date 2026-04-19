@@ -216,34 +216,53 @@ public class RemoteCursorRenderer : MonoBehaviour
         }
     }
 
-    // Simple filled right triangle with the tip at top-left (pivot anchor).
-    // Vertices:
-    //   A = (0, h-1)   tip — sits exactly on the cursor's target point
-    //   B = (0, 0)     bottom-left
-    //   C = (w-1, h-1) top-right
+    // Narrow classic-cursor-shaped triangle, pointing up-left.
+    // Large texture + 4x supersampled coverage = smooth edges, no chunky stairs.
+    // Vertices (in normalized [0,1] coords, y-up with (0,1) = top):
+    //   A = (0.00, 1.00)  tip
+    //   B = (0.10, 0.00)  tail bottom
+    //   C = (0.80, 0.25)  side flare
     private static Sprite BuildCursorSprite()
     {
-        const int w = 22, h = 22;
-        var tex = new Texture2D(w, h, TextureFormat.RGBA32, false)
+        const int size = 64;
+        const int ss = 4; // 4x4 supersampling per pixel for anti-aliasing
+
+        var tipNorm = new Vector2(0.00f, 1.00f);
+        var tailNorm = new Vector2(0.10f, 0.00f);
+        var flareNorm = new Vector2(0.80f, 0.25f);
+
+        var a = new Vector2(tipNorm.x * (size - 1), tipNorm.y * (size - 1));
+        var b = new Vector2(tailNorm.x * (size - 1), tailNorm.y * (size - 1));
+        var c = new Vector2(flareNorm.x * (size - 1), flareNorm.y * (size - 1));
+
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
         {
             filterMode = FilterMode.Bilinear,
             wrapMode = TextureWrapMode.Clamp,
         };
         var clear = new Color32(0, 0, 0, 0);
-        var white = new Color32(255, 255, 255, 255);
 
-        Vector2 a = new Vector2(0, h - 1);
-        Vector2 b = new Vector2(0, 0);
-        Vector2 c = new Vector2(w - 1, h - 1);
-
-        for (int y = 0; y < h; y++)
-        for (int x = 0; x < w; x++)
-            tex.SetPixel(x, y, PointInTriangle(new Vector2(x, y), a, b, c) ? white : clear);
+        float invSs = 1f / ss;
+        float halfInvSs = invSs * 0.5f;
+        for (int y = 0; y < size; y++)
+        for (int x = 0; x < size; x++)
+        {
+            int hits = 0;
+            for (int sy = 0; sy < ss; sy++)
+            for (int sx = 0; sx < ss; sx++)
+            {
+                var p = new Vector2(x + halfInvSs + sx * invSs, y + halfInvSs + sy * invSs);
+                if (PointInTriangle(p, a, b, c)) hits++;
+            }
+            if (hits == 0) { tex.SetPixel(x, y, clear); continue; }
+            byte alpha = (byte)((hits * 255) / (ss * ss));
+            tex.SetPixel(x, y, new Color32(255, 255, 255, alpha));
+        }
 
         tex.Apply();
         // Pivot at (0, 1) = top-left so positioning the rect at the target
         // screen point lands the tip on the cursor position.
-        return Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0f, 1f), 100f);
+        return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0f, 1f), 100f);
     }
 
     private static bool PointInTriangle(Vector2 p, Vector2 a, Vector2 b, Vector2 c)
