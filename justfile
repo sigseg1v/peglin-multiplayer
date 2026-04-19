@@ -45,6 +45,19 @@ setup:
         Write-Host 'BepInEx {{bepinex_version}} installed to release/'; \
     }
 
+# Restore steam_appid.txt from a dev-network-player backup if a prior run was
+# interrupted. All other recipes depend on this so they never launch against
+# the wrong AppID after an aborted network-player session.
+[private]
+_restore-appid:
+    $steamAppId = Join-Path '{{game}}' 'steam_appid.txt'; \
+    $steamAppIdBak = "$steamAppId.netplayer"; \
+    if (Test-Path $steamAppIdBak) { \
+        Remove-Item $steamAppId -Force -ErrorAction SilentlyContinue; \
+        Move-Item $steamAppIdBak $steamAppId -Force; \
+        Write-Host '==> Recovered steam_appid.txt from prior dev-network-player run'; \
+    }
+
 # Deploy plugin DLLs to game dir
 [private]
 copy-plugins config="Debug":
@@ -56,7 +69,7 @@ copy-plugins config="Debug":
     Copy-Item "$bin/NLog.dll" '{{plugins}}/'
 
 # Build debug, deploy to game dir, launch game, tail logs
-dev: setup
+dev: setup _restore-appid
     dotnet build '{{src}}/Multipeglin.sln' -c Debug --nologo -v quiet; \
     just copy-plugins Debug; \
     New-Item -ItemType Directory -Path (Split-Path '{{logfile}}') -Force | Out-Null; \
@@ -75,7 +88,7 @@ dev: setup
 #   With floor: just dev-multi 3-2
 # Optional: set PEGLIN_SEED env var for deterministic seeds, e.g.
 #   PEGLIN_SEED=12345 just dev-multi 2
-dev-multi level="": setup
+dev-multi level="": setup _restore-appid
     dotnet build '{{src}}/Multipeglin.sln' -c Debug --nologo -v quiet; \
     just copy-plugins Debug; \
     $logsDir = Split-Path '{{logfile}}'; \
@@ -115,33 +128,41 @@ dev-multi level="": setup
 # test Steam networking end-to-end without both owning Peglin. BOTH machines must
 # use this recipe — Steam lobbies/friends/P2P are scoped per-AppID, so a 1296610
 # instance and a 480 instance can't see each other.
-dev-network-player: setup
+dev-network-player: setup _restore-appid
     dotnet build '{{src}}/Multipeglin.sln' -c Debug --nologo -v quiet; \
     just copy-plugins Debug; \
     New-Item -ItemType Directory -Path (Split-Path '{{logfile}}') -Force | Out-Null; \
     [IO.File]::Create('{{logfile}}').Close(); \
     $steamAppId = Join-Path '{{game}}' 'steam_appid.txt'; \
     $steamAppIdBak = "$steamAppId.netplayer"; \
-    if (Test-Path $steamAppId) { Move-Item $steamAppId $steamAppIdBak -Force }; \
-    Set-Content -Path $steamAppId -Value '480' -NoNewline; \
-    Write-Host '==> Using Spacewar AppID (480) for Steam networking'; \
-    Write-Host '==> Launching game...'; \
-    Start-Process pwsh -ArgumentList '-NoProfile','-File','{{root}}/launch.ps1'; \
-    Write-Host '==> Waiting for game to finish reading steam_appid.txt...'; \
-    $deadline = (Get-Date).AddSeconds(90); \
-    while ((Get-Date) -lt $deadline) { \
-        if ((Test-Path '{{logfile}}') -and ((Get-Content '{{logfile}}' -Raw) -match 'Multipeglin v')) { break } \
-        Start-Sleep -Milliseconds 500; \
-    } \
-    Start-Sleep 2; \
-    Remove-Item $steamAppId -Force -ErrorAction SilentlyContinue; \
-    if (Test-Path $steamAppIdBak) { Move-Item $steamAppIdBak $steamAppId -Force }; \
-    Write-Host "==> Tailing logs (Ctrl+C to stop)"; \
-    Write-Host "    Log: {{logfile}}`n"; \
-    Get-Content '{{logfile}}' -Wait
+    try { \
+        if (Test-Path $steamAppId) { Move-Item $steamAppId $steamAppIdBak -Force }; \
+        Set-Content -Path $steamAppId -Value '480' -NoNewline; \
+        Write-Host '==> Using Spacewar AppID (480) for Steam networking'; \
+        Write-Host '==> Launching game...'; \
+        Start-Process pwsh -ArgumentList '-NoProfile','-File','{{root}}/launch.ps1'; \
+        Write-Host '==> Waiting for game to finish reading steam_appid.txt...'; \
+        $deadline = (Get-Date).AddSeconds(90); \
+        while ((Get-Date) -lt $deadline) { \
+            if ((Test-Path '{{logfile}}') -and ((Get-Content '{{logfile}}' -Raw) -match 'Multipeglin v')) { break } \
+            Start-Sleep -Milliseconds 500; \
+        } \
+        Start-Sleep 2; \
+        Remove-Item $steamAppId -Force -ErrorAction SilentlyContinue; \
+        if (Test-Path $steamAppIdBak) { Move-Item $steamAppIdBak $steamAppId -Force }; \
+        Write-Host "==> Tailing logs (Ctrl+C to stop)"; \
+        Write-Host "    Log: {{logfile}}`n"; \
+        Get-Content '{{logfile}}' -Wait; \
+    } finally { \
+        if (Test-Path $steamAppIdBak) { \
+            Remove-Item $steamAppId -Force -ErrorAction SilentlyContinue; \
+            Move-Item $steamAppIdBak $steamAppId -Force; \
+            Write-Host '==> Restored steam_appid.txt'; \
+        } \
+    }
 
 # Deploy plugin to game dir without launching
-deploy: setup
+deploy: setup _restore-appid
     dotnet build '{{src}}/Multipeglin.sln' -c Debug --nologo -v quiet; \
     just copy-plugins Debug; \
     Write-Host "Deployed to {{plugins}}"
