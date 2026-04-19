@@ -1673,14 +1673,23 @@ public static class MultiplayerClientPatches
     /// Block special peg type shuffling on client. The pegboard layout loads
     /// with all pegs as REGULAR. The host sends the correct peg types and
     /// the applier sets them.
+    ///
+    /// On the host, log the caller so we can diagnose excessive shuffle
+    /// frequency (see bug report: "shuffle fucks up everything").
     /// </summary>
     [HarmonyPatch(typeof(PegManager), "ShuffleSpecialPegs")]
     [HarmonyPrefix]
-    public static bool PegManager_ShuffleSpecialPegs_Prefix()
+    public static bool PegManager_ShuffleSpecialPegs_Prefix(bool forceRefresh)
     {
-        if (!ShouldSuppressClientLogic) return true;
-        MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked ShuffleSpecialPegs — host will send peg types");
-        return false;
+        if (ShouldSuppressClientLogic)
+        {
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked ShuffleSpecialPegs — host will send peg types");
+            return false;
+        }
+        if (IsHosting)
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[PegShuffleHost] ShuffleSpecialPegs(forceRefresh={forceRefresh}) caller={DescribeShuffleCaller()}");
+        return true;
     }
 
     /// <summary>
@@ -1695,13 +1704,45 @@ public static class MultiplayerClientPatches
         return false;
     }
 
-    /// <summary>Block crit peg shuffling on client.</summary>
+    /// <summary>
+    /// Block crit peg shuffling on client; on host, log the caller.
+    /// </summary>
     [HarmonyPatch(typeof(PegManager), "ShuffleCritPegs")]
     [HarmonyPrefix]
     public static bool PegManager_ShuffleCritPegs_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
-        return false;
+        if (ShouldSuppressClientLogic) return false;
+        if (IsHosting)
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[PegShuffleHost] ShuffleCritPegs caller={DescribeShuffleCaller()}");
+        return true;
+    }
+
+    /// <summary>
+    /// Return a short string identifying the caller of a shuffle method.
+    /// Walks up the stack past Harmony wrappers and the shuffle method itself,
+    /// returning up to 3 user frames in "Type.Method > Type.Method" order.
+    /// </summary>
+    private static string DescribeShuffleCaller()
+    {
+        try
+        {
+            var trace = new System.Diagnostics.StackTrace(2, false);
+            var picked = new System.Collections.Generic.List<string>();
+            for (int i = 0; i < trace.FrameCount && picked.Count < 3; i++)
+            {
+                var m = trace.GetFrame(i)?.GetMethod();
+                if (m == null) continue;
+                var t = m.DeclaringType?.FullName ?? "?";
+                // Skip Harmony-generated wrappers and this patch class
+                if (t.StartsWith("HarmonyLib") || t.StartsWith("System.") ||
+                    t.Contains("DMD<") || t.Contains("MultiplayerClientPatches"))
+                    continue;
+                picked.Add($"{m.DeclaringType?.Name ?? "?"}.{m.Name}");
+            }
+            return picked.Count == 0 ? "<unknown>" : string.Join(" > ", picked);
+        }
+        catch { return "<stacktrace-failed>"; }
     }
 
     /// <summary>Block refresh peg creation on client.</summary>

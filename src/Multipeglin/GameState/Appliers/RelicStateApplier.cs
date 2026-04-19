@@ -112,6 +112,12 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
 
             _log.LogInfo($"[RelicApplier] Result: added={added}, alreadyOwned={alreadyOwned}, total={owned.Count}");
 
+            // Countdown counters (e.g., "X/Y" displays on Trash Can, LIFESTEAL_PEG_HITS,
+            // HEAL_ON_PEG_HITS, REFRESH_BUFF, etc.). AddRelic initializes these to the
+            // default max value — without this step the client would always show the
+            // starting countdown regardless of host state.
+            ApplyCountdowns(rm, snapshot);
+
             // === Post-apply verification ===
             VerifyRelicState(owned, snapshot);
 
@@ -130,6 +136,72 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
         catch (Exception ex)
         {
             _log.LogError($"[RelicApplier] Apply failed: {ex.Message}\n{ex.StackTrace}");
+        }
+    }
+
+    /// <summary>
+    /// Write each host-reported RemainingCountdown into the client's
+    /// _relicRemainingCountdowns dict and broadcast OnCountdownDecremented so
+    /// the relic UI refreshes. Only writes entries the RelicManager actually
+    /// tracks (the effect must be in relicCountdownValues or per-run tables).
+    /// </summary>
+    private void ApplyCountdowns(RelicManager rm, RelicStateSnapshot snapshot)
+    {
+        try
+        {
+            if (snapshot.OwnedRelics == null) return;
+
+            var countdownField = AccessTools.Field(typeof(RelicManager), "_relicRemainingCountdowns");
+            var countdowns = countdownField?.GetValue(rm) as IDictionary<RelicEffect, int>;
+
+            var ownedField = AccessTools.Field(typeof(RelicManager), "_ownedRelics");
+            var owned = ownedField?.GetValue(rm) as IDictionary<RelicEffect, Relic>;
+
+            int updated = 0;
+            foreach (var entry in snapshot.OwnedRelics)
+            {
+                var effect = (RelicEffect)entry.Effect;
+
+                // Skip relics the client doesn't actually own yet
+                if (owned == null || !owned.ContainsKey(effect)) continue;
+
+                // Prefer the public setter if it exists (SetRemainingCountdownForRelic)
+                bool wrote = false;
+                try
+                {
+                    var setter = AccessTools.Method(typeof(RelicManager), "SetRemainingCountdownForRelic");
+                    if (setter != null)
+                    {
+                        setter.Invoke(rm, new object[] { effect, entry.RemainingCountdown });
+                        wrote = true;
+                    }
+                }
+                catch { }
+
+                // Fallback: write the dict directly via reflection
+                if (!wrote && countdowns != null)
+                {
+                    countdowns[effect] = entry.RemainingCountdown;
+                    wrote = true;
+                }
+
+                if (wrote)
+                {
+                    try
+                    {
+                        RelicManager.OnCountdownDecremented?.Invoke(owned[effect], entry.RemainingCountdown);
+                    }
+                    catch { }
+                    updated++;
+                }
+            }
+
+            if (updated > 0)
+                _log.LogInfo($"[RelicApplier] Applied countdowns for {updated} relic(s)");
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[RelicApplier] ApplyCountdowns failed: {ex.Message}");
         }
     }
 

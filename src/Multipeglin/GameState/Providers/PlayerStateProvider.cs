@@ -23,8 +23,10 @@ public class PlayerStateProvider : IGameStateProvider<PlayerStateSnapshot>
             var healthCtrl = UnityEngine.Object.FindObjectOfType<Battle.PlayerHealthController>();
             if (healthCtrl != null)
             {
-                // CurrentHealth is a public property
-                snapshot.CurrentHealth = healthCtrl.CurrentHealth;
+                // Clamp negative HP to 0. Fatal damage sets the FloatVariable below 0,
+                // and if this capture runs before CheckForDeathAndUpdateBar_Prefix normalizes
+                // it, the client would render -5/100. Never send negative HP over the wire.
+                snapshot.CurrentHealth = Mathf.Max(0f, healthCtrl.CurrentHealth);
 
                 // _maxPlayerHealth is a private FloatVariable field
                 var maxHpVar = AccessTools.Field(typeof(Battle.PlayerHealthController), "_maxPlayerHealth")?.GetValue(healthCtrl);
