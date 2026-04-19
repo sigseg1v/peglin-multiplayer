@@ -209,6 +209,37 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         pool.RemoveAt(pool.Count - 1);
                         repositioned++;
                     }
+                    else if (entry.IsBomb && availableRegulars.Count > 0)
+                    {
+                        int closestIdx = -1;
+                        float closestDist = float.MaxValue;
+                        for (int i = 0; i < availableRegulars.Count; i++)
+                        {
+                            var r = availableRegulars[i];
+                            if (r == null) continue;
+                            float dx = r.transform.position.x - entry.PosX;
+                            float dy = r.transform.position.y - entry.PosY;
+                            float d = dx * dx + dy * dy;
+                            if (d < closestDist) { closestDist = d; closestIdx = i; }
+                        }
+                        if (closestIdx >= 0)
+                        {
+                            peg = availableRegulars[closestIdx];
+                            availableRegulars.RemoveAt(closestIdx);
+                            repositioned++;
+                            _log.LogInfo($"[PegboardApplier] BOMB FROM REGULAR: guid={entry.Guid} " +
+                                $"hostPos=({entry.PosX:F1},{entry.PosY:F1}) " +
+                                $"converting regular peg at ({peg.transform.position.x:F1},{peg.transform.position.y:F1}) to bomb");
+                        }
+                        else
+                        {
+                            missed++;
+                            _log.LogWarning($"[PegboardApplier] MISSED unmatched entry guid={entry.Guid} " +
+                                $"hostPos=({entry.PosX:F1},{entry.PosY:F1}) bomb={entry.IsBomb} bouncer={entry.IsBouncer} " +
+                                $"— no same-type client peg available");
+                            continue;
+                        }
+                    }
                     else if (!entry.IsBomb && !entry.IsBouncer && templatePeg != null)
                     {
                         // Only clone regular pegs — bomb/bouncer prefabs aren't

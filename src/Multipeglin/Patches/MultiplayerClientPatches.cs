@@ -1782,6 +1782,28 @@ public static class MultiplayerClientPatches
         return false;
     }
 
+    /// <summary>
+    /// HOST: when a LongPeg's delayed-death timer fires and the peg switches to
+    /// its cleared material, immediately fade it out like the client does. The
+    /// native game only fades LongPegs at end-of-battle via RemoveClearedPegs,
+    /// so without this hook the host sees popped rectangular pegs sit on the
+    /// board greyed-out while the client has already faded them to alpha=0.
+    /// </summary>
+    [HarmonyPatch(typeof(LongPeg), "SetActiveStatus")]
+    [HarmonyPostfix]
+    public static void LongPeg_SetActiveStatus_Postfix(LongPeg __instance, bool active)
+    {
+        if (active) return;
+        if (!IsHosting) return;
+        try
+        {
+            var clearedField = HarmonyLib.AccessTools.Field(typeof(global::Peg), "_cleared");
+            bool isCleared = (bool)(clearedField?.GetValue(__instance) ?? false);
+            if (isCleared) __instance.RemoveIfCleared();
+        }
+        catch { }
+    }
+
     /// <summary>Block failsafe refresh peg creation on client.</summary>
     [HarmonyPatch(typeof(PegManager), "FailSafeCreateRefreshPegs")]
     [HarmonyPrefix]
@@ -3333,8 +3355,37 @@ public static class MultiplayerClientPatches
             var services = MultiplayerPlugin.Services;
             if (services?.TryResolve<Network.IMessageSender>(out var sender) == true)
             {
-                sender.Send(new Events.Network.Coop.PostBattleGoldSpentEvent { Amount = amount });
-                MultiplayerPlugin.Logger?.LogInfo($"[ClientPatch] Sent PostBattleGoldSpentEvent amount={amount}");
+                // Defer send to the next Update tick so the post-purchase HP change
+                // is observable: native reward flows (Heal / AdjustMaxHealth) run on
+                // the same frame as RemoveGold, so reading HP here returns the stale
+                // pre-heal value. Enqueue on MainThreadDispatcher runs next frame.
+                var evt = new Events.Network.Coop.PostBattleGoldSpentEvent { Amount = amount };
+                var dispatcher = Multipeglin.Utility.MainThreadDispatcher.Instance;
+                if (dispatcher != null)
+                {
+                    dispatcher.Enqueue(() =>
+                    {
+                        try
+                        {
+                            var hc = UnityEngine.Object.FindObjectOfType<Battle.PlayerHealthController>();
+                            evt.CurrentHealth = hc != null ? hc.CurrentHealth : -1f;
+                            evt.MaxHealth = hc != null ? hc.MaxHealth : 0f;
+                            sender.Send(evt);
+                            MultiplayerPlugin.Logger?.LogInfo(
+                                $"[ClientPatch] Sent PostBattleGoldSpentEvent amount={evt.Amount} hp={evt.CurrentHealth}/{evt.MaxHealth}");
+                        }
+                        catch (System.Exception ex2)
+                        {
+                            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatch] Deferred send failed: {ex2.Message}");
+                        }
+                    });
+                }
+                else
+                {
+                    // Fallback: send immediately, HP fields unset
+                    evt.CurrentHealth = -1f;
+                    sender.Send(evt);
+                }
             }
         }
         catch (System.Exception ex)

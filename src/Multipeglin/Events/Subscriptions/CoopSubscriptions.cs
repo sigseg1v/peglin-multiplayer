@@ -187,6 +187,25 @@ public sealed class CoopSubscriptions
 
         DistributeDamageToNonActive(amount, "OnPlayerDamaged");
         _damageDistributedSinceAttackStart += amount;
+
+        // Also mirror the damage into the active player's CoopPlayerState so
+        // TurnManager.StartNewRound can correctly auto-skip them if they just
+        // died. Without this, state.CurrentHealth only refreshes on the next
+        // SaveActivePlayerState (swap boundary) — which means a player who
+        // dies mid-damage-phase still gets scheduled as round-start slot 0.
+        int activeSlot = _coopStateManager.ActivePlayerSlot;
+        if (activeSlot >= 0)
+        {
+            var activeState = _coopStateManager.GetPlayerState(activeSlot);
+            if (activeState != null)
+            {
+                var phc = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
+                if (phc != null)
+                {
+                    activeState.CurrentHealth = Mathf.Max(0f, phc.CurrentHealth);
+                }
+            }
+        }
     }
 
     /// <summary>

@@ -219,56 +219,69 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
     /// The game normally does this in MapController.ResolveNode() before loading battle.
     /// </summary>
     private static void AssignBattleVisuals(MapDataBattle battle, BepInEx.Logging.ManualLogSource log)
+        => BattleVisualAssigner.Assign(battle, log, "NodeActivated");
+}
+
+/// <summary>
+/// Shared helper to assign background and pegboardFrame on a MapDataBattle from
+/// MapController's scene-specific arrays. Used by both NodeActivatedClientHandler
+/// (normal battle nodes) and MapStateApplier (scenario battles, where the node
+/// activation path skips battle visual assignment because the host went into
+/// TextScenario first).
+/// </summary>
+internal static class BattleVisualAssigner
+{
+    public static void Assign(MapDataBattle battle, BepInEx.Logging.ManualLogSource log, string tag)
     {
         try
         {
             var mc = MapController.instance;
             if (mc == null)
             {
-                log?.LogWarning("[NodeActivated] MapController.instance is null — cannot assign background");
+                log?.LogWarning($"[{tag}] MapController.instance is null — cannot assign battle visuals");
                 return;
             }
 
-            // Get backgroundData array and backgroundIndex via reflection
             var bgDataField = AccessTools.Field(typeof(MapController), "backgroundData");
             var bgIndexField = AccessTools.Field(typeof(MapController), "backgroundIndex");
             var bgData = bgDataField?.GetValue(mc) as Array;
             var bgIndex = bgIndexField != null ? (int)bgIndexField.GetValue(mc) : 0;
 
-            if (bgData != null && bgIndex >= 0 && bgIndex < bgData.Length)
+            if (battle.background == null && bgData != null && bgIndex >= 0 && bgIndex < bgData.Length)
             {
                 var bgEntry = bgData.GetValue(bgIndex);
                 if (bgEntry != null)
                 {
-                    // BackgroundData has a Background field or property (GameObject)
                     var bgGo = bgEntry.GetType().GetField("Background")?.GetValue(bgEntry) as GameObject
                         ?? bgEntry.GetType().GetProperty("Background")?.GetValue(bgEntry) as GameObject;
 
                     if (bgGo != null)
                     {
                         battle.background = bgGo;
-                        log?.LogInfo($"[NodeActivated] Assigned background: {bgGo.name}");
+                        log?.LogInfo($"[{tag}] Assigned background: {bgGo.name}");
                     }
                 }
             }
 
-            // Get battlePegboardFrame array
-            var frameField = AccessTools.Field(typeof(MapController), "battlePegboardFrame");
-            var frames = frameField?.GetValue(mc) as GameObject[];
-            if (frames != null && bgIndex >= 0 && bgIndex < frames.Length)
+            if (battle.pegboardFrame == null)
             {
-                battle.pegboardFrame = frames[bgIndex];
-                log?.LogInfo($"[NodeActivated] Assigned pegboardFrame: {frames[bgIndex]?.name ?? "NULL"}");
-            }
-            else if (frames != null && frames.Length > 0)
-            {
-                battle.pegboardFrame = frames[0];
-                log?.LogInfo($"[NodeActivated] Assigned pegboardFrame (fallback idx 0): {frames[0]?.name ?? "NULL"}");
+                var frameField = AccessTools.Field(typeof(MapController), "battlePegboardFrame");
+                var frames = frameField?.GetValue(mc) as GameObject[];
+                if (frames != null && bgIndex >= 0 && bgIndex < frames.Length)
+                {
+                    battle.pegboardFrame = frames[bgIndex];
+                    log?.LogInfo($"[{tag}] Assigned pegboardFrame: {frames[bgIndex]?.name ?? "NULL"}");
+                }
+                else if (frames != null && frames.Length > 0)
+                {
+                    battle.pegboardFrame = frames[0];
+                    log?.LogInfo($"[{tag}] Assigned pegboardFrame (fallback idx 0): {frames[0]?.name ?? "NULL"}");
+                }
             }
         }
         catch (Exception ex)
         {
-            log?.LogWarning($"[NodeActivated] AssignBattleVisuals failed: {ex.Message}");
+            log?.LogWarning($"[{tag}] AssignBattleVisuals failed: {ex.Message}");
         }
     }
 }

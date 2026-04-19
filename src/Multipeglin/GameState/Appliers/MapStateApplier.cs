@@ -364,14 +364,20 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
 
                 if (match != null)
                 {
-                    // Copy background/frame from current dataToLoad if missing
+                    // Prefer MapController's battle-specific arrays (correct frame for the act).
+                    // Scenario-path battles (e.g. Waterfall → StompyStompMiniboss) skip
+                    // NodeActivated's AssignBattleVisuals, so the battle frame would otherwise
+                    // fall back to either the scenario's frame (wrong) or a dummy (empty).
+                    Events.Handlers.Map.BattleVisualAssigner.Assign(match, _log, "MapApplier");
+
+                    // Last-resort: copy from current dataToLoad if still missing
                     if (match.background == null && current != null)
                         match.background = current.background;
                     if (match.pegboardFrame == null && current != null)
                         match.pegboardFrame = current.pegboardFrame;
 
                     StaticGameData.dataToLoad = match;
-                    _log.LogInfo($"[MapApplier] Set dataToLoad to '{match.name}' (pegLayout={match.pegLayout?.name})");
+                    _log.LogInfo($"[MapApplier] Set dataToLoad to '{match.name}' (pegLayout={match.pegLayout?.name}, pegboardFrame={match.pegboardFrame?.name ?? "NULL"}, background={match.background?.name ?? "NULL"})");
                 }
                 else
                 {

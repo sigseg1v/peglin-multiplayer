@@ -37,8 +37,15 @@ public sealed class PostBattleGoldSpentClientHandler : IClientHandler<PostBattle
 
             int before = playerState.Gold;
             playerState.Gold = Math.Max(0, playerState.Gold - e.Amount);
+
+            float prevHp = playerState.CurrentHealth;
+            float prevMaxHp = playerState.MaxHealth;
+            if (e.MaxHealth > 0f) playerState.MaxHealth = e.MaxHealth;
+            if (e.CurrentHealth >= 0f) playerState.CurrentHealth = e.CurrentHealth;
+
             MultiplayerPlugin.Logger?.LogInfo(
-                $"[PostBattleGoldSpent] Slot {slot.SlotIndex} spent {e.Amount} gold ({before} -> {playerState.Gold})");
+                $"[PostBattleGoldSpent] Slot {slot.SlotIndex} spent {e.Amount} gold ({before} -> {playerState.Gold}), " +
+                $"hp {prevHp}/{prevMaxHp} -> {playerState.CurrentHealth}/{playerState.MaxHealth}");
         }
         catch (Exception ex)
         {

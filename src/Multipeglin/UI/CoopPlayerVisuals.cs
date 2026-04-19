@@ -251,24 +251,43 @@ public class CoopPlayerVisuals : MonoBehaviour
             }
             catch { }
 
+            // Read live health from the PlayerHealthController singleton for the
+            // currently active slot. CoopPlayerState.CurrentHealth only refreshes
+            // on SaveActivePlayerState() (end of turn), so without this the host's
+            // own HP label lags until the turn ends.
+            float liveHp = -1f, liveMaxHp = -1f;
+            try
+            {
+                var hpCtrl = UnityEngine.Object.FindObjectOfType<global::Battle.PlayerHealthController>();
+                if (hpCtrl != null)
+                {
+                    liveHp = hpCtrl.CurrentHealth;
+                    liveMaxHp = hpCtrl.MaxHealth;
+                }
+            }
+            catch { }
+
             var summaries = new List<CoopPlayerSummary>();
             foreach (var kvp in coopState.PlayerStates)
             {
                 var ps = kvp.Value;
+                bool isActive = ps.SlotIndex == coopState.ActivePlayerSlot;
+                float summaryHp = (isActive && liveHp >= 0f) ? liveHp : ps.CurrentHealth;
+                float summaryMaxHp = (isActive && liveMaxHp > 0f) ? liveMaxHp : ps.MaxHealth;
+
                 var summary = new CoopPlayerSummary
                 {
                     SlotIndex = ps.SlotIndex,
                     PlayerName = ps.PlayerName,
                     ChosenClass = ps.ChosenClass,
-                    CurrentHealth = ps.CurrentHealth,
-                    MaxHealth = ps.MaxHealth,
+                    CurrentHealth = summaryHp,
+                    MaxHealth = summaryMaxHp,
                     Gold = ps.Gold,
                     HasShotThisRound = ps.HasShotThisRound,
                 };
 
                 // Active player: read live from singleton (includes buffs gained this turn)
                 // Inactive players: read from saved CoopPlayerState
-                bool isActive = ps.SlotIndex == coopState.ActivePlayerSlot;
                 if (isActive && liveEffects != null)
                 {
                     summary.StatusEffects = liveEffects;
@@ -334,18 +353,16 @@ public class CoopPlayerVisuals : MonoBehaviour
         if (_hostLabel == null && _playerRef != null && hostSummary != null)
             _hostLabel = CreatePlayerLabels(hostSummary, spriteClone: null);
 
-        // On client (localSlot != 0), override the main Player's sprite to
-        // display the host's class. Retry each Ensure tick so a transient
-        // lookup miss (switcher not active yet) self-corrects.
+        // On client (localSlot != 0), override the main Player's sprite AND
+        // animator controller so it displays the host's class. Setting the
+        // sprite alone is not enough — the Animator on the Player GO plays
+        // class-specific animation clips every frame that overwrite the
+        // SpriteRenderer's sprite. Swapping the runtimeAnimatorController to
+        // the host's class makes the animator drive the correct per-frame
+        // sprites. Retry each Ensure tick so a transient lookup miss self-corrects.
         if (localSlot != HostSlot && hostSummary != null && _playerRef != null)
         {
-            var sr = _playerRef.GetComponentInChildren<SpriteRenderer>();
-            if (sr != null)
-            {
-                var hostSprite = GetClassBaseSprite(hostSummary.ChosenClass);
-                if (hostSprite != null && sr.sprite != hostSprite)
-                    sr.sprite = hostSprite;
-            }
+            ApplyHostClassToPlayerRef(hostSummary.ChosenClass);
         }
 
         // Clones + labels for every slot > 0 (host is the only one that uses
@@ -539,18 +556,32 @@ public class CoopPlayerVisuals : MonoBehaviour
         {
             var clone = new GameObject($"CoopPlayer_Slot{summary.SlotIndex}");
             clone.transform.position = _playerRef.transform.position;
+            // Match the Player's Unity layer so the camera's culling mask renders
+            // the clone. Without this the clone can be on Default layer while
+            // Main Camera filters out Default, producing an invisible clone.
+            clone.layer = _playerRef.layer;
 
-            var originalRenderer = _playerRef.GetComponentInChildren<SpriteRenderer>();
+            var originalRenderer = FindPlayerSpriteRenderer();
             if (originalRenderer != null)
             {
                 var sr = clone.AddComponent<SpriteRenderer>();
                 // Leave sprite null if the switcher lookup fails — UpdateVisuals
                 // retries every frame so a transient miss self-corrects.
-                sr.sprite = GetClassBaseSprite(summary.ChosenClass);
+                var classSprite = GetClassBaseSprite(summary.ChosenClass);
+                sr.sprite = classSprite;
+                if (classSprite == null)
+                    Log?.LogWarning($"[CoopPlayerVisuals] GetClassBaseSprite returned null for slot {summary.SlotIndex} class {summary.ChosenClass}");
                 sr.material = originalRenderer.material;
                 sr.sortingLayerID = originalRenderer.sortingLayerID;
                 sr.sortingOrder = originalRenderer.sortingOrder - 1;
                 sr.color = GetSlotColor(summary.SlotIndex);
+                // Preserve flipX in case the real Player renders flipped.
+                sr.flipX = originalRenderer.flipX;
+                sr.flipY = originalRenderer.flipY;
+            }
+            else
+            {
+                Log?.LogWarning($"[CoopPlayerVisuals] No SpriteRenderer found on _playerRef for slot {summary.SlotIndex}");
             }
 
             return CreatePlayerLabels(summary, clone);
@@ -560,6 +591,87 @@ public class CoopPlayerVisuals : MonoBehaviour
             Log?.LogError($"[CoopPlayerVisuals] Failed to create visual for slot {summary.SlotIndex}: {ex.Message}");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Find the Player's SpriteRenderer robustly. The PeglinClassAnimationSwitcher
+    /// is on the same GO as the SpriteRenderer, but the "Player" tag might be on a
+    /// parent or a different child, so we check the root first, then children
+    /// (including inactive ones).
+    /// </summary>
+    private SpriteRenderer FindPlayerSpriteRenderer()
+    {
+        if (_playerRef == null) return null;
+        var sr = _playerRef.GetComponent<SpriteRenderer>();
+        if (sr != null) return sr;
+        return _playerRef.GetComponentInChildren<SpriteRenderer>(true);
+    }
+
+    /// <summary>
+    /// Rewrite the live Player GameObject so it visually represents the host's
+    /// class on this client machine. The Animator on the Player drives its
+    /// sprite every frame via a class-specific RuntimeAnimatorController, so
+    /// setting SpriteRenderer.sprite alone is immediately overwritten. We swap
+    /// both the sprite and the controller to the host's class.
+    /// </summary>
+    private void ApplyHostClassToPlayerRef(int hostClass)
+    {
+        try
+        {
+            var sr = FindPlayerSpriteRenderer();
+            var switcher = FindClassAnimationSwitcher();
+            if (switcher == null) return;
+
+            Sprite targetSprite;
+            RuntimeAnimatorController targetController;
+            switch ((Peglin.ClassSystem.Class)hostClass)
+            {
+                case Peglin.ClassSystem.Class.Balladin:
+                    targetSprite = switcher.balladinBaseSprite;
+                    targetController = switcher.balladinAnimationController;
+                    break;
+                case Peglin.ClassSystem.Class.Roundrel:
+                    targetSprite = switcher.roundrelBaseSprite;
+                    targetController = switcher.roundrelAnimationController;
+                    break;
+                case Peglin.ClassSystem.Class.Spinventor:
+                    targetSprite = switcher.spinventorBaseSprite;
+                    targetController = switcher.spinventorAnimationController;
+                    break;
+                default:
+                    targetSprite = switcher.peglinBaseSprite;
+                    targetController = switcher.peglinAnimationController;
+                    break;
+            }
+
+            var animator = switcher.GetComponent<Animator>();
+            if (animator != null && targetController != null &&
+                animator.runtimeAnimatorController != targetController)
+            {
+                animator.runtimeAnimatorController = targetController;
+            }
+            if (sr != null && targetSprite != null && sr.sprite != targetSprite)
+            {
+                sr.sprite = targetSprite;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log?.LogWarning($"[CoopPlayerVisuals] ApplyHostClassToPlayerRef failed: {ex.Message}");
+        }
+    }
+
+    private static Peglin.PeglinClassAnimationSwitcher FindClassAnimationSwitcher()
+    {
+        try
+        {
+            var switcher = UnityEngine.Object.FindObjectOfType<Peglin.PeglinClassAnimationSwitcher>();
+            if (switcher != null) return switcher;
+            var all = Resources.FindObjectsOfTypeAll<Peglin.PeglinClassAnimationSwitcher>();
+            if (all != null && all.Length > 0) return all[0];
+        }
+        catch { }
+        return null;
     }
 
     private void UpdateVisuals(List<CoopPlayerSummary> summaries)
@@ -998,15 +1110,7 @@ public class CoopPlayerVisuals : MonoBehaviour
     {
         try
         {
-            // FindObjectOfType misses inactive objects; fall back to
-            // FindObjectsOfTypeAll so a briefly-inactive Player prefab still
-            // resolves the switcher and gives us the right per-class sprite.
-            var switcher = UnityEngine.Object.FindObjectOfType<Peglin.PeglinClassAnimationSwitcher>();
-            if (switcher == null)
-            {
-                var all = Resources.FindObjectsOfTypeAll<Peglin.PeglinClassAnimationSwitcher>();
-                if (all != null && all.Length > 0) switcher = all[0];
-            }
+            var switcher = FindClassAnimationSwitcher();
             if (switcher == null) return null;
 
             switch ((Peglin.ClassSystem.Class)chosenClass)
