@@ -155,3 +155,28 @@ public class SceneWatcher : MonoBehaviour
         MenuButtonInjector.InjectIfNeeded();
     }
 }
+
+/// <summary>
+/// "Return to Main Menu" from the pause menu. On the client, the default path
+/// (PeglinSceneLoader.LoadScene(MAIN_MENU)) is suppressed by the client-logic
+/// block, so the button does nothing. Intercept and route through the
+/// multiplayer disconnect flow, which tears down the session (disables
+/// suppression) and then loads MainMenu properly. Also runs on the host so
+/// clients receive a DisconnectEvent instead of a silently dropped peer.
+/// </summary>
+[HarmonyPatch(typeof(PauseMenu), nameof(PauseMenu.QuitToMenu))]
+public static class PauseMenuQuitToMenuPatch
+{
+    public static bool Prefix(PauseMenu __instance)
+    {
+        var services = MultiplayerPlugin.Services;
+        if (services == null) return true;
+        if (!services.TryResolve<IMultiplayerMode>(out var mode)) return true;
+        if (!mode.IsSpectating && !mode.IsHosting) return true;
+
+        MultiplayerPlugin.Logger?.LogInfo("[PauseMenu] QuitToMenu in multiplayer — disconnecting");
+        try { __instance.Resume(); } catch { }
+        MultiplayerSession.DisconnectAndReset("Returned to main menu");
+        return false;
+    }
+}
