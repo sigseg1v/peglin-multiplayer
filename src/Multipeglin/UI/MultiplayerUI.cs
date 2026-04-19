@@ -26,8 +26,10 @@ public class MultiplayerUI : MonoBehaviour
     private TransportRouter _router;
     private IMultiplayerMode _multiplayerMode;
 
-    // Peglin's Steam app ID — we piggyback on the game's registration (no dev account).
-    private static readonly AppId_t PeglinAppId = new AppId_t(1296610);
+    // Current process AppID — normally Peglin's (1296610), but Spacewar (480) under
+    // dev-network-player. Read at UI init from the initialized Steamworks lib so the
+    // friend filter matches whichever AppID both machines are running.
+    private AppId_t _currentAppId = new AppId_t(1296610);
 
     // Root canvas
     private GameObject _canvasObj;
@@ -130,6 +132,11 @@ public class MultiplayerUI : MonoBehaviour
                 }
             }
             _steamTransport = (_router != null && _router.HasSteam) ? _router : null;
+            if (_steamTransport != null)
+            {
+                try { _currentAppId = SteamUtils.GetAppID(); } catch { }
+                Log?.LogInfo($"[Steam] Friend filter using appId={_currentAppId.m_AppId}");
+            }
 
             _transport.OnClientConnected += peerId => OnConnected();
             _transport.OnDisconnected += peerId => OnDisconnected();
@@ -662,7 +669,7 @@ public class MultiplayerUI : MonoBehaviour
             {
                 var fid = SteamFriends.GetFriendByIndex(i, EFriendFlags.k_EFriendFlagImmediate);
                 if (!SteamFriends.GetFriendGamePlayed(fid, out FriendGameInfo_t info)) continue;
-                if (info.m_gameID.AppID() != PeglinAppId) continue;
+                if (info.m_gameID.AppID() != _currentAppId) continue;
                 if (!info.m_steamIDLobby.IsValid()) continue;
 
                 var name = SteamFriends.GetFriendPersonaName(fid);
