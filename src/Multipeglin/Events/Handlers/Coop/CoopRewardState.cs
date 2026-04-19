@@ -187,10 +187,20 @@ public static class CoopRewardState
     /// <summary>Host-provided relic choices for the post-battle boss/rare relic selection on the client.</summary>
     public static List<RelicChoiceEntry> PendingPostBattleRelicChoices;
 
+    /// <summary>
+    /// Clear local/derived coop-reward flags, but preserve freshly-received
+    /// network-driven pending choices (PendingRelicChoices, PendingRewardChoices,
+    /// PendingPostBattleRelicChoices). Those are controlled by host events and
+    /// must not be clobbered by a local state-transition (e.g., a client's own
+    /// GameInit.Start Postfix racing with an already-received RelicChoicesEvent).
+    ///
+    /// They are already cleaned up through the network lifecycle:
+    /// - overwritten by the next host event for the same phase,
+    /// - set to null when the user picks (OnRelicChosen / OnRewardChosen),
+    /// - implicitly cleared when AllChoicesCompleteEvent arrives.
+    /// </summary>
     public static void Reset()
     {
-        PendingRelicChoices = null;
-        PendingRewardChoices = null;
         WaitingForOtherPlayers = false;
         AllChoicesComplete = false;
         HostRelicSelectionActive = false;
@@ -225,7 +235,6 @@ public static class CoopRewardState
         TotalPegMinigameClientsExpected = 0;
         PendingPegMinigameManager = null;
         ClientPegMinigameChoiceSent = false;
-        PendingPostBattleRelicChoices = null;
         TextScenarioPhaseActive = false;
         HostTextScenarioDone = false;
         ClientTextScenarioChoicesReceived.Clear();
