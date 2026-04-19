@@ -3,6 +3,7 @@ using Multipeglin.Events;
 using Multipeglin.Events.Handlers;
 using Multipeglin.Events.Handlers.Ball;
 using Multipeglin.Events.Handlers.Battle;
+using Multipeglin.Events.Handlers.Cursor;
 using Multipeglin.Events.Handlers.Currency;
 using Multipeglin.Events.Handlers.Deck;
 using Multipeglin.Events.Handlers.Enemy;
@@ -303,6 +304,9 @@ public static class ServiceRegistration
         registry.Register(new BallDestroyedServerHandler(), new BallDestroyedClientHandler());
         registry.Register(new BallPositionServerHandler(), new BallPositionClientHandler());
         registry.Register(new AimUpdateServerHandler(), new AimUpdateClientHandler());
+
+        // Cursor sync (bidirectional, via IMessageSender)
+        registry.Register(new CursorPositionServerHandler(), new CursorPositionClientHandler());
 
         // Peg events
         registry.Register(new PegHitServerHandler(), new PegHitClientHandler());

@@ -77,8 +77,9 @@ public static class MultiplayerSession
                 coopState.Reset();
             LobbyUI.Reset();
 
-            // 7. Clear event feed
+            // 7. Clear event feed + remote cursors
             EventFeed.Clear();
+            GameState.RemoteCursorRenderer.Instance?.ClearAll();
 
             // 7. Reset file logger role tag
             FileLogger.RoleTag = null;
