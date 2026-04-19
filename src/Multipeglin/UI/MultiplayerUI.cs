@@ -143,7 +143,7 @@ public class MultiplayerUI : MonoBehaviour
             _transport.OnConnectionRejected += reason => OnConnectionRejected(reason);
 
             if (_steamTransport != null)
-                _steamTransport.OnAutoJoinStarted += OnOverlayJoinStarted;
+                _steamTransport.OnIncomingInvite += OnSteamInviteReceived;
 
             // Auto-detect player name: env var > Steam display name > fallback
             var envName = Environment.GetEnvironmentVariable("MULTIPEGLIN_PLAYER_NAME");
@@ -1130,18 +1130,46 @@ public class MultiplayerUI : MonoBehaviour
         ShowFriendListPanel();
     }
 
-    private void OnOverlayJoinStarted()
+    private void OnSteamInviteReceived(CSteamID lobbyId)
     {
-        // Fired when the user clicks "Join Game" from the Steam overlay or
-        // accepts an invite while the game is running. Transition to lobby view.
+        // Steam delivers lobby invites via callback on an arbitrary thread —
+        // marshal to the main thread before touching Unity objects.
         var dispatcher = Utility.MainThreadDispatcher.Instance;
         if (dispatcher != null)
-            dispatcher.Enqueue(HandleOverlayJoinStarted);
+            dispatcher.Enqueue(() => PromptAcceptInvite(lobbyId));
         else
-            HandleOverlayJoinStarted();
+            PromptAcceptInvite(lobbyId);
     }
 
-    private void HandleOverlayJoinStarted()
+    private void PromptAcceptInvite(CSteamID lobbyId)
+    {
+        // Skip the dialog if the user is already connected/hosting — a stale
+        // invite arriving mid-session shouldn't interrupt the game.
+        if (_multiplayerMode.IsHosting || _multiplayerMode.IsSpectating || _transport.IsConnected)
+        {
+            Log?.LogInfo($"[Steam] Ignoring incoming invite {lobbyId.m_SteamID}: already in session");
+            return;
+        }
+
+        string inviterName = "A friend";
+        try
+        {
+            var owner = SteamMatchmaking.GetLobbyOwner(lobbyId);
+            if (owner.IsValid())
+            {
+                var name = SteamFriends.GetFriendPersonaName(owner);
+                if (!string.IsNullOrEmpty(name)) inviterName = name;
+            }
+        }
+        catch { }
+
+        ShowConfirmDialog(
+            $"{inviterName} invited you to a Multipeglin lobby.\nJoin them?",
+            onAccept: () => AcceptSteamInvite(lobbyId),
+            onDecline: () => Log?.LogInfo($"[Steam] Declined invite to {lobbyId.m_SteamID}"));
+    }
+
+    private void AcceptSteamInvite(CSteamID lobbyId)
     {
         try
         {
@@ -1151,13 +1179,15 @@ public class MultiplayerUI : MonoBehaviour
             if (_multiplayerMode is MultiplayerMode mode)
                 mode.ClientMode = ClientMode.Mirror;
 
+            _steamTransport?.JoinSteamLobby(lobbyId);
+
             _overlayPanel.SetActive(true);
             ShowLobby();
-            Log.LogInfo("Steam overlay auto-join started");
+            Log.LogInfo($"[Steam] Accepted invite, joining lobby {lobbyId.m_SteamID}");
         }
         catch (Exception ex)
         {
-            Log.LogError($"HandleOverlayJoinStarted failed: {ex}");
+            Log.LogError($"AcceptSteamInvite failed: {ex}");
         }
     }
 
@@ -1313,6 +1343,48 @@ public class MultiplayerUI : MonoBehaviour
         {
             Destroy(_errorPanel);
             _errorPanel = null;
+        });
+    }
+
+    private void ShowConfirmDialog(string message, Action onAccept, Action onDecline)
+    {
+        if (_errorPanel != null)
+            Destroy(_errorPanel);
+
+        _errorPanel = new GameObject("ConfirmPanel");
+        _errorPanel.transform.SetParent(_canvasObj.transform, false);
+        var bg = _errorPanel.AddComponent<Image>();
+        bg.color = new Color(0, 0, 0, 0.9f);
+        StretchFill(_errorPanel.GetComponent<RectTransform>());
+
+        var box = CreatePanel(_errorPanel.transform, "ConfirmBox",
+            new Color(0.1f, 0.15f, 0.2f, 1f), new Vector2(700, 280));
+
+        var msgText = CreateText(box.transform, "ConfirmMessage", message, 26);
+        msgText.enableWordWrapping = true;
+        var msgRect = msgText.rectTransform;
+        msgRect.anchorMin = new Vector2(0.5f, 0.5f);
+        msgRect.anchorMax = new Vector2(0.5f, 0.5f);
+        msgRect.pivot = new Vector2(0.5f, 0.5f);
+        msgRect.anchoredPosition = new Vector2(0, 30);
+        msgRect.sizeDelta = new Vector2(620, 160);
+
+        var acceptBtn = CreateButton(box.transform, "AcceptBtn", "Join",
+            new Color(0.2f, 0.5f, 0.3f, 1f), new Vector2(-110, -100), new Vector2(200, 56));
+        acceptBtn.onClick.AddListener(() =>
+        {
+            Destroy(_errorPanel);
+            _errorPanel = null;
+            try { onAccept?.Invoke(); } catch (Exception ex) { Log?.LogError($"ConfirmDialog onAccept threw: {ex}"); }
+        });
+
+        var declineBtn = CreateButton(box.transform, "DeclineBtn", "Decline",
+            new Color(0.5f, 0.2f, 0.2f, 1f), new Vector2(110, -100), new Vector2(200, 56));
+        declineBtn.onClick.AddListener(() =>
+        {
+            Destroy(_errorPanel);
+            _errorPanel = null;
+            try { onDecline?.Invoke(); } catch (Exception ex) { Log?.LogError($"ConfirmDialog onDecline threw: {ex}"); }
         });
     }
 

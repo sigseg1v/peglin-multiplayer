@@ -110,9 +110,9 @@ public class TransportRouter : INetworkTransport, ISteamTransport
 
     public void CloseLobbyOnStart() => _steam?.CloseLobbyOnStart();
 
-    public event Action OnAutoJoinStarted
+    public event Action<CSteamID> OnIncomingInvite
     {
-        add { if (_steam != null) _steam.OnAutoJoinStarted += value; }
-        remove { if (_steam != null) _steam.OnAutoJoinStarted -= value; }
+        add { if (_steam != null) _steam.OnIncomingInvite += value; }
+        remove { if (_steam != null) _steam.OnIncomingInvite -= value; }
     }
 }

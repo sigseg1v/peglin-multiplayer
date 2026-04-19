@@ -46,7 +46,11 @@ public class SteamTransport : ISteamTransport
     public event Action<string> OnConnectionRejected;
 
     public CSteamID HostedLobbyId => _lobbyId;
-    public event Action OnAutoJoinStarted;
+    // Fires when Steam delivers an incoming lobby join request (friend invite
+    // or "Join Game" overlay click). Arg = the lobby CSteamID to join.
+    // The transport does NOT auto-join — the UI layer decides whether to
+    // prompt the user and call JoinSteamLobby() on accept.
+    public event Action<CSteamID> OnIncomingInvite;
 
     public SteamTransport()
     {
@@ -331,10 +335,16 @@ public class SteamTransport : ISteamTransport
             Log?.LogWarning("[Steam] GameLobbyJoinRequested with invalid lobby id");
             return;
         }
-        Log?.LogInfo($"[Steam] Overlay requested join to lobby {evt.m_steamIDLobby.m_SteamID}");
-        try { OnAutoJoinStarted?.Invoke(); }
-        catch (Exception ex) { Log?.LogError($"[Steam] OnAutoJoinStarted handler threw: {ex}"); }
-        JoinSteamLobby(evt.m_steamIDLobby);
+        // If we are already hosting a lobby of our own, ignore stale incoming
+        // invites rather than hijacking the host into client mode.
+        if (_isHost)
+        {
+            Log?.LogInfo($"[Steam] Ignoring incoming invite to {evt.m_steamIDLobby.m_SteamID} — already hosting");
+            return;
+        }
+        Log?.LogInfo($"[Steam] Incoming invite to lobby {evt.m_steamIDLobby.m_SteamID} — awaiting user confirmation");
+        try { OnIncomingInvite?.Invoke(evt.m_steamIDLobby); }
+        catch (Exception ex) { Log?.LogError($"[Steam] OnIncomingInvite handler threw: {ex}"); }
     }
 
     private void OnP2PSessionRequest(P2PSessionRequest_t evt)
