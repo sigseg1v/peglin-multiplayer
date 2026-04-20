@@ -303,6 +303,9 @@ public static class ServiceRegistration
         registry.Register(new BallWallBounceServerHandler(), new BallWallBounceClientHandler());
         registry.Register(new BallDestroyedServerHandler(), new BallDestroyedClientHandler());
         registry.Register(new BallPositionServerHandler(), new BallPositionClientHandler());
+        registry.Register(new MultiballSpawnedServerHandler(), new MultiballSpawnedClientHandler());
+        registry.Register(new MultiballPositionServerHandler(), new MultiballPositionClientHandler());
+        registry.Register(new MultiballDestroyedServerHandler(), new MultiballDestroyedClientHandler());
         registry.Register(new AimUpdateServerHandler(), new AimUpdateClientHandler());
 
         // Cursor sync (bidirectional, via IMessageSender)

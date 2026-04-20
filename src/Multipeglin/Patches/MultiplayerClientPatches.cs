@@ -3036,37 +3036,93 @@ public static class MultiplayerClientPatches
 
     /// <summary>
     /// When the host spawns a multiball, send its position and velocity to client
-    /// so it can render the additional ball visually.
+    /// so it can render the additional ball visually. Covers the "Fire()" path
+    /// used by SummoningCirclePachinkoBall and PegBoardBramballVine.
     /// </summary>
     [HarmonyPatch(typeof(PachinkoBall), "SpawnMultiballFromLocation")]
     [HarmonyPostfix]
-    public static void PachinkoBall_SpawnMultiballFromLocation_Postfix(GameObject __result)
+    public static void PachinkoBall_SpawnMultiballFromLocation_Postfix(PachinkoBall __instance, GameObject __result)
     {
-        if (!IsHosting || __result == null) return;
+        if (!IsHosting || __result == null || __instance == null) return;
+        __instance.StartCoroutine(DispatchMultiballSpawnedDelayed(__result));
+    }
 
+    /// <summary>
+    /// Circcae / squirrelball / convert-to-gold path: HandleSpawningMultiballs spawns
+    /// child balls on peg collision and applies AddForce in an outer loop. We snapshot
+    /// _childMultiballs count before and after, then defer sampling so rb.velocity
+    /// reflects the force that was just queued.
+    /// </summary>
+    [HarmonyPatch(typeof(PachinkoBall), "HandleSpawningMultiballs")]
+    [HarmonyPrefix]
+    public static void PachinkoBall_HandleSpawningMultiballs_Prefix(PachinkoBall __instance, out int __state)
+    {
+        __state = 0;
+        if (!IsHosting || __instance == null) return;
         try
         {
-            var rb = __result.GetComponent<UnityEngine.Rigidbody2D>();
-            var pos = __result.transform.position;
-            var vel = rb != null ? rb.velocity : UnityEngine.Vector2.zero;
-
-            string orbName = null;
-            var atk = __result.GetComponent<Battle.Attacks.Attack>();
-            if (atk != null) orbName = atk.gameObject.name;
-
-            var registry = MultiplayerPlugin.Services?.Resolve<Events.IGameEventRegistry>();
-            registry?.Dispatch(new Events.Network.Ball.MultiballSpawnedEvent
-            {
-                PosX = pos.x,
-                PosY = pos.y,
-                VelX = vel.x,
-                VelY = vel.y,
-                OrbName = orbName,
-            });
-
-            MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Host spawned multiball at ({pos.x:F1},{pos.y:F1}) vel=({vel.x:F1},{vel.y:F1})");
+            var list = AccessTools.Field(typeof(PachinkoBall), "_childMultiballs")?.GetValue(__instance) as System.Collections.IList;
+            __state = list?.Count ?? 0;
         }
         catch { }
+    }
+
+    [HarmonyPatch(typeof(PachinkoBall), "HandleSpawningMultiballs")]
+    [HarmonyPostfix]
+    public static void PachinkoBall_HandleSpawningMultiballs_Postfix(PachinkoBall __instance, int __state)
+    {
+        if (!IsHosting || __instance == null) return;
+        try
+        {
+            var list = AccessTools.Field(typeof(PachinkoBall), "_childMultiballs")?.GetValue(__instance) as System.Collections.IList;
+            if (list == null || list.Count <= __state) return;
+            for (int i = __state; i < list.Count; i++)
+            {
+                var pb = list[i] as UnityEngine.MonoBehaviour;
+                if (pb != null && pb.gameObject != null)
+                    __instance.StartCoroutine(DispatchMultiballSpawnedDelayed(pb.gameObject));
+            }
+        }
+        catch { }
+    }
+
+    private static System.Collections.IEnumerator DispatchMultiballSpawnedDelayed(GameObject ball)
+    {
+        // AddForce queues an impulse that only shows up in rb.velocity after the next
+        // physics step. Wait for it so the dispatched velocity matches what the ball
+        // will actually fly at.
+        yield return new UnityEngine.WaitForFixedUpdate();
+        if (ball == null) yield break;
+
+        var rb = ball.GetComponent<UnityEngine.Rigidbody2D>();
+        var pos = ball.transform.position;
+        var vel = rb != null ? rb.velocity : UnityEngine.Vector2.zero;
+
+        string orbName = ball.name;
+        var atk = ball.GetComponent<Battle.Attacks.Attack>();
+        if (atk != null) orbName = atk.gameObject.name;
+
+        // Assign a GUID and attach the streamer so the client can identify this
+        // specific multiball and mirror its host-driven position instead of
+        // running local physics that would drift.
+        string guid = System.Guid.NewGuid().ToString("N").Substring(0, 12);
+        var streamer = ball.GetComponent<GameState.HostMultiballStreamer>();
+        if (streamer == null) streamer = ball.AddComponent<GameState.HostMultiballStreamer>();
+        streamer.Guid = guid;
+
+        var registry = MultiplayerPlugin.Services?.Resolve<Events.IGameEventRegistry>();
+        registry?.Dispatch(new Events.Network.Ball.MultiballSpawnedEvent
+        {
+            Guid = guid,
+            PosX = pos.x,
+            PosY = pos.y,
+            VelX = vel.x,
+            VelY = vel.y,
+            OrbName = orbName,
+        });
+
+        MultiplayerPlugin.Logger?.LogInfo(
+            $"[ClientPatches] Host dispatched multiball guid={guid} at ({pos.x:F1},{pos.y:F1}) vel=({vel.x:F1},{vel.y:F1}) orb={orbName}");
     }
 
     // =========================================================================
@@ -3293,6 +3349,78 @@ public static class MultiplayerClientPatches
         }
 
         // All players dead — allow normal game over
+        return true;
+    }
+
+    /// <summary>
+    /// Coop two-outcome resolution for TriggerVictory.
+    /// The native game bails silently when the host's HP is 0, which stalls the
+    /// battle state machine in ATTACKING forever if the host died but other players
+    /// killed the enemies. Per the coop rules, there are only two outcomes once the
+    /// round resolves:
+    ///   (A) all players dead → fire the defeat flow (skip native victory).
+    ///   (B) at least one alive → revive the host to 1 HP so native victory proceeds;
+    ///       CoopSubscriptions.OnVictory then revives every dead player to 1 HP and
+    ///       broadcasts the updated state to clients via the heartbeat / SyncAll.
+    /// </summary>
+    [HarmonyPatch(typeof(BattleController), "TriggerVictory")]
+    [HarmonyPrefix]
+    public static bool BattleController_TriggerVictory_Prefix()
+    {
+        if (!IsHosting) return true;
+
+        var services = MultiplayerPlugin.Services;
+        if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true) return true;
+        if (coopState.TotalPlayerCount < 2) return true;
+
+        var phc = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
+        if (phc == null) return true;
+
+        // Case A: everyone is dead — drive the defeat flow and skip native victory.
+        // The PHC.CheckForDeathAndUpdateBar prefix lets it through when AllPlayersDead.
+        if (coopState.AllPlayersDead)
+        {
+            try
+            {
+                MultiplayerPlugin.Logger?.LogInfo(
+                    "[ClientPatches] TriggerVictory: all players dead — routing to defeat instead of victory");
+                phc.CheckForDeathAndUpdateBar();
+            }
+            catch (System.Exception ex)
+            {
+                MultiplayerPlugin.Logger?.LogWarning(
+                    $"[ClientPatches] TriggerVictory defeat route failed: {ex.Message}");
+            }
+            return false;
+        }
+
+        // Case B: at least one player alive. If the host is dead, revive native PHC
+        // to 1 HP so the native victory check (hp > 0) passes and OnVictory fires.
+        if (phc.CurrentHealth <= 0f)
+        {
+            try
+            {
+                var healthField = HarmonyLib.AccessTools.Field(typeof(PlayerHealthController), "_playerHealth");
+                var healthVar = healthField?.GetValue(phc);
+                if (healthVar != null)
+                {
+                    var setMethod = healthVar.GetType().GetMethod("Set", new[] { typeof(float) });
+                    setMethod?.Invoke(healthVar, new object[] { 1f });
+                }
+
+                var hostState = coopState.GetPlayerState(0);
+                if (hostState != null) hostState.CurrentHealth = 1;
+
+                MultiplayerPlugin.Logger?.LogInfo(
+                    "[ClientPatches] TriggerVictory: host was dead but others alive — revived host PHC to 1 HP so victory fires");
+            }
+            catch (System.Exception ex)
+            {
+                MultiplayerPlugin.Logger?.LogWarning(
+                    $"[ClientPatches] TriggerVictory host revive failed: {ex.Message}");
+            }
+        }
+
         return true;
     }
 

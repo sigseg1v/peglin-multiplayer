@@ -33,8 +33,16 @@ public class ClientBallRenderer : MonoBehaviour
     // 50ms-spaced updates while still converging before they feel laggy.
     private const float PositionSmoothRate = 25f;
 
-    // Additional multiball visuals
-    private readonly List<GameObject> _multiballs = new List<GameObject>();
+    // Additional multiball visuals keyed by host-assigned GUID.
+    private class MultiballState
+    {
+        public GameObject GameObject;
+        public Vector2 TargetPos;
+        public Vector2 Velocity;
+        public float LastUpdateTime;
+        public bool HasReceivedPosition;
+    }
+    private readonly Dictionary<string, MultiballState> _multiballs = new Dictionary<string, MultiballState>();
 
     private void Awake()
     {
@@ -133,9 +141,9 @@ public class ClientBallRenderer : MonoBehaviour
     public void OnShotFired(float aimX, float aimY, string orbName = null)
     {
         // Clean up any previous multiball visuals
-        foreach (var mb in _multiballs)
+        foreach (var mb in _multiballs.Values)
         {
-            if (mb != null) Destroy(mb);
+            if (mb?.GameObject != null) Destroy(mb.GameObject);
         }
         _multiballs.Clear();
 
@@ -294,8 +302,11 @@ public class ClientBallRenderer : MonoBehaviour
         }
     }
 
-    public void OnMultiballSpawned(float posX, float posY, float velX, float velY, string orbName)
+    public void OnMultiballSpawned(string guid, float posX, float posY, float velX, float velY, string orbName)
     {
+        if (string.IsNullOrEmpty(guid)) return;
+        if (_multiballs.ContainsKey(guid)) return;
+
         var ball = new GameObject("ClientMultiball");
         ball.hideFlags = HideFlags.HideAndDontSave;
         DontDestroyOnLoad(ball);
@@ -324,21 +335,38 @@ public class ClientBallRenderer : MonoBehaviour
 
         ball.transform.position = new Vector3(posX, posY, -1f);
 
-        // Add a simple physics simulation for the visual ball
-        var rb = ball.AddComponent<Rigidbody2D>();
-        rb.gravityScale = 1f;
-        rb.velocity = new Vector2(velX, velY);
-        rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+        _multiballs[guid] = new MultiballState
+        {
+            GameObject = ball,
+            TargetPos = new Vector2(posX, posY),
+            Velocity = new Vector2(velX, velY),
+            LastUpdateTime = Time.time,
+            HasReceivedPosition = false,
+        };
+    }
 
-        // Add a circle collider so it bounces off walls/pegs visually
-        var col = ball.AddComponent<CircleCollider2D>();
-        col.radius = 0.15f;
-        col.isTrigger = false;
+    public void UpdateMultiballPosition(string guid, float posX, float posY, float velX, float velY, float timestamp)
+    {
+        if (string.IsNullOrEmpty(guid)) return;
+        if (!_multiballs.TryGetValue(guid, out var state) || state.GameObject == null) return;
 
-        // Auto-destroy after 30 seconds (safety net)
-        Destroy(ball, 30f);
+        state.TargetPos = new Vector2(posX, posY);
+        state.Velocity = new Vector2(velX, velY);
+        state.LastUpdateTime = Time.time;
 
-        _multiballs.Add(ball);
+        if (!state.HasReceivedPosition)
+        {
+            state.HasReceivedPosition = true;
+            state.GameObject.transform.position = new Vector3(posX, posY, -1f);
+        }
+    }
+
+    public void OnMultiballDestroyed(string guid)
+    {
+        if (string.IsNullOrEmpty(guid)) return;
+        if (!_multiballs.TryGetValue(guid, out var state)) return;
+        if (state.GameObject != null) Destroy(state.GameObject);
+        _multiballs.Remove(guid);
     }
 
     public void OnBallDestroyed()
@@ -356,9 +384,9 @@ public class ClientBallRenderer : MonoBehaviour
             _ballObject.SetActive(false);
 
         // Clean up multiball visuals
-        foreach (var mb in _multiballs)
+        foreach (var mb in _multiballs.Values)
         {
-            if (mb != null) Destroy(mb);
+            if (mb?.GameObject != null) Destroy(mb.GameObject);
         }
         _multiballs.Clear();
     }
@@ -381,21 +409,42 @@ public class ClientBallRenderer : MonoBehaviour
             return;
         }
 
-        if (!_isActive || !_hasReceivedPosition) return;
+        if (_isActive && _hasReceivedPosition)
+        {
+            // Flight phase: extrapolate from the last host sample using velocity + gravity,
+            // then smoothly lerp the visible position toward it. Snap-free; this hides
+            // 50ms-spaced packets and tolerates the occasional late/dropped update.
+            float dt = Time.time - _lastUpdateTime;
+            if (dt > 0.25f) dt = 0.25f; // clamp so stalls don't launch the ball off-screen
 
-        // Flight phase: extrapolate from the last host sample using velocity + gravity,
-        // then smoothly lerp the visible position toward it. Snap-free; this hides
-        // 50ms-spaced packets and tolerates the occasional late/dropped update.
-        float dt = Time.time - _lastUpdateTime;
-        if (dt > 0.25f) dt = 0.25f; // clamp so stalls don't launch the ball off-screen
+            var predicted = _targetPos + _velocity * dt;
+            predicted.y += -9.81f * dt * dt * 0.5f;
 
-        var predicted = _targetPos + _velocity * dt;
-        predicted.y += -9.81f * dt * dt * 0.5f;
+            var current = (Vector2)_ballObject.transform.position;
+            float t = 1f - Mathf.Exp(-PositionSmoothRate * Time.deltaTime);
+            var lerped = Vector2.Lerp(current, predicted, t);
+            _ballObject.transform.position = new Vector3(lerped.x, lerped.y, -1f);
+        }
 
-        var current = (Vector2)_ballObject.transform.position;
-        float t = 1f - Mathf.Exp(-PositionSmoothRate * Time.deltaTime);
-        var lerped = Vector2.Lerp(current, predicted, t);
-        _ballObject.transform.position = new Vector3(lerped.x, lerped.y, -1f);
+        // Smooth multiball visuals toward the latest host sample using the same
+        // extrapolation pattern as the primary ball.
+        if (_multiballs.Count > 0)
+        {
+            foreach (var state in _multiballs.Values)
+            {
+                if (state?.GameObject == null || !state.HasReceivedPosition) continue;
+                float dt = Time.time - state.LastUpdateTime;
+                if (dt > 0.25f) dt = 0.25f;
+
+                var predicted = state.TargetPos + state.Velocity * dt;
+                predicted.y += -9.81f * dt * dt * 0.5f;
+
+                var current = (Vector2)state.GameObject.transform.position;
+                float t = 1f - Mathf.Exp(-PositionSmoothRate * Time.deltaTime);
+                var lerped = Vector2.Lerp(current, predicted, t);
+                state.GameObject.transform.position = new Vector3(lerped.x, lerped.y, -1f);
+            }
+        }
     }
 
     private void CreateBall()
