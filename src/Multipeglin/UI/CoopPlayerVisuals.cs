@@ -1113,35 +1113,53 @@ public class CoopPlayerVisuals : MonoBehaviour
         }
     }
 
-    // The scene's real Player GameObject carries a PeglinClassAnimationSwitcher
-    // with base sprites for all four classes baked in. Pick the one matching
-    // this slot's chosen class so each clone renders as the correct character.
+    // The scene's real Player GameObject carries a PeglinClassAnimationSwitcher,
+    // but on the live instance only the classes actually loaded for the run have
+    // their sprite fields wired — the other three are null. We search ALL loaded
+    // switchers (scene + in-memory prefab variants) and take the first non-null
+    // sprite for the requested class. Falls back to ClassInfo.classSprite.
+    private static readonly HashSet<int> _loggedMissingClassSprite = new HashSet<int>();
+    private static Sprite _cachedPeglinSprite, _cachedBalladinSprite, _cachedRoundrelSprite, _cachedSpinventorSprite;
+
     private static Sprite GetClassBaseSprite(int chosenClass)
     {
         try
         {
-            var switcher = FindClassAnimationSwitcher();
-            if (switcher == null) return null;
+            var cached = GetCachedSprite(chosenClass);
+            if (cached != null) return cached;
 
-            Sprite result = (Peglin.ClassSystem.Class)chosenClass switch
+            var all = Resources.FindObjectsOfTypeAll<Peglin.PeglinClassAnimationSwitcher>();
+            if (all != null)
             {
-                Peglin.ClassSystem.Class.Balladin => switcher.balladinBaseSprite,
-                Peglin.ClassSystem.Class.Roundrel => switcher.roundrelBaseSprite,
-                Peglin.ClassSystem.Class.Spinventor => switcher.spinventorBaseSprite,
-                _ => switcher.peglinBaseSprite,
-            };
-
-            if (result == null)
-            {
-                Log?.LogWarning($"[CoopPlayerVisuals] switcher fields: " +
-                    $"peglin={(switcher.peglinBaseSprite != null ? switcher.peglinBaseSprite.name : "NULL")}, " +
-                    $"balladin={(switcher.balladinBaseSprite != null ? switcher.balladinBaseSprite.name : "NULL")}, " +
-                    $"roundrel={(switcher.roundrelBaseSprite != null ? switcher.roundrelBaseSprite.name : "NULL")}, " +
-                    $"spinventor={(switcher.spinventorBaseSprite != null ? switcher.spinventorBaseSprite.name : "NULL")} " +
-                    $"(source={switcher.gameObject.name})");
-                result = GetClassBaseSpriteFromClassInfo(chosenClass);
+                foreach (var switcher in all)
+                {
+                    if (switcher == null) continue;
+                    var s = (Peglin.ClassSystem.Class)chosenClass switch
+                    {
+                        Peglin.ClassSystem.Class.Balladin => switcher.balladinBaseSprite,
+                        Peglin.ClassSystem.Class.Roundrel => switcher.roundrelBaseSprite,
+                        Peglin.ClassSystem.Class.Spinventor => switcher.spinventorBaseSprite,
+                        _ => switcher.peglinBaseSprite,
+                    };
+                    if (s != null)
+                    {
+                        SetCachedSprite(chosenClass, s);
+                        return s;
+                    }
+                }
             }
-            return result;
+
+            // Fallback: ClassInfo.classSprite (main menu character select asset).
+            var ci = GetClassBaseSpriteFromClassInfo(chosenClass);
+            if (ci != null)
+            {
+                SetCachedSprite(chosenClass, ci);
+                return ci;
+            }
+
+            if (_loggedMissingClassSprite.Add(chosenClass))
+                Log?.LogWarning($"[CoopPlayerVisuals] No sprite found for class {chosenClass} across {all?.Length ?? 0} switchers + ClassInfo fallback");
+            return null;
         }
         catch
         {
@@ -1149,11 +1167,31 @@ public class CoopPlayerVisuals : MonoBehaviour
         }
     }
 
+    private static Sprite GetCachedSprite(int chosenClass) =>
+        (Peglin.ClassSystem.Class)chosenClass switch
+        {
+            Peglin.ClassSystem.Class.Balladin => _cachedBalladinSprite,
+            Peglin.ClassSystem.Class.Roundrel => _cachedRoundrelSprite,
+            Peglin.ClassSystem.Class.Spinventor => _cachedSpinventorSprite,
+            _ => _cachedPeglinSprite,
+        };
+
+    private static void SetCachedSprite(int chosenClass, Sprite sprite)
+    {
+        switch ((Peglin.ClassSystem.Class)chosenClass)
+        {
+            case Peglin.ClassSystem.Class.Balladin: _cachedBalladinSprite = sprite; break;
+            case Peglin.ClassSystem.Class.Roundrel: _cachedRoundrelSprite = sprite; break;
+            case Peglin.ClassSystem.Class.Spinventor: _cachedSpinventorSprite = sprite; break;
+            default: _cachedPeglinSprite = sprite; break;
+        }
+    }
+
     /// <summary>
     /// Fallback: look up the class sprite via ClassInfo ScriptableObjects, which
     /// carry a `classSprite` field per class and are always loaded (used by the
-    /// main menu character select). Used when the live Player's animation
-    /// switcher doesn't have every class sprite wired.
+    /// main menu character select). Used when no PeglinClassAnimationSwitcher
+    /// has the requested class field wired.
     /// </summary>
     private static Sprite GetClassBaseSpriteFromClassInfo(int chosenClass)
     {
@@ -1177,5 +1215,7 @@ public class CoopPlayerVisuals : MonoBehaviour
         LatestActiveSlot = -1;
         _statusEffectDataSearched = false;
         _statusEffectData = null;
+        _loggedMissingClassSprite.Clear();
+        _cachedPeglinSprite = _cachedBalladinSprite = _cachedRoundrelSprite = _cachedSpinventorSprite = null;
     }
 }
