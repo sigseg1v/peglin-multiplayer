@@ -578,6 +578,14 @@ public class CoopPlayerVisuals : MonoBehaviour
                 // Preserve flipX in case the real Player renders flipped.
                 sr.flipX = originalRenderer.flipX;
                 sr.flipY = originalRenderer.flipY;
+
+                // Drive the clone's sprite with the class-specific Animator so it
+                // plays the same idle animation as the host's real Player (breathing,
+                // blink, etc). UpdateVisuals retries the controller lookup each frame
+                // so a transient miss self-corrects.
+                var animator = clone.AddComponent<Animator>();
+                var ctrl = GetClassAnimationController(summary.ChosenClass);
+                if (ctrl != null) animator.runtimeAnimatorController = ctrl;
             }
             else
             {
@@ -723,25 +731,16 @@ public class CoopPlayerVisuals : MonoBehaviour
                 if (s.SlotIndex == visual.SlotIndex) { summary = s; break; }
             if (summary == null) continue;
 
-            // Idle bob: small procedural sine-wave vertical sway so clones feel
-            // alive like the host's animated Player. Class-specific animator
-            // controllers aren't addressable for every class (only Peglin and
-            // Spinventor's are typically loaded), so we don't try to drive the
-            // clone's SpriteRenderer with an Animator — a simple transform bob
-            // is class-agnostic and looks right for all 4 classes. Phase-shift
-            // by slot so different clones don't bob in lockstep.
-            float bobPhase = Time.unscaledTime * 2.5f + visual.SlotIndex * 0.7f;
-            float bobY = Mathf.Sin(bobPhase) * 0.08f;
-            var offset = new Vector3(-2.5f * visual.SlotIndex, -0.2f * visual.SlotIndex + bobY, 0);
+            // Static position offset — the clone's Animator handles any idle
+            // animation (breathing, blink, etc). No procedural bob.
+            var offset = new Vector3(-2.5f * visual.SlotIndex, -0.2f * visual.SlotIndex, 0);
             visual.SpriteClone.transform.position = basePos + offset;
 
             var clonePos = visual.SpriteClone.transform.position;
             UpdatePlayerLabel(visual, summary, clonePos, activeSlot, cam);
 
-            // Scale highlight + subtle breathing pulse so clones aren't frozen.
-            float activeScale = (activeSlot == visual.SlotIndex) ? 1.15f : 1f;
-            float breathe = 1f + Mathf.Sin(bobPhase * 0.8f) * 0.02f;
-            float targetScale = activeScale * breathe;
+            // Scale highlight for the active player.
+            float targetScale = (activeSlot == visual.SlotIndex) ? 1.15f : 1f;
             visual.SpriteClone.transform.localScale = Vector3.Lerp(
                 visual.SpriteClone.transform.localScale,
                 Vector3.one * targetScale, Time.deltaTime * 5f);
@@ -762,6 +761,16 @@ public class CoopPlayerVisuals : MonoBehaviour
                 sr.color = (activeSlot == visual.SlotIndex)
                     ? Color.Lerp(sr.color, Color.white, Time.deltaTime * 3f)
                     : Color.Lerp(sr.color, baseColor, Time.deltaTime * 3f);
+            }
+
+            // Retry animator controller assignment each frame until found. The
+            // switcher may not have every class's controller wired at clone-
+            // creation time, so we harvest lazily.
+            var anim = visual.SpriteClone.GetComponent<Animator>();
+            if (anim != null && anim.runtimeAnimatorController == null)
+            {
+                var ctrl = GetClassAnimationController(summary.ChosenClass);
+                if (ctrl != null) anim.runtimeAnimatorController = ctrl;
             }
         }
     }
@@ -1131,6 +1140,91 @@ public class CoopPlayerVisuals : MonoBehaviour
     // sprite for the requested class. Falls back to ClassInfo.classSprite.
     private static readonly HashSet<int> _loggedMissingClassSprite = new HashSet<int>();
     private static Sprite _cachedPeglinSprite, _cachedBalladinSprite, _cachedRoundrelSprite, _cachedSpinventorSprite;
+    private static RuntimeAnimatorController _cachedPeglinCtrl, _cachedBalladinCtrl, _cachedRoundrelCtrl, _cachedSpinventorCtrl;
+    private static readonly HashSet<int> _loggedMissingClassCtrl = new HashSet<int>();
+
+    /// <summary>
+    /// Look up the class-specific RuntimeAnimatorController so the clone's
+    /// Animator plays the same idle animation as the host's live Player.
+    /// Harvests from every loaded PeglinClassAnimationSwitcher's serialized
+    /// fields, then falls back to a name search across all loaded controllers.
+    /// </summary>
+    private static RuntimeAnimatorController GetClassAnimationController(int chosenClass)
+    {
+        try
+        {
+            var cached = GetCachedController(chosenClass);
+            if (cached != null) return cached;
+
+            var allSwitchers = Resources.FindObjectsOfTypeAll<Peglin.PeglinClassAnimationSwitcher>();
+            if (allSwitchers != null)
+            {
+                foreach (var sw in allSwitchers)
+                {
+                    if (sw == null) continue;
+                    if (_cachedPeglinCtrl == null && sw.peglinAnimationController != null) _cachedPeglinCtrl = sw.peglinAnimationController;
+                    if (_cachedBalladinCtrl == null && sw.balladinAnimationController != null) _cachedBalladinCtrl = sw.balladinAnimationController;
+                    if (_cachedRoundrelCtrl == null && sw.roundrelAnimationController != null) _cachedRoundrelCtrl = sw.roundrelAnimationController;
+                    if (_cachedSpinventorCtrl == null && sw.spinventorAnimationController != null) _cachedSpinventorCtrl = sw.spinventorAnimationController;
+                }
+            }
+
+            cached = GetCachedController(chosenClass);
+            if (cached != null) return cached;
+
+            // Fallback: match loaded controllers by name.
+            string needle = ((Peglin.ClassSystem.Class)chosenClass) switch
+            {
+                Peglin.ClassSystem.Class.Balladin => "balladin",
+                Peglin.ClassSystem.Class.Roundrel => "roundrel",
+                Peglin.ClassSystem.Class.Spinventor => "spinventor",
+                _ => "peglin",
+            };
+            var allCtrls = Resources.FindObjectsOfTypeAll<RuntimeAnimatorController>();
+            if (allCtrls != null)
+            {
+                foreach (var c in allCtrls)
+                {
+                    if (c == null || string.IsNullOrEmpty(c.name)) continue;
+                    var lname = c.name.ToLowerInvariant();
+                    if (!lname.Contains(needle)) continue;
+                    // Skip controllers that also match OTHER class names to avoid
+                    // cross-contamination (some naming could be ambiguous).
+                    if (lname.Contains("peg_") || lname.Contains("bomb") || lname.Contains("slime")) continue;
+                    SetCachedController(chosenClass, c);
+                    return c;
+                }
+            }
+
+            if (_loggedMissingClassCtrl.Add(chosenClass))
+                Log?.LogWarning($"[CoopPlayerVisuals] No animation controller for class {chosenClass} — clone will show static sprite");
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static RuntimeAnimatorController GetCachedController(int chosenClass) =>
+        (Peglin.ClassSystem.Class)chosenClass switch
+        {
+            Peglin.ClassSystem.Class.Balladin => _cachedBalladinCtrl,
+            Peglin.ClassSystem.Class.Roundrel => _cachedRoundrelCtrl,
+            Peglin.ClassSystem.Class.Spinventor => _cachedSpinventorCtrl,
+            _ => _cachedPeglinCtrl,
+        };
+
+    private static void SetCachedController(int chosenClass, RuntimeAnimatorController ctrl)
+    {
+        switch ((Peglin.ClassSystem.Class)chosenClass)
+        {
+            case Peglin.ClassSystem.Class.Balladin: _cachedBalladinCtrl = ctrl; break;
+            case Peglin.ClassSystem.Class.Roundrel: _cachedRoundrelCtrl = ctrl; break;
+            case Peglin.ClassSystem.Class.Spinventor: _cachedSpinventorCtrl = ctrl; break;
+            default: _cachedPeglinCtrl = ctrl; break;
+        }
+    }
 
     private static Sprite GetClassBaseSprite(int chosenClass)
     {
@@ -1337,5 +1431,7 @@ public class CoopPlayerVisuals : MonoBehaviour
         _loggedMissingClassSprite.Clear();
         _addressableAttempted.Clear();
         _cachedPeglinSprite = _cachedBalladinSprite = _cachedRoundrelSprite = _cachedSpinventorSprite = null;
+        _cachedPeglinCtrl = _cachedBalladinCtrl = _cachedRoundrelCtrl = _cachedSpinventorCtrl = null;
+        _loggedMissingClassCtrl.Clear();
     }
 }
