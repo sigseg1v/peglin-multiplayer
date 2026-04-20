@@ -1251,9 +1251,13 @@ public class CoopPlayerVisuals : MonoBehaviour
     private static readonly HashSet<int> _addressableAttempted = new HashSet<int>();
 
     /// <summary>
-    /// Last-ditch fallback: load a Peglin class-specific prefab via Addressables,
-    /// dig its base sprite out of the first SpriteRenderer or from the
-    /// PeglinClassAnimationSwitcher (which on the prefab asset has all 4 wired).
+    /// Last-ditch fallback: load the class sprite directly via Addressables.
+    /// Inspection of the game's catalog.json shows Roundrel and Spinventor ship
+    /// their base sprites as addressable .png assets (Peglin/Balladin are scene-
+    /// embedded and typically come from already-loaded switchers/ClassInfos, so
+    /// this path is really about covering Roundrel and Spinventor). We try the
+    /// full asset path first; LoadAssetAsync returns a Texture2D for .png keys
+    /// unless we ask for a Sprite sub-asset, so we also fall back to Texture2D.
     /// Runs once per class.
     /// </summary>
     private static Sprite GetClassBaseSpriteFromAddressable(int chosenClass)
@@ -1262,58 +1266,48 @@ public class CoopPlayerVisuals : MonoBehaviour
         {
             if (!_addressableAttempted.Add(chosenClass)) return null;
 
-            var classKey = (Peglin.ClassSystem.Class)chosenClass switch
+            // Known addressable sprite paths (from the game's catalog.json).
+            string[] addresses = (Peglin.ClassSystem.Class)chosenClass switch
             {
-                Peglin.ClassSystem.Class.Balladin => "Balladin",
-                Peglin.ClassSystem.Class.Roundrel => "Roundrel",
-                Peglin.ClassSystem.Class.Spinventor => "Spinventor",
-                _ => "Peglin",
-            };
-
-            // Try common address patterns for the player prefab.
-            string[] addresses = new[]
-            {
-                classKey + "Player",
-                classKey + "_Player",
-                "Player_" + classKey,
-                classKey,
+                Peglin.ClassSystem.Class.Roundrel => new[] { "Assets/Art/Peglin/Roundrel/Sprites/roundrel.png" },
+                Peglin.ClassSystem.Class.Spinventor => new[] { "Assets/Art/Peglin/Spinventor/spinventor.png" },
+                _ => new string[0],
             };
 
             foreach (var addr in addresses)
             {
-                GameObject prefab = null;
+                Sprite sprite = null;
                 try
                 {
-                    var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>(addr);
-                    prefab = handle.WaitForCompletion();
+                    // PNGs ship as Texture2D in Unity Addressables. LoadAssetAsync<Sprite>
+                    // works only if the importer marked it as a Sprite; try both.
+                    var spriteHandle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<Sprite>(addr);
+                    sprite = spriteHandle.WaitForCompletion();
                 }
-                catch { prefab = null; }
+                catch { sprite = null; }
 
-                if (prefab == null) continue;
-
-                // Harvest sprite fields from any switcher on the prefab
-                var sw = prefab.GetComponentInChildren<Peglin.PeglinClassAnimationSwitcher>(true);
-                if (sw != null)
+                if (sprite != null)
                 {
-                    if (_cachedPeglinSprite == null && sw.peglinBaseSprite != null) _cachedPeglinSprite = sw.peglinBaseSprite;
-                    if (_cachedBalladinSprite == null && sw.balladinBaseSprite != null) _cachedBalladinSprite = sw.balladinBaseSprite;
-                    if (_cachedRoundrelSprite == null && sw.roundrelBaseSprite != null) _cachedRoundrelSprite = sw.roundrelBaseSprite;
-                    if (_cachedSpinventorSprite == null && sw.spinventorBaseSprite != null) _cachedSpinventorSprite = sw.spinventorBaseSprite;
-                    var got = GetCachedSprite(chosenClass);
-                    if (got != null)
+                    Log?.LogInfo($"[CoopPlayerVisuals] Loaded class {chosenClass} sprite from Addressable '{addr}'");
+                    return sprite;
+                }
+
+                try
+                {
+                    var texHandle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<Texture2D>(addr);
+                    var tex = texHandle.WaitForCompletion();
+                    if (tex != null)
                     {
-                        Log?.LogInfo($"[CoopPlayerVisuals] Harvested class sprites from Addressable '{addr}'");
-                        return got;
+                        var rect = new Rect(0f, 0f, tex.width, tex.height);
+                        var s = Sprite.Create(tex, rect, new Vector2(0.5f, 0.5f), 16f);
+                        if (s != null)
+                        {
+                            Log?.LogInfo($"[CoopPlayerVisuals] Built class {chosenClass} sprite from Addressable Texture2D '{addr}' (size={tex.width}x{tex.height})");
+                            return s;
+                        }
                     }
                 }
-
-                // Fallback: first non-null SpriteRenderer on the prefab
-                var sr = prefab.GetComponentInChildren<SpriteRenderer>(true);
-                if (sr != null && sr.sprite != null)
-                {
-                    Log?.LogInfo($"[CoopPlayerVisuals] Using SpriteRenderer sprite from Addressable '{addr}'");
-                    return sr.sprite;
-                }
+                catch { }
             }
         }
         catch (Exception ex)
