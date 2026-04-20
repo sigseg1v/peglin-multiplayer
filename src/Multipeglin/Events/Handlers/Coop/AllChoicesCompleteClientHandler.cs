@@ -13,14 +13,15 @@ public sealed class AllChoicesCompleteClientHandler : IClientHandler<AllChoicesC
         MultiplayerPlugin.Logger?.LogInfo(
             $"[CoopReward] All choices complete for phase '{networkEvent.Phase}'");
 
-        // NOTE: for shop/text_scenario phases we deliberately do NOT set
+        // NOTE: for shop/text_scenario/treasure phases we deliberately do NOT set
         // AllChoicesComplete=true. The host is now doing the post-event navigation
-        // shot (still inside the ShopScenario/TextScenario scene), and the client
-        // must keep its overlay up with a "Waiting for host..." message until the
-        // scene actually changes. Dismissing the overlay here would let the client
+        // shot (still inside the ShopScenario/TextScenario/Treasure scene), and the
+        // client must keep its overlay up with a "Waiting for host..." message until
+        // the scene actually changes. Dismissing the overlay here would let the client
         // re-interact with the event UI or leave them staring at a blank scene
         // with no indicator that they're waiting.
-        if (networkEvent.Phase != "shop" && networkEvent.Phase != "text_scenario")
+        if (networkEvent.Phase != "shop" && networkEvent.Phase != "text_scenario"
+            && networkEvent.Phase != "treasure")
         {
             CoopRewardState.AllChoicesComplete = true;
             CoopRewardState.WaitingForOtherPlayers = false;
@@ -57,11 +58,15 @@ public sealed class AllChoicesCompleteClientHandler : IClientHandler<AllChoicesC
         }
         else if (networkEvent.Phase == "treasure")
         {
+            // Keep the overlay up — host is still inside Treasure doing the
+            // post-selection navigation shot at the chest/pegboard.
             CoopRewardState.TreasurePhaseActive = false;
+            CoopRewardState.TreasureAwaitingHostNavigation = true;
+            CoopRewardState.WaitingForOtherPlayers = true;
             Patches.MultiplayerClientPatches.AllowTreasureLogic = false;
             Patches.MultiplayerClientPatches.AllowRelicSync = false;
             CoopRewardState.ClientTreasureChoiceSent = false;
-            MultiplayerPlugin.Logger?.LogInfo("[CoopReward] Treasure phase ended");
+            MultiplayerPlugin.Logger?.LogInfo("[CoopReward] Treasure phase ended — awaiting host navigation shot");
         }
         else if (networkEvent.Phase == "peg_minigame")
         {

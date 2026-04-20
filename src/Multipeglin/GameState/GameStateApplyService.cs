@@ -181,6 +181,8 @@ public class GameStateApplyService
         // Treasure scene: initialize wait-for-all on host, enable native relic UI on client
         if (scene.name == "Treasure")
         {
+            Events.Handlers.Coop.CoopRewardState.TreasureAwaitingHostNavigation = false;
+
             if (isHosting && svc.TryResolve<CoopStateManager>(out var coopMgr2))
             {
                 Events.Handlers.Coop.CoopRewardState.TreasurePhaseActive = true;

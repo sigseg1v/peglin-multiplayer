@@ -124,7 +124,7 @@ public sealed class SkipTurnButton : MonoBehaviour
         rect.anchorMin = new Vector2(0f, 0.5f);
         rect.anchorMax = new Vector2(0f, 0.5f);
         rect.pivot = new Vector2(0f, 0.5f);
-        rect.anchoredPosition = new Vector2(161f, 105f);
+        rect.anchoredPosition = new Vector2(161f, 151.67f);
         rect.sizeDelta = new Vector2(260f, 70f);
 
         // Dark border frame behind the fill

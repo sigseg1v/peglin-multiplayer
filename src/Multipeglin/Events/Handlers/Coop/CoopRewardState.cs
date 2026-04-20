@@ -129,6 +129,12 @@ public static class CoopRewardState
     /// <summary>True on client when the client has already sent their treasure completion event.</summary>
     public static bool ClientTreasureChoiceSent;
 
+    /// <summary>Client-side: true once all players have finished the treasure relic
+    /// selection and the host is still inside the Treasure scene doing the post-selection
+    /// navigation shot. The waiting overlay stays up with a "Waiting for host..." message
+    /// until the scene actually changes away.</summary>
+    public static bool TreasureAwaitingHostNavigation;
+
     // --- PegMinigame wait-for-all ---
 
     /// <summary>True when the PegMinigame phase is active (all players playing independently).</summary>
@@ -229,6 +235,7 @@ public static class CoopRewardState
         TotalTreasureClientsExpected = 0;
         PendingChestController = null;
         ClientTreasureChoiceSent = false;
+        TreasureAwaitingHostNavigation = false;
         PegMinigamePhaseActive = false;
         HostPegMinigameDone = false;
         ClientPegMinigameChoicesReceived.Clear();
