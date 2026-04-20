@@ -723,14 +723,25 @@ public class CoopPlayerVisuals : MonoBehaviour
                 if (s.SlotIndex == visual.SlotIndex) { summary = s; break; }
             if (summary == null) continue;
 
-            var offset = new Vector3(-2.5f * visual.SlotIndex, -0.2f * visual.SlotIndex, 0);
+            // Idle bob: small procedural sine-wave vertical sway so clones feel
+            // alive like the host's animated Player. Class-specific animator
+            // controllers aren't addressable for every class (only Peglin and
+            // Spinventor's are typically loaded), so we don't try to drive the
+            // clone's SpriteRenderer with an Animator — a simple transform bob
+            // is class-agnostic and looks right for all 4 classes. Phase-shift
+            // by slot so different clones don't bob in lockstep.
+            float bobPhase = Time.unscaledTime * 2.5f + visual.SlotIndex * 0.7f;
+            float bobY = Mathf.Sin(bobPhase) * 0.08f;
+            var offset = new Vector3(-2.5f * visual.SlotIndex, -0.2f * visual.SlotIndex + bobY, 0);
             visual.SpriteClone.transform.position = basePos + offset;
 
             var clonePos = visual.SpriteClone.transform.position;
             UpdatePlayerLabel(visual, summary, clonePos, activeSlot, cam);
 
-            // Scale highlight
-            float targetScale = (activeSlot == visual.SlotIndex) ? 1.15f : 1f;
+            // Scale highlight + subtle breathing pulse so clones aren't frozen.
+            float activeScale = (activeSlot == visual.SlotIndex) ? 1.15f : 1f;
+            float breathe = 1f + Mathf.Sin(bobPhase * 0.8f) * 0.02f;
+            float targetScale = activeScale * breathe;
             visual.SpriteClone.transform.localScale = Vector3.Lerp(
                 visual.SpriteClone.transform.localScale,
                 Vector3.one * targetScale, Time.deltaTime * 5f);

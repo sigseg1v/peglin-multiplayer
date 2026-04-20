@@ -247,10 +247,11 @@ public sealed class CoopSubscriptions
                 if (_coopStateManager.AllPlayersDead)
                 {
                     _log.LogWarning("[CoopSubs] All co-op players have died! Triggering defeat.");
-                    if (currentHealth > 0f)
-                    {
-                        phc.Damage(currentHealth, false);
-                    }
+                    // phc.Damage(0) is a no-op, and by now every player's HP is already 0.
+                    // CheckForDeathAndUpdateBar triggers GameOverObj.SetActive + OnHealthDepleted
+                    // directly; the Harmony prefix in MultiplayerClientPatches lets it through
+                    // because AllPlayersDead is true.
+                    phc.CheckForDeathAndUpdateBar();
                 }
                 else if (_coopStateManager.AnyPlayerDead)
                 {

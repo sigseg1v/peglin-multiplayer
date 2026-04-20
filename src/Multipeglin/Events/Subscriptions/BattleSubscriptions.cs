@@ -35,7 +35,11 @@ public sealed class BattleEventSubscriptions
         BattleController.OnOrbDiscarded += OnOrbDiscarded;
         BattleController.OnStartedAwaitingShot += OnAwaitingShot;
         BattleController.OnShotTimeout += OnShotTimeout;
-        PlayerHealthController.OnDefeat += OnDefeat;
+        // Subscribe to OnHealthDepleted, not OnDefeat — OnDefeat is declared on
+        // PlayerHealthController but never actually invoked anywhere. OnHealthDepleted
+        // fires from CheckForDeathAndUpdateBar when HP <= 0 and is what BattleController
+        // itself uses as the real defeat signal.
+        PlayerHealthController.OnHealthDepleted += OnDefeat;
     }
 
     public void Unsubscribe()
@@ -55,7 +59,7 @@ public sealed class BattleEventSubscriptions
         BattleController.OnOrbDiscarded -= OnOrbDiscarded;
         BattleController.OnStartedAwaitingShot -= OnAwaitingShot;
         BattleController.OnShotTimeout -= OnShotTimeout;
-        PlayerHealthController.OnDefeat -= OnDefeat;
+        PlayerHealthController.OnHealthDepleted -= OnDefeat;
     }
 
     private void OnBattleStarted() { if (_multiplayerMode.IsHosting) _registry.Dispatch(new BattleStartedEvent()); }
