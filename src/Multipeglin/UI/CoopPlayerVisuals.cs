@@ -1128,26 +1128,26 @@ public class CoopPlayerVisuals : MonoBehaviour
             var cached = GetCachedSprite(chosenClass);
             if (cached != null) return cached;
 
+            // Opportunistically populate the cache from every sprite field on every
+            // loaded switcher — not just the requested class. The Peglin Player
+            // prefab in the scene typically has only the active class's sprite
+            // wired, but SelectableCharacter prefabs (main menu) and other variants
+            // may still be in memory and wired for other classes. Harvest them all.
             var all = Resources.FindObjectsOfTypeAll<Peglin.PeglinClassAnimationSwitcher>();
             if (all != null)
             {
                 foreach (var switcher in all)
                 {
                     if (switcher == null) continue;
-                    var s = (Peglin.ClassSystem.Class)chosenClass switch
-                    {
-                        Peglin.ClassSystem.Class.Balladin => switcher.balladinBaseSprite,
-                        Peglin.ClassSystem.Class.Roundrel => switcher.roundrelBaseSprite,
-                        Peglin.ClassSystem.Class.Spinventor => switcher.spinventorBaseSprite,
-                        _ => switcher.peglinBaseSprite,
-                    };
-                    if (s != null)
-                    {
-                        SetCachedSprite(chosenClass, s);
-                        return s;
-                    }
+                    if (_cachedPeglinSprite == null && switcher.peglinBaseSprite != null) _cachedPeglinSprite = switcher.peglinBaseSprite;
+                    if (_cachedBalladinSprite == null && switcher.balladinBaseSprite != null) _cachedBalladinSprite = switcher.balladinBaseSprite;
+                    if (_cachedRoundrelSprite == null && switcher.roundrelBaseSprite != null) _cachedRoundrelSprite = switcher.roundrelBaseSprite;
+                    if (_cachedSpinventorSprite == null && switcher.spinventorBaseSprite != null) _cachedSpinventorSprite = switcher.spinventorBaseSprite;
                 }
             }
+
+            cached = GetCachedSprite(chosenClass);
+            if (cached != null) return cached;
 
             // Fallback: ClassInfo.classSprite (main menu character select asset).
             var ci = GetClassBaseSpriteFromClassInfo(chosenClass);
@@ -1157,8 +1157,26 @@ public class CoopPlayerVisuals : MonoBehaviour
                 return ci;
             }
 
+            // Fallback: SelectableCharacter.idleSprite (main menu character prefab).
+            var sc = GetClassBaseSpriteFromSelectableCharacter(chosenClass);
+            if (sc != null)
+            {
+                SetCachedSprite(chosenClass, sc);
+                return sc;
+            }
+
+            // Fallback: load the class-specific Peglin player prefab via Addressables,
+            // search its SpriteRenderer + Animator for the class's idle sprite, and
+            // cache. Runs once per class on a miss.
+            var ap = GetClassBaseSpriteFromAddressable(chosenClass);
+            if (ap != null)
+            {
+                SetCachedSprite(chosenClass, ap);
+                return ap;
+            }
+
             if (_loggedMissingClassSprite.Add(chosenClass))
-                Log?.LogWarning($"[CoopPlayerVisuals] No sprite found for class {chosenClass} across {all?.Length ?? 0} switchers + ClassInfo fallback");
+                Log?.LogWarning($"[CoopPlayerVisuals] No sprite for class {chosenClass} — switchers={all?.Length ?? 0}, caches: P={(_cachedPeglinSprite != null)} B={(_cachedBalladinSprite != null)} R={(_cachedRoundrelSprite != null)} S={(_cachedSpinventorSprite != null)}");
             return null;
         }
         catch
@@ -1209,6 +1227,102 @@ public class CoopPlayerVisuals : MonoBehaviour
         return null;
     }
 
+    /// <summary>
+    /// Fallback: SelectableCharacter.idleSprite (main menu character prefabs,
+    /// one per class). Typically loaded when the user has passed through the
+    /// main menu during this session.
+    /// </summary>
+    private static Sprite GetClassBaseSpriteFromSelectableCharacter(int chosenClass)
+    {
+        try
+        {
+            var all = Resources.FindObjectsOfTypeAll<PeglinUI.MainMenu.SelectableCharacter>();
+            if (all == null) return null;
+            foreach (var sc in all)
+            {
+                if (sc != null && (int)sc.characterClass == chosenClass && sc.idleSprite != null)
+                    return sc.idleSprite;
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    private static readonly HashSet<int> _addressableAttempted = new HashSet<int>();
+
+    /// <summary>
+    /// Last-ditch fallback: load a Peglin class-specific prefab via Addressables,
+    /// dig its base sprite out of the first SpriteRenderer or from the
+    /// PeglinClassAnimationSwitcher (which on the prefab asset has all 4 wired).
+    /// Runs once per class.
+    /// </summary>
+    private static Sprite GetClassBaseSpriteFromAddressable(int chosenClass)
+    {
+        try
+        {
+            if (!_addressableAttempted.Add(chosenClass)) return null;
+
+            var classKey = (Peglin.ClassSystem.Class)chosenClass switch
+            {
+                Peglin.ClassSystem.Class.Balladin => "Balladin",
+                Peglin.ClassSystem.Class.Roundrel => "Roundrel",
+                Peglin.ClassSystem.Class.Spinventor => "Spinventor",
+                _ => "Peglin",
+            };
+
+            // Try common address patterns for the player prefab.
+            string[] addresses = new[]
+            {
+                classKey + "Player",
+                classKey + "_Player",
+                "Player_" + classKey,
+                classKey,
+            };
+
+            foreach (var addr in addresses)
+            {
+                GameObject prefab = null;
+                try
+                {
+                    var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>(addr);
+                    prefab = handle.WaitForCompletion();
+                }
+                catch { prefab = null; }
+
+                if (prefab == null) continue;
+
+                // Harvest sprite fields from any switcher on the prefab
+                var sw = prefab.GetComponentInChildren<Peglin.PeglinClassAnimationSwitcher>(true);
+                if (sw != null)
+                {
+                    if (_cachedPeglinSprite == null && sw.peglinBaseSprite != null) _cachedPeglinSprite = sw.peglinBaseSprite;
+                    if (_cachedBalladinSprite == null && sw.balladinBaseSprite != null) _cachedBalladinSprite = sw.balladinBaseSprite;
+                    if (_cachedRoundrelSprite == null && sw.roundrelBaseSprite != null) _cachedRoundrelSprite = sw.roundrelBaseSprite;
+                    if (_cachedSpinventorSprite == null && sw.spinventorBaseSprite != null) _cachedSpinventorSprite = sw.spinventorBaseSprite;
+                    var got = GetCachedSprite(chosenClass);
+                    if (got != null)
+                    {
+                        Log?.LogInfo($"[CoopPlayerVisuals] Harvested class sprites from Addressable '{addr}'");
+                        return got;
+                    }
+                }
+
+                // Fallback: first non-null SpriteRenderer on the prefab
+                var sr = prefab.GetComponentInChildren<SpriteRenderer>(true);
+                if (sr != null && sr.sprite != null)
+                {
+                    Log?.LogInfo($"[CoopPlayerVisuals] Using SpriteRenderer sprite from Addressable '{addr}'");
+                    return sr.sprite;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log?.LogWarning($"[CoopPlayerVisuals] Addressable sprite fallback failed for class {chosenClass}: {ex.Message}");
+        }
+        return null;
+    }
+
     public static void Reset()
     {
         LatestPlayerSummaries = null;
@@ -1216,6 +1330,7 @@ public class CoopPlayerVisuals : MonoBehaviour
         _statusEffectDataSearched = false;
         _statusEffectData = null;
         _loggedMissingClassSprite.Clear();
+        _addressableAttempted.Clear();
         _cachedPeglinSprite = _cachedBalladinSprite = _cachedRoundrelSprite = _cachedSpinventorSprite = null;
     }
 }
