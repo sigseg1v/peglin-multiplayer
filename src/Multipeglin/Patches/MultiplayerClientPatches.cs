@@ -1804,6 +1804,27 @@ public static class MultiplayerClientPatches
         catch { }
     }
 
+    /// <summary>
+    /// HOST: after a RegularPeg pops, fade it to alpha=0 so it visually disappears
+    /// — matching what the client's PegboardStateApplier does via RemoveIfCleared.
+    /// Vanilla Peglin only fades popped pegs at end-of-battle (via RemoveClearedPegs),
+    /// so without this hook the host sees popped pegs sit at scale 0.3 with the
+    /// destroyed-sprite dot while the client has already faded them to invisible.
+    /// Skip pegs with coins — RemoveIfCleared would skip them anyway (NumCoins>0).
+    /// </summary>
+    [HarmonyPatch(typeof(RegularPeg), "PopPeg")]
+    [HarmonyPostfix]
+    public static void RegularPeg_PopPeg_Postfix(RegularPeg __instance)
+    {
+        if (!IsHosting) return;
+        try
+        {
+            if (__instance.NumCoins() > 0) return;
+            __instance.RemoveIfCleared();
+        }
+        catch { }
+    }
+
     /// <summary>Block failsafe refresh peg creation on client.</summary>
     [HarmonyPatch(typeof(PegManager), "FailSafeCreateRefreshPegs")]
     [HarmonyPrefix]

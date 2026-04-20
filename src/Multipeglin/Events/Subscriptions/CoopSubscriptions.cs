@@ -427,6 +427,18 @@ public sealed class CoopSubscriptions
 
             _turnManager.StartNewRound();
             _log.LogInfo($"[CoopSubs] New round {_turnManager.RoundNumber} started, slot {_turnManager.CurrentPlayerSlot}");
+
+            // If the round starts with a non-host slot (host was dead so
+            // StartNewRound skipped past slot 0), the host already drew a ball
+            // for itself in OnTurnComplete's swap-to-host-for-DrawBall flow.
+            // Swap state to the live slot and redraw from its deck so
+            // ActivePlayerSlot matches the active turn and the client's
+            // heartbeat-driven IsMyTurn flag doesn't get reset to False.
+            if (_turnManager.Phase == TurnPhase.PLAYER_AIMING
+                && _turnManager.CurrentPlayerSlot != _coopStateManager.ActivePlayerSlot)
+            {
+                SwapAndRedrawForRoundStart($"round {_turnManager.RoundNumber} start, slot 0 dead");
+            }
         }
         BroadcastTurnChange();
 
@@ -435,6 +447,87 @@ public sealed class CoopSubscriptions
         // auto-skip them to avoid softlock. Loops until we land on a live slot
         // or the whole round ends.
         SkipActiveSlotIfDead("OnAwaitingShot");
+    }
+
+    /// <summary>
+    /// Called from OnAwaitingShot when a new round starts with a live slot that
+    /// doesn't match the currently loaded ActivePlayerSlot (i.e. host was dead
+    /// and StartNewRound skipped past it). Destroys the mis-drawn host ball,
+    /// swaps singletons to the live slot, redraws from that slot's deck, and
+    /// pushes a full SyncAll so the client sees its own deck immediately.
+    /// Mirrors the "more players left" swap block in OnShotComplete.
+    /// </summary>
+    private void SwapAndRedrawForRoundStart(string context)
+    {
+        var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
+
+        try
+        {
+            if (bc != null)
+            {
+                var activeBallField = AccessTools.Field(typeof(BattleController), "_activePachinkoBall");
+                if (activeBallField?.GetValue(bc) is GameObject activeBall)
+                {
+                    UnityEngine.Object.Destroy(activeBall);
+                    activeBallField.SetValue(bc, null);
+                }
+                AccessTools.Field(typeof(BattleController), "_remainingPachinkoBalls")?.SetValue(bc, 0);
+
+                AccessTools.Field(typeof(BattleController), "_pegMultiplierDamageTally")?.SetValue(bc, 0);
+                AccessTools.Field(typeof(BattleController), "_criticalHitCount")?.SetValue(null, 0);
+                AccessTools.Field(typeof(BattleController), "_numPegsHit")?.SetValue(bc, 0);
+                AccessTools.Field(typeof(BattleController), "_cactusDamageTally")?.SetValue(bc, 0);
+                AccessTools.Field(typeof(BattleController), "_damageMultiplier")?.SetValue(bc, 1f);
+                AccessTools.Field(typeof(BattleController), "_damageBonus")?.SetValue(bc, 0);
+            }
+        }
+        catch (Exception ex) { _log.LogWarning($"[CoopSubs] SwapAndRedraw ({context}): pre-swap cleanup failed: {ex.Message}"); }
+
+        _coopStateManager.SwapToPlayer(_turnManager.CurrentPlayerSlot);
+
+        // Silence DeckInfoManager callbacks during the non-host shuffle/draw so
+        // they don't corrupt the host's deck tube display (same guard as
+        // OnShotComplete).
+        DeckManager.BallDrawn savedOnBallUsed = null;
+        DeckManager.Shuffled savedOnDeckShuffled = null;
+        try
+        {
+            savedOnBallUsed = DeckManager.onBallUsed;
+            savedOnDeckShuffled = DeckManager.onDeckShuffled;
+            DeckManager.onBallUsed = _ => { };
+            DeckManager.onDeckShuffled = _ => { };
+        }
+        catch (Exception cbEx) { _log.LogWarning($"[CoopSubs] SwapAndRedraw ({context}): callback disconnect failed: {cbEx.Message}"); }
+
+        if (!EnsureBattleDeckPopulated($"{context} swap"))
+            _log.LogWarning($"[CoopSubs] SwapAndRedraw ({context}): EnsureBattleDeckPopulated failed — deck may be empty");
+
+        try
+        {
+            BattleController.CurrentBattleState = BattleController.BattleState.AWAITING_SHOT;
+            if (bc != null)
+            {
+                var drawBallMethod = AccessTools.Method(typeof(BattleController), "DrawBall");
+                drawBallMethod?.Invoke(bc, null);
+                _log.LogInfo($"[CoopSubs] SwapAndRedraw ({context}): DrawBall invoked for slot {_turnManager.CurrentPlayerSlot}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[CoopSubs] SwapAndRedraw ({context}): DrawBall failed: {ex.InnerException?.Message ?? ex.Message}");
+        }
+        finally
+        {
+            try
+            {
+                if (savedOnBallUsed != null) DeckManager.onBallUsed = savedOnBallUsed;
+                if (savedOnDeckShuffled != null) DeckManager.onDeckShuffled = savedOnDeckShuffled;
+            }
+            catch (Exception restoreEx) { _log.LogWarning($"[CoopSubs] SwapAndRedraw ({context}): callback restore failed: {restoreEx.Message}"); }
+        }
+
+        try { _syncService.SyncAll($"{context}"); }
+        catch (Exception syncEx) { _log.LogWarning($"[CoopSubs] SwapAndRedraw ({context}): SyncAll failed: {syncEx.Message}"); }
     }
 
     /// <summary>
