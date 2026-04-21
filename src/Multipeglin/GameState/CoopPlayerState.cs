@@ -37,6 +37,10 @@ public class CoopPlayerState
     // Per-round tracking
     public bool HasShotThisRound { get; set; }
 
+    // Per-run damage totals — shown on the run summary screen.
+    public long DamageDealt { get; set; }
+    public long DamageTaken { get; set; }
+
     // Initialized flag (deck/relics loaded from ClassLoadoutData)
     public bool IsInitialized { get; set; }
 }

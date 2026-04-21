@@ -171,13 +171,6 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 return;
             }
 
-            if (snapshot.ActiveScene == "RunSummary")
-            {
-                ClientWaitingMessage = "Host is viewing run summary...";
-                _log.LogInfo("[MapApplier] Host is on RunSummary — showing waiting message");
-                return;
-            }
-
             // Clear waiting state — we're loading a real game scene
             ClientWaitingMessage = null;
 

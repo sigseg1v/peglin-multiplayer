@@ -117,6 +117,14 @@ public sealed class EnemySubscriptions
     private void OnEnemyDamaged(Enemy enemy, long damage, Enemy.EnemyDamageSource source)
     {
         if (!IsHosting) return;
+
+        // Attribute damage to the active coop player's run-summary tally.
+        if (damage > 0 && _coopStateManager != null)
+        {
+            var slot = _coopStateManager.GetPlayerState(_coopStateManager.ActivePlayerSlot);
+            if (slot != null) slot.DamageDealt += damage;
+        }
+
         _registry.Dispatch(new EnemyDamagedEvent
         {
             EnemyId = _enemyIdentifier.GetId(enemy),

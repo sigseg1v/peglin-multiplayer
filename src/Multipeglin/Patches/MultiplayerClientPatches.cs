@@ -179,6 +179,34 @@ public static class MultiplayerClientPatches
     }
 
     /// <summary>
+    /// Mirror the class choice into RelicManager by calling PopulateRelicPools.
+    /// The native class-select UI does this via LoadoutManager.SetupLoadout, but
+    /// we skip that flow in multiplayer. Without this, RelicManager._selectedClass
+    /// stays at the default (Peglin), and the relic queue stays populated with
+    /// Peglin-class relics — so the shop/treasure on the client shows either zero
+    /// relics or wrong-class relics.
+    /// </summary>
+    public static void SetRelicManagerClass(Peglin.ClassSystem.Class chosenClass)
+    {
+        try
+        {
+            var rms = Resources.FindObjectsOfTypeAll<Relics.RelicManager>();
+            if (rms == null || rms.Length == 0)
+            {
+                MultiplayerPlugin.Logger?.LogWarning("[ClientPatches] RelicManager not found — shop relics may be wrong class");
+                return;
+            }
+            var rm = rms[0];
+            rm.PopulateRelicPools(chosenClass);
+            MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Called RelicManager.PopulateRelicPools({chosenClass})");
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] SetRelicManagerClass failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Mirror the class choice into CruciballManager.currentClass. The native
     /// class-select UI normally does this via SetRunCruciballLevelAndClass, but
     /// we skip that flow in multiplayer (lobby already picked the class). Without
@@ -1820,6 +1848,11 @@ public static class MultiplayerClientPatches
         try
         {
             if (__instance.NumCoins() > 0) return;
+            // Preserve buffed pegs (e.g. Best Foot Forworb +10) — RemoveIfCleared
+            // fades _pegText to alpha 0 over 1s, which hides the buff number the
+            // game writes right after this postfix. Vanilla defers the fade of
+            // buffed pegs to end-of-battle; match that here.
+            if (__instance.buffAmount != 0) return;
             __instance.RemoveIfCleared();
         }
         catch { }
@@ -2241,7 +2274,7 @@ public static class MultiplayerClientPatches
     /// </summary>
     [HarmonyPatch(typeof(BattleController), "DoAttack")]
     [HarmonyPrefix]
-    public static bool BattleController_DoAttack_Prefix()
+    public static bool BattleController_DoAttack_Prefix(BattleController __instance)
     {
         if (!IsHosting) return true;
         if (!UI.LobbyUI.GameStartReceived) return true;
@@ -2313,6 +2346,29 @@ public static class MultiplayerClientPatches
                     if (pierceCount > 0)
                     {
                         pierceTargets.AddRange(GetEnemiesBehindTarget(em, target, pierceCount));
+                    }
+
+                    // Line-of-sight redirect: in the base game a NORMAL orb flies outward
+                    // and the first enemy collider along the aim line absorbs the hit —
+                    // so a front-row enemy blocks damage from reaching a back-row target.
+                    // Our direct target.Damage() bypass loses that, which lets players
+                    // cheese back-row enemies. Replicate ShotBehavior.RaycastShotFlight
+                    // here; on any failure, fall back to the slot-based list above.
+                    try
+                    {
+                        var raycastTargets = ResolveShotTargetsViaRaycast(
+                            __instance, em, target, shot.OrbPrefabName, pierceCount);
+                        if (raycastTargets != null && raycastTargets.Count > 0)
+                        {
+                            pierceTargets = raycastTargets;
+                            target = raycastTargets[0];
+                        }
+                    }
+                    catch (System.Exception rex)
+                    {
+                        MultiplayerPlugin.Logger?.LogWarning(
+                            $"[CoopAttack] Raycast redirect failed for {shot.OrbPrefabName}, " +
+                            $"falling back to declared target: {rex.Message}");
                     }
 
                     foreach (var t in pierceTargets)
@@ -2476,6 +2532,112 @@ public static class MultiplayerClientPatches
         for (int i = 0; i < candidates.Count && result.Count < count; i++)
             result.Add(candidates[i].e);
         return result;
+    }
+
+    private struct OrbShotInfo
+    {
+        public Battle.Attacks.ShotBehavior.ShotType ShotType;
+        public bool CanAimUp;
+        public int EnemiesToPierce;
+        public bool Valid;
+    }
+
+    private static readonly System.Collections.Generic.Dictionary<string, OrbShotInfo> _orbShotInfoCache
+        = new System.Collections.Generic.Dictionary<string, OrbShotInfo>();
+
+    private static OrbShotInfo GetOrbShotInfo(string orbPrefabName)
+    {
+        if (string.IsNullOrEmpty(orbPrefabName)) return default;
+        if (_orbShotInfoCache.TryGetValue(orbPrefabName, out var cached)) return cached;
+
+        var info = default(OrbShotInfo);
+        try
+        {
+            var orbPrefab = Loading.AssetLoading.Instance?.GetOrbPrefab(orbPrefabName);
+            var projAttack = orbPrefab?.GetComponent<Battle.Attacks.ProjectileAttack>();
+            var shotPrefabField = AccessTools.Field(typeof(Battle.Attacks.ProjectileAttack), "_shotPrefab");
+            var shotPrefabGO = shotPrefabField?.GetValue(projAttack) as UnityEngine.GameObject;
+            var sb = shotPrefabGO?.GetComponent<Battle.Attacks.ShotBehavior>();
+            if (sb != null)
+            {
+                var typeField = AccessTools.Field(typeof(Battle.Attacks.ShotBehavior), "_shotType");
+                var pierceField = AccessTools.Field(typeof(Battle.Attacks.ShotBehavior), "_enemiesToPierce");
+                var aimField = AccessTools.Field(typeof(Battle.Attacks.ShotBehavior), "_canAimUp");
+                info.ShotType = (Battle.Attacks.ShotBehavior.ShotType)(typeField?.GetValue(sb) ?? 0);
+                info.EnemiesToPierce = (int)(pierceField?.GetValue(sb) ?? 0);
+                info.CanAimUp = (bool)(aimField?.GetValue(sb) ?? true);
+                info.Valid = true;
+            }
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[CoopAttack] GetOrbShotInfo({orbPrefabName}) failed: {ex.Message}");
+        }
+
+        _orbShotInfoCache[orbPrefabName] = info;
+        return info;
+    }
+
+    /// <summary>
+    /// Replicates ShotBehavior.RaycastShotFlight so coop non-host damage respects
+    /// line-of-sight: front enemies block NORMAL orbs from reaching back-row targets.
+    /// Returns the ordered list of enemies that would actually be hit (closest first),
+    /// or null if the raycast found nothing / the caller should keep its fallback.
+    /// PINPOINT orbs intentionally ignore blockers — returns null to preserve that.
+    /// </summary>
+    private static System.Collections.Generic.List<Battle.Enemies.Enemy> ResolveShotTargetsViaRaycast(
+        BattleController bc, EnemyManager em, Battle.Enemies.Enemy declaredTarget,
+        string orbPrefabName, int pierceCount)
+    {
+        if (bc == null || em == null || declaredTarget == null) return null;
+
+        var info = GetOrbShotInfo(orbPrefabName);
+        if (info.Valid && info.ShotType == Battle.Attacks.ShotBehavior.ShotType.PINPOINT)
+            return null;
+
+        var playerField = AccessTools.Field(typeof(BattleController), "_playerTransform");
+        var playerTransform = playerField?.GetValue(bc) as UnityEngine.Transform;
+        if (playerTransform == null) return null;
+
+        var offsetField = AccessTools.Field(typeof(BattleController), "_playerTransformOffset");
+        var offset = (UnityEngine.Vector3)(offsetField?.GetValue(bc) ?? new UnityEngine.Vector3(1f, 0.5f, 0f));
+        UnityEngine.Vector2 origin = (UnityEngine.Vector2)(playerTransform.position + offset);
+
+        UnityEngine.Vector2 aim = ((UnityEngine.Vector2)declaredTarget.transform.position - origin).normalized;
+        if (aim.sqrMagnitude < 0.0001f) return null;
+
+        UnityEngine.Vector2 perp = UnityEngine.Vector3.Cross(aim, UnityEngine.Vector3.back).normalized;
+        const float lateralOffset = 0.08f;
+        var hits = new System.Collections.Generic.List<UnityEngine.RaycastHit2D>();
+        hits.AddRange(UnityEngine.Physics2D.RaycastAll(origin, aim, 50f));
+        hits.AddRange(UnityEngine.Physics2D.RaycastAll(origin + perp * lateralOffset, aim, 50f));
+        hits.AddRange(UnityEngine.Physics2D.RaycastAll(origin - perp * lateralOffset, aim, 50f));
+
+        bool canAimUp = !info.Valid || info.CanAimUp;
+        var byEnemy = new System.Collections.Generic.Dictionary<Battle.Enemies.Enemy, float>();
+        foreach (var h in hits)
+        {
+            if (h.collider == null) continue;
+            if (!h.collider.TryGetComponent<Battle.Enemies.Enemy>(out var e)) continue;
+            if (e == null || e.CurrentHealth <= 0f) continue;
+            if (byEnemy.ContainsKey(e)) continue;
+            // Mirror ShotBehavior filter: when canAimUp match flying==flying;
+            // when !canAimUp (ground-only aim) skip flying enemies entirely.
+            bool flyingOk = canAimUp
+                ? declaredTarget.IsFlying == e.IsFlying
+                : !e.IsFlying;
+            if (!flyingOk) continue;
+            byEnemy[e] = h.distance;
+        }
+
+        if (byEnemy.Count == 0) return null;
+
+        var ordered = new System.Collections.Generic.List<Battle.Enemies.Enemy>(byEnemy.Keys);
+        ordered.Sort((a, b) => byEnemy[a].CompareTo(byEnemy[b]));
+
+        int keep = System.Math.Max(1, pierceCount + 1);
+        if (ordered.Count > keep) ordered.RemoveRange(keep, ordered.Count - keep);
+        return ordered;
     }
 
     // =========================================================================
@@ -3063,6 +3225,8 @@ public static class MultiplayerClientPatches
         {
             var list = AccessTools.Field(typeof(PachinkoBall), "_childMultiballs")?.GetValue(__instance) as System.Collections.IList;
             __state = list?.Count ?? 0;
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[ClientPatches] HandleSpawningMultiballs enter: ball={__instance.gameObject.name} multiballLevel={__instance.multiballLevel} childMultiballs={__state}");
         }
         catch { }
     }
@@ -3075,8 +3239,11 @@ public static class MultiplayerClientPatches
         try
         {
             var list = AccessTools.Field(typeof(PachinkoBall), "_childMultiballs")?.GetValue(__instance) as System.Collections.IList;
-            if (list == null || list.Count <= __state) return;
-            for (int i = __state; i < list.Count; i++)
+            int newCount = list?.Count ?? 0;
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[ClientPatches] HandleSpawningMultiballs exit: ball={__instance.gameObject.name} multiballLevel={__instance.multiballLevel} before={__state} after={newCount}");
+            if (list == null || newCount <= __state) return;
+            for (int i = __state; i < newCount; i++)
             {
                 var pb = list[i] as UnityEngine.MonoBehaviour;
                 if (pb != null && pb.gameObject != null)
@@ -4091,6 +4258,95 @@ public static class MultiplayerClientPatches
     // =========================================================================
     // SHOP + TREASURE: Wait-for-all synchronization
     // =========================================================================
+
+    /// <summary>
+    /// Diagnostic: logs the state of the RelicManager and SeededShopNodeData on the
+    /// client when the shop opens, to debug why the client sees 0 relics.
+    /// </summary>
+    [HarmonyPatch(typeof(Scenarios.Shop.ShopManager), "SetUpRelicOffer")]
+    [HarmonyPrefix]
+    public static void ShopManager_SetUpRelicOffer_PrefixDiag(Scenarios.Shop.ShopManager __instance)
+    {
+        if (!ShouldSuppressClientLogic) return;
+        try
+        {
+            var seededField = HarmonyLib.AccessTools.Field(typeof(Scenarios.Shop.ShopManager), "_seededShopNodeData");
+            var seeded = seededField?.GetValue(__instance) as Map.SeededShopNodeData;
+            var rmField = HarmonyLib.AccessTools.Field(typeof(Scenarios.Shop.ShopManager), "relicManager");
+            var rm = rmField?.GetValue(__instance) as Relics.RelicManager;
+
+            int commonQueueCount = -1;
+            int rareQueueCount = -1;
+            int commonListCount = -1;
+            string selectedClass = "NULL";
+            int relicsOfferedVal = -1;
+            try
+            {
+                var commonQField = HarmonyLib.AccessTools.Field(typeof(Relics.RelicManager), "AllCommonRelicsRandomQueue");
+                var cq = commonQField?.GetValue(rm) as System.Collections.ICollection;
+                commonQueueCount = cq?.Count ?? -1;
+
+                var rareQField = HarmonyLib.AccessTools.Field(typeof(Relics.RelicManager), "AllRareRelicsRandomQueue");
+                var rq = rareQField?.GetValue(rm) as System.Collections.ICollection;
+                rareQueueCount = rq?.Count ?? -1;
+
+                var commonListField = HarmonyLib.AccessTools.Field(typeof(Relics.RelicManager), "AllCommonRelics");
+                var cl = commonListField?.GetValue(rm) as System.Collections.ICollection;
+                commonListCount = cl?.Count ?? -1;
+
+                var selClassField = HarmonyLib.AccessTools.Field(typeof(Relics.RelicManager), "_selectedClass");
+                selectedClass = selClassField?.GetValue(rm)?.ToString() ?? "NULL";
+
+                var relicsOfferedField = HarmonyLib.AccessTools.Field(typeof(Scenarios.Shop.ShopManager), "relicsOffered");
+                relicsOfferedVal = (int)(relicsOfferedField?.GetValue(__instance) ?? -1);
+            }
+            catch (System.Exception rx)
+            {
+                MultiplayerPlugin.Logger?.LogWarning($"[ShopDiag] Failed reading RM fields: {rx.Message}");
+            }
+
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[ShopDiag] SetUpRelicOffer: seededShop={(seeded != null ? $"rareRoll={seeded.rareRelicChanceRoll:F3} shopRoll={seeded.shopRelicChanceRoll:F3} orbs={seeded.shopOrbs?.Length ?? -1}" : "NULL")}, " +
+                $"_selectedClass={selectedClass}, chosenClass={StaticGameData.chosenClass}, " +
+                $"AllCommonRelics.Count={commonListCount}, CommonQueue.Count={commonQueueCount}, RareQueue.Count={rareQueueCount}, " +
+                $"relicsOffered={relicsOfferedVal}");
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[ShopDiag] SetUpRelicOffer prefix failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Diagnostic: logs the number of relic items that ended up in the shop after
+    /// SetUpRelicOffer completed.
+    /// </summary>
+    [HarmonyPatch(typeof(Scenarios.Shop.ShopManager), "SetUpRelicOffer")]
+    [HarmonyPostfix]
+    public static void ShopManager_SetUpRelicOffer_PostfixDiag(Scenarios.Shop.ShopManager __instance)
+    {
+        if (!ShouldSuppressClientLogic) return;
+        try
+        {
+            var relicItemsField = HarmonyLib.AccessTools.Field(typeof(Scenarios.Shop.ShopManager), "relicItems");
+            var items = relicItemsField?.GetValue(__instance) as System.Collections.ICollection;
+            var purchasableRelicsField = HarmonyLib.AccessTools.Field(typeof(Scenarios.Shop.ShopManager), "_purchasableRelics");
+            var purchasable = purchasableRelicsField?.GetValue(__instance) as System.Array;
+            int nonNullPurchasable = 0;
+            if (purchasable != null)
+            {
+                for (int i = 0; i < purchasable.Length; i++)
+                    if (purchasable.GetValue(i) != null) nonNullPurchasable++;
+            }
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[ShopDiag] SetUpRelicOffer done: relicItems.Count={items?.Count ?? -1}, " +
+                $"_purchasableRelics: {nonNullPurchasable}/{purchasable?.Length ?? -1} non-null");
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[ShopDiag] SetUpRelicOffer postfix failed: {ex.Message}");
+        }
+    }
 
     /// <summary>
     /// Client-side: tracks purchases made during the current shop visit.

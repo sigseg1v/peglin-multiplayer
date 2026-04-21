@@ -168,6 +168,8 @@ public sealed class CoopSubscriptions
             float oldHp = state.CurrentHealth;
             float effectiveDamage = ApplyDefensiveBuffs(state, rawDamage);
             state.CurrentHealth = Mathf.Max(0f, state.CurrentHealth - effectiveDamage);
+            float actualTaken = oldHp - state.CurrentHealth;
+            if (actualTaken > 0) state.DamageTaken += (long)actualTaken;
             _log.LogInfo($"[CoopSubs] DistributeDamage({source}) slot {state.SlotIndex} ({state.PlayerName}): " +
                 $"hp {oldHp} -> {state.CurrentHealth} (raw={rawDamage}, after buffs={effectiveDamage})");
         }
@@ -204,6 +206,8 @@ public sealed class CoopSubscriptions
                 {
                     activeState.CurrentHealth = Mathf.Max(0f, phc.CurrentHealth);
                 }
+                // Accumulate damage taken for the active slot's run-summary tally.
+                if (amount > 0) activeState.DamageTaken += (long)amount;
             }
         }
     }

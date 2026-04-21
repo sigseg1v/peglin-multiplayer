@@ -40,12 +40,23 @@ public sealed class PostBattleGoldSpentClientHandler : IClientHandler<PostBattle
 
             float prevHp = playerState.CurrentHealth;
             float prevMaxHp = playerState.MaxHealth;
-            if (e.MaxHealth > 0f) playerState.MaxHealth = e.MaxHealth;
-            if (e.CurrentHealth >= 0f) playerState.CurrentHealth = e.CurrentHealth;
+
+            // MaxHP can only increase in the post-battle reward screen (Basalt
+            // Toadem / MAX_HP_INC). Never let a lower client-reported value
+            // regress the host's authoritative max.
+            if (e.MaxHealth > prevMaxHp) playerState.MaxHealth = e.MaxHealth;
+
+            // CurrentHealth can only increase here (Heal button). Enforce
+            // monotonicity so a stale capture (e.g. client grabbed HP before
+            // HealEndOfBattleAmount applied, or the heartbeat had briefly
+            // stamped another slot's value onto the local PlayerHealthController)
+            // can't drop host HP. Clamp to MaxHealth.
+            if (e.CurrentHealth > prevHp)
+                playerState.CurrentHealth = Math.Min(e.CurrentHealth, playerState.MaxHealth);
 
             MultiplayerPlugin.Logger?.LogInfo(
                 $"[PostBattleGoldSpent] Slot {slot.SlotIndex} spent {e.Amount} gold ({before} -> {playerState.Gold}), " +
-                $"hp {prevHp}/{prevMaxHp} -> {playerState.CurrentHealth}/{playerState.MaxHealth}");
+                $"hp {prevHp}/{prevMaxHp} -> {playerState.CurrentHealth}/{playerState.MaxHealth} (client reported {e.CurrentHealth}/{e.MaxHealth})");
         }
         catch (Exception ex)
         {

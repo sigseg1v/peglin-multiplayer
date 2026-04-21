@@ -383,12 +383,11 @@ public class ClientBallRenderer : MonoBehaviour
         if (_ballObject != null)
             _ballObject.SetActive(false);
 
-        // Clean up multiball visuals
-        foreach (var mb in _multiballs.Values)
-        {
-            if (mb?.GameObject != null) Destroy(mb.GameObject);
-        }
-        _multiballs.Clear();
+        // Multiballs are destroyed individually via MultiballDestroyedEvent when the
+        // host streamer's OnDestroy fires. Don't wipe them here — the primary may die
+        // before its Circcae children, and those children should keep rendering until
+        // their own MultiballDestroyedEvent arrives. OnShotFired cleans up stragglers
+        // before the next shot.
     }
 
     private void Update()

@@ -40,6 +40,13 @@ public sealed class GameStartClientHandler : IClientHandler<GameStartEvent>
                     // reads this at battle scene OnEnable to pick the base sprite / animator,
                     // and we skip the native class-select flow entirely in multiplayer.
                     Patches.MultiplayerClientPatches.SetCruciballManagerClass(chosenClass);
+
+                    // Populate the RelicManager's pools + _selectedClass for the client's
+                    // chosen class. Normally LoadoutManager.SetupLoadout does this when the
+                    // player confirms their character; since we skip that UI in multiplayer,
+                    // the relic queue would otherwise stay on Peglin (the LoadoutManager.Awake
+                    // default), which can leave the shop with zero relics for non-Peglin classes.
+                    Patches.MultiplayerClientPatches.SetRelicManagerClass(chosenClass);
                 }
 
                 // Set PlayerRegistry.LocalSlot so other handlers can identify this client's slot.

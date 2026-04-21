@@ -47,6 +47,11 @@ public class GameStateApplyService
     // --- Individual buffered snapshots (for partial updates) ---
     private PlayerStateSnapshot _latestPlayer;
     private MapStateSnapshot _latestMap;
+    // Latest full snapshot — kept so post-scene-load can apply coop-aware player
+    // state (PlayerSummaries), not just the host's active-slot HP from
+    // `_latestPlayer`. Without this, the client's HP bar flickers to another
+    // slot's value for a frame on scene transitions.
+    private FullGameStateSnapshot _latestFullSnapshot;
 
     public GameStateApplyService(ManualLogSource log, EnemyIdentifier enemyId, PegIdentifier pegId, OrbIdentifier orbId)
     {
@@ -75,6 +80,7 @@ public class GameStateApplyService
         _pendingSnapshotScene = "";
         _latestPlayer = null;
         _latestMap = null;
+        _latestFullSnapshot = null;
         _navigationTriggered = false;
         _log.LogInfo("[ApplyService] State reset");
     }
@@ -267,6 +273,7 @@ public class GameStateApplyService
         // Update authoritative host scene
         _hostScene = hostScene;
         _hostSceneTimestamp = snapshot.TimestampMs;
+        _latestFullSnapshot = snapshot;
 
         _log.LogInfo($"[ApplyService] ApplyAll: clientScene='{clientScene}', hostScene='{hostScene}', " +
             $"enemies={snapshot.Enemies?.Enemies?.Count ?? 0}, pegs={snapshot.Pegboard?.TotalPegCount ?? 0}");
@@ -425,8 +432,12 @@ public class GameStateApplyService
 
         _log.LogInfo($"[ApplyService] Post-scene-load apply for '{sceneName}' (no pending snapshot)");
 
-        // Apply player state if available
-        if (_latestPlayer != null)
+        // Apply player state if available — prefer the latest full snapshot so
+        // coop routing (PlayerSummaries by slot) applies this client's own HP
+        // instead of the host's active-slot HP carried in `_latestPlayer`.
+        if (_latestFullSnapshot != null)
+            ApplyPlayerFromSnapshot(_latestFullSnapshot);
+        else if (_latestPlayer != null)
             SafeApply("Player", () => _playerApplier.Apply(_latestPlayer));
 
         // Check if a pending snapshot arrived while we were waiting

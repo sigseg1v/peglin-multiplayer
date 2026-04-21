@@ -91,6 +91,12 @@ public sealed class BallSubscriptions
     private void OnBallDestroyed(PachinkoBall pBall)
     {
         if (!IsHosting) return;
+        // OnPachinkoBallDestroyed fires for every ball including spawned multiballs.
+        // Those already have a HostMultiballStreamer which dispatches its own
+        // MultiballDestroyedEvent in OnDestroy. Emitting a generic BallDestroyedEvent
+        // here would make the client wipe all remaining multiball visuals, so skip.
+        if (pBall != null && pBall.GetComponent<GameState.HostMultiballStreamer>() != null)
+            return;
         _registry.Dispatch(new BallDestroyedEvent());
     }
 }
