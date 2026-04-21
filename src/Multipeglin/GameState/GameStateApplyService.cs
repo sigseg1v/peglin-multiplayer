@@ -858,6 +858,24 @@ public class GameStateApplyService
     public void ApplyPlayerState(PlayerStateSnapshot snapshot)
     {
         _latestPlayer = snapshot;
+
+        // During the native post-battle reward phase, the client's singletons display
+        // the CLIENT's own slot values (populated by the last SyncAll before entering
+        // the reward UI). SyncPlayer deltas from the host carry the host's active-slot
+        // values, which would overwrite the client's view with the wrong player's HP/gold
+        // and cause heals/upgrades to target the wrong starting state.
+        var isCoop = UI.LobbyUI.GameStartReceived;
+        if (isCoop && Events.Handlers.Coop.CoopRewardState.ClientInNativeRewardPhase)
+        {
+            _log.LogInfo("[ApplyService] Skipping player delta — client in native reward phase");
+            return;
+        }
+        if (isCoop && Patches.MultiplayerClientPatches.AllowTextScenarioLogic)
+        {
+            _log.LogInfo("[ApplyService] Skipping player delta — client in TextScenario dialogue");
+            return;
+        }
+
         SafeApply("Player", () => _playerApplier.Apply(snapshot));
     }
 

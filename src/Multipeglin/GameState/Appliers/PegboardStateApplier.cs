@@ -574,25 +574,20 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         bool clientPopped = false;
         try { clientPopped = peg.IsDisabled(); } catch { }
 
-        // Handle cleared/popped pegs
+        // Handle cleared/popped pegs.
+        // The host keeps popped pegs visible as the "destroyed dot" sprite until
+        // BattleController.RemoveClearedPegs() runs at end of battle / nav failure.
+        // Previously we called RemoveIfCleared() here, which fades alpha→0 and
+        // Disables the GameObject — the client's pegs vanished after each shot
+        // while the host's stayed persistent, making the client unable to see
+        // the board for aiming. Match host behavior: pop the peg (collider off,
+        // scale tween → dot sprite) but do NOT fade it. End-of-battle fade
+        // arrives naturally when the host sets IsDestroyed=true in a later heartbeat.
         if (entry.IsCleared && !clientPopped)
         {
             try
             {
                 peg.PegActivated(playAudio: false, forcePop: true);
-
-                // Force dot sprite so the fade-out shows the small dot indicator
-                if (peg is RegularPeg)
-                {
-                    var renderer = HarmonyLib.AccessTools.Field(typeof(RegularPeg), "_renderer")
-                        ?.GetValue(peg) as SpriteRenderer;
-                    var sprite = HarmonyLib.AccessTools.Field(typeof(RegularPeg), "_previouslyClearedSprite")
-                        ?.GetValue(peg) as Sprite;
-                    if (renderer != null && sprite != null)
-                        renderer.sprite = sprite;
-                }
-
-                peg.RemoveIfCleared();
             }
             catch { }
         }

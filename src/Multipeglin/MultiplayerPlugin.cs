@@ -73,6 +73,7 @@ public class MultiplayerPlugin : BaseUnityPlugin
             _modObject.AddComponent<SkipTurnButton>();
 
             _modObject.AddComponent<CoopRewardUI>();
+            _modObject.AddComponent<ClientRelicChoiceApplier>();
 
             _harmony = new Harmony(MultiplayerPluginInfo.GUID);
             try

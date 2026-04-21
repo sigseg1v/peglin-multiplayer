@@ -51,9 +51,31 @@ public sealed class PostBattleCompleteClientHandler : IClientHandler<PostBattleC
                 return;
             }
 
-            playerState.CurrentHealth = networkEvent.CurrentHealth;
-            playerState.MaxHealth = networkEvent.MaxHealth;
-            playerState.Gold = networkEvent.Gold;
+            // Post-battle rewards can only IMPROVE state (heal, max-HP upgrade).
+            // If the client's local singletons were briefly stamped with host-slot
+            // values by a SyncPlayer delta before entering the reward phase, the
+            // client may report HP/max lower than the authoritative slot value.
+            // Enforce monotonicity so a wrong local view cannot regress the slot.
+            float prevHp = playerState.CurrentHealth;
+            float prevMax = playerState.MaxHealth;
+            int prevGold = playerState.Gold;
+
+            if (networkEvent.MaxHealth > prevMax)
+                playerState.MaxHealth = networkEvent.MaxHealth;
+
+            float maxAllowed = playerState.MaxHealth;
+            if (networkEvent.CurrentHealth > prevHp)
+                playerState.CurrentHealth = networkEvent.CurrentHealth > maxAllowed ? maxAllowed : networkEvent.CurrentHealth;
+
+            // Gold: PostBattleGoldSpentEvent already applied per-purchase deductions,
+            // so trust the slot's tracked Gold rather than the client-reported total
+            // (which is from its local CurrencyManager view and may be wrong).
+            if (prevHp != playerState.CurrentHealth || prevMax != playerState.MaxHealth || prevGold != playerState.Gold)
+            {
+                MultiplayerPlugin.Logger?.LogInfo(
+                    $"[PostBattleComplete] Slot {slot.SlotIndex} state: hp {prevHp}->{playerState.CurrentHealth}/{playerState.MaxHealth} " +
+                    $"gold {prevGold} (client reported hp={networkEvent.CurrentHealth}/{networkEvent.MaxHealth} gold={networkEvent.Gold})");
+            }
 
             // Replace the complete deck with the client's updated deck
             if (networkEvent.CompleteDeck != null)
