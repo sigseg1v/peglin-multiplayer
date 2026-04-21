@@ -3225,8 +3225,6 @@ public static class MultiplayerClientPatches
         {
             var list = AccessTools.Field(typeof(PachinkoBall), "_childMultiballs")?.GetValue(__instance) as System.Collections.IList;
             __state = list?.Count ?? 0;
-            MultiplayerPlugin.Logger?.LogInfo(
-                $"[ClientPatches] HandleSpawningMultiballs enter: ball={__instance.gameObject.name} multiballLevel={__instance.multiballLevel} childMultiballs={__state}");
         }
         catch { }
     }
@@ -3240,9 +3238,9 @@ public static class MultiplayerClientPatches
         {
             var list = AccessTools.Field(typeof(PachinkoBall), "_childMultiballs")?.GetValue(__instance) as System.Collections.IList;
             int newCount = list?.Count ?? 0;
-            MultiplayerPlugin.Logger?.LogInfo(
-                $"[ClientPatches] HandleSpawningMultiballs exit: ball={__instance.gameObject.name} multiballLevel={__instance.multiballLevel} before={__state} after={newCount}");
             if (list == null || newCount <= __state) return;
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[ClientPatches] HandleSpawningMultiballs spawned {newCount - __state}: ball={__instance.gameObject.name} multiballLevel={__instance.multiballLevel} before={__state} after={newCount}");
             for (int i = __state; i < newCount; i++)
             {
                 var pb = list[i] as UnityEngine.MonoBehaviour;

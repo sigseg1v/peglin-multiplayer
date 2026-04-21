@@ -688,11 +688,19 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 }
                 typeChanged++;
             }
+
+            // Safety net: ConvertPegToType can silently bail (SupportsPegType=false,
+            // RESET→CRIT clobber rejection, renderer null, etc.) leaving pegType
+            // correct but the sprite still showing the previous visual. Force the
+            // special sprite via reflection so CRIT/RESET always render correctly.
+            ForceSpecialPegSpriteIfNeeded(peg, targetType);
         }
 
         // After type conversion, if the peg is in "previously cleared" state,
-        // re-apply the dot sprite.
-        if (entry.WasPreviouslyCleared && !entry.IsCleared && !entry.IsDestroyed)
+        // re-apply the dot sprite — BUT only for plain REGULAR pegs. Special
+        // types (CRIT/RESET/VINE/SPINFECTION/etc.) keep their special sprite.
+        if (entry.WasPreviouslyCleared && !entry.IsCleared && !entry.IsDestroyed
+            && (Peg.PegType)entry.PegType == Peg.PegType.REGULAR)
         {
             if (peg is RegularPeg)
             {
@@ -858,6 +866,50 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
             parent = parent.parent;
         }
+    }
+
+    private void ForceSpecialPegSpriteIfNeeded(Peg peg, Peg.PegType targetType)
+    {
+        if (targetType != Peg.PegType.CRIT && targetType != Peg.PegType.RESET) return;
+        try
+        {
+            if (peg is RegularPeg)
+            {
+                var rendererField = HarmonyLib.AccessTools.Field(typeof(RegularPeg), "_renderer");
+                var renderer = rendererField?.GetValue(peg) as SpriteRenderer;
+                if (renderer == null) return;
+
+                var spriteFieldName = targetType == Peg.PegType.CRIT ? "_critSprite" : "_resetSprite";
+                var spriteField = HarmonyLib.AccessTools.Field(typeof(RegularPeg), spriteFieldName);
+                var sprite = spriteField?.GetValue(peg) as Sprite;
+                if (sprite == null || renderer.sprite == sprite) return;
+
+                renderer.sprite = sprite;
+
+                var colliderField = HarmonyLib.AccessTools.Field(typeof(RegularPeg), "_specialPegCollider");
+                var coll = colliderField?.GetValue(peg) as Collider2D;
+                if (coll != null) coll.enabled = true;
+            }
+            else if (peg is LongPeg)
+            {
+                var spriteFieldName = targetType == Peg.PegType.CRIT ? "_critSprite" : "_resetSprite";
+                var spriteField = HarmonyLib.AccessTools.Field(typeof(LongPeg), spriteFieldName);
+                var sprite = spriteField?.GetValue(peg) as Sprite;
+                if (sprite == null) return;
+
+                var overlayField = HarmonyLib.AccessTools.Field(typeof(LongPeg), "_resetOrCritSprite");
+                var overlay = overlayField?.GetValue(peg) as SpriteRenderer;
+                if (overlay == null || overlay.sprite == sprite) return;
+
+                overlay.sprite = sprite;
+                overlay.enabled = true;
+
+                var holderField = HarmonyLib.AccessTools.Field(typeof(LongPeg), "_resetAndCritSpriteHolder");
+                var holder = holderField?.GetValue(peg) as GameObject;
+                if (holder != null) holder.SetActive(true);
+            }
+        }
+        catch { }
     }
 
     private void ForceRendererVisible(Peg peg)
