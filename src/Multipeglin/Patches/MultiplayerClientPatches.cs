@@ -4258,92 +4258,38 @@ public static class MultiplayerClientPatches
     // =========================================================================
 
     /// <summary>
-    /// Diagnostic: logs the state of the RelicManager and SeededShopNodeData on the
-    /// client when the shop opens, to debug why the client sees 0 relics.
+    /// Replace the client's SetUpRelicOffer with a version that uses the host's
+    /// chosen relic effects (synced via MapStateSnapshot.SeededShopRelicEffects).
+    /// The original path dequeues from AllCommonRelicsRandomQueue, which is empty
+    /// on the client because the shuffle that populates it uses RNG (suppressed).
     /// </summary>
     [HarmonyPatch(typeof(Scenarios.Shop.ShopManager), "SetUpRelicOffer")]
     [HarmonyPrefix]
-    public static void ShopManager_SetUpRelicOffer_PrefixDiag(Scenarios.Shop.ShopManager __instance)
+    public static bool ShopManager_SetUpRelicOffer_Prefix(Scenarios.Shop.ShopManager __instance)
     {
-        if (!ShouldSuppressClientLogic) return;
+        if (!ShouldSuppressClientLogic) return true;
         try
         {
-            var seededField = HarmonyLib.AccessTools.Field(typeof(Scenarios.Shop.ShopManager), "_seededShopNodeData");
-            var seeded = seededField?.GetValue(__instance) as Map.SeededShopNodeData;
-            var rmField = HarmonyLib.AccessTools.Field(typeof(Scenarios.Shop.ShopManager), "relicManager");
-            var rm = rmField?.GetValue(__instance) as Relics.RelicManager;
-
-            int commonQueueCount = -1;
-            int rareQueueCount = -1;
-            int commonListCount = -1;
-            string selectedClass = "NULL";
-            int relicsOfferedVal = -1;
-            try
-            {
-                var commonQField = HarmonyLib.AccessTools.Field(typeof(Relics.RelicManager), "AllCommonRelicsRandomQueue");
-                var cq = commonQField?.GetValue(rm) as System.Collections.ICollection;
-                commonQueueCount = cq?.Count ?? -1;
-
-                var rareQField = HarmonyLib.AccessTools.Field(typeof(Relics.RelicManager), "AllRareRelicsRandomQueue");
-                var rq = rareQField?.GetValue(rm) as System.Collections.ICollection;
-                rareQueueCount = rq?.Count ?? -1;
-
-                var commonListField = HarmonyLib.AccessTools.Field(typeof(Relics.RelicManager), "AllCommonRelics");
-                var cl = commonListField?.GetValue(rm) as System.Collections.ICollection;
-                commonListCount = cl?.Count ?? -1;
-
-                var selClassField = HarmonyLib.AccessTools.Field(typeof(Relics.RelicManager), "_selectedClass");
-                selectedClass = selClassField?.GetValue(rm)?.ToString() ?? "NULL";
-
-                var relicsOfferedField = HarmonyLib.AccessTools.Field(typeof(Scenarios.Shop.ShopManager), "relicsOffered");
-                relicsOfferedVal = (int)(relicsOfferedField?.GetValue(__instance) ?? -1);
-            }
-            catch (System.Exception rx)
-            {
-                MultiplayerPlugin.Logger?.LogWarning($"[ShopDiag] Failed reading RM fields: {rx.Message}");
-            }
-
-            MultiplayerPlugin.Logger?.LogInfo(
-                $"[ShopDiag] SetUpRelicOffer: seededShop={(seeded != null ? $"rareRoll={seeded.rareRelicChanceRoll:F3} shopRoll={seeded.shopRelicChanceRoll:F3} orbs={seeded.shopOrbs?.Length ?? -1}" : "NULL")}, " +
-                $"_selectedClass={selectedClass}, chosenClass={StaticGameData.chosenClass}, " +
-                $"AllCommonRelics.Count={commonListCount}, CommonQueue.Count={commonQueueCount}, RareQueue.Count={rareQueueCount}, " +
-                $"relicsOffered={relicsOfferedVal}");
+            ShopRelicSyncState.CurrentShopManager = __instance;
+            ShopRelicSyncState.PopulateShopRelics(__instance, MultiplayerPlugin.Logger);
         }
         catch (System.Exception ex)
         {
-            MultiplayerPlugin.Logger?.LogWarning($"[ShopDiag] SetUpRelicOffer prefix failed: {ex.Message}");
+            MultiplayerPlugin.Logger?.LogWarning($"[ShopRelicSync] Prefix failed: {ex.Message}");
         }
+        return false;
     }
 
     /// <summary>
-    /// Diagnostic: logs the number of relic items that ended up in the shop after
-    /// SetUpRelicOffer completed.
+    /// Clear shop relic sync state when the shop closes so stale references from
+    /// a prior visit don't get reused on the next shop.
     /// </summary>
-    [HarmonyPatch(typeof(Scenarios.Shop.ShopManager), "SetUpRelicOffer")]
+    [HarmonyPatch(typeof(Scenarios.Shop.ShopManager), "CloseStore")]
     [HarmonyPostfix]
-    public static void ShopManager_SetUpRelicOffer_PostfixDiag(Scenarios.Shop.ShopManager __instance)
+    public static void ShopManager_CloseStore_Postfix()
     {
-        if (!ShouldSuppressClientLogic) return;
-        try
-        {
-            var relicItemsField = HarmonyLib.AccessTools.Field(typeof(Scenarios.Shop.ShopManager), "relicItems");
-            var items = relicItemsField?.GetValue(__instance) as System.Collections.ICollection;
-            var purchasableRelicsField = HarmonyLib.AccessTools.Field(typeof(Scenarios.Shop.ShopManager), "_purchasableRelics");
-            var purchasable = purchasableRelicsField?.GetValue(__instance) as System.Array;
-            int nonNullPurchasable = 0;
-            if (purchasable != null)
-            {
-                for (int i = 0; i < purchasable.Length; i++)
-                    if (purchasable.GetValue(i) != null) nonNullPurchasable++;
-            }
-            MultiplayerPlugin.Logger?.LogInfo(
-                $"[ShopDiag] SetUpRelicOffer done: relicItems.Count={items?.Count ?? -1}, " +
-                $"_purchasableRelics: {nonNullPurchasable}/{purchasable?.Length ?? -1} non-null");
-        }
-        catch (System.Exception ex)
-        {
-            MultiplayerPlugin.Logger?.LogWarning($"[ShopDiag] SetUpRelicOffer postfix failed: {ex.Message}");
-        }
+        ShopRelicSyncState.CurrentShopManager = null;
+        ShopRelicSyncState.LatestRelicEffects = null;
     }
 
     /// <summary>

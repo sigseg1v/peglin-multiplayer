@@ -68,6 +68,14 @@ public class MapStateSnapshot
     public List<int> SeededShopOrbRarities { get; set; }
 
     /// <summary>
+    /// Shop-specific: RelicEffect ints for the relics the host's ShopManager has
+    /// chosen to display. Captured from ShopManager._purchasableRelics on host.
+    /// Client uses this to bypass its own (RNG-blocked) queue logic and show
+    /// the same relics as the host.
+    /// </summary>
+    public List<int> SeededShopRelicEffects { get; set; }
+
+    /// <summary>
     /// Map nodes with their positions and room types — for client verification.
     /// Only populated when on a map scene.
     /// </summary>

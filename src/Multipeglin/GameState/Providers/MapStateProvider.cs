@@ -125,11 +125,45 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
                     snapshot.SeededShopOrbNames = names;
                     snapshot.SeededShopOrbRarities = rarities;
                 }
+
+                CaptureShopRelicEffects(snapshot);
             }
         }
         catch (Exception ex)
         {
             _log.LogWarning($"[MapProvider] CaptureSeededNodeData failed: {ex.Message}");
+        }
+    }
+
+    private void CaptureShopRelicEffects(MapStateSnapshot snapshot)
+    {
+        try
+        {
+            var sm = UnityEngine.Object.FindObjectOfType<Scenarios.Shop.ShopManager>();
+            if (sm == null) return;
+
+            var purchasableField = AccessTools.Field(typeof(Scenarios.Shop.ShopManager), "_purchasableRelics");
+            var arr = purchasableField?.GetValue(sm) as System.Array;
+            if (arr == null) return;
+
+            var relicField = AccessTools.Field(typeof(Scenarios.Shop.PurchasableRelic), "_relic");
+            if (relicField == null) return;
+
+            var effects = new List<int>();
+            for (int i = 0; i < arr.Length; i++)
+            {
+                var entry = arr.GetValue(i);
+                if (entry is Scenarios.Shop.PurchasableRelic pr)
+                {
+                    var relic = relicField.GetValue(pr) as Relics.Relic;
+                    if (relic != null) effects.Add((int)relic.effect);
+                }
+            }
+            if (effects.Count > 0) snapshot.SeededShopRelicEffects = effects;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[MapProvider] CaptureShopRelicEffects failed: {ex.Message}");
         }
     }
 

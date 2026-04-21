@@ -313,6 +313,26 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                         _log.LogWarning("[MapApplier] DeckManager not found — cannot resolve shop orbs");
                     }
                 }
+
+                // Stash the host's chosen shop relic effects so the client's
+                // SetUpRelicOffer patch can replicate them instead of running
+                // its own RNG-blocked queue logic.
+                if (snapshot.SeededShopRelicEffects != null && snapshot.SeededShopRelicEffects.Count > 0)
+                {
+                    var prev = Multipeglin.Patches.ShopRelicSyncState.LatestRelicEffects;
+                    Multipeglin.Patches.ShopRelicSyncState.LatestRelicEffects = snapshot.SeededShopRelicEffects;
+                    bool changed = prev == null || prev.Count != snapshot.SeededShopRelicEffects.Count;
+                    if (!changed && prev != null)
+                    {
+                        for (int i = 0; i < prev.Count; i++)
+                            if (prev[i] != snapshot.SeededShopRelicEffects[i]) { changed = true; break; }
+                    }
+                    if (changed)
+                    {
+                        _log.LogInfo($"[MapApplier] Shop relic effects updated: [{string.Join(",", snapshot.SeededShopRelicEffects)}]");
+                        Multipeglin.Patches.ShopRelicSyncState.RefreshDisplayedShopRelics(_log);
+                    }
+                }
             }
         }
         catch (Exception ex)
