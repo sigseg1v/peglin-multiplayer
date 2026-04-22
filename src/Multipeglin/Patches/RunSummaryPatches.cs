@@ -71,13 +71,27 @@ public static class RunSummaryOnEnablePatch
         foreach (var kvp in coop.PlayerStates.OrderBy(p => p.Key))
         {
             var state = kvp.Value;
-            result.Add(new PerPlayerStats
+            var entry = new PerPlayerStats
             {
                 SlotIndex = state.SlotIndex,
                 PlayerName = string.IsNullOrEmpty(state.PlayerName) ? $"Player {state.SlotIndex + 1}" : state.PlayerName,
                 DamageDealt = state.DamageDealt,
                 DamageTaken = state.DamageTaken,
-            });
+                ChosenClass = state.ChosenClass,
+                FinalHp = Mathf.Max(0, Mathf.RoundToInt(state.CurrentHealth)),
+                MaxHp = Mathf.Max(0, Mathf.RoundToInt(state.MaxHealth)),
+                Gold = state.Gold,
+                IsAlive = state.CurrentHealth > 0,
+            };
+
+            if (state.OwnedRelics != null)
+                foreach (var r in state.OwnedRelics) entry.Relics.Add(r.Effect);
+
+            if (state.CompleteDeck != null)
+                foreach (var o in state.CompleteDeck)
+                    entry.Orbs.Add(new PerPlayerOrb { PrefabName = o.PrefabName, Level = o.Level });
+
+            result.Add(entry);
         }
         return result;
     }
@@ -170,53 +184,250 @@ public static class RunSummaryOnEnablePatch
 }
 
 /// <summary>
-/// Appends per-player "Damage done by X" / "Damage taken by X" StatsLines after
-/// the native summary lines are built. Runs on both host and client — the stats
-/// are seeded locally on the host in <see cref="RunSummaryOnEnablePatch"/> and
-/// arrive via <see cref="RunStatsSnapshotClientHandler"/> on the client.
+/// Re-skins the run statistics details panel per-player so each player's own
+/// orbs, relics, header, HP, gold, and damage lines are visible on their own
+/// page. LoadMainMenu is intercepted to cycle pages until the final player,
+/// then lets the native "return to main menu" run.
 /// </summary>
 [HarmonyPatch(typeof(RunStatisticsDetails), "Initialize")]
 public static class RunStatisticsDetailsInitializePatch
 {
+    /// <summary>Which player's page is being shown. Reset whenever a new summary opens.</summary>
+    public static int CurrentPageIndex = 0;
+
     [HarmonyPostfix]
-    public static void Postfix(RunStatisticsDetails __instance)
+    public static void Postfix(RunStatisticsDetails __instance, RunStats stats)
     {
         try
         {
             var players = RunStatsSnapshotClientHandler.LatestPerPlayerStats;
             if (players == null || players.Count == 0) return;
 
-            var parentField = AccessTools.Field(typeof(RunStatisticsDetails), "statLinesParent");
-            var prefabField = AccessTools.Field(typeof(RunStatisticsDetails), "statLinesPrefab");
-            var parent = parentField?.GetValue(__instance) as Transform;
-            var prefab = prefabField?.GetValue(__instance) as GameObject;
-            if (parent == null || prefab == null) return;
+            // Keep pages ordered by slot index so page 1 is always host.
+            var ordered = players.OrderBy(p => p.SlotIndex).ToList();
 
-            foreach (var p in players.OrderBy(x => x.SlotIndex))
-            {
-                var dealtLine = UnityEngine.Object.Instantiate(prefab, parent).GetComponent<StatsLine>();
-                dealtLine?.Initialize($"Damage done by {p.PlayerName}", p.DamageDealt.ToString());
+            if (CurrentPageIndex < 0) CurrentPageIndex = 0;
+            if (CurrentPageIndex >= ordered.Count) CurrentPageIndex = ordered.Count - 1;
 
-                var takenLine = UnityEngine.Object.Instantiate(prefab, parent).GetComponent<StatsLine>();
-                takenLine?.Initialize($"Damage taken by {p.PlayerName}", p.DamageTaken.ToString());
-            }
-
-            // Restripe the alternating background rows — the native loop ran before
-            // our new lines existed, so the added rows default to "enabled image".
-            int i = 1;
-            foreach (Transform child in parent)
-            {
-                if (i == 0)
-                {
-                    var img = child.GetComponentInChildren<UnityEngine.UI.Image>();
-                    if (img != null) img.enabled = false;
-                }
-                i = 1 - i;
-            }
+            var current = ordered[CurrentPageIndex];
+            RenderPerPlayerPage(__instance, stats, current, CurrentPageIndex, ordered.Count);
         }
         catch (Exception ex)
         {
-            MultiplayerPlugin.Logger?.LogWarning($"[RunStatsSync] Per-player line injection failed: {ex.Message}");
+            MultiplayerPlugin.Logger?.LogWarning($"[RunStatsSync] Per-player page render failed: {ex.Message}\n{ex.StackTrace}");
         }
+    }
+
+    private static void RenderPerPlayerPage(
+        RunStatisticsDetails inst, RunStats stats, PerPlayerStats player, int pageIndex, int pageCount)
+    {
+        // --- Header: "<PlayerName> — <Class> - <Win/Loss> (X/Y)" ---
+        var headerField = AccessTools.Field(typeof(RunStatisticsDetails), "headerText");
+        if (headerField?.GetValue(inst) is TMPro.TextMeshProUGUI header)
+        {
+            string classLocKey = FindClassLocKey(inst, player.ChosenClass);
+            string className = !string.IsNullOrEmpty(classLocKey)
+                ? I2.Loc.LocalizationManager.GetTranslation(classLocKey)
+                : "";
+            string result = stats.hasWon
+                ? I2.Loc.LocalizationManager.GetTranslation("Menu/RunSummary/win_label")
+                : player.IsAlive
+                    ? I2.Loc.LocalizationManager.GetTranslation("Menu/RunSummary/loss_label")
+                    : I2.Loc.LocalizationManager.GetTranslation("Menu/RunSummary/loss_label");
+            string pageSuffix = pageCount > 1 ? $"   ({pageIndex + 1}/{pageCount})" : "";
+            header.text = $"{player.PlayerName} — {className} - {result}{pageSuffix}";
+        }
+
+        // --- Override Final HP / Gold stat lines to the current player's values ---
+        var parent = AccessTools.Field(typeof(RunStatisticsDetails), "statLinesParent")?.GetValue(inst) as Transform;
+        if (parent != null)
+        {
+            ReplaceStatLineValue(parent, "Menu/RunSummary/final_hp", $"{player.FinalHp} / {player.MaxHp}");
+            ReplaceStatLineValue(parent, "Menu/RunSummary/gold_obtained", $"{player.Gold}");
+
+            // Remove any damage lines from previous page renders (we add our own).
+            RemoveStatLinesWithLabelPrefix(parent, "Damage done by ");
+            RemoveStatLinesWithLabelPrefix(parent, "Damage taken by ");
+
+            var prefab = AccessTools.Field(typeof(RunStatisticsDetails), "statLinesPrefab")?.GetValue(inst) as GameObject;
+            if (prefab != null)
+            {
+                var dealtLine = UnityEngine.Object.Instantiate(prefab, parent).GetComponent<StatsLine>();
+                dealtLine?.Initialize($"Damage done by {player.PlayerName}", player.DamageDealt.ToString());
+
+                var takenLine = UnityEngine.Object.Instantiate(prefab, parent).GetComponent<StatsLine>();
+                takenLine?.Initialize($"Damage taken by {player.PlayerName}", player.DamageTaken.ToString());
+            }
+
+            RestripeRows(parent);
+        }
+
+        // --- Orbs: replace with this player's run-end loadout ---
+        var orbsParent = AccessTools.Field(typeof(RunStatisticsDetails), "orbsParent")?.GetValue(inst) as Transform;
+        var orbsCarousel = AccessTools.Field(typeof(RunStatisticsDetails), "orbsCarousel")?.GetValue(inst) as PeglinUI.LoadoutManager.ImageCarousel;
+        var orbPrefab = AccessTools.Field(typeof(RunStatisticsDetails), "loadoutOrbPrefab")?.GetValue(inst) as GameObject;
+        if (orbsParent != null && orbsCarousel != null && orbPrefab != null)
+        {
+            // Destroy any orb GameObjects the native CreateOrbs instantiated under orbsParent.
+            for (int i = orbsParent.childCount - 1; i >= 0; i--)
+                UnityEngine.Object.Destroy(orbsParent.GetChild(i).gameObject);
+            orbsCarousel.ClearElements();
+
+            var list = new List<GameObject>();
+            foreach (var orb in player.Orbs)
+            {
+                if (string.IsNullOrEmpty(orb.PrefabName)) continue;
+                var orbGO = Loading.AssetLoading.Instance?.GetOrbPrefab(orb.PrefabName);
+                if (orbGO == null) continue;
+                var icon = UnityEngine.Object.Instantiate(orbPrefab, orbsParent).GetComponent<PeglinUI.LoadoutManager.LoadoutIcon>();
+                if (icon == null) continue;
+                icon.InitializeOrb(orbGO, Mathf.Clamp(orb.Level, 0, 2));
+                list.Add(icon.gameObject);
+            }
+            orbsCarousel.Initialize(list);
+        }
+
+        // --- Relics: replace with this player's owned relics ---
+        var relicsParent = AccessTools.Field(typeof(RunStatisticsDetails), "relicsParent")?.GetValue(inst) as Transform;
+        var relicsCarousel = AccessTools.Field(typeof(RunStatisticsDetails), "relicsCarousel")?.GetValue(inst) as PeglinUI.LoadoutManager.ImageCarousel;
+        var relicPrefab = AccessTools.Field(typeof(RunStatisticsDetails), "loadoutRelicsPrefab")?.GetValue(inst) as GameObject;
+        var relicMgr = AccessTools.Field(typeof(RunStatisticsDetails), "relicManager")?.GetValue(inst) as Relics.RelicManager;
+        if (relicsParent != null && relicsCarousel != null && relicPrefab != null && relicMgr != null)
+        {
+            for (int i = relicsParent.childCount - 1; i >= 0; i--)
+                UnityEngine.Object.Destroy(relicsParent.GetChild(i).gameObject);
+            relicsCarousel.ClearElements();
+
+            var list = new List<GameObject>();
+            foreach (var effectInt in player.Relics)
+            {
+                var relic = relicMgr.GetRelicForEffectFromAllData((Relics.RelicEffect)effectInt);
+                if (relic == null) continue;
+                var icon = UnityEngine.Object.Instantiate(relicPrefab, relicsParent).GetComponent<PeglinUI.LoadoutManager.LoadoutIcon>();
+                if (icon == null) continue;
+                icon.InitializeRelic(relic);
+                list.Add(icon.gameObject);
+            }
+            relicsCarousel.Initialize(list);
+        }
+    }
+
+    private static string FindClassLocKey(RunStatisticsDetails inst, int chosenClass)
+    {
+        try
+        {
+            var classInfos = inst.classInfos;
+            if (classInfos == null) return null;
+            foreach (var ci in classInfos)
+            {
+                if ((int)ci.characterClass == chosenClass) return ci.classNameLocKey;
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    private static void ReplaceStatLineValue(Transform parent, string labelLocKey, string newValue)
+    {
+        try
+        {
+            string label = I2.Loc.LocalizationManager.GetTranslation(labelLocKey);
+            if (string.IsNullOrEmpty(label)) return;
+
+            foreach (Transform child in parent)
+            {
+                var sl = child.GetComponent<StatsLine>();
+                if (sl == null) continue;
+                var texts = child.GetComponentsInChildren<TMPro.TextMeshProUGUI>(true);
+                if (texts == null || texts.Length < 2) continue;
+                if (texts[0].text == label)
+                {
+                    texts[1].text = newValue;
+                    return;
+                }
+            }
+        }
+        catch { }
+    }
+
+    private static void RemoveStatLinesWithLabelPrefix(Transform parent, string prefix)
+    {
+        var toRemove = new List<GameObject>();
+        foreach (Transform child in parent)
+        {
+            var texts = child.GetComponentsInChildren<TMPro.TextMeshProUGUI>(true);
+            if (texts != null && texts.Length > 0 && texts[0].text != null && texts[0].text.StartsWith(prefix))
+                toRemove.Add(child.gameObject);
+        }
+        foreach (var go in toRemove) UnityEngine.Object.DestroyImmediate(go);
+    }
+
+    private static void RestripeRows(Transform parent)
+    {
+        int i = 1;
+        foreach (Transform child in parent)
+        {
+            var img = child.GetComponentInChildren<UnityEngine.UI.Image>();
+            if (img != null) img.enabled = i != 0;
+            i = 1 - i;
+        }
+    }
+}
+
+/// <summary>
+/// Intercepts RunSummary.LoadMainMenu. If there are more per-player pages to
+/// show, advance to the next one and re-initialize the details panel. Only on
+/// the last page do we let the native "return to main menu" run.
+/// </summary>
+[HarmonyPatch(typeof(RunSummary), "LoadMainMenu")]
+public static class RunSummaryLoadMainMenuPatch
+{
+    [HarmonyPrefix]
+    public static bool Prefix(RunSummary __instance)
+    {
+        try
+        {
+            var players = RunStatsSnapshotClientHandler.LatestPerPlayerStats;
+            if (players == null || players.Count <= 1) return true;
+
+            int next = RunStatisticsDetailsInitializePatch.CurrentPageIndex + 1;
+            if (next >= players.Count)
+            {
+                // Reset for the next run so the summary always opens at page 1.
+                RunStatisticsDetailsInitializePatch.CurrentPageIndex = 0;
+                return true;
+            }
+
+            RunStatisticsDetailsInitializePatch.CurrentPageIndex = next;
+
+            var detailsField = AccessTools.Field(typeof(RunSummary), "runStatisticDetails");
+            var details = detailsField?.GetValue(__instance) as RunStatisticsDetails;
+            var stats = StaticGameData.CurrentRunStats;
+            if (details != null && stats != null)
+            {
+                details.Initialize(stats);
+                MultiplayerPlugin.Logger?.LogInfo($"[RunStatsSync] Advanced to player page {next + 1}/{players.Count}");
+            }
+            return false;
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[RunStatsSync] LoadMainMenu page advance failed: {ex.Message}");
+            return true;
+        }
+    }
+}
+
+/// <summary>
+/// Reset the page index every time the RunSummary screen opens, so re-entering
+/// (e.g. after a new run) always starts at page 1.
+/// </summary>
+[HarmonyPatch(typeof(RunSummary), "OnEnable")]
+public static class RunSummaryOnEnableResetPagePatch
+{
+    [HarmonyPrefix]
+    public static void Prefix()
+    {
+        RunStatisticsDetailsInitializePatch.CurrentPageIndex = 0;
     }
 }

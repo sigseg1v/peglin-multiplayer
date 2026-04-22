@@ -263,15 +263,29 @@ public sealed class CoopSubscriptions
                 }
             }
 
-            // --- Swap to host for next round's DrawBall ---
+            // --- Swap to the slot that will shoot first next round ---
             // OnTurnComplete fires from DoEndOfTurnBattleCleanup, which runs RIGHT BEFORE
-            // ChooseShuffleOrDrawAtEndOfTurn → DrawBall. By swapping to the host now,
-            // DrawBall will use the host's deck for round 2. This avoids the broken
-            // DOTween flow that occurred when we tried to call DrawBall manually later.
+            // ChooseShuffleOrDrawAtEndOfTurn → DrawBall. The singletons must hold the
+            // correct player's deck before DrawBall runs, otherwise DrawBall pops the
+            // wrong player's orb AND DeckInfoManager.DrawNextOrb pops the stale display
+            // stack — leaving the host's deck UI showing orbs that don't match the
+            // actual active shooter's deck.
+            //
+            // Normally slot 0 (host) starts each round. But if the host is dead,
+            // TurnManager.StartNewRound will skip slot 0 and pick the first live slot.
+            // Pre-empt that decision here so the native DrawBall fires for the right
+            // player and the display matches.
             if (_turnManager.Phase == TurnPhase.ALL_DONE)
             {
-                _coopStateManager.SwapToPlayer(0);
-                // Do NOT call EnsureBattleDeckPopulated here. If the host's
+                int nextSlot = 0;
+                foreach (var slot in _turnManager.TurnOrder)
+                {
+                    var st = _coopStateManager.GetPlayerState(slot);
+                    if (st != null && st.CurrentHealth > 0) { nextSlot = slot; break; }
+                }
+
+                _coopStateManager.SwapToPlayer(nextSlot);
+                // Do NOT call EnsureBattleDeckPopulated here. If the active
                 // shuffledDeck is empty (all orbs fired), the game's native
                 // ChooseShuffleOrDrawAtEndOfTurn → ShuffleBattleDeck →
                 // onDeckShuffled → StartShuffleAnimation → PlungerPlungeComplete
@@ -285,7 +299,7 @@ public sealed class CoopSubscriptions
                 // (still referencing destroyed objects from before the swap).
                 // Without this, the deck tube visually freezes after round 1.
                 _coopStateManager.RebuildDeckInfoDisplay();
-                _log.LogInfo($"[CoopSubs] Post-attack: swapped to host (slot 0) for next round's DrawBall");
+                _log.LogInfo($"[CoopSubs] Post-attack: swapped to slot {nextSlot} for next round's DrawBall");
             }
 
             // Clean up any temp orb instance created during ALL_DONE for attack restoration
@@ -506,6 +520,13 @@ public sealed class CoopSubscriptions
 
         if (!EnsureBattleDeckPopulated($"{context} swap"))
             _log.LogWarning($"[CoopSubs] SwapAndRedraw ({context}): EnsureBattleDeckPopulated failed — deck may be empty");
+
+        // Rebuild the deck tube display for the newly loaded slot BEFORE the
+        // manual DrawBall. Otherwise _displayOrbs still holds stale orb instances
+        // from the previous swap (created by the prior RebuildDeckInfoDisplay +
+        // native DrawBall), and the host's deck UI shows those stale orbs piled
+        // on top of each other while the active shooter is a different slot.
+        _coopStateManager.RebuildDeckInfoDisplay();
 
         try
         {

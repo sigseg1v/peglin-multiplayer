@@ -74,4 +74,24 @@ public class PerPlayerStats
     public string PlayerName { get; set; }
     public long DamageDealt { get; set; }
     public long DamageTaken { get; set; }
+
+    // Per-player loadout shown on the paginated summary so each client sees
+    // their own orbs/relics/class, not the host's singleton values.
+    public int ChosenClass { get; set; }
+    public int FinalHp { get; set; }
+    public int MaxHp { get; set; }
+    public int Gold { get; set; }
+    public bool IsAlive { get; set; }
+
+    // Relic effect enum values (RelicEffect)
+    public List<int> Relics { get; set; } = new List<int>();
+
+    // Orbs held at run end — prefab name + level
+    public List<PerPlayerOrb> Orbs { get; set; } = new List<PerPlayerOrb>();
+}
+
+public class PerPlayerOrb
+{
+    public string PrefabName { get; set; }
+    public int Level { get; set; }
 }

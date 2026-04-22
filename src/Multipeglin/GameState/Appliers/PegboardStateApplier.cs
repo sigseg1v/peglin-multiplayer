@@ -629,6 +629,17 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
                 clearedField?.SetValue(peg, entry.WasPreviouslyCleared);
                 peg.gameObject.SetActive(true);
+
+                // Peg.Reset() early-returns for "indestructible" types (DESTROYED,
+                // DULL, BOUNCER) without re-enabling colliders. If a peg is stuck
+                // as DESTROYED on the client (prior heartbeat marked IsDestroyed)
+                // but the host now wants it alive, flip the type to REGULAR first
+                // so Reset actually runs SwitchToRegularColliders / SetActiveStatus.
+                // Otherwise IsDisabled() keeps returning true and every heartbeat
+                // loops through reactivation with no effect.
+                if (peg.pegType == Peg.PegType.DESTROYED)
+                    peg.pegType = Peg.PegType.REGULAR;
+
                 try { peg.Reset(false); } catch { }
 
                 ForceRendererVisible(peg);
