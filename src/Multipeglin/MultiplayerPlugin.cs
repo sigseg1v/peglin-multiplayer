@@ -63,6 +63,7 @@ public class MultiplayerPlugin : BaseUnityPlugin
             _modObject.AddComponent<MultiplayerUI>();
             _modObject.AddComponent<SceneWatcher>();
             _modObject.AddComponent<BallPositionSync>();
+            _modObject.AddComponent<HostBallRegistry>();
             _modObject.AddComponent<ClientBallRenderer>();
             _modObject.AddComponent<ClientAimRenderer>();
             _modObject.AddComponent<CursorSync>();

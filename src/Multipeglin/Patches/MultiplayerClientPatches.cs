@@ -129,6 +129,13 @@ public static class MultiplayerClientPatches
     private static float _firedBallTimer;
     private static int _firedBallLogCount;
 
+    /// <summary>
+    /// The primary ball currently being tracked (the one whose position is streamed
+    /// as BallPositionEvent). HostBallRegistry uses this to avoid attaching a
+    /// duplicate streamer to the primary ball (which would render twice on the client).
+    /// </summary>
+    public static UnityEngine.GameObject PrimaryBall => _firedBallGO;
+
     // =========================================================================
     // DISABLE TUTORIAL IN MULTIPLAYER — both host and client
     // =========================================================================
@@ -1832,31 +1839,12 @@ public static class MultiplayerClientPatches
         catch { }
     }
 
-    /// <summary>
-    /// HOST: after a RegularPeg pops, fade it to alpha=0 so it visually disappears
-    /// — matching what the client's PegboardStateApplier does via RemoveIfCleared.
-    /// Vanilla Peglin only fades popped pegs at end-of-battle (via RemoveClearedPegs),
-    /// so without this hook the host sees popped pegs sit at scale 0.3 with the
-    /// destroyed-sprite dot while the client has already faded them to invisible.
-    /// Skip pegs with coins — RemoveIfCleared would skip them anyway (NumCoins>0).
-    /// </summary>
-    [HarmonyPatch(typeof(RegularPeg), "PopPeg")]
-    [HarmonyPostfix]
-    public static void RegularPeg_PopPeg_Postfix(RegularPeg __instance)
-    {
-        if (!IsHosting) return;
-        try
-        {
-            if (__instance.NumCoins() > 0) return;
-            // Preserve buffed pegs (e.g. Best Foot Forworb +10) — RemoveIfCleared
-            // fades _pegText to alpha 0 over 1s, which hides the buff number the
-            // game writes right after this postfix. Vanilla defers the fade of
-            // buffed pegs to end-of-battle; match that here.
-            if (__instance.buffAmount != 0) return;
-            __instance.RemoveIfCleared();
-        }
-        catch { }
-    }
+    // RegularPeg_PopPeg_Postfix (removed): previously called RemoveIfCleared() on host
+    // pegs so they'd fade to invisible, but the DOFade tween it starts has an onComplete
+    // Disable() callback that Reset() does NOT kill. When a refresh peg fires during the
+    // same shot, pegs popped within the last second get deactivated 1s later despite
+    // Reset()'s SetActive(true) call — breaking the refresh. The client keeps popped
+    // pegs at scale 0.3 (no fade), so the host doing the same is fine and consistent.
 
     /// <summary>Block failsafe refresh peg creation on client.</summary>
     [HarmonyPatch(typeof(PegManager), "FailSafeCreateRefreshPegs")]
@@ -2329,6 +2317,12 @@ public static class MultiplayerClientPatches
             {
                 if (shot.IsHeal || shot.Damage <= 0) continue;
 
+                // Route OnEnemyDamaged's DamageDealt tally to THIS shot's owner for the
+                // duration of the damage calls below — otherwise it defaults to
+                // ActivePlayerSlot (already swapped to the next round's first shooter).
+                Events.Subscriptions.EnemySubscriptions.DamageAttributionSlotOverride = shot.SlotIndex;
+                try
+                {
                 if (shot.IsAoE)
                 {
                     // SimpleAttack orbs hit ALL enemies
@@ -2405,6 +2399,11 @@ public static class MultiplayerClientPatches
                         $"[CoopAttack] {shot.PlayerName} (slot {shot.SlotIndex}): " +
                         $"{shot.Damage} damage to {target.name} (+{pierceTargets.Count - 1} pierced, " +
                         $"orb={shot.OrbPrefabName}), effects={shot.StatusEffectsToApply?.Count ?? 0}");
+                }
+                }
+                finally
+                {
+                    Events.Subscriptions.EnemySubscriptions.DamageAttributionSlotOverride = -1;
                 }
             }
 
@@ -2865,6 +2864,22 @@ public static class MultiplayerClientPatches
         return true; // Non-multiplayer: allow
     }
 
+    /// <summary>
+    /// Host-side: track the primary fired ball so HostBallRegistry/EnsureBallRegistered
+    /// can skip it (primary ball is synced via BallPositionEvent, not MultiballSpawnedEvent).
+    /// Runs for both host's own shots and client-delegated shots.
+    /// </summary>
+    [HarmonyPatch(typeof(PachinkoBall), "Fire")]
+    [HarmonyPostfix]
+    public static void PachinkoBall_Fire_Postfix(PachinkoBall __instance)
+    {
+        if (!IsHosting) return;
+        if (__instance == null || __instance.IsDummy) return;
+        _firedBallGO = __instance.gameObject;
+        _firedBallTimer = 0f;
+        _firedBallLogCount = 0;
+    }
+
     // =========================================================================
     // NODE ACTIVATION SYNC — host sends battle name when activating a node
     // =========================================================================
@@ -3279,7 +3294,22 @@ public static class MultiplayerClientPatches
         // physics step. Wait for it so the dispatched velocity matches what the ball
         // will actually fly at.
         yield return new UnityEngine.WaitForFixedUpdate();
-        if (ball == null) yield break;
+        EnsureBallRegistered(ball, "patch");
+    }
+
+    /// <summary>
+    /// Idempotent: attach a streamer + assign a GUID + dispatch MultiballSpawnedEvent
+    /// the first time this ball is seen. No-op on subsequent calls. Called both from
+    /// the per-path Harmony patches (early, low-latency dispatch) and from
+    /// HostBallRegistry's periodic scan (catch-all for any spawn path).
+    /// </summary>
+    internal static void EnsureBallRegistered(GameObject ball, string source)
+    {
+        if (ball == null) return;
+        if (ball == _firedBallGO) return; // primary ball uses BallPositionEvent channel
+        var streamer = ball.GetComponent<GameState.HostMultiballStreamer>();
+        if (streamer != null && !string.IsNullOrEmpty(streamer.Guid)) return;
+        if (streamer == null) streamer = ball.AddComponent<GameState.HostMultiballStreamer>();
 
         var rb = ball.GetComponent<UnityEngine.Rigidbody2D>();
         var pos = ball.transform.position;
@@ -3289,12 +3319,7 @@ public static class MultiplayerClientPatches
         var atk = ball.GetComponent<Battle.Attacks.Attack>();
         if (atk != null) orbName = atk.gameObject.name;
 
-        // Assign a GUID and attach the streamer so the client can identify this
-        // specific multiball and mirror its host-driven position instead of
-        // running local physics that would drift.
         string guid = System.Guid.NewGuid().ToString("N").Substring(0, 12);
-        var streamer = ball.GetComponent<GameState.HostMultiballStreamer>();
-        if (streamer == null) streamer = ball.AddComponent<GameState.HostMultiballStreamer>();
         streamer.Guid = guid;
 
         var registry = MultiplayerPlugin.Services?.Resolve<Events.IGameEventRegistry>();
@@ -3309,7 +3334,7 @@ public static class MultiplayerClientPatches
         });
 
         MultiplayerPlugin.Logger?.LogInfo(
-            $"[ClientPatches] Host dispatched multiball guid={guid} at ({pos.x:F1},{pos.y:F1}) vel=({vel.x:F1},{vel.y:F1}) orb={orbName}");
+            $"[ClientPatches] Host dispatched multiball guid={guid} at ({pos.x:F1},{pos.y:F1}) vel=({vel.x:F1},{vel.y:F1}) orb={orbName} source={source}");
     }
 
     // =========================================================================

@@ -29,6 +29,16 @@ public sealed class EnemySubscriptions
     private static bool IsHosting =>
         MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var mode) == true && mode.IsHosting;
 
+    /// <summary>
+    /// Slot index to credit DamageDealt to, overriding ActivePlayerSlot.
+    /// BattleController_DoAttack_Prefix applies every player's damage sequentially on the
+    /// host — but by then ActivePlayerSlot has already been swapped back to slot 0 for the
+    /// next round, so OnEnemyDamaged would attribute all damage to the host. Setting this
+    /// to the shot's SlotIndex around each enemy.Damage() call keeps the tally correct.
+    /// -1 means "use ActivePlayerSlot".
+    /// </summary>
+    public static int DamageAttributionSlotOverride = -1;
+
     private int PlayerCount => _coopStateManager?.TotalPlayerCount ?? 1;
 
     public void Subscribe()
@@ -119,9 +129,14 @@ public sealed class EnemySubscriptions
         if (!IsHosting) return;
 
         // Attribute damage to the active coop player's run-summary tally.
+        // During DoAttack's manual per-player replay, DamageAttributionSlotOverride is set
+        // to the shot's owner so each shot's damage is credited to the player who fired it.
         if (damage > 0 && _coopStateManager != null)
         {
-            var slot = _coopStateManager.GetPlayerState(_coopStateManager.ActivePlayerSlot);
+            int attributionSlot = DamageAttributionSlotOverride >= 0
+                ? DamageAttributionSlotOverride
+                : _coopStateManager.ActivePlayerSlot;
+            var slot = _coopStateManager.GetPlayerState(attributionSlot);
             if (slot != null) slot.DamageDealt += damage;
         }
 
