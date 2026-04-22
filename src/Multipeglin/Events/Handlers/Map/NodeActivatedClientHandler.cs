@@ -102,6 +102,13 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
 
             if (match == null)
             {
+                // Cross-scene cache populated while on map scenes — Castle/Mines/Core
+                // battles may not be in Resources once their map scene unloads.
+                match = GameState.Appliers.MapStateApplier.TryGetCachedBattle(e.BattleName);
+            }
+
+            if (match == null)
+            {
                 log?.LogWarning($"[NodeActivated] MapDataBattle '{e.BattleName}' not found in {allBattles.Length} loaded assets");
                 return;
             }

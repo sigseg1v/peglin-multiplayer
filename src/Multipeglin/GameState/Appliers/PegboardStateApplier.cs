@@ -233,12 +233,32 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         }
                         else
                         {
+                            peg = SynthesizeBomb(entry, clientPegs, clientBombs);
+                            if (peg == null)
+                            {
+                                missed++;
+                                _log.LogWarning($"[PegboardApplier] MISSED unmatched entry guid={entry.Guid} " +
+                                    $"hostPos=({entry.PosX:F1},{entry.PosY:F1}) bomb={entry.IsBomb} bouncer={entry.IsBouncer} " +
+                                    $"— bomb synthesis failed");
+                                continue;
+                            }
+                            repositioned++;
+                        }
+                    }
+                    else if (entry.IsBomb)
+                    {
+                        // Host spawned a bomb (e.g. bob-orb) but every client regular
+                        // peg is already GUID-matched — instantiate _bombPrefab directly.
+                        peg = SynthesizeBomb(entry, clientPegs, clientBombs);
+                        if (peg == null)
+                        {
                             missed++;
                             _log.LogWarning($"[PegboardApplier] MISSED unmatched entry guid={entry.Guid} " +
                                 $"hostPos=({entry.PosX:F1},{entry.PosY:F1}) bomb={entry.IsBomb} bouncer={entry.IsBouncer} " +
-                                $"— no same-type client peg available");
+                                $"— bomb synthesis failed");
                             continue;
                         }
+                        repositioned++;
                     }
                     else if (!entry.IsBomb && !entry.IsBouncer && templatePeg != null)
                     {
@@ -511,6 +531,64 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 if (rb.bodyType != RigidbodyType2D.Static)
                     rb.velocity = Vector2.zero;
             }
+        }
+    }
+
+    private GameObject _cachedBombPrefab;
+
+    /// <summary>
+    /// Create a new Bomb on the client when the host spawned one out of thin air
+    /// (bob-orb, explosive relic, etc.) and no existing peg is available to repurpose.
+    /// Grabs _bombPrefab from any RegularPeg, instantiates, registers with the host GUID,
+    /// and adds to PegManager._bombs. Returns null if no template is available.
+    /// </summary>
+    private Peg SynthesizeBomb(PegEntry entry, List<Peg> clientPegs, List<Bomb> clientBombs)
+    {
+        try
+        {
+            if (_cachedBombPrefab == null)
+            {
+                var prefabField = HarmonyLib.AccessTools.Field(typeof(RegularPeg), "_bombPrefab");
+                if (prefabField != null)
+                {
+                    foreach (var p in clientPegs)
+                    {
+                        if (p is RegularPeg rp)
+                        {
+                            var candidate = prefabField.GetValue(rp) as GameObject;
+                            if (candidate != null) { _cachedBombPrefab = candidate; break; }
+                        }
+                    }
+                }
+            }
+            if (_cachedBombPrefab == null) return null;
+
+            Transform parent = null;
+            foreach (var p in clientPegs)
+            {
+                if (p != null && p.transform.parent != null) { parent = p.transform.parent; break; }
+            }
+
+            var pos = new Vector3(entry.PosX, entry.PosY, 0f);
+            var go = UnityEngine.Object.Instantiate(_cachedBombPrefab, pos, Quaternion.identity, parent);
+            go.SetActive(true);
+            var bomb = go.GetComponent<Bomb>();
+            if (bomb == null)
+            {
+                UnityEngine.Object.Destroy(go);
+                return null;
+            }
+            _pegId.Register(bomb, entry.Guid);
+            if (clientBombs != null && !clientBombs.Contains(bomb))
+                clientBombs.Add(bomb);
+            _log.LogInfo($"[PegboardApplier] BOMB SYNTHESIZED: guid={entry.Guid} " +
+                $"pos=({entry.PosX:F1},{entry.PosY:F1}) from _bombPrefab");
+            return bomb;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[PegboardApplier] SynthesizeBomb failed: {ex.Message}");
+            return null;
         }
     }
 

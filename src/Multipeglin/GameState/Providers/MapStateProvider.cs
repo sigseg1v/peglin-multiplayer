@@ -21,11 +21,24 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
 
     public MapStateProvider(ManualLogSource log) => _log = log;
 
+    // Cached initial shop relic offering. _purchasableRelics slots are nulled
+    // when the host buys, but the client's shop is independent — both players
+    // should see the same initial lineup. Captured once per shop visit and
+    // cleared when we leave ShopScenario.
+    private static List<int> _cachedShopRelicEffects;
+    private static bool _inShopScenario;
+
     public MapStateSnapshot Capture()
     {
         try
         {
             var currentScene = SceneManager.GetActiveScene().name;
+
+            if (currentScene != "ShopScenario" && _inShopScenario)
+            {
+                _cachedShopRelicEffects = null;
+                _inShopScenario = false;
+            }
             var snapshot = new MapStateSnapshot
             {
                 CurrentSeed = StaticGameData.currentSeed ?? "",
@@ -139,6 +152,17 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
     {
         try
         {
+            _inShopScenario = true;
+
+            // Always send the cached initial offering once we have it. The live
+            // _purchasableRelics array nulls out slots as the host buys, but the
+            // client shops independently and needs to see the original lineup.
+            if (_cachedShopRelicEffects != null && _cachedShopRelicEffects.Count > 0)
+            {
+                snapshot.SeededShopRelicEffects = _cachedShopRelicEffects;
+                return;
+            }
+
             var sm = UnityEngine.Object.FindObjectOfType<Scenarios.Shop.ShopManager>();
             if (sm == null) return;
 
@@ -150,6 +174,7 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
             if (relicField == null) return;
 
             var effects = new List<int>();
+            bool anyNull = false;
             for (int i = 0; i < arr.Length; i++)
             {
                 var entry = arr.GetValue(i);
@@ -157,9 +182,21 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
                 {
                     var relic = relicField.GetValue(pr) as Relics.Relic;
                     if (relic != null) effects.Add((int)relic.effect);
+                    else anyNull = true;
+                }
+                else anyNull = true;
+            }
+            if (effects.Count > 0)
+            {
+                snapshot.SeededShopRelicEffects = effects;
+                // Only cache once the initial offering is fully populated — if we
+                // catch it mid-purchase (unlikely, but safe), wait for a full view.
+                if (!anyNull && effects.Count == arr.Length)
+                {
+                    _cachedShopRelicEffects = effects;
+                    _log.LogInfo($"[MapProvider] Cached initial shop relic offering: {effects.Count} relics");
                 }
             }
-            if (effects.Count > 0) snapshot.SeededShopRelicEffects = effects;
         }
         catch (Exception ex)
         {
@@ -176,6 +213,8 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
     {
         _cachedNavChildTypes = null;
         _wasNavigating = false;
+        _cachedShopRelicEffects = null;
+        _inShopScenario = false;
     }
 
     private void CaptureNavigationState(MapStateSnapshot snapshot)

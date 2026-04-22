@@ -35,6 +35,28 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         "ForestMap", "CastleMap", "MinesMap", "CoreMap"
     };
 
+    /// <summary>
+    /// Cache of MapDataBattle assets keyed by name, populated from each MapController
+    /// we see. Each act's MapController holds references to that act's battles in
+    /// serialized lists. Once the act's scene unloads, those references go out of
+    /// scope and Addressables may unload the assets — leaving the client unable to
+    /// resolve battle names when the host transitions MapScene → Battle. Holding
+    /// refs here keeps the assets alive across scenes.
+    /// </summary>
+    private static readonly Dictionary<string, MapDataBattle> _battleCache =
+        new Dictionary<string, MapDataBattle>();
+
+    /// <summary>
+    /// Look up a MapDataBattle by name from the cross-scene cache.
+    /// Used by NodeActivatedClientHandler as a fallback when Resources lookup misses.
+    /// </summary>
+    public static MapDataBattle TryGetCachedBattle(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return null;
+        _battleCache.TryGetValue(name, out var b);
+        return b;
+    }
+
     // Maps scene names (from SceneManager) back to PeglinSceneLoader.Scene enum values.
     private static readonly Dictionary<string, PeglinSceneLoader.Scene> SceneNameToEnum =
         new Dictionary<string, PeglinSceneLoader.Scene>(StringComparer.OrdinalIgnoreCase)
@@ -343,6 +365,11 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
 
     private void ApplyStaticGameData(MapStateSnapshot snapshot)
     {
+        // Populate the cross-scene battle cache any time we see a MapController.
+        // Castle/Mines/Core battles are only held by their scene's MapController,
+        // so we must cache them BEFORE the scene unloads for the Battle transition.
+        CacheMapBattlesFromController();
+
         var seed = snapshot.CurrentSeed ?? "";
         StaticGameData.currentSeed = seed;
         StaticGameData.seedSet = true;
@@ -366,6 +393,15 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             {
                 var allBattles = Resources.FindObjectsOfTypeAll<MapDataBattle>();
                 var match = allBattles.FirstOrDefault(b => b.name == snapshot.BattleDataName);
+
+                // Cross-scene cache (populated while on map scenes). Castle/Mines/Core
+                // battles are only live when their map scene is loaded, so after the
+                // Battle transition starts, Resources may no longer include them.
+                if (match == null && _battleCache.TryGetValue(snapshot.BattleDataName, out var cached) && cached != null)
+                {
+                    match = cached;
+                    _log.LogInfo($"[MapApplier] Resolved '{match.name}' via cross-scene battle cache");
+                }
 
                 // Scenario battles (e.g. RainbowSlimeOnlyScenarioBattle) are loaded via
                 // Addressables in the TextScenario scene, which the client skips.
@@ -400,6 +436,43 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         }
 
         _log.LogInfo($"[MapApplier] StaticGameData: seed={seed}, floor={snapshot.TotalFloorCount}, class={StaticGameData.chosenClass}, node={snapshot.ChosenNextNodeIndex}, battle={snapshot.BattleDataName}");
+    }
+
+    /// <summary>
+    /// Capture every MapDataBattle referenced by the current scene's MapController
+    /// into the static cross-scene cache. Each act's MapController holds references
+    /// to its act-specific battles in _potentialEasyBattles / _potentialRandomBattles
+    /// / _potentialEliteBattles / _mimicBatteData. Caching them here keeps the asset
+    /// references alive after the Battle scene load tears down the MapController.
+    /// </summary>
+    private void CacheMapBattlesFromController()
+    {
+        try
+        {
+            var mc = UnityEngine.Object.FindObjectOfType<MapController>();
+            if (mc == null) return;
+
+            void Add(System.Collections.IList list)
+            {
+                if (list == null) return;
+                foreach (var obj in list)
+                {
+                    if (obj is MapDataBattle b && !string.IsNullOrEmpty(b.name))
+                        _battleCache[b.name] = b;
+                }
+            }
+            Add(AccessTools.Field(typeof(MapController), "_potentialEasyBattles")?.GetValue(mc) as System.Collections.IList);
+            Add(AccessTools.Field(typeof(MapController), "_potentialRandomBattles")?.GetValue(mc) as System.Collections.IList);
+            Add(AccessTools.Field(typeof(MapController), "_potentialEliteBattles")?.GetValue(mc) as System.Collections.IList);
+
+            var mimic = AccessTools.Field(typeof(MapController), "_mimicBatteData")?.GetValue(mc) as MapDataBattle;
+            if (mimic != null && !string.IsNullOrEmpty(mimic.name))
+                _battleCache[mimic.name] = mimic;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[MapApplier] CacheMapBattlesFromController failed: {ex.Message}");
+        }
     }
 
     /// <summary>

@@ -3237,20 +3237,25 @@ public static class MultiplayerClientPatches
     /// When the host spawns a multiball, send its position and velocity to client
     /// so it can render the additional ball visually. Covers the "Fire()" path
     /// used by SummoningCirclePachinkoBall and PegBoardBramballVine.
+    /// Dispatch synchronously — coroutines on __instance get cancelled if the
+    /// parent ball is deactivated before the next FixedUpdate, losing the event.
+    /// Initial velocity may be zero; the attached HostMultiballStreamer will send
+    /// accurate position/velocity at 20 Hz.
     /// </summary>
     [HarmonyPatch(typeof(PachinkoBall), "SpawnMultiballFromLocation")]
     [HarmonyPostfix]
     public static void PachinkoBall_SpawnMultiballFromLocation_Postfix(PachinkoBall __instance, GameObject __result)
     {
         if (!IsHosting || __result == null || __instance == null) return;
-        __instance.StartCoroutine(DispatchMultiballSpawnedDelayed(__result));
+        EnsureBallRegistered(__result, "patch:fromLocation");
     }
 
     /// <summary>
     /// Circcae / squirrelball / convert-to-gold path: HandleSpawningMultiballs spawns
-    /// child balls on peg collision and applies AddForce in an outer loop. We snapshot
-    /// _childMultiballs count before and after, then defer sampling so rb.velocity
-    /// reflects the force that was just queued.
+    /// child balls on peg collision. We snapshot _childMultiballs count before/after
+    /// and register each new entry synchronously — the velocity at this point is
+    /// whatever AddForce has queued; the streamer will publish the settled velocity
+    /// once physics catches up.
     /// </summary>
     [HarmonyPatch(typeof(PachinkoBall), "HandleSpawningMultiballs")]
     [HarmonyPrefix]
@@ -3282,19 +3287,13 @@ public static class MultiplayerClientPatches
             {
                 var pb = list[i] as UnityEngine.MonoBehaviour;
                 if (pb != null && pb.gameObject != null)
-                    __instance.StartCoroutine(DispatchMultiballSpawnedDelayed(pb.gameObject));
+                    EnsureBallRegistered(pb.gameObject, "patch:handleSpawning");
             }
         }
-        catch { }
-    }
-
-    private static System.Collections.IEnumerator DispatchMultiballSpawnedDelayed(GameObject ball)
-    {
-        // AddForce queues an impulse that only shows up in rb.velocity after the next
-        // physics step. Wait for it so the dispatched velocity matches what the ball
-        // will actually fly at.
-        yield return new UnityEngine.WaitForFixedUpdate();
-        EnsureBallRegistered(ball, "patch");
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] HandleSpawningMultiballs postfix failed: {ex.Message}");
+        }
     }
 
     /// <summary>
