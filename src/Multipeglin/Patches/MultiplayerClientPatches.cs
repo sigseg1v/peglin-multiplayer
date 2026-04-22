@@ -1943,11 +1943,27 @@ public static class MultiplayerClientPatches
     /// </summary>
     [HarmonyPatch(typeof(Map.MapController), "Start")]
     [HarmonyFinalizer]
-    public static Exception MapController_Start_Finalizer(Exception __exception)
+    public static Exception MapController_Start_Finalizer(Exception __exception, Map.MapController __instance)
     {
         // HOST: send fresh map sync with real node types
         if (IsHosting)
         {
+            if (__exception != null)
+            {
+                MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] Host MapController.Start threw ({__exception.GetType().Name}): {__exception.Message} — recovering intro chain");
+                // Start threw before IntroFade could kick off the DOTween chain.
+                // Without recovery, the map stays frozen at the boss row (softlock).
+                // Directly jump to IntroCameraPan so the pan/walk/activate chain runs.
+                try
+                {
+                    AccessTools.Method(typeof(Map.MapController), "IntroCameraPan")?.Invoke(__instance, null);
+                    MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Recovered: invoked IntroCameraPan after Start exception");
+                }
+                catch (Exception recoverEx)
+                {
+                    MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] Recovery IntroCameraPan failed: {recoverEx.Message}");
+                }
+            }
             try
             {
                 if (MultiplayerPlugin.Services?.TryResolve<GameState.IGameStateSyncService>(out var sync) == true)
@@ -1957,7 +1973,8 @@ public static class MultiplayerClientPatches
                 }
             }
             catch { }
-            return __exception;
+            // Swallow Start exceptions on host so Unity doesn't mark the MC broken.
+            return null;
         }
 
         if (!ShouldSuppressClientLogic) return __exception;
@@ -1977,6 +1994,78 @@ public static class MultiplayerClientPatches
 
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] MapController.Start finished on client — re-applied host node types");
         return null; // Swallow exceptions on client
+    }
+
+    // =========================================================================
+    // MAP INTRO CHAIN DEFENSIVE PATCHES — keep host progressing through the
+    // IntroFade → IntroCameraPan → PrePanWait → PostFadeInit → StartGoblinWalk
+    // → WalkFinished → ActivateNode DOTween callback chain. If any stage
+    // throws (e.g. a Map scene lacks the "Curtain"-tagged GameObject so
+    // IntroFade NREs), the chain dies silently and the host softlocks at
+    // the bottom of the map. These patches log each stage and recover
+    // when the chain stalls.
+    // =========================================================================
+
+    /// <summary>
+    /// MapController.IntroFade calls GameObject.FindGameObjectWithTag("Curtain").GetComponent&lt;Image&gt;()
+    /// with no null check on the tag lookup — so any Map scene missing the
+    /// tagged GameObject throws NRE and the onComplete-driven intro chain
+    /// never fires (camera pan, goblin walk, node activate all skipped).
+    /// On host, short-circuit to IntroCameraPan when the Curtain is missing.
+    /// </summary>
+    [HarmonyPatch(typeof(Map.MapController), "IntroFade")]
+    [HarmonyPrefix]
+    public static bool MapController_IntroFade_Prefix(Map.MapController __instance)
+    {
+        if (!IsHosting) return true;
+        try
+        {
+            var curtainGO = GameObject.FindGameObjectWithTag("Curtain");
+            if (curtainGO == null)
+            {
+                MultiplayerPlugin.Logger?.LogWarning("[ClientPatches] IntroFade: no 'Curtain' tagged GO in scene — skipping DOFade, calling IntroCameraPan directly");
+
+                // Mirror IntroFade's player-position step so the intro starts
+                // at _previousNode (if any) even though we're skipping the fade.
+                try
+                {
+                    var prevNode = AccessTools.Field(typeof(Map.MapController), "_previousNode")?.GetValue(__instance) as MapNode;
+                    var player = AccessTools.Field(typeof(Map.MapController), "_player")?.GetValue(__instance) as GameObject;
+                    if (prevNode != null && player != null)
+                        player.transform.position = prevNode.transform.position;
+                }
+                catch { }
+
+                AccessTools.Method(typeof(Map.MapController), "IntroCameraPan")?.Invoke(__instance, null);
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] IntroFade prefix check failed: {ex.Message}");
+        }
+        return true;
+    }
+
+    [HarmonyPatch(typeof(Map.MapController), "IntroFade")]
+    [HarmonyPostfix]
+    public static void MapController_IntroFade_Postfix()
+    {
+        if (IsHosting) MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Intro: IntroFade entered");
+    }
+
+    [HarmonyPatch(typeof(Map.MapController), "IntroCameraPan")]
+    [HarmonyPostfix]
+    public static void MapController_IntroCameraPan_Postfix()
+    {
+        if (IsHosting) MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Intro: IntroCameraPan entered");
+    }
+
+    [HarmonyPatch(typeof(Map.MapController), "PostFadeInit")]
+    [HarmonyPostfix]
+    public static void MapController_PostFadeInit_Postfix()
+    {
+        if (IsHosting) MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Intro: PostFadeInit entered");
     }
 
     // =========================================================================
@@ -2766,8 +2855,39 @@ public static class MultiplayerClientPatches
 
     [HarmonyPatch(typeof(MapController), "Awake")]
     [HarmonyPrefix]
-    public static void MapController_Awake_Prefix()
+    public static void MapController_Awake_Prefix(MapController __instance)
     {
+        // The game keeps exactly one MapController.instance alive via DontDestroyOnLoad.
+        // Normally ProceedAfterBattle() destroys the old GO before loading the next map
+        // (Act 1 ForestMap -> Act 2 CastleMap). On the client, ProceedAfterBattle never
+        // runs because client battles end via the host heartbeat, not via the local win
+        // flow — so the old ForestMap MC survives into CastleMap. When CastleMap's new MC
+        // Awakes, the game code sees `instance != null` and self-destroys the new GO,
+        // leaving the stale 37-node ForestMap _nodes as the "active" MC. That mismatch
+        // is why host (27 CastleMap nodes) vs client (37 stale ForestMap nodes) drifts
+        // and SetActiveState throws on index 25 (BOSS) during node-type apply.
+        //
+        // Fix: on client, if a stale instance exists from a prior scene, null the static
+        // field now so the incoming MC's Awake takes over the singleton, then schedule
+        // destruction of the old GO. Setting the field is immediate; Destroy() is deferred
+        // until end of frame, which is fine because Awake checks the field, not the GO.
+        if (!IsHosting && MapController.instance != null && MapController.instance != __instance)
+        {
+            try
+            {
+                var stale = MapController.instance;
+                string staleScene = stale.gameObject.scene.name;
+                string newScene = __instance.gameObject.scene.name;
+                MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Client: destroying stale MapController from scene '{staleScene}' so new MC from '{newScene}' can take over");
+                MapController.instance = null;
+                UnityEngine.Object.Destroy(stale.gameObject);
+            }
+            catch (Exception ex)
+            {
+                MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] Failed to clear stale MapController: {ex.Message}");
+            }
+        }
+
         if (IsHosting)
         {
             CapturedPreMapGenRngState = SerializeRandomState(Random.state);
@@ -3230,113 +3350,6 @@ public static class MultiplayerClientPatches
     }
 
     // =========================================================================
-    // HOST: MULTIBALL SYNC — send additional ball spawns to client
-    // =========================================================================
-
-    /// <summary>
-    /// When the host spawns a multiball, send its position and velocity to client
-    /// so it can render the additional ball visually. Covers the "Fire()" path
-    /// used by SummoningCirclePachinkoBall and PegBoardBramballVine.
-    /// Dispatch synchronously — coroutines on __instance get cancelled if the
-    /// parent ball is deactivated before the next FixedUpdate, losing the event.
-    /// Initial velocity may be zero; the attached HostMultiballStreamer will send
-    /// accurate position/velocity at 20 Hz.
-    /// </summary>
-    [HarmonyPatch(typeof(PachinkoBall), "SpawnMultiballFromLocation")]
-    [HarmonyPostfix]
-    public static void PachinkoBall_SpawnMultiballFromLocation_Postfix(PachinkoBall __instance, GameObject __result)
-    {
-        if (!IsHosting || __result == null || __instance == null) return;
-        EnsureBallRegistered(__result, "patch:fromLocation");
-    }
-
-    /// <summary>
-    /// Circcae / squirrelball / convert-to-gold path: HandleSpawningMultiballs spawns
-    /// child balls on peg collision. We snapshot _childMultiballs count before/after
-    /// and register each new entry synchronously — the velocity at this point is
-    /// whatever AddForce has queued; the streamer will publish the settled velocity
-    /// once physics catches up.
-    /// </summary>
-    [HarmonyPatch(typeof(PachinkoBall), "HandleSpawningMultiballs")]
-    [HarmonyPrefix]
-    public static void PachinkoBall_HandleSpawningMultiballs_Prefix(PachinkoBall __instance, out int __state)
-    {
-        __state = 0;
-        if (!IsHosting || __instance == null) return;
-        try
-        {
-            var list = AccessTools.Field(typeof(PachinkoBall), "_childMultiballs")?.GetValue(__instance) as System.Collections.IList;
-            __state = list?.Count ?? 0;
-        }
-        catch { }
-    }
-
-    [HarmonyPatch(typeof(PachinkoBall), "HandleSpawningMultiballs")]
-    [HarmonyPostfix]
-    public static void PachinkoBall_HandleSpawningMultiballs_Postfix(PachinkoBall __instance, int __state)
-    {
-        if (!IsHosting || __instance == null) return;
-        try
-        {
-            var list = AccessTools.Field(typeof(PachinkoBall), "_childMultiballs")?.GetValue(__instance) as System.Collections.IList;
-            int newCount = list?.Count ?? 0;
-            if (list == null || newCount <= __state) return;
-            MultiplayerPlugin.Logger?.LogInfo(
-                $"[ClientPatches] HandleSpawningMultiballs spawned {newCount - __state}: ball={__instance.gameObject.name} multiballLevel={__instance.multiballLevel} before={__state} after={newCount}");
-            for (int i = __state; i < newCount; i++)
-            {
-                var pb = list[i] as UnityEngine.MonoBehaviour;
-                if (pb != null && pb.gameObject != null)
-                    EnsureBallRegistered(pb.gameObject, "patch:handleSpawning");
-            }
-        }
-        catch (System.Exception ex)
-        {
-            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] HandleSpawningMultiballs postfix failed: {ex.Message}");
-        }
-    }
-
-    /// <summary>
-    /// Idempotent: attach a streamer + assign a GUID + dispatch MultiballSpawnedEvent
-    /// the first time this ball is seen. No-op on subsequent calls. Called both from
-    /// the per-path Harmony patches (early, low-latency dispatch) and from
-    /// HostBallRegistry's periodic scan (catch-all for any spawn path).
-    /// </summary>
-    internal static void EnsureBallRegistered(GameObject ball, string source)
-    {
-        if (ball == null) return;
-        if (ball == _firedBallGO) return; // primary ball uses BallPositionEvent channel
-        var streamer = ball.GetComponent<GameState.HostMultiballStreamer>();
-        if (streamer != null && !string.IsNullOrEmpty(streamer.Guid)) return;
-        if (streamer == null) streamer = ball.AddComponent<GameState.HostMultiballStreamer>();
-
-        var rb = ball.GetComponent<UnityEngine.Rigidbody2D>();
-        var pos = ball.transform.position;
-        var vel = rb != null ? rb.velocity : UnityEngine.Vector2.zero;
-
-        string orbName = ball.name;
-        var atk = ball.GetComponent<Battle.Attacks.Attack>();
-        if (atk != null) orbName = atk.gameObject.name;
-
-        string guid = System.Guid.NewGuid().ToString("N").Substring(0, 12);
-        streamer.Guid = guid;
-
-        var registry = MultiplayerPlugin.Services?.Resolve<Events.IGameEventRegistry>();
-        registry?.Dispatch(new Events.Network.Ball.MultiballSpawnedEvent
-        {
-            Guid = guid,
-            PosX = pos.x,
-            PosY = pos.y,
-            VelX = vel.x,
-            VelY = vel.y,
-            OrbName = orbName,
-        });
-
-        MultiplayerPlugin.Logger?.LogInfo(
-            $"[ClientPatches] Host dispatched multiball guid={guid} at ({pos.x:F1},{pos.y:F1}) vel=({vel.x:F1},{vel.y:F1}) orb={orbName} source={source}");
-    }
-
-    // =========================================================================
     // RNG SERIALIZATION HELPERS
     // =========================================================================
 
@@ -3561,6 +3574,78 @@ public static class MultiplayerClientPatches
 
         // All players dead — allow normal game over
         return true;
+    }
+
+    /// <summary>
+    /// In coop, <c>PlayerHealthController</c> is a single singleton that the host
+    /// hot-swaps between slots as turns change. When a non-host player (e.g. client
+    /// slot 1) fires Restorb, the host's native <c>Heal()</c> spawns a floating
+    /// "+N" popup and heal particle effect at the PHC's own transform — which is
+    /// the host's (slot 0) visual position. Visually the heal looks like it hit
+    /// the wrong player.
+    ///
+    /// Suppress the native VFX fields when the active slot isn't the local host
+    /// slot (0). The <c>CoopPlayerVisuals</c> HP text still updates via heartbeat
+    /// so the actual healed slot shows the new HP value. We restore the fields
+    /// in the postfix so normal single-player / host-turn heals still render.
+    /// </summary>
+    [HarmonyPatch(typeof(PlayerHealthController), "Heal")]
+    [HarmonyPrefix]
+    public static void PlayerHealthController_Heal_Prefix(PlayerHealthController __instance, ref object[] __state)
+    {
+        __state = null;
+        if (!IsHosting) return;
+
+        var services = MultiplayerPlugin.Services;
+        if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true) return;
+        if (coopState.TotalPlayerCount < 2) return;
+        if (coopState.ActivePlayerSlot == 0) return; // heal is for the host itself — let VFX play
+
+        try
+        {
+            var floatingTextField = HarmonyLib.AccessTools.Field(typeof(PlayerHealthController), "_damageFloatingTextPrefab");
+            var healSfxField = HarmonyLib.AccessTools.Field(typeof(PlayerHealthController), "_healSFX");
+            var particleField = HarmonyLib.AccessTools.Field(typeof(PlayerHealthController), "HealParticleAnim");
+
+            __state = new object[]
+            {
+                floatingTextField, floatingTextField?.GetValue(__instance),
+                healSfxField, healSfxField?.GetValue(__instance),
+                particleField, particleField?.GetValue(__instance),
+            };
+
+            floatingTextField?.SetValue(__instance, null);
+            healSfxField?.SetValue(__instance, null);
+            particleField?.SetValue(__instance, null);
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] Heal VFX suppression failed: {ex.Message}");
+        }
+    }
+
+    [HarmonyPatch(typeof(PlayerHealthController), "Heal")]
+    [HarmonyPostfix]
+    public static void PlayerHealthController_Heal_Postfix(PlayerHealthController __instance, object[] __state)
+    {
+        if (__state == null) return;
+        try
+        {
+            var floatingTextField = __state[0] as System.Reflection.FieldInfo;
+            var floatingTextVal = __state[1];
+            var healSfxField = __state[2] as System.Reflection.FieldInfo;
+            var healSfxVal = __state[3];
+            var particleField = __state[4] as System.Reflection.FieldInfo;
+            var particleVal = __state[5];
+
+            floatingTextField?.SetValue(__instance, floatingTextVal);
+            healSfxField?.SetValue(__instance, healSfxVal);
+            particleField?.SetValue(__instance, particleVal);
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] Heal VFX restore failed: {ex.Message}");
+        }
     }
 
     /// <summary>

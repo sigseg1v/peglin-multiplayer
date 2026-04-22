@@ -127,6 +127,8 @@ public static class ServiceRegistration
         container.RegisterSingleton(pegId);
         var orbId = new OrbIdentifier();
         container.RegisterSingleton(orbId);
+        var ballId = new BallIdentifier();
+        container.RegisterSingleton(ballId);
 
         // Player registry for co-op lobby
         var playerRegistry = new PlayerRegistry();
@@ -301,11 +303,7 @@ public static class ServiceRegistration
         // Ball events
         registry.Register(new ShotFiredServerHandler(), new ShotFiredClientHandler());
         registry.Register(new BallWallBounceServerHandler(), new BallWallBounceClientHandler());
-        registry.Register(new BallDestroyedServerHandler(), new BallDestroyedClientHandler());
-        registry.Register(new BallPositionServerHandler(), new BallPositionClientHandler());
-        registry.Register(new MultiballSpawnedServerHandler(), new MultiballSpawnedClientHandler());
-        registry.Register(new MultiballPositionServerHandler(), new MultiballPositionClientHandler());
-        registry.Register(new MultiballDestroyedServerHandler(), new MultiballDestroyedClientHandler());
+        registry.Register(new BallStateSnapshotServerHandler(), new BallStateSnapshotClientHandler());
         registry.Register(new AimUpdateServerHandler(), new AimUpdateClientHandler());
 
         // Cursor sync (bidirectional, via IMessageSender)
@@ -376,7 +374,7 @@ public static class ServiceRegistration
         ManualLogSource log)
     {
         new BattleEventSubscriptions(registry, multiplayerMode).Subscribe();
-        new HealthSubscriptions(registry, log).Subscribe();
+        new HealthSubscriptions(registry, log, coopStateManager).Subscribe();
         new EnemySubscriptions(registry, enemyIdentifier, log, coopStateManager).Subscribe();
         new DeckSubscriptions(registry, orbIdentifier, log).Subscribe();
         new RelicSubscriptions(registry, log).Subscribe();

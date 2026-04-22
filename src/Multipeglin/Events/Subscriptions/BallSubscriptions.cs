@@ -23,7 +23,6 @@ public sealed class BallSubscriptions
     {
         PachinkoBall.OnShotFired += OnShotFired;
         PachinkoBall.OnPachinkoBallWallBounce += OnWallBounce;
-        PachinkoBall.OnPachinkoBallDestroyed += OnBallDestroyed;
         _log.LogInfo("BallSubscriptions registered");
     }
 
@@ -31,7 +30,6 @@ public sealed class BallSubscriptions
     {
         PachinkoBall.OnShotFired -= OnShotFired;
         PachinkoBall.OnPachinkoBallWallBounce -= OnWallBounce;
-        PachinkoBall.OnPachinkoBallDestroyed -= OnBallDestroyed;
     }
 
     private void OnShotFired(Vector2 aimVector)
@@ -86,17 +84,5 @@ public sealed class BallSubscriptions
             PosY = pos.y,
             PosZ = pos.z
         });
-    }
-
-    private void OnBallDestroyed(PachinkoBall pBall)
-    {
-        if (!IsHosting) return;
-        // OnPachinkoBallDestroyed fires for every ball including spawned multiballs.
-        // Those already have a HostMultiballStreamer which dispatches its own
-        // MultiballDestroyedEvent in OnDestroy. Emitting a generic BallDestroyedEvent
-        // here would make the client wipe all remaining multiball visuals, so skip.
-        if (pBall != null && pBall.GetComponent<GameState.HostMultiballStreamer>() != null)
-            return;
-        _registry.Dispatch(new BallDestroyedEvent());
     }
 }

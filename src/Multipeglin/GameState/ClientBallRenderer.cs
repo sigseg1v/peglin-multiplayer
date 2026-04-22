@@ -1,73 +1,63 @@
 using System.Collections.Generic;
+using Multipeglin.GameState.Snapshots;
 using UnityEngine;
 
 namespace Multipeglin.GameState;
 
 /// <summary>
-/// Visual-only ball renderer for the spectating client.
-/// Supports the primary ball + additional multiball visuals.
-/// No physics — just sprites that follow the host's ball positions.
+/// Visual-only ball renderer for the spectating client. Two phases:
+///   1) AIMING — a single orb sprite sits at the spawn point and rotates with
+///      the aim vector (driven by BallUsed / ShotFired / AimUpdate events).
+///   2) FLIGHT — the host dispatches a <see cref="BallStateSnapshot"/> at 20 Hz
+///      listing every in-flight ball with GUID / position / velocity / orb name.
+///      We reconcile visuals: spawn any GUID we've never seen, update positions
+///      for known GUIDs, destroy any visual whose GUID is no longer in the snapshot.
+/// No physics, no game logic — purely visual. One visual per host ball.
 /// </summary>
 public class ClientBallRenderer : MonoBehaviour
 {
     public static ClientBallRenderer Instance { get; private set; }
 
-    /// <summary>Name of the orb currently displayed (for stale detection by heartbeat applier).</summary>
     public string CurrentOrbName => _currentOrbName;
 
-    private GameObject _ballObject;
-    private SpriteRenderer _ballRenderer;
-    private TrailRenderer _trailRenderer;
-    private Vector2 _targetPos;
-    private Vector2 _velocity;
-    private float _lastUpdateTime;
-    private bool _hasReceivedPosition;
-    private bool _isActive;
-    private bool _isAiming; // True between BallUsed (orb drawn) and ShotFired
-    private Vector2 _aimDirection;
+    // --- Aiming visual ---
+    private GameObject _aimingBall;
+    private SpriteRenderer _aimingRenderer;
     private Vector3 _spawnPos;
-    private bool _renderCopied; // True once material+sorting copied from a real renderer
-    private string _currentOrbName; // Name of the orb currently being displayed (for stale detection)
+    private Vector2 _aimDirection;
+    private bool _isAiming;
+    private string _currentOrbName;
 
-    // Higher = snappier, lower = smoother. ~25 gives ~40ms time-constant, which hides
-    // 50ms-spaced updates while still converging before they feel laggy.
-    private const float PositionSmoothRate = 25f;
-
-    // Additional multiball visuals keyed by host-assigned GUID.
-    private class MultiballState
+    // --- Flight visuals, one per host-assigned GUID ---
+    private class FlightVisual
     {
         public GameObject GameObject;
+        public SpriteRenderer Renderer;
+        public TrailRenderer Trail;
+        public string OrbName;
         public Vector2 TargetPos;
         public Vector2 Velocity;
         public float LastUpdateTime;
         public bool HasReceivedPosition;
     }
-    private readonly Dictionary<string, MultiballState> _multiballs = new Dictionary<string, MultiballState>();
+    private readonly Dictionary<string, FlightVisual> _flightBalls = new Dictionary<string, FlightVisual>();
 
-    private void Awake()
-    {
-        Instance = this;
-    }
+    // Higher = snappier, lower = smoother. ~25 hides 50 ms-spaced packets.
+    private const float PositionSmoothRate = 25f;
 
-    private void OnDestroy()
-    {
-        if (Instance == this) Instance = null;
-    }
+    private void Awake() { Instance = this; }
+    private void OnDestroy() { if (Instance == this) Instance = null; }
 
-    /// <summary>
-    /// Show the orb at the spawn point during the aiming phase.
-    /// Called from BallUsedClientHandler when the host draws an orb.
-    /// The orb stays at the spawn position until OnShotFired launches it.
-    /// </summary>
+    // =========================================================================
+    // AIMING PHASE
+    // =========================================================================
+
     public void OnOrbDrawn(string orbName)
     {
-        if (_ballObject == null)
-            CreateBall();
-
+        EnsureAimingBall();
         _currentOrbName = orbName?.Replace("(Clone)", "").Trim();
-        UpdateBallSprite(orbName);
+        ApplyOrbSprite(_aimingRenderer, _aimingBall, orbName, scaleFactor: 0.8f, wantTrail: false);
 
-        // Position at player spawn
         var bc = Object.FindObjectOfType<Battle.BattleController>();
         Transform pt = null;
         if (bc != null)
@@ -77,62 +67,23 @@ public class ClientBallRenderer : MonoBehaviour
             if (pt != null)
             {
                 _spawnPos = pt.position;
-                _ballObject.transform.position = new Vector3(_spawnPos.x, _spawnPos.y, -1f);
+                _aimingBall.transform.position = new Vector3(_spawnPos.x, _spawnPos.y, -1f);
             }
         }
 
         _isAiming = true;
-        _isActive = false; // Not launched yet
-        _ballObject.SetActive(true);
+        _aimingBall.SetActive(true);
 
-        // Fallback: if UpdateBallSprite didn't copy render settings from the orb prefab,
-        // copy material + sorting from a visible peg so we use the correct URP 2D material.
-        if (!_renderCopied && _ballRenderer != null)
-        {
-            try
-            {
-                var pegs = Object.FindObjectsOfType<Peg>();
-                foreach (var p in pegs)
-                {
-                    if (p == null || !p.gameObject.activeSelf) continue;
-                    var pr = p.GetComponentInChildren<SpriteRenderer>();
-                    if (pr != null)
-                    {
-                        if (pr.sharedMaterial != null)
-                            _ballRenderer.material = pr.sharedMaterial;
-                        _ballRenderer.sortingLayerID = pr.sortingLayerID;
-                        _ballRenderer.sortingOrder = pr.sortingOrder + 10;
-                        _renderCopied = true;
-                        break;
-                    }
-                }
-            }
-            catch { }
-        }
-
-        var hasSprite = _ballRenderer?.sprite != null;
         MultiplayerPlugin.Logger?.LogInfo(
             $"[ClientBallRenderer] OnOrbDrawn '{orbName}' playerTransform={pt != null} " +
-            $"pos=({_ballObject.transform.position.x:F1},{_ballObject.transform.position.y:F1},{_ballObject.transform.position.z:F1}) " +
-            $"scale=({_ballObject.transform.localScale.x:F2},{_ballObject.transform.localScale.y:F2}) " +
-            $"hasSprite={hasSprite} layer={_ballRenderer?.sortingLayerName} order={_ballRenderer?.sortingOrder} " +
-            $"material={_ballRenderer?.material?.name ?? "NULL"} renderCopied={_renderCopied} " +
-            $"ballActive={_ballObject.activeSelf}");
+            $"pos=({_aimingBall.transform.position.x:F1},{_aimingBall.transform.position.y:F1})");
     }
 
-    /// <summary>
-    /// Update the aim direction so the orb sprite rotates with the aimer.
-    /// Called from ClientAimRenderer or ShotFired with the aim vector.
-    /// </summary>
     public void UpdateAimDirection(float aimX, float aimY)
     {
         _aimDirection = new Vector2(aimX, aimY).normalized;
     }
 
-    /// <summary>
-    /// Update the spawn position from the host's aim event data.
-    /// This ensures the ball is at the same position as the aimer line origin.
-    /// </summary>
     public void UpdateSpawnPosition(float spawnX, float spawnY)
     {
         _spawnPos = new Vector3(spawnX, spawnY, 0f);
@@ -140,342 +91,291 @@ public class ClientBallRenderer : MonoBehaviour
 
     public void OnShotFired(float aimX, float aimY, string orbName = null)
     {
-        // Clean up any previous multiball visuals
-        foreach (var mb in _multiballs.Values)
+        // Leaving aiming → flight. The snapshot will spawn the actual flight
+        // visual. Hide the aiming orb so it doesn't double with the spawn.
+        if (_aimingBall != null) _aimingBall.SetActive(false);
+        _isAiming = false;
+
+        // Clear any stale flight visuals from a previous shot that never got
+        // cleaned up (e.g. because the host dropped their "empty snapshot" tick).
+        foreach (var v in _flightBalls.Values)
+            if (v?.GameObject != null) Destroy(v.GameObject);
+        _flightBalls.Clear();
+    }
+
+    // =========================================================================
+    // FLIGHT PHASE — driven entirely by BallStateSnapshot at 20 Hz
+    // =========================================================================
+
+    public void ApplyBallSnapshot(BallStateSnapshot snap)
+    {
+        if (snap == null) return;
+
+        // Hide the aiming visual while flight balls exist.
+        if (snap.Balls != null && snap.Balls.Count > 0 && _aimingBall != null && _aimingBall.activeSelf)
         {
-            if (mb?.GameObject != null) Destroy(mb.GameObject);
+            _aimingBall.SetActive(false);
+            _isAiming = false;
         }
-        _multiballs.Clear();
 
-        if (_ballObject == null)
-            CreateBall();
-
-        // Update the ball sprite to match the orb being fired (from host's ShotFiredEvent)
-        UpdateBallSprite(orbName);
-
-        // Find spawn position from BattleController's player transform
-        var bc = Object.FindObjectOfType<Battle.BattleController>();
-        if (bc != null)
+        var seen = new HashSet<string>();
+        if (snap.Balls != null)
         {
-            var playerField = HarmonyLib.AccessTools.Field(typeof(Battle.BattleController), "_playerTransform");
-            var playerTransform = playerField?.GetValue(bc) as Transform;
-            if (playerTransform != null)
+            foreach (var entry in snap.Balls)
             {
-                _targetPos = (Vector2)playerTransform.position;
-                _ballObject.transform.position = new Vector3(_targetPos.x, _targetPos.y, -1f);
+                if (string.IsNullOrEmpty(entry.Guid)) continue;
+                seen.Add(entry.Guid);
+
+                if (!_flightBalls.TryGetValue(entry.Guid, out var v))
+                {
+                    v = SpawnFlightVisual(entry);
+                    _flightBalls[entry.Guid] = v;
+                }
+                else if (v.OrbName != entry.OrbName && !string.IsNullOrEmpty(entry.OrbName))
+                {
+                    // Orb identity swapped (rare — e.g. convert-to-gold): refresh sprite.
+                    ApplyOrbSprite(v.Renderer, v.GameObject, entry.OrbName, scaleFactor: 1f, wantTrail: true, existingTrail: v.Trail);
+                    v.OrbName = entry.OrbName;
+                }
+
+                v.TargetPos = new Vector2(entry.PosX, entry.PosY);
+                v.Velocity = new Vector2(entry.VelX, entry.VelY);
+                v.LastUpdateTime = Time.time;
+                if (v.GameObject != null)
+                    v.GameObject.transform.localScale = new Vector3(entry.ScaleX, entry.ScaleY, 1f);
+
+                if (!v.HasReceivedPosition)
+                {
+                    v.HasReceivedPosition = true;
+                    if (v.GameObject != null)
+                        v.GameObject.transform.position = new Vector3(entry.PosX, entry.PosY, -1f);
+                    if (v.Trail != null) v.Trail.Clear();
+                }
             }
         }
 
-        _velocity = Vector2.zero;
-        _lastUpdateTime = Time.time;
-        _hasReceivedPosition = false;
-        _isAiming = false;
-        _isActive = true;
-        _ballObject.SetActive(true);
-
-        if (_trailRenderer != null)
+        // Destroy any flight visuals that the host didn't include this tick.
+        if (_flightBalls.Count != seen.Count)
         {
-            _trailRenderer.Clear();
-            _trailRenderer.enabled = true;
-            _trailRenderer.emitting = true;
+            var toRemove = new List<string>();
+            foreach (var kvp in _flightBalls)
+                if (!seen.Contains(kvp.Key)) toRemove.Add(kvp.Key);
+            foreach (var guid in toRemove)
+            {
+                if (_flightBalls.TryGetValue(guid, out var v) && v.GameObject != null)
+                    Destroy(v.GameObject);
+                _flightBalls.Remove(guid);
+            }
         }
     }
 
-    private void UpdateBallSprite(string orbName)
+    private FlightVisual SpawnFlightVisual(BallEntry entry)
     {
-        if (_ballRenderer == null) return;
+        var go = new GameObject($"ClientBall_{entry.Guid}");
+        go.hideFlags = HideFlags.HideAndDontSave;
+        DontDestroyOnLoad(go);
+
+        var sr = go.AddComponent<SpriteRenderer>();
+        sr.sortingOrder = 100;
+
+        var v = new FlightVisual
+        {
+            GameObject = go,
+            Renderer = sr,
+            OrbName = entry.OrbName,
+            TargetPos = new Vector2(entry.PosX, entry.PosY),
+            Velocity = new Vector2(entry.VelX, entry.VelY),
+            LastUpdateTime = Time.time,
+            HasReceivedPosition = false,
+        };
+
+        ApplyOrbSprite(sr, go, entry.OrbName, scaleFactor: 1f, wantTrail: true);
+        // ApplyOrbSprite may have added a TrailRenderer.
+        v.Trail = go.GetComponent<TrailRenderer>();
+
+        go.transform.position = new Vector3(entry.PosX, entry.PosY, -1f);
+        go.transform.localScale = new Vector3(entry.ScaleX, entry.ScaleY, 1f);
+        return v;
+    }
+
+    // =========================================================================
+    // SHARED SPRITE LOOKUP
+    // =========================================================================
+
+    /// <summary>
+    /// Resolve the orb prefab by name and copy its sprite / material / sorting
+    /// layer to the given renderer. Optionally mirror its trail settings.
+    /// </summary>
+    private void ApplyOrbSprite(SpriteRenderer target, GameObject targetGO, string orbName,
+        float scaleFactor, bool wantTrail, TrailRenderer existingTrail = null)
+    {
+        if (target == null) return;
         try
         {
-            // Find the orb prefab by name from the host's ShotFiredEvent
-            GameObject orbGo = null;
             string cleanName = orbName?.Replace("(Clone)", "").Trim();
-
-            if (!string.IsNullOrEmpty(cleanName))
-            {
-                var loader = Loading.AssetLoading.Instance;
-                if (loader != null)
-                    orbGo = loader.GetOrbPrefab(cleanName);
-            }
-
-            // NavigationOrb: get from BattleController's serialized prefab
-            if (orbGo == null && cleanName == "NavigationOrb")
-            {
-                var bc = Object.FindObjectOfType<Battle.BattleController>();
-                if (bc != null)
-                {
-                    var navField = HarmonyLib.AccessTools.Field(typeof(Battle.BattleController), "_navigationOrb");
-                    orbGo = navField?.GetValue(bc) as GameObject;
-                }
-            }
-
-            // Fallback: try battleDeck
-            if (orbGo == null)
-            {
-                var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
-                var dm = dms.Length > 0 ? dms[0] : null;
-                if (dm?.battleDeck != null)
-                {
-                    foreach (var orb in dm.battleDeck)
-                    {
-                        if (orb != null && orb.name.Replace("(Clone)", "").Trim() == cleanName)
-                        {
-                            orbGo = orb;
-                            break;
-                        }
-                    }
-                }
-            }
+            GameObject orbGo = FindOrbPrefab(cleanName);
 
             if (orbGo != null)
             {
                 var orbRenderer = orbGo.GetComponentInChildren<SpriteRenderer>();
                 if (orbRenderer?.sprite != null)
                 {
-                    _ballRenderer.sprite = orbRenderer.sprite;
-                    // Copy material — URP 2D uses a different sprite material than the
-                    // built-in pipeline.  A bare AddComponent<SpriteRenderer>() gets the
-                    // wrong material and renders invisible.
+                    target.sprite = orbRenderer.sprite;
                     if (orbRenderer.sharedMaterial != null)
-                        _ballRenderer.material = orbRenderer.sharedMaterial;
-                    // Copy sorting settings from the prefab — sorting layer is baked into
-                    // the asset, not set in code.
-                    _ballRenderer.sortingLayerID = orbRenderer.sortingLayerID;
-                    _ballRenderer.sortingOrder = 100;
-                    _ballObject.transform.localScale = orbGo.transform.localScale * 0.8f;
-                    _renderCopied = true;
+                        target.material = orbRenderer.sharedMaterial;
+                    target.sortingLayerID = orbRenderer.sortingLayerID;
+                    target.sortingOrder = 100;
+                    targetGO.transform.localScale = orbGo.transform.localScale * scaleFactor;
                 }
 
-                var orbTrail = orbGo.GetComponentInChildren<TrailRenderer>();
-                ApplyTrailFromPrefab(orbTrail);
+                if (wantTrail)
+                {
+                    var orbTrail = orbGo.GetComponentInChildren<TrailRenderer>();
+                    var trail = existingTrail ?? targetGO.GetComponent<TrailRenderer>() ?? targetGO.AddComponent<TrailRenderer>();
+                    CopyTrailSettings(trail, orbTrail);
+                }
+            }
+            else
+            {
+                // Unknown orb — fallback so we at least draw *something*.
+                target.sprite = CreateCircleSprite();
+                targetGO.transform.localScale = Vector3.one * 0.5f;
+                var anyRenderer = Object.FindObjectOfType<SpriteRenderer>();
+                if (anyRenderer?.sharedMaterial != null)
+                {
+                    target.material = anyRenderer.sharedMaterial;
+                    target.sortingLayerID = anyRenderer.sortingLayerID;
+                }
             }
         }
         catch { }
     }
 
-    private void ApplyTrailFromPrefab(TrailRenderer prefabTrail)
+    private static GameObject FindOrbPrefab(string cleanName)
     {
-        if (_ballObject == null) return;
-        if (_trailRenderer == null)
-        {
-            _trailRenderer = _ballObject.AddComponent<TrailRenderer>();
-            _trailRenderer.emitting = false;
-        }
-        if (prefabTrail == null) return;
+        if (string.IsNullOrEmpty(cleanName)) return null;
 
-        _trailRenderer.time = prefabTrail.time;
-        _trailRenderer.minVertexDistance = prefabTrail.minVertexDistance;
-        _trailRenderer.widthCurve = prefabTrail.widthCurve;
-        _trailRenderer.widthMultiplier = prefabTrail.widthMultiplier;
-        _trailRenderer.colorGradient = prefabTrail.colorGradient;
-        _trailRenderer.startColor = prefabTrail.startColor;
-        _trailRenderer.endColor = prefabTrail.endColor;
-        _trailRenderer.startWidth = prefabTrail.startWidth;
-        _trailRenderer.endWidth = prefabTrail.endWidth;
-        _trailRenderer.textureMode = prefabTrail.textureMode;
-        _trailRenderer.alignment = prefabTrail.alignment;
-        _trailRenderer.numCornerVertices = prefabTrail.numCornerVertices;
-        _trailRenderer.numCapVertices = prefabTrail.numCapVertices;
-        _trailRenderer.shadowCastingMode = prefabTrail.shadowCastingMode;
-        _trailRenderer.receiveShadows = prefabTrail.receiveShadows;
-        _trailRenderer.sortingLayerID = prefabTrail.sortingLayerID;
-        _trailRenderer.sortingOrder = prefabTrail.sortingOrder + 1;
-        _trailRenderer.autodestruct = false;
-        if (prefabTrail.sharedMaterial != null)
-            _trailRenderer.sharedMaterial = prefabTrail.sharedMaterial;
+        var loader = Loading.AssetLoading.Instance;
+        var orbGo = loader?.GetOrbPrefab(cleanName);
+        if (orbGo != null) return orbGo;
+
+        if (cleanName == "NavigationOrb")
+        {
+            var bc = Object.FindObjectOfType<Battle.BattleController>();
+            if (bc != null)
+            {
+                var navField = HarmonyLib.AccessTools.Field(typeof(Battle.BattleController), "_navigationOrb");
+                orbGo = navField?.GetValue(bc) as GameObject;
+                if (orbGo != null) return orbGo;
+            }
+        }
+
+        var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
+        var dm = dms.Length > 0 ? dms[0] : null;
+        if (dm?.battleDeck != null)
+        {
+            foreach (var orb in dm.battleDeck)
+            {
+                if (orb != null && orb.name.Replace("(Clone)", "").Trim() == cleanName)
+                    return orb;
+            }
+        }
+        return null;
     }
 
-    public void UpdateBallPosition(float posX, float posY, float velX, float velY, float timestamp)
+    private static void CopyTrailSettings(TrailRenderer dst, TrailRenderer src)
     {
-        if (!_isActive || _ballObject == null) return;
-
-        _targetPos = new Vector2(posX, posY);
-        _velocity = new Vector2(velX, velY);
-        _lastUpdateTime = Time.time;
-
-        // First update after launch seeds the visible position so the trail starts
-        // at the host's first reported sample instead of spawn + a long gap.
-        if (!_hasReceivedPosition)
+        if (dst == null) return;
+        if (src == null)
         {
-            _hasReceivedPosition = true;
-            _ballObject.transform.position = new Vector3(posX, posY, -1f);
-            if (_trailRenderer != null) _trailRenderer.Clear();
+            dst.emitting = true;
+            return;
         }
+        dst.time = src.time;
+        dst.minVertexDistance = src.minVertexDistance;
+        dst.widthCurve = src.widthCurve;
+        dst.widthMultiplier = src.widthMultiplier;
+        dst.colorGradient = src.colorGradient;
+        dst.startColor = src.startColor;
+        dst.endColor = src.endColor;
+        dst.startWidth = src.startWidth;
+        dst.endWidth = src.endWidth;
+        dst.textureMode = src.textureMode;
+        dst.alignment = src.alignment;
+        dst.numCornerVertices = src.numCornerVertices;
+        dst.numCapVertices = src.numCapVertices;
+        dst.shadowCastingMode = src.shadowCastingMode;
+        dst.receiveShadows = src.receiveShadows;
+        dst.sortingLayerID = src.sortingLayerID;
+        dst.sortingOrder = src.sortingOrder + 1;
+        dst.autodestruct = false;
+        dst.emitting = true;
+        if (src.sharedMaterial != null) dst.sharedMaterial = src.sharedMaterial;
     }
 
-    public void OnMultiballSpawned(string guid, float posX, float posY, float velX, float velY, string orbName)
-    {
-        if (string.IsNullOrEmpty(guid)) return;
-        if (_multiballs.ContainsKey(guid)) return;
-
-        var ball = new GameObject("ClientMultiball");
-        ball.hideFlags = HideFlags.HideAndDontSave;
-        DontDestroyOnLoad(ball);
-
-        var renderer = ball.AddComponent<SpriteRenderer>();
-        renderer.sortingOrder = 100;
-        // Copy sorting layer and material from primary ball if available
-        if (_ballRenderer != null)
-        {
-            renderer.sortingLayerID = _ballRenderer.sortingLayerID;
-            if (_ballRenderer.sharedMaterial != null)
-                renderer.material = _ballRenderer.sharedMaterial;
-        }
-
-        // Copy sprite from the primary ball if available
-        if (_ballRenderer?.sprite != null)
-        {
-            renderer.sprite = _ballRenderer.sprite;
-            ball.transform.localScale = _ballObject != null ? _ballObject.transform.localScale : Vector3.one * 0.5f;
-        }
-        else
-        {
-            renderer.sprite = CreateCircleSprite();
-            ball.transform.localScale = Vector3.one * 0.5f;
-        }
-
-        ball.transform.position = new Vector3(posX, posY, -1f);
-
-        _multiballs[guid] = new MultiballState
-        {
-            GameObject = ball,
-            TargetPos = new Vector2(posX, posY),
-            Velocity = new Vector2(velX, velY),
-            LastUpdateTime = Time.time,
-            HasReceivedPosition = false,
-        };
-    }
-
-    public void UpdateMultiballPosition(string guid, float posX, float posY, float velX, float velY, float timestamp)
-    {
-        if (string.IsNullOrEmpty(guid)) return;
-        if (!_multiballs.TryGetValue(guid, out var state) || state.GameObject == null) return;
-
-        state.TargetPos = new Vector2(posX, posY);
-        state.Velocity = new Vector2(velX, velY);
-        state.LastUpdateTime = Time.time;
-
-        if (!state.HasReceivedPosition)
-        {
-            state.HasReceivedPosition = true;
-            state.GameObject.transform.position = new Vector3(posX, posY, -1f);
-        }
-    }
-
-    public void OnMultiballDestroyed(string guid)
-    {
-        if (string.IsNullOrEmpty(guid)) return;
-        if (!_multiballs.TryGetValue(guid, out var state)) return;
-        if (state.GameObject != null) Destroy(state.GameObject);
-        _multiballs.Remove(guid);
-    }
-
-    public void OnBallDestroyed()
-    {
-        _isActive = false;
-        _hasReceivedPosition = false;
-        _currentOrbName = null;
-        if (_trailRenderer != null)
-        {
-            _trailRenderer.emitting = false;
-            _trailRenderer.Clear();
-            _trailRenderer.enabled = false;
-        }
-        if (_ballObject != null)
-            _ballObject.SetActive(false);
-
-        // Multiballs are destroyed individually via MultiballDestroyedEvent when the
-        // host streamer's OnDestroy fires. Don't wipe them here — the primary may die
-        // before its Circcae children, and those children should keep rendering until
-        // their own MultiballDestroyedEvent arrives. OnShotFired cleans up stragglers
-        // before the next shot.
-    }
+    // =========================================================================
+    // UPDATE — aim rotation + flight smoothing
+    // =========================================================================
 
     private void Update()
     {
-        if (_ballObject == null) return;
-
-        // Aiming phase: show orb at spawn position, rotate with aim direction
-        if (_isAiming && !_isActive)
+        if (_isAiming && _aimingBall != null && _aimingBall.activeSelf)
         {
-            _ballObject.transform.position = new Vector3(_spawnPos.x, _spawnPos.y, -0.5f);
-
-            // Rotate to face aim direction
+            _aimingBall.transform.position = new Vector3(_spawnPos.x, _spawnPos.y, -0.5f);
             if (_aimDirection.sqrMagnitude > 0.01f)
             {
                 float angle = Mathf.Atan2(_aimDirection.y, _aimDirection.x) * Mathf.Rad2Deg;
-                _ballObject.transform.rotation = Quaternion.Euler(0, 0, angle);
+                _aimingBall.transform.rotation = Quaternion.Euler(0, 0, angle);
             }
-            return;
         }
 
-        if (_isActive && _hasReceivedPosition)
-        {
-            // Flight phase: extrapolate from the last host sample using velocity + gravity,
-            // then smoothly lerp the visible position toward it. Snap-free; this hides
-            // 50ms-spaced packets and tolerates the occasional late/dropped update.
-            float dt = Time.time - _lastUpdateTime;
-            if (dt > 0.25f) dt = 0.25f; // clamp so stalls don't launch the ball off-screen
+        if (_flightBalls.Count == 0) return;
 
-            var predicted = _targetPos + _velocity * dt;
+        foreach (var v in _flightBalls.Values)
+        {
+            if (v?.GameObject == null || !v.HasReceivedPosition) continue;
+
+            float dt = Time.time - v.LastUpdateTime;
+            if (dt > 0.25f) dt = 0.25f;
+
+            var predicted = v.TargetPos + v.Velocity * dt;
             predicted.y += -9.81f * dt * dt * 0.5f;
 
-            var current = (Vector2)_ballObject.transform.position;
+            var current = (Vector2)v.GameObject.transform.position;
             float t = 1f - Mathf.Exp(-PositionSmoothRate * Time.deltaTime);
             var lerped = Vector2.Lerp(current, predicted, t);
-            _ballObject.transform.position = new Vector3(lerped.x, lerped.y, -1f);
-        }
-
-        // Smooth multiball visuals toward the latest host sample using the same
-        // extrapolation pattern as the primary ball.
-        if (_multiballs.Count > 0)
-        {
-            foreach (var state in _multiballs.Values)
-            {
-                if (state?.GameObject == null || !state.HasReceivedPosition) continue;
-                float dt = Time.time - state.LastUpdateTime;
-                if (dt > 0.25f) dt = 0.25f;
-
-                var predicted = state.TargetPos + state.Velocity * dt;
-                predicted.y += -9.81f * dt * dt * 0.5f;
-
-                var current = (Vector2)state.GameObject.transform.position;
-                float t = 1f - Mathf.Exp(-PositionSmoothRate * Time.deltaTime);
-                var lerped = Vector2.Lerp(current, predicted, t);
-                state.GameObject.transform.position = new Vector3(lerped.x, lerped.y, -1f);
-            }
+            v.GameObject.transform.position = new Vector3(lerped.x, lerped.y, -1f);
         }
     }
 
-    private void CreateBall()
+    // =========================================================================
+    // AIMING BALL CREATION
+    // =========================================================================
+
+    private void EnsureAimingBall()
     {
-        _ballObject = new GameObject("ClientBall");
-        _ballObject.hideFlags = HideFlags.HideAndDontSave;
-        DontDestroyOnLoad(_ballObject);
+        if (_aimingBall != null) return;
+        _aimingBall = new GameObject("ClientBall_Aiming");
+        _aimingBall.hideFlags = HideFlags.HideAndDontSave;
+        DontDestroyOnLoad(_aimingBall);
+        _aimingRenderer = _aimingBall.AddComponent<SpriteRenderer>();
+        _aimingRenderer.sortingOrder = 100;
 
-        _ballRenderer = _ballObject.AddComponent<SpriteRenderer>();
-        _ballRenderer.sortingOrder = 100;
-        _renderCopied = false;
-
-        // Copy the URP 2D sprite material from any visible SpriteRenderer in the scene.
-        // A bare AddComponent<SpriteRenderer>() in URP gets the built-in Sprites-Default
-        // material which doesn't render through the URP 2D renderer pipeline.
         try
         {
             var anyRenderer = Object.FindObjectOfType<SpriteRenderer>();
             if (anyRenderer?.sharedMaterial != null)
             {
-                _ballRenderer.material = anyRenderer.sharedMaterial;
-                _ballRenderer.sortingLayerID = anyRenderer.sortingLayerID;
+                _aimingRenderer.material = anyRenderer.sharedMaterial;
+                _aimingRenderer.sortingLayerID = anyRenderer.sortingLayerID;
             }
         }
         catch { }
 
-        // Fallback: create a simple circle if no sprite found
-        _ballRenderer.sprite = CreateCircleSprite();
-        _ballRenderer.color = Color.white;
-        _ballObject.transform.localScale = Vector3.one * 0.5f;
-
-        _ballObject.SetActive(false);
+        _aimingRenderer.sprite = CreateCircleSprite();
+        _aimingRenderer.color = Color.white;
+        _aimingBall.transform.localScale = Vector3.one * 0.5f;
+        _aimingBall.SetActive(false);
     }
 
     private static Sprite CreateCircleSprite()
@@ -486,12 +386,10 @@ public class ClientBallRenderer : MonoBehaviour
         float radius = center - 1;
 
         for (int y = 0; y < size; y++)
+        for (int x = 0; x < size; x++)
         {
-            for (int x = 0; x < size; x++)
-            {
-                float dist = Vector2.Distance(new Vector2(x, y), new Vector2(center, center));
-                tex.SetPixel(x, y, dist <= radius ? Color.white : Color.clear);
-            }
+            float dist = Vector2.Distance(new Vector2(x, y), new Vector2(center, center));
+            tex.SetPixel(x, y, dist <= radius ? Color.white : Color.clear);
         }
         tex.Apply();
         return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size);

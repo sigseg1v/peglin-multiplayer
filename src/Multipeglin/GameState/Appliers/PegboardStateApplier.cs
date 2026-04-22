@@ -67,19 +67,51 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             var clientBombs = bombsField?.GetValue(pm) as List<Bomb>;
             var clientBouncers = pm.bouncerPegs;
 
-            int guidMatched = 0, posMatched = 0, repositioned = 0, typeChanged = 0,
+            int idxMatched = 0, guidMatched = 0, posMatched = 0, repositioned = 0, typeChanged = 0,
                 destroyed = 0, reactivated = 0, missed = 0, guidTypeInvalid = 0;
             var matchedPegs = new HashSet<Peg>();
 
             var unmatchedEntries = new List<PegEntry>();
 
-            // ===== PHASE 1 & 2: GUID match (type-validated), then type-aware position match =====
+            int pegsCount = clientPegs?.Count ?? 0;
+            int bombsCount = clientBombs?.Count ?? 0;
+            int bouncersCount = clientBouncers?.Count ?? 0;
+
+            // ===== PHASE 0, 1 & 2: Index, GUID, then type-aware position =====
             foreach (var entry in snapshot.Pegs)
             {
                 Peg peg = null;
 
+                // Phase 0: INDEX-BASED MATCHING (first-sync robustness).
+                // PegLayoutLoader is seed-deterministic: allPegs[i] on host and
+                // allPegs[i] on client correspond to the same logical layout slot.
+                // Position-based matching on first sync FAILS for LinearPegMovement
+                // rows because the LPM phase differs between host and client — the
+                // wrong peg gets bound to a GUID, and the mistake locks in for the
+                // rest of the battle (every subsequent heartbeat GUID-matches the
+                // wrong peg). Index matching sidesteps the LPM drift entirely.
+                //
+                // Only runs when the target peg has no GUID yet (first-time bind)
+                // AND the type matches — never re-bind an already-GUID'd peg.
+                Peg indexCandidate = ResolveByIndex(entry.Index, pegsCount, bombsCount,
+                    clientPegs, clientBombs, clientBouncers);
+                if (indexCandidate != null
+                    && !matchedPegs.Contains(indexCandidate)
+                    && string.IsNullOrEmpty(_pegId.GetGuid(indexCandidate))
+                    && TypeMatches(indexCandidate, entry))
+                {
+                    peg = indexCandidate;
+                    idxMatched++;
+                    if (entry.PegType != 0 || entry.IsBomb || entry.IsBouncer)
+                    {
+                        _log.LogInfo($"[PegboardApplier] IDX BIND: idx={entry.Index} guid={entry.Guid} " +
+                            $"type={entry.PegTypeName} hostPos=({entry.PosX:F1},{entry.PosY:F1}) " +
+                            $"clientPos=({indexCandidate.transform.position.x:F1},{indexCandidate.transform.position.y:F1})");
+                    }
+                }
+
                 // Phase 1: GUID match with type validation
-                if (!string.IsNullOrEmpty(entry.Guid))
+                if (peg == null && !string.IsNullOrEmpty(entry.Guid))
                 {
                     peg = _pegId.Find(entry.Guid);
                     if (peg != null)
@@ -117,7 +149,12 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         peg = FindClosestUnmatched(entry, clientPegs, null, null, matchedPegs, 1f);
 
                     if (peg != null)
+                    {
                         posMatched++;
+                        _log.LogWarning($"[PegboardApplier] POS BIND (idx fallback): idx={entry.Index} guid={entry.Guid} " +
+                            $"type={entry.PegTypeName} hostPos=({entry.PosX:F1},{entry.PosY:F1}) " +
+                            $"clientPos=({peg.transform.position.x:F1},{peg.transform.position.y:F1})");
+                    }
                 }
 
                 if (peg != null)
@@ -372,7 +409,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
 
             int totalClient = clientPegs.Count + (clientBombs?.Count ?? 0) + (clientBouncers?.Count ?? 0);
-            _log.LogInfo($"[PegboardApplier] GUIDMatched={guidMatched}, PosMatched={posMatched}, " +
+            _log.LogInfo($"[PegboardApplier] IdxMatched={idxMatched}, GUIDMatched={guidMatched}, PosMatched={posMatched}, " +
                 $"Repositioned={repositioned}, TypeChanged={typeChanged}, Destroyed={destroyed}, " +
                 $"Reactivated={reactivated}, Missed={missed}, GUIDTypeInvalid={guidTypeInvalid}, " +
                 $"ExtrasRemoved={extrasRemoved} " +
@@ -590,6 +627,39 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             _log.LogWarning($"[PegboardApplier] SynthesizeBomb failed: {ex.Message}");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Resolve a global index into the client's concatenated peg list.
+    /// Layout matches the provider:
+    /// [0 .. pegsCount-1]             = clientPegs[index]
+    /// [pegsCount .. +bombsCount-1]   = clientBombs[index - pegsCount]
+    /// [pegsCount+bombsCount .. ]     = clientBouncers[index - pegsCount - bombsCount]
+    /// Returns null for out-of-range indices.
+    /// </summary>
+    private static Peg ResolveByIndex(int index, int pegsCount, int bombsCount,
+        List<Peg> clientPegs, List<Bomb> clientBombs, List<BouncerPeg> clientBouncers)
+    {
+        if (index < 0) return null;
+        if (index < pegsCount) return clientPegs[index];
+        int bombIdx = index - pegsCount;
+        if (bombIdx < bombsCount) return clientBombs[bombIdx];
+        int bouncerIdx = bombIdx - bombsCount;
+        if (clientBouncers != null && bouncerIdx < clientBouncers.Count)
+            return clientBouncers[bouncerIdx];
+        return null;
+    }
+
+    /// <summary>
+    /// Check that the client peg's runtime type aligns with the snapshot entry.
+    /// Bomb entries must map to Bomb instances, bouncer entries to BouncerPeg,
+    /// regular entries to non-bomb non-bouncer pegs.
+    /// </summary>
+    private static bool TypeMatches(Peg peg, PegEntry entry)
+    {
+        bool pegIsBomb = peg is Bomb;
+        bool pegIsBouncer = peg is BouncerPeg;
+        return pegIsBomb == entry.IsBomb && pegIsBouncer == entry.IsBouncer;
     }
 
     /// <summary>

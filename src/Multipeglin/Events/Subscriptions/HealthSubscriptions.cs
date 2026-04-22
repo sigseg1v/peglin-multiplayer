@@ -1,6 +1,7 @@
 using Battle;
 using BepInEx.Logging;
 using Multipeglin.Events.Network.Health;
+using Multipeglin.GameState;
 using Multipeglin.Multiplayer;
 
 namespace Multipeglin.Events.Subscriptions;
@@ -9,11 +10,14 @@ public sealed class HealthSubscriptions
 {
     private readonly IGameEventRegistry _registry;
     private readonly ManualLogSource _log;
+    private readonly CoopStateManager _coopStateManager;
 
-    public HealthSubscriptions(IGameEventRegistry registry, ManualLogSource log)
+    public HealthSubscriptions(IGameEventRegistry registry, ManualLogSource log,
+        CoopStateManager coopStateManager = null)
     {
         _registry = registry;
         _log = log;
+        _coopStateManager = coopStateManager;
     }
 
     private static bool IsHosting =>
@@ -64,7 +68,8 @@ public sealed class HealthSubscriptions
         _registry.Dispatch(new PlayerHealedEvent
         {
             Amount = amount,
-            RemainingHealth = GetCurrentHealth()
+            RemainingHealth = GetCurrentHealth(),
+            TargetSlotIndex = _coopStateManager?.ActivePlayerSlot ?? -1
         });
     }
 
