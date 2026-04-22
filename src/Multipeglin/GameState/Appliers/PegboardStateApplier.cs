@@ -68,7 +68,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             var clientBouncers = pm.bouncerPegs;
 
             int idxMatched = 0, guidMatched = 0, posMatched = 0, repositioned = 0, typeChanged = 0,
-                destroyed = 0, reactivated = 0, missed = 0, guidTypeInvalid = 0;
+                destroyed = 0, reactivated = 0, cleared = 0, missed = 0, guidTypeInvalid = 0;
             var matchedPegs = new HashSet<Peg>();
 
             var unmatchedEntries = new List<PegEntry>();
@@ -172,7 +172,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     }
                     else
                     {
-                        ApplyPegState(peg, entry, clientBombs, ref typeChanged, ref destroyed, ref reactivated);
+                        ApplyPegState(peg, entry, clientBombs, ref typeChanged, ref destroyed, ref reactivated, ref cleared);
                     }
 
                     // Log bomb entry matching details
@@ -318,7 +318,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
                     peg.transform.position = new Vector3(entry.PosX, entry.PosY, peg.transform.position.z);
                     matchedPegs.Add(peg);
-                    ApplyPegState(peg, entry, clientBombs, ref typeChanged, ref destroyed, ref reactivated);
+                    ApplyPegState(peg, entry, clientBombs, ref typeChanged, ref destroyed, ref reactivated, ref cleared);
                     SyncPegPosition(peg, entry);
                 }
             }
@@ -411,7 +411,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             int totalClient = clientPegs.Count + (clientBombs?.Count ?? 0) + (clientBouncers?.Count ?? 0);
             _log.LogInfo($"[PegboardApplier] IdxMatched={idxMatched}, GUIDMatched={guidMatched}, PosMatched={posMatched}, " +
                 $"Repositioned={repositioned}, TypeChanged={typeChanged}, Destroyed={destroyed}, " +
-                $"Reactivated={reactivated}, Missed={missed}, GUIDTypeInvalid={guidTypeInvalid}, " +
+                $"Reactivated={reactivated}, Cleared={cleared}, Missed={missed}, GUIDTypeInvalid={guidTypeInvalid}, " +
                 $"ExtrasRemoved={extrasRemoved} " +
                 $"(host={snapshot.TotalPegCount}, client={totalClient}, " +
                 $"crit={snapshot.CritPegCount}, bomb={snapshot.BombPegCount}, " +
@@ -713,7 +713,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     /// Apply host state (type, cleared, destroyed, slime, coins, bomb fuse) to a matched client peg.
     /// </summary>
     private void ApplyPegState(Peg peg, PegEntry entry, List<Bomb> clientBombs,
-        ref int typeChanged, ref int destroyed, ref int reactivated)
+        ref int typeChanged, ref int destroyed, ref int reactivated, ref int cleared)
     {
         // Register with host GUID
         if (!string.IsNullOrEmpty(entry.Guid))
@@ -736,6 +736,20 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             try
             {
                 peg.PegActivated(playAudio: false, forcePop: true);
+
+                // LongPeg.PegActivated sets _hit + swaps material but does NOT
+                // disable its collider inline — the host relies on a delayed
+                // SetActiveStatus(false) timer that the client never runs. Force
+                // the collider off so IsDisabled() returns true and the peg stops
+                // counting as "active" in the Consistency check.
+                if (peg is LongPeg)
+                {
+                    var col = HarmonyLib.AccessTools.Field(typeof(Peg), "_collider")
+                        ?.GetValue(peg) as Collider2D;
+                    if (col != null) col.enabled = false;
+                }
+
+                cleared++;
             }
             catch { }
         }
