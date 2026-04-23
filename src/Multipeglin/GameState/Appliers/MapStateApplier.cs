@@ -47,6 +47,22 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         new Dictionary<string, MapDataBattle>();
 
     /// <summary>
+    /// Per-map-scene snapshot of the last node layout + player position we successfully
+    /// applied. Restored in <see cref="ApplyCachedOnAwake"/> (called from MapController.Awake
+    /// postfix) so the client's first rendered frame after a scene reload already shows the
+    /// correct state — eliminating the "empty cards then camera snap" flash between scene
+    /// load and the first heartbeat apply.
+    /// </summary>
+    private class CachedMapState
+    {
+        public List<MapNodeEntry> Nodes;
+        public float? PlayerPosX;
+        public float? PlayerPosY;
+    }
+    private static readonly Dictionary<string, CachedMapState> _mapStateCache =
+        new Dictionary<string, CachedMapState>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Look up a MapDataBattle by name from the cross-scene cache.
     /// Used by NodeActivatedClientHandler as a fallback when Resources lookup misses.
     /// </summary>
@@ -577,7 +593,103 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         AwaitingHostSceneConfirmation = null;
         _lastRequestedScene = null;
         _lastRequestTime = 0;
+        _mapStateCache.Clear();
         ResetNavigationState();
+    }
+
+    /// <summary>
+    /// Apply the last-known good map state to a freshly-awoken MapController on the
+    /// client. Runs from <see cref="Patches.MultiplayerClientPatches.MapController_Awake_Postfix"/>
+    /// so that node types, node states, and the player's position are all correct
+    /// BEFORE the first frame renders and BEFORE <c>Start()</c> captures
+    /// <c>_playerInitialPosition</c> (which the <c>PrePanWait</c> camera tween reads).
+    /// Without this, the first heartbeat-based apply happens ~50ms after scene load
+    /// with stale player data from the host's pre-<c>Start</c> capture, so the user
+    /// sees a brief default-position render, then a camera snap when the second
+    /// apply arrives with the real host position. Applying from cache here makes
+    /// scene reloads visually seamless when the host returns to a previously visited
+    /// map scene.
+    /// </summary>
+    public static void ApplyCachedOnAwake(MapController mc, ManualLogSource log)
+    {
+        try
+        {
+            if (mc == null) return;
+            var sceneName = mc.gameObject.scene.name;
+            if (!_mapStateCache.TryGetValue(sceneName, out var cached) || cached == null) return;
+
+            var nodesField = AccessTools.Field(typeof(MapController), "_nodes");
+            var clientNodes = nodesField?.GetValue(mc) as MapNode[];
+            if (clientNodes == null || clientNodes.Length == 0) return;
+
+            var roomStatusField = AccessTools.Field(typeof(MapNode), "_roomStatus");
+            var bossIndexField = AccessTools.Field(typeof(MapNode), "_selectedBossIndex");
+
+            // Pre-position node types and states so the first rendered frame is correct.
+            int nodesApplied = 0;
+            foreach (var entry in cached.Nodes)
+            {
+                if (entry.Index < 0 || entry.Index >= clientNodes.Length) continue;
+                var node = clientNodes[entry.Index];
+                if (node == null) continue;
+
+                var type = (RoomType)entry.RoomType;
+                var state = entry.RoomState >= 0 ? (RoomState)entry.RoomState : RoomState.UPCOMING;
+                var currentState = (RoomState)(roomStatusField?.GetValue(node) ?? RoomState.UPCOMING);
+                if (node.RoomType == type && currentState == state) continue;
+
+                node.RoomType = type;
+                if (entry.SelectedBossIndex >= 0 && bossIndexField != null)
+                    bossIndexField.SetValue(node, entry.SelectedBossIndex);
+
+                try
+                {
+                    node.SetActiveState(state, recursive: false, setIcon: true);
+                    if (node.RoomType != RoomType.NONE)
+                        node.GenerateIcon();
+                }
+                catch { }
+                nodesApplied++;
+            }
+
+            // Pre-position the player and _previousNode so that IntroFade's
+            //   _player.transform.position = _previousNode.transform.position
+            // doesn't teleport us back to the scene's default spawn, and so that
+            // _playerInitialPosition (captured in Awake BEFORE this postfix runs)
+            // reflects the cached position for the camera-pan math in PrePanWait.
+            if (cached.PlayerPosX.HasValue && cached.PlayerPosY.HasValue)
+            {
+                var playerField = AccessTools.Field(typeof(MapController), "_player");
+                var player = playerField?.GetValue(mc) as GameObject;
+                if (player != null)
+                {
+                    var pos = player.transform.position;
+                    var target = new Vector3(cached.PlayerPosX.Value, cached.PlayerPosY.Value, pos.z);
+                    player.transform.position = target;
+
+                    var initField = AccessTools.Field(typeof(MapController), "_playerInitialPosition");
+                    initField?.SetValue(mc, target);
+
+                    var prevNodeField = AccessTools.Field(typeof(MapController), "_previousNode");
+                    MapNode closest = null;
+                    float closestDist = float.MaxValue;
+                    foreach (var node in clientNodes)
+                    {
+                        if (node == null) continue;
+                        float d = Vector3.SqrMagnitude(node.transform.position - target);
+                        if (d < closestDist) { closestDist = d; closest = node; }
+                    }
+                    if (closest != null) prevNodeField?.SetValue(mc, closest);
+                }
+            }
+
+            log?.LogInfo($"[MapApplier] Awake: pre-applied {nodesApplied} cached node changes for '{sceneName}' " +
+                $"(playerPos={cached.PlayerPosX?.ToString("F1") ?? "?"},{cached.PlayerPosY?.ToString("F1") ?? "?"})");
+        }
+        catch (Exception ex)
+        {
+            log?.LogWarning($"[MapApplier] ApplyCachedOnAwake failed: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -741,7 +853,10 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
 
             var bossIndexField = AccessTools.Field(typeof(MapNode), "_selectedBossIndex");
 
-            int applied = 0, skipped = 0;
+            // Cache a reflected accessor for _roomStatus so we can compare without reapplying.
+            var roomStatusField = AccessTools.Field(typeof(MapNode), "_roomStatus");
+
+            int applied = 0, skipped = 0, unchanged = 0;
             foreach (var hostNode in hostNodes)
             {
                 if (hostNode.Index < 0 || hostNode.Index >= clientNodes.Length)
@@ -757,27 +872,33 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                     continue;
                 }
 
-                // Set room type from host
                 var hostRoomType = (RoomType)hostNode.RoomType;
-                clientNode.RoomType = hostRoomType;
+                var hostState = hostNode.RoomState >= 0 ? (RoomState)hostNode.RoomState : RoomState.UPCOMING;
 
-                // Set boss index BEFORE icon generation (GenerateIcon reads it for boss sprite)
-                if (hostNode.SelectedBossIndex >= 0 && bossIndexField != null)
+                // Idempotent check: if type + state already match host, skip the
+                // SetActiveState/GenerateIcon work entirely. This is critical for the
+                // map-flash fix — heartbeats used to re-run GenerateIcon on every node
+                // every 2s, which re-toggled icon SpriteRenderer state and could produce
+                // subtle visible jitter during scene-load fade-in.
+                RoomState currentState = (RoomState)(roomStatusField?.GetValue(clientNode) ?? RoomState.UPCOMING);
+                bool bossIndexOk = hostNode.SelectedBossIndex < 0
+                    || bossIndexField == null
+                    || (int)bossIndexField.GetValue(clientNode) == hostNode.SelectedBossIndex;
+                if (clientNode.RoomType == hostRoomType && currentState == hostState && bossIndexOk)
                 {
-                    bossIndexField.SetValue(clientNode, hostNode.SelectedBossIndex);
+                    unchanged++;
+                    applied++;
+                    continue;
                 }
 
-                // Apply room state WITH icon generation — SetActiveState(setIcon: true) handles:
-                //   1. Frame color based on state
-                //   2. GenerateIcon() based on RoomType (skips GenerateRoomType since RoomType != NONE)
-                //   3. Line drawing to children
-                // This replaces the old separate GenerateIcon + SetActiveState(setIcon: false) approach
-                // which could leave icons stale if GenerateIcon threw silently.
-                var hostState = hostNode.RoomState >= 0 ? (RoomState)hostNode.RoomState : RoomState.UPCOMING;
+                clientNode.RoomType = hostRoomType;
+
+                if (hostNode.SelectedBossIndex >= 0 && bossIndexField != null)
+                    bossIndexField.SetValue(clientNode, hostNode.SelectedBossIndex);
+
                 try
                 {
                     clientNode.SetActiveState(hostState, recursive: false, setIcon: true);
-                    // Explicit GenerateIcon in case SetActiveState's internal call was blocked
                     if (clientNode.RoomType != RoomType.NONE)
                         clientNode.GenerateIcon();
                 }
@@ -787,7 +908,6 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                         $"(type={hostRoomType}, state={hostState}): {ex.Message}");
                 }
 
-                // Verify the type stuck
                 if (applied < 3 || clientNode.RoomType != hostRoomType)
                 {
                     _log.LogInfo($"[MapApplier] Node {hostNode.Index}: set={hostRoomType}, actual={clientNode.RoomType}, state={hostState}");
@@ -796,8 +916,24 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 applied++;
             }
 
-            _log.LogInfo($"[MapApplier] Applied {applied} node types from host, {skipped} skipped " +
+            _log.LogInfo($"[MapApplier] Applied {applied} node types ({unchanged} unchanged) from host, {skipped} skipped " +
                 $"(host={hostNodes.Count}, client={clientNodes.Length})");
+
+            // Stash the last successful apply so MapController.Awake can restore state
+            // before the first rendered frame on the next scene load.
+            if (applied > 0)
+            {
+                var sceneName = SceneManager.GetActiveScene().name;
+                if (MapScenes.Contains(sceneName))
+                {
+                    _mapStateCache[sceneName] = new CachedMapState
+                    {
+                        Nodes = hostNodes,
+                        PlayerPosX = hostPlayerX,
+                        PlayerPosY = hostPlayerY,
+                    };
+                }
+            }
 
             // Move the player sprite to the host's position.
             // Use absolute position from host if available, fall back to PREVIOUS node.

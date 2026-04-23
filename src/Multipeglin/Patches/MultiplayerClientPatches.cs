@@ -2905,6 +2905,29 @@ public static class MultiplayerClientPatches
         }
     }
 
+    /// <summary>
+    /// After MapController.Awake wires up _nodes / _player, restore the last-known map
+    /// state from cache so the first rendered frame of the scene already shows the
+    /// correct node icons and player position. Without this the user sees ~50ms of
+    /// default-state render + a camera snap when the first heartbeat apply arrives.
+    /// Runs after Awake's own assignments but before Start, so _playerInitialPosition
+    /// (also captured in Awake) can be overwritten here to reflect the cached position.
+    /// </summary>
+    [HarmonyPatch(typeof(MapController), "Awake")]
+    [HarmonyPostfix]
+    public static void MapController_Awake_Postfix(MapController __instance)
+    {
+        if (IsHosting) return;
+        if (!ShouldSuppressClientLogic) return;
+        if (__instance == null) return;
+        // Only the surviving instance (the new scene's MC) should apply cached state —
+        // the self-destruct path in the original Awake leaves the stale GO pending
+        // destruction; skip it to avoid mutating doomed nodes.
+        if (MapController.instance != __instance) return;
+
+        GameState.Appliers.MapStateApplier.ApplyCachedOnAwake(__instance, MultiplayerPlugin.Logger);
+    }
+
     // =========================================================================
     // CLIENT SHOT INTERCEPTION — send ShootRequestEvent to host in coop
     // =========================================================================
