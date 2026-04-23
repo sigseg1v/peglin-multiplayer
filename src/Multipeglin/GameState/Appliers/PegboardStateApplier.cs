@@ -819,6 +819,40 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
         }
 
+        // LongPeg-specific: normalize transient hit state when host says peg is alive.
+        // Client-side physics on the local ball can trigger LongPeg.DoPegCollision →
+        // PegActivated(), which sets _hit=true, _beingHit=true, pegType=REGULAR, and
+        // swaps to the destroyed material. Two problems follow:
+        //   (a) SupportsPegType(CRIT/RESET) returns false while _hit=true — the type
+        //       conversion block below silently falls through (just assigns pegType
+        //       without running ConvertPegToType), so the crit/reset collider/sprite
+        //       never get set up and the peg stays in "hit" visual state.
+        //   (b) Update()'s TimeToDisappear=0.5s timer will fire and call
+        //       SetActiveStatus(false), popping the peg entirely even though the host
+        //       considers it alive. Next heartbeat then reactivates it — visible
+        //       flicker and position drift during the gap.
+        // HardReset() resets _hit/_beingHit/_numBounces/_timeHit, calls
+        // SetActiveStatus(true) (re-enables collider, restores active material), and
+        // re-runs ConvertPegToType(pegType) — so if we pre-set pegType to the target
+        // type, HardReset normalizes everything in one shot.
+        if (peg is LongPeg longPeg && !entry.IsCleared && !entry.IsDestroyed)
+        {
+            var hitField = HarmonyLib.AccessTools.Field(typeof(LongPeg), "_hit");
+            var beingHitField = HarmonyLib.AccessTools.Field(typeof(LongPeg), "_beingHit");
+            bool isHit = (bool)(hitField?.GetValue(peg) ?? false);
+            bool beingHit = (bool)(beingHitField?.GetValue(peg) ?? false);
+            if (isHit || beingHit)
+            {
+                var targetType = (Peg.PegType)entry.PegType;
+                if (targetType != Peg.PegType.DESTROYED)
+                    peg.pegType = targetType;
+                try { longPeg.HardReset(); } catch { }
+                _log.LogInfo($"[PegboardApplier] LongPeg hit-state normalized: guid={entry.Guid} " +
+                    $"wasHit={isHit} wasBeingHit={beingHit} → {targetType} at " +
+                    $"({entry.PosX:F1},{entry.PosY:F1})");
+            }
+        }
+
         // Force peg type to match host. Bouncers (rubber) DO get synced — when the host
         // shuffles peg types (e.g. random peg field, shuffle stages), the bouncer's peg
         // slot on the client must reflect host state. Without this, rubber pegs stay
