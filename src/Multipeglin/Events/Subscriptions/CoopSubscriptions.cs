@@ -589,6 +589,19 @@ public sealed class CoopSubscriptions
         if (!_mode.IsHosting) return;
         if (_coopStateManager.TotalPlayerCount < 2) return;
 
+        // BattleController.OnShotComplete also fires when bomb balls finish
+        // during THROW_BOMBS. By then all players have shot (Phase == ALL_DONE)
+        // and the ALL_DONE branch below has already written the host's tallies
+        // to BC and swapped to host. Re-running would overwrite the saved shot
+        // data for slot 0 with post-bomb BC state and re-enter the ALL_DONE
+        // branch — harmless on its own, but it re-writes host tallies into
+        // BC which can replay as double damage if DoAttack re-enters.
+        if (_turnManager.Phase == TurnPhase.ALL_DONE)
+        {
+            _log.LogInfo("[CoopSubs] OnShotComplete re-entry in ALL_DONE (bomb ball) — skipping");
+            return;
+        }
+
         int activeSlot = _coopStateManager.ActivePlayerSlot;
 
         // Read BattleController's peg damage tallies for this player's shot

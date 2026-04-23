@@ -61,6 +61,13 @@ public class PegEntry
     public float? LpmParentPosX { get; set; }
     /// <summary>World Y of the LinearPegMovement parent (null if peg is not under LPM).</summary>
     public float? LpmParentPosY { get; set; }
+
+    /// <summary>Name of the transform.parent (stable across host/client because it comes from the prefab hierarchy).</summary>
+    public string ParentName { get; set; }
+
+    /// <summary>Local position relative to transform.parent (stable across host/client — baked into prefab).</summary>
+    public float LocalPosX { get; set; }
+    public float LocalPosY { get; set; }
 }
 
 public class VineEntry

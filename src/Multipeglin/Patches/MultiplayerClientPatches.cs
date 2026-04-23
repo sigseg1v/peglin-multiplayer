@@ -2521,6 +2521,30 @@ public static class MultiplayerClientPatches
             // runs after DoAttack returns, so we don't invoke it here)
             Events.Subscriptions.CoopSubscriptions.CleanupTempOrb();
 
+            // Zero BC tallies so any re-entry into DoAttack (e.g. the bomb-throw
+            // flow that fires OnShotComplete a second time and re-runs the
+            // ALL_DONE branch in CoopSubscriptions, which re-writes host's
+            // tallies back to BC) cannot have the native Attack pipeline replay
+            // the host's damage a second time. The first prefix call already
+            // consumed _accumulatedShotData; without this zeroing, a subsequent
+            // DoAttack call would find the dict empty, return true, and let
+            // native Attack run on the stale tallies — double graphic + double
+            // damage on host shots. Only happens intermittently because it
+            // requires bomb-pegs to have been hit this shot.
+            try
+            {
+                AccessTools.Field(typeof(BattleController), "_pegMultiplierDamageTally")?.SetValue(__instance, 0);
+                AccessTools.Field(typeof(BattleController), "_numPegsHit")?.SetValue(__instance, 0);
+                AccessTools.Field(typeof(BattleController), "_cactusDamageTally")?.SetValue(__instance, 0);
+                AccessTools.Field(typeof(BattleController), "_criticalHitCount")?.SetValue(null, 0);
+                AccessTools.Field(typeof(BattleController), "_damageMultiplier")?.SetValue(__instance, 1f);
+                AccessTools.Field(typeof(BattleController), "_damageBonus")?.SetValue(__instance, 0);
+            }
+            catch (System.Exception tallyEx)
+            {
+                MultiplayerPlugin.Logger?.LogWarning($"[CoopAttack] Failed to zero BC tallies post-consume: {tallyEx.Message}");
+            }
+
             // Skip the original DoAttack — damage was applied directly above.
             // The caller (Update's DO_ATTACK case) still calls StartAttacking()
             // after DoAttack returns, so the state machine advances to ATTACKING.

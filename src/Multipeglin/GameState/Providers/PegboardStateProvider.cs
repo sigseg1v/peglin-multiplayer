@@ -104,6 +104,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                 };
                 CaptureShieldState(peg, entry);
                 CaptureLpmParentPos(peg, entry);
+                CaptureStructKey(peg, entry);
                 snapshot.Pegs.Add(entry);
 
                 if (peg.gameObject.activeSelf && !destroyed)
@@ -159,6 +160,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     };
                     CaptureShieldState(bomb, bombEntry);
                     CaptureLpmParentPos(bomb, bombEntry);
+                    CaptureStructKey(bomb, bombEntry);
                     snapshot.Pegs.Add(bombEntry);
 
                     if (bomb.gameObject.activeSelf && !destroyed)
@@ -212,6 +214,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     };
                     CaptureShieldState(bouncer, bouncerEntry);
                     CaptureLpmParentPos(bouncer, bouncerEntry);
+                    CaptureStructKey(bouncer, bouncerEntry);
                     snapshot.Pegs.Add(bouncerEntry);
 
                     if (bouncer.gameObject.activeSelf && !destroyed)
@@ -311,6 +314,27 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                 entry.LpmParentPosX = lpm.transform.position.x;
                 entry.LpmParentPosY = lpm.transform.position.y;
             }
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// Capture a structural key (parent-name + local-position) that is stable
+    /// across host/client because it's baked into the prefab hierarchy.
+    ///
+    /// Needed because pm.allPegs ordering is NOT deterministic between host
+    /// and client (especially MinotaurLayout) — relying on the list index to
+    /// bind GUIDs corrupts bindings permanently. A structural key lets the
+    /// client find the matching client peg regardless of allPegs ordering.
+    /// </summary>
+    private static void CaptureStructKey(Peg peg, PegEntry entry)
+    {
+        try
+        {
+            entry.ParentName = peg.transform.parent != null ? peg.transform.parent.name : string.Empty;
+            var lp = peg.transform.localPosition;
+            entry.LocalPosX = lp.x;
+            entry.LocalPosY = lp.y;
         }
         catch { }
     }

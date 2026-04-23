@@ -68,7 +68,8 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             var clientBouncers = pm.bouncerPegs;
 
             int idxMatched = 0, guidMatched = 0, posMatched = 0, repositioned = 0, typeChanged = 0,
-                destroyed = 0, reactivated = 0, cleared = 0, missed = 0, guidTypeInvalid = 0;
+                destroyed = 0, reactivated = 0, cleared = 0, missed = 0, guidTypeInvalid = 0,
+                structMatched = 0;
             var matchedPegs = new HashSet<Peg>();
 
             var unmatchedEntries = new List<PegEntry>();
@@ -77,36 +78,57 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             int bombsCount = clientBombs?.Count ?? 0;
             int bouncersCount = clientBouncers?.Count ?? 0;
 
-            // ===== PHASE 0, 1 & 2: Index, GUID, then type-aware position =====
+            // Pre-build a structural index of unbound client pegs keyed by
+            // (parent_name, localPos). This key is stable across host/client
+            // because it's baked into the prefab hierarchy — unlike
+            // pm.allPegs ordering which is non-deterministic (race condition
+            // during PegLayoutLoader, especially for MinotaurLayout).
+            var structIndex = BuildStructIndex(clientPegs, clientBombs, clientBouncers);
+
+            // ===== PHASE 0, 1 & 2: Struct, GUID, then type-aware position =====
             foreach (var entry in snapshot.Pegs)
             {
                 Peg peg = null;
 
-                // Phase 0: INDEX-BASED MATCHING (first-sync robustness).
-                // PegLayoutLoader is seed-deterministic: allPegs[i] on host and
-                // allPegs[i] on client correspond to the same logical layout slot.
-                // Position-based matching on first sync FAILS for LinearPegMovement
-                // rows because the LPM phase differs between host and client — the
-                // wrong peg gets bound to a GUID, and the mistake locks in for the
-                // rest of the battle (every subsequent heartbeat GUID-matches the
-                // wrong peg). Index matching sidesteps the LPM drift entirely.
+                // Phase 0: STRUCTURAL-KEY MATCHING (first-sync robustness).
+                // Match by (parent_name, localPos) — stable across host/client
+                // because it's baked into the prefab hierarchy. This avoids the
+                // non-deterministic pm.allPegs ordering problem (especially
+                // MinotaurLayout) where list-index binding corrupts every peg.
                 //
                 // Only runs when the target peg has no GUID yet (first-time bind)
                 // AND the type matches — never re-bind an already-GUID'd peg.
-                Peg indexCandidate = ResolveByIndex(entry.Index, pegsCount, bombsCount,
-                    clientPegs, clientBombs, clientBouncers);
-                if (indexCandidate != null
-                    && !matchedPegs.Contains(indexCandidate)
-                    && string.IsNullOrEmpty(_pegId.GetGuid(indexCandidate))
-                    && TypeMatches(indexCandidate, entry))
+                Peg structCandidate = ResolveByStructKey(structIndex, entry);
+                if (structCandidate != null
+                    && !matchedPegs.Contains(structCandidate)
+                    && string.IsNullOrEmpty(_pegId.GetGuid(structCandidate))
+                    && TypeMatches(structCandidate, entry))
                 {
-                    peg = indexCandidate;
-                    idxMatched++;
+                    peg = structCandidate;
+                    structMatched++;
                     if (entry.PegType != 0 || entry.IsBomb || entry.IsBouncer)
                     {
-                        _log.LogInfo($"[PegboardApplier] IDX BIND: idx={entry.Index} guid={entry.Guid} " +
-                            $"type={entry.PegTypeName} hostPos=({entry.PosX:F1},{entry.PosY:F1}) " +
-                            $"clientPos=({indexCandidate.transform.position.x:F1},{indexCandidate.transform.position.y:F1})");
+                        _log.LogInfo($"[PegboardApplier] STRUCT BIND: key=({entry.ParentName}|{entry.LocalPosX:F2},{entry.LocalPosY:F2}) " +
+                            $"guid={entry.Guid} type={entry.PegTypeName} hostPos=({entry.PosX:F1},{entry.PosY:F1}) " +
+                            $"clientPos=({structCandidate.transform.position.x:F1},{structCandidate.transform.position.y:F1})");
+                    }
+                }
+
+                // Phase 0.5: INDEX-BASED fallback — only if the struct key is
+                // missing (e.g. old host without the new field). Includes a
+                // position-sanity guard to reject obviously-wrong bindings.
+                if (peg == null && string.IsNullOrEmpty(entry.ParentName))
+                {
+                    Peg indexCandidate = ResolveByIndex(entry.Index, pegsCount, bombsCount,
+                        clientPegs, clientBombs, clientBouncers);
+                    if (indexCandidate != null
+                        && !matchedPegs.Contains(indexCandidate)
+                        && string.IsNullOrEmpty(_pegId.GetGuid(indexCandidate))
+                        && TypeMatches(indexCandidate, entry)
+                        && IndexBindPositionSane(indexCandidate, entry))
+                    {
+                        peg = indexCandidate;
+                        idxMatched++;
                     }
                 }
 
@@ -409,7 +431,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
 
             int totalClient = clientPegs.Count + (clientBombs?.Count ?? 0) + (clientBouncers?.Count ?? 0);
-            _log.LogInfo($"[PegboardApplier] IdxMatched={idxMatched}, GUIDMatched={guidMatched}, PosMatched={posMatched}, " +
+            _log.LogInfo($"[PegboardApplier] StructMatched={structMatched}, IdxMatched={idxMatched}, GUIDMatched={guidMatched}, PosMatched={posMatched}, " +
                 $"Repositioned={repositioned}, TypeChanged={typeChanged}, Destroyed={destroyed}, " +
                 $"Reactivated={reactivated}, Cleared={cleared}, Missed={missed}, GUIDTypeInvalid={guidTypeInvalid}, " +
                 $"ExtrasRemoved={extrasRemoved} " +
@@ -627,6 +649,83 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             _log.LogWarning($"[PegboardApplier] SynthesizeBomb failed: {ex.Message}");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Build a structural index of client pegs keyed by (parent_name, localPos).
+    /// Used for first-sync binding that survives non-deterministic pm.allPegs
+    /// ordering. The key comes from the prefab hierarchy, so host and client
+    /// produce identical keys for the same logical layout slot.
+    /// May contain multiple pegs per key (collisions resolved later by iteration).
+    /// </summary>
+    private static Dictionary<string, List<Peg>> BuildStructIndex(
+        List<Peg> clientPegs, List<Bomb> clientBombs, List<BouncerPeg> clientBouncers)
+    {
+        var index = new Dictionary<string, List<Peg>>(System.StringComparer.Ordinal);
+        void Add(Peg p)
+        {
+            if (p == null) return;
+            var key = MakeStructKey(p);
+            if (!index.TryGetValue(key, out var list))
+            {
+                list = new List<Peg>();
+                index[key] = list;
+            }
+            list.Add(p);
+        }
+        if (clientPegs != null) foreach (var p in clientPegs) Add(p);
+        if (clientBombs != null) foreach (var b in clientBombs) Add(b);
+        if (clientBouncers != null) foreach (var bo in clientBouncers) Add(bo);
+        return index;
+    }
+
+    private static string MakeStructKey(Peg peg)
+    {
+        var parentName = peg.transform.parent != null ? peg.transform.parent.name : string.Empty;
+        var lp = peg.transform.localPosition;
+        return MakeStructKey(parentName, lp.x, lp.y);
+    }
+
+    private static string MakeStructKey(string parentName, float lx, float ly)
+    {
+        // Round to 3 decimals to absorb float jitter between host/client.
+        return $"{parentName}|{lx:F3}|{ly:F3}";
+    }
+
+    /// <summary>
+    /// Find an unmatched client peg whose structural key matches the entry.
+    /// Pops the peg out of the index so it won't be matched again.
+    /// </summary>
+    private static Peg ResolveByStructKey(Dictionary<string, List<Peg>> index, PegEntry entry)
+    {
+        if (index == null || string.IsNullOrEmpty(entry.ParentName)) return null;
+        var key = MakeStructKey(entry.ParentName, entry.LocalPosX, entry.LocalPosY);
+        if (!index.TryGetValue(key, out var list) || list.Count == 0) return null;
+        var peg = list[list.Count - 1];
+        list.RemoveAt(list.Count - 1);
+        return peg;
+    }
+
+    /// <summary>
+    /// Guard against binding-by-index when positions wildly disagree.
+    /// If neither side is near the LPM buffer position (0,1.4), require
+    /// the index candidate's world position to be within 1.5 units of the
+    /// host position; otherwise the list orderings are misaligned and the
+    /// bind would corrupt state.
+    /// </summary>
+    private static bool IndexBindPositionSane(Peg indexCandidate, PegEntry entry)
+    {
+        float dx = indexCandidate.transform.position.x - entry.PosX;
+        float dy = indexCandidate.transform.position.y - entry.PosY;
+        float distSq = dx * dx + dy * dy;
+        if (distSq <= 1.5f * 1.5f) return true;
+
+        // Both sides in buffer region — accept (structural tie-break not available).
+        bool hostBuffer = System.Math.Abs(entry.PosX) < 0.5f && System.Math.Abs(entry.PosY - 1.4f) < 0.5f;
+        float cx = indexCandidate.transform.position.x;
+        float cy = indexCandidate.transform.position.y;
+        bool clientBuffer = System.Math.Abs(cx) < 0.5f && System.Math.Abs(cy - 1.4f) < 0.5f;
+        return hostBuffer && clientBuffer;
     }
 
     /// <summary>

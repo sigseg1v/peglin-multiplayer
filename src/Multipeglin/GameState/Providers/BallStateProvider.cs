@@ -52,7 +52,18 @@ public class BallStateProvider : IGameStateProvider<BallStateSnapshot>
                 var guid = _ballId.GetOrAssignGuid(ball);
                 var rb = ball.GetComponent<Rigidbody2D>();
                 var vel = rb != null ? rb.velocity : Vector2.zero;
-                var scale = ball.transform.localScale;
+
+                // The PachinkoBall's SpriteRenderer lives on a CHILD transform with
+                // its own localScale (see PachinkoBall multiball code). The actual
+                // rendered world size = root.localScale * spriteChild.localScale.
+                // The client flattens the sprite onto a single GameObject, so mirror
+                // the sprite's world (lossy) scale, not the root's local scale.
+                Vector3 scale;
+                var spriteRenderer = ball.GetComponentInChildren<SpriteRenderer>();
+                if (spriteRenderer != null)
+                    scale = spriteRenderer.transform.lossyScale;
+                else
+                    scale = ball.transform.localScale;
 
                 // Primary ball: the one tracked by the client-patch _firedBallGO.
                 bool isPrimary = ReferenceEquals(ball.gameObject, Patches.MultiplayerClientPatches.PrimaryBall);
