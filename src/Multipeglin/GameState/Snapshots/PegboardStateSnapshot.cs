@@ -68,6 +68,22 @@ public class PegEntry
     /// <summary>Local position relative to transform.parent (stable across host/client — baked into prefab).</summary>
     public float LocalPosX { get; set; }
     public float LocalPosY { get; set; }
+
+    /// <summary>
+    /// Sibling index under transform.parent. Paired with ParentName it forms a
+    /// second structural key that stays stable even when the peg itself carries
+    /// a LinearPegMovement component — LPM drives the peg's transform, so
+    /// localPosition drifts each frame and (ParentName, LocalPos) matching
+    /// fails. Sibling order is baked into the prefab and preserved across
+    /// instantiation, so (ParentName, SiblingIndex) uniquely identifies the
+    /// peg regardless of how far physics has carried it.
+    /// </summary>
+    public int SiblingIndex { get; set; }
+
+    /// <summary>True if this peg (or a parent in its chain) has a LinearPegMovement
+    /// component. Signals the applier to prefer (ParentName, SiblingIndex) over
+    /// (ParentName, LocalPos) when resolving the structural match.</summary>
+    public bool HasLpm { get; set; }
 }
 
 public class VineEntry

@@ -85,6 +85,24 @@ public class EnemyStateProvider : IGameStateProvider<EnemyStateSnapshot>
                         if (chargeLenField != null)
                             entry.ChargeTime = (int)chargeLenField.GetValue(enemy);
 
+                        // Shield barricade (ShieldKnight etc). BarricadeEnemy is a separate
+                        // Enemy instance wired via ShieldEnemy._shield — not in EnemyManager.Enemies,
+                        // so we attach its state to the parent's entry.
+                        try
+                        {
+                            if (enemy is ShieldEnemy se && se.shield != null)
+                            {
+                                var shield = se.shield;
+                                entry.HasShield = true;
+                                entry.ShieldCurrentHealth = shield.CurrentHealth;
+                                var shieldMaxField = AccessTools.Field(typeof(Battle.Enemies.Enemy), "_maxHealth");
+                                if (shieldMaxField != null)
+                                    entry.ShieldMaxHealth = (float)shieldMaxField.GetValue(shield);
+                                entry.ShieldActive = shield.gameObject.activeInHierarchy;
+                            }
+                        }
+                        catch { }
+
                         // Status effects
                         try
                         {
@@ -116,8 +134,11 @@ public class EnemyStateProvider : IGameStateProvider<EnemyStateSnapshot>
                         var effectStr = entry.StatusEffects?.Count > 0
                             ? string.Join(",", entry.StatusEffects.ConvertAll(e => $"{e.EffectName}={e.Intensity}"))
                             : "none";
+                        var shieldStr = entry.HasShield
+                            ? $" shield={entry.ShieldCurrentHealth:F0}/{entry.ShieldMaxHealth:F0}{(entry.ShieldActive ? "" : " (dead)")}"
+                            : string.Empty;
                         _log.LogInfo($"[EnemyProvider] Captured enemy: guid={guid} loc={entry.LocKey} name={entry.EnemyName} " +
-                            $"hp={entry.CurrentHealth}/{entry.MaxHealth} pos=({entry.PosX:F1},{entry.PosY:F1}) slot={i} effects=[{effectStr}]");
+                            $"hp={entry.CurrentHealth}/{entry.MaxHealth} pos=({entry.PosX:F1},{entry.PosY:F1}) slot={i} effects=[{effectStr}]{shieldStr}");
                     }
                 }
             }

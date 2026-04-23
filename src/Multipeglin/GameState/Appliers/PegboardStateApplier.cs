@@ -106,10 +106,12 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 {
                     peg = structCandidate;
                     structMatched++;
-                    if (entry.PegType != 0 || entry.IsBomb || entry.IsBouncer)
+                    if (entry.PegType != 0 || entry.IsBomb || entry.IsBouncer || entry.HasLpm)
                     {
-                        _log.LogInfo($"[PegboardApplier] STRUCT BIND: key=({entry.ParentName}|{entry.LocalPosX:F2},{entry.LocalPosY:F2}) " +
-                            $"guid={entry.Guid} type={entry.PegTypeName} hostPos=({entry.PosX:F1},{entry.PosY:F1}) " +
+                        var keyKind = entry.HasLpm ? $"sibling#{entry.SiblingIndex}" : $"lp({entry.LocalPosX:F2},{entry.LocalPosY:F2})";
+                        _log.LogInfo($"[PegboardApplier] STRUCT BIND: key=({entry.ParentName}|{keyKind}) " +
+                            $"guid={entry.Guid} type={entry.PegTypeName} lpm={entry.HasLpm} " +
+                            $"hostPos=({entry.PosX:F1},{entry.PosY:F1}) " +
                             $"clientPos=({structCandidate.transform.position.x:F1},{structCandidate.transform.position.y:F1})");
                     }
                 }
@@ -658,20 +660,41 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     /// produce identical keys for the same logical layout slot.
     /// May contain multiple pegs per key (collisions resolved later by iteration).
     /// </summary>
-    private static Dictionary<string, List<Peg>> BuildStructIndex(
+    /// <summary>
+    /// Pair of structural indexes. Pos-keyed uses (parent_name, localPos) which
+    /// is stable for static pegs but drifts for self-LPM pegs. Sibling-keyed
+    /// uses (parent_name, sibling_index) which stays stable regardless of
+    /// physics. The applier prefers sibling for HasLpm entries, pos otherwise.
+    /// </summary>
+    private class StructIndex
+    {
+        public Dictionary<string, List<Peg>> ByPos =
+            new Dictionary<string, List<Peg>>(System.StringComparer.Ordinal);
+        public Dictionary<string, List<Peg>> BySibling =
+            new Dictionary<string, List<Peg>>(System.StringComparer.Ordinal);
+    }
+
+    private static StructIndex BuildStructIndex(
         List<Peg> clientPegs, List<Bomb> clientBombs, List<BouncerPeg> clientBouncers)
     {
-        var index = new Dictionary<string, List<Peg>>(System.StringComparer.Ordinal);
+        var index = new StructIndex();
+        void AddTo(Dictionary<string, List<Peg>> dict, string key, Peg p)
+        {
+            if (!dict.TryGetValue(key, out var list))
+            {
+                list = new List<Peg>();
+                dict[key] = list;
+            }
+            list.Add(p);
+        }
         void Add(Peg p)
         {
             if (p == null) return;
-            var key = MakeStructKey(p);
-            if (!index.TryGetValue(key, out var list))
-            {
-                list = new List<Peg>();
-                index[key] = list;
-            }
-            list.Add(p);
+            var parent = p.transform.parent;
+            var parentName = parent != null ? parent.name : string.Empty;
+            var lp = p.transform.localPosition;
+            AddTo(index.ByPos, MakePosStructKey(parentName, lp.x, lp.y), p);
+            AddTo(index.BySibling, MakeSiblingStructKey(parentName, p.transform.GetSiblingIndex()), p);
         }
         if (clientPegs != null) foreach (var p in clientPegs) Add(p);
         if (clientBombs != null) foreach (var b in clientBombs) Add(b);
@@ -679,31 +702,76 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         return index;
     }
 
-    private static string MakeStructKey(Peg peg)
-    {
-        var parentName = peg.transform.parent != null ? peg.transform.parent.name : string.Empty;
-        var lp = peg.transform.localPosition;
-        return MakeStructKey(parentName, lp.x, lp.y);
-    }
-
-    private static string MakeStructKey(string parentName, float lx, float ly)
+    private static string MakePosStructKey(string parentName, float lx, float ly)
     {
         // Round to 3 decimals to absorb float jitter between host/client.
         return $"{parentName}|{lx:F3}|{ly:F3}";
     }
 
+    private static string MakeSiblingStructKey(string parentName, int siblingIndex)
+    {
+        return $"{parentName}|#{siblingIndex}";
+    }
+
     /// <summary>
     /// Find an unmatched client peg whose structural key matches the entry.
-    /// Pops the peg out of the index so it won't be matched again.
+    /// Pops the peg out of both indices so it won't be matched again.
+    ///
+    /// For HasLpm entries, prefers sibling-index matching — LPM-driven pegs
+    /// have drifting localPosition, so pos-matching would bind the wrong
+    /// peg (that's how "the wrong pegs are moving" on the client). Sibling
+    /// index is baked into the prefab and survives physics updates.
     /// </summary>
-    private static Peg ResolveByStructKey(Dictionary<string, List<Peg>> index, PegEntry entry)
+    private static Peg ResolveByStructKey(StructIndex index, PegEntry entry)
     {
         if (index == null || string.IsNullOrEmpty(entry.ParentName)) return null;
-        var key = MakeStructKey(entry.ParentName, entry.LocalPosX, entry.LocalPosY);
-        if (!index.TryGetValue(key, out var list) || list.Count == 0) return null;
+
+        Peg peg = null;
+        if (entry.HasLpm)
+        {
+            peg = PopFromIndex(index.BySibling,
+                MakeSiblingStructKey(entry.ParentName, entry.SiblingIndex));
+            if (peg == null)
+            {
+                // Fallback to pos for LPM-on-ancestor pegs (localPosition is
+                // still stable when LPM moves a parent row).
+                peg = PopFromIndex(index.ByPos,
+                    MakePosStructKey(entry.ParentName, entry.LocalPosX, entry.LocalPosY));
+            }
+        }
+        else
+        {
+            peg = PopFromIndex(index.ByPos,
+                MakePosStructKey(entry.ParentName, entry.LocalPosX, entry.LocalPosY));
+            if (peg == null && entry.SiblingIndex >= 0)
+            {
+                // Fallback to sibling for legacy layouts where localPos drifts
+                // but HasLpm wasn't flagged.
+                peg = PopFromIndex(index.BySibling,
+                    MakeSiblingStructKey(entry.ParentName, entry.SiblingIndex));
+            }
+        }
+
+        if (peg != null)
+        {
+            // Remove from the other dict too so this peg can't be double-bound.
+            RemovePegFromAllLists(index, peg);
+        }
+        return peg;
+    }
+
+    private static Peg PopFromIndex(Dictionary<string, List<Peg>> dict, string key)
+    {
+        if (!dict.TryGetValue(key, out var list) || list.Count == 0) return null;
         var peg = list[list.Count - 1];
         list.RemoveAt(list.Count - 1);
         return peg;
+    }
+
+    private static void RemovePegFromAllLists(StructIndex index, Peg peg)
+    {
+        foreach (var list in index.ByPos.Values) list.Remove(peg);
+        foreach (var list in index.BySibling.Values) list.Remove(peg);
     }
 
     /// <summary>

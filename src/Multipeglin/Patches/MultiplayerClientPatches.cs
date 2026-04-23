@@ -2887,14 +2887,14 @@ public static class MultiplayerClientPatches
         // runs because client battles end via the host heartbeat, not via the local win
         // flow — so the old ForestMap MC survives into CastleMap. When CastleMap's new MC
         // Awakes, the game code sees `instance != null` and self-destroys the new GO,
-        // leaving the stale 37-node ForestMap _nodes as the "active" MC. That mismatch
-        // is why host (27 CastleMap nodes) vs client (37 stale ForestMap nodes) drifts
-        // and SetActiveState throws on index 25 (BOSS) during node-type apply.
+        // leaving the stale 37-node ForestMap _nodes as the "active" MC.
         //
-        // Fix: on client, if a stale instance exists from a prior scene, null the static
-        // field now so the incoming MC's Awake takes over the singleton, then schedule
-        // destruction of the old GO. Setting the field is immediate; Destroy() is deferred
-        // until end of frame, which is fine because Awake checks the field, not the GO.
+        // Fix: only swap when the stale MC is from a DIFFERENT map scene (cross-act).
+        // For same-scene re-entries (ForestMap -> Battle -> ForestMap) we MUST let
+        // the game's default "keep old singleton, destroy new" path run — otherwise
+        // every re-entry re-triggers _firstLoad == true, which re-runs PrePanWait
+        // with a fresh `_playerInitialPosition` captured at the scene-default spawn
+        // and produces a disoriented fast camera scroll from far away.
         if (!IsHosting && MapController.instance != null && MapController.instance != __instance)
         {
             try
@@ -2902,9 +2902,12 @@ public static class MultiplayerClientPatches
                 var stale = MapController.instance;
                 string staleScene = stale.gameObject.scene.name;
                 string newScene = __instance.gameObject.scene.name;
-                MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Client: destroying stale MapController from scene '{staleScene}' so new MC from '{newScene}' can take over");
-                MapController.instance = null;
-                UnityEngine.Object.Destroy(stale.gameObject);
+                if (!string.Equals(staleScene, newScene, StringComparison.OrdinalIgnoreCase))
+                {
+                    MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Client: destroying stale MapController from scene '{staleScene}' so new MC from '{newScene}' can take over");
+                    MapController.instance = null;
+                    UnityEngine.Object.Destroy(stale.gameObject);
+                }
             }
             catch (Exception ex)
             {

@@ -250,6 +250,28 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 return;
             }
 
+            // Pre-seed the cache for the target scene so MapController.Awake's postfix
+            // can reposition the player and override _playerInitialPosition on the
+            // FIRST-EVER entry to this map scene. Without this, the first entry to a
+            // new act's map has no cache (we've never successfully applied there yet),
+            // so the camera pan math in PrePanWait uses the scene's default spawn
+            // position and scrolls the wrong distance / wrong direction.
+            if (MapScenes.Contains(targetScene)
+                && snapshot.PlayerMapPosX.HasValue
+                && snapshot.PlayerMapPosY.HasValue
+                && snapshot.Nodes != null
+                && snapshot.Nodes.Count > 0)
+            {
+                _mapStateCache[targetScene] = new CachedMapState
+                {
+                    Nodes = snapshot.Nodes,
+                    PlayerPosX = snapshot.PlayerMapPosX,
+                    PlayerPosY = snapshot.PlayerMapPosY,
+                };
+                _log.LogInfo($"[MapApplier] Pre-seeded cache for '{targetScene}' " +
+                    $"(playerPos={snapshot.PlayerMapPosX.Value:F1},{snapshot.PlayerMapPosY.Value:F1}, {snapshot.Nodes.Count} nodes)");
+            }
+
             _log.LogInfo($"[MapApplier] Scene change: '{currentScene}' -> '{targetScene}', loading...");
             LoadTargetScene(targetScene);
         }

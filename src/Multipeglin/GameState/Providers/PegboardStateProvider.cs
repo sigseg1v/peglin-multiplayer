@@ -331,10 +331,25 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
     {
         try
         {
-            entry.ParentName = peg.transform.parent != null ? peg.transform.parent.name : string.Empty;
+            var parent = peg.transform.parent;
+            entry.ParentName = parent != null ? parent.name : string.Empty;
             var lp = peg.transform.localPosition;
             entry.LocalPosX = lp.x;
             entry.LocalPosY = lp.y;
+            entry.SiblingIndex = peg.transform.GetSiblingIndex();
+
+            // HasLpm: LPM can be on the peg itself (moves the peg directly), or on
+            // any ancestor (moves a whole row). When LPM is on the peg itself,
+            // localPosition drifts every physics tick — matching by it will bind
+            // LPM pegs to the wrong targets, causing "the wrong pegs are moving"
+            // on the client (visible on ConvergingWaves / moving-peg layouts).
+            // When LPM is on an ancestor, the peg's localPosition is stable.
+            bool hasLpm = peg.GetComponent<LinearPegMovement>() != null;
+            if (!hasLpm && parent != null && parent.GetComponent<LinearPegMovement>() != null)
+                hasLpm = true;
+            if (!hasLpm && parent != null && parent.parent != null && parent.parent.GetComponent<LinearPegMovement>() != null)
+                hasLpm = true;
+            entry.HasLpm = hasLpm;
         }
         catch { }
     }

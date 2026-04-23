@@ -35,4 +35,15 @@ public class EnemyEntry
     public int SlotIndex { get; set; }
     public bool IsFlying { get; set; }
     public List<StatusEffectEntry> StatusEffects { get; set; } = new List<StatusEffectEntry>();
+
+    /// <summary>
+    /// ShieldEnemy barricade state (ShieldKnight etc). The BarricadeEnemy is a separate
+    /// Enemy instance attached via ShieldEnemy._shield, not tracked in EnemyManager.Enemies —
+    /// so it must be ridden along on its parent's entry.
+    /// </summary>
+    public bool HasShield { get; set; }
+    public float ShieldCurrentHealth { get; set; }
+    public float ShieldMaxHealth { get; set; }
+    /// <summary>True while the shield GameObject is active on the host — flips to false once the barricade dies.</summary>
+    public bool ShieldActive { get; set; }
 }

@@ -117,6 +117,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                             created++;
                             _enemyId.Register(spawned, entry.Id);
                             SyncStatusEffects(spawned, entry);
+                            SyncShield(spawned, entry);
                         }
                     }
                     else
@@ -129,6 +130,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                             entry.PosX, entry.PosY, match.transform.position.z);
                         ForceUpdateHealthBar(match);
                         SyncStatusEffects(match, entry);
+                        SyncShield(match, entry);
                         matched.Add(match);
                         updated++;
                         _enemyId.Register(match, entry.Id);
@@ -639,6 +641,58 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
         if (maxHealth <= 0) return;
         var field = AccessTools.Field(typeof(Enemy), "_maxHealth");
         field?.SetValue(enemy, maxHealth);
+    }
+
+    /// <summary>
+    /// Sync a ShieldEnemy's BarricadeEnemy child (barricade HP, active/dead state).
+    /// BarricadeEnemy is not in EnemyManager.Enemies so it must be driven through
+    /// the parent ShieldEnemy's entry.
+    /// </summary>
+    private void SyncShield(Enemy enemy, Snapshots.EnemyEntry entry)
+    {
+        try
+        {
+            if (!entry.HasShield) return;
+            if (!(enemy is ShieldEnemy se)) return;
+            var shield = se.shield;
+            if (shield == null) return;
+
+            var shieldGO = shield.gameObject;
+            bool clientActive = shieldGO.activeInHierarchy;
+
+            // Host shield dead — hide it on client.
+            if (!entry.ShieldActive)
+            {
+                if (clientActive)
+                {
+                    // Taking HP to 0 before disabling keeps the death callback path
+                    // consistent with a natural kill (OnDisable invokes _cbOnDamagedAnimationEnd).
+                    shield.CurrentHealth = 0f;
+                    ForceUpdateHealthBar(shield);
+                    shieldGO.SetActive(false);
+                    _log.LogInfo($"[EnemyApplier] Shield KILLED on '{enemy.locKey}' (guid={entry.Id})");
+                }
+                return;
+            }
+
+            // Host shield alive — ensure it's active and HP matches.
+            if (!clientActive)
+            {
+                shieldGO.SetActive(true);
+                _log.LogInfo($"[EnemyApplier] Shield RESURRECTED on '{enemy.locKey}' (guid={entry.Id})");
+            }
+
+            SetMaxHealth(shield, entry.ShieldMaxHealth);
+            if (System.Math.Abs(shield.CurrentHealth - entry.ShieldCurrentHealth) > 0.01f)
+            {
+                shield.CurrentHealth = entry.ShieldCurrentHealth;
+                ForceUpdateHealthBar(shield);
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[EnemyApplier] SyncShield failed for '{enemy?.locKey}': {ex.Message}");
+        }
     }
 
     /// <summary>
