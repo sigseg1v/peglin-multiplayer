@@ -48,6 +48,11 @@ public sealed class CoopSubscriptions
         // Used with AssetLoading.GetOrbPrefab() to get the correct orb type so DoAttack
         // computes damage with the right formula.
         public string OrbPrefabName;
+
+        // Pincer Maneuver (ADDITIONAL_REVERSE_PROJECTILE_ATTACK): when true, the primary
+        // damage has already been halved (rounded up) and a second shot of the same
+        // halved damage should land on the farthest enemy from the player.
+        public bool HasReverseShot;
     }
 
     private readonly IMultiplayerMode _mode;
@@ -632,10 +637,27 @@ public sealed class CoopSubscriptions
             bool isHeal = false;
             List<(Battle.StatusEffects.StatusEffectType, int)> capturedEffects = null;
             string capturedOrbName = null;
+            // Pincer Maneuver (ADDITIONAL_REVERSE_PROJECTILE_ATTACK): when the active
+            // player has this relic, ProjectileAttack.Fire halves the damage (rounded
+            // up) and schedules a second shot at the farthest enemy with the same
+            // halved value. We bypass Fire in coop, so replicate the split here.
+            bool hasReverseShot = false;
+            {
+                var rms = Resources.FindObjectsOfTypeAll<Relics.RelicManager>();
+                var rm = rms != null && rms.Length > 0 ? rms[0] : null;
+                if (rm != null)
+                    hasReverseShot = rm.RelicEffectActive(Relics.RelicEffect.ADDITIONAL_REVERSE_PROJECTILE_ATTACK);
+            }
+
             if (am != null)
             {
                 precomputedDamage = am.GetCurrentDamage(pegTally, dmgMult, dmgBonus, critCount);
                 isHeal = am.isHeal;
+                if (hasReverseShot && !isHeal && precomputedDamage > 0)
+                {
+                    long remainder = precomputedDamage % 2;
+                    precomputedDamage = precomputedDamage / 2 + remainder;
+                }
 
                 // Check attack type to determine targeting behavior
                 var attackField = AccessTools.Field(typeof(Battle.Attacks.AttackManager), "_attack");
@@ -722,6 +744,7 @@ public sealed class CoopSubscriptions
                 PlayerName = playerName ?? $"Slot {activeSlot}",
                 StatusEffectsToApply = capturedEffects,
                 OrbPrefabName = capturedOrbName,
+                HasReverseShot = hasReverseShot && !isHeal && precomputedDamage > 0,
             };
 
             _log.LogInfo($"[CoopSubs] Saved shot data for slot {activeSlot}: " +
@@ -1309,6 +1332,9 @@ public sealed class CoopSubscriptions
         public int NumPegsHit;
         public int CriticalHitCount;
         public string OrbPrefabName;
+        // Pincer Maneuver: damage above is the halved primary shot; the coop
+        // sequencer must apply the same damage to the farthest enemy.
+        public bool HasReverseShot;
     }
 
     /// <summary>
@@ -1339,6 +1365,7 @@ public sealed class CoopSubscriptions
                 NumPegsHit = d.NumPegsHit,
                 CriticalHitCount = d.CriticalHitCount,
                 OrbPrefabName = d.OrbPrefabName,
+                HasReverseShot = d.HasReverseShot,
             });
         }
         inst._accumulatedShotData.Clear();

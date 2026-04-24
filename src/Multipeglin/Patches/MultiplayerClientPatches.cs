@@ -2593,6 +2593,62 @@ public static class MultiplayerClientPatches
                 $"orb={shot.OrbPrefabName} dmg={shot.Damage} targets={targets.Count} " +
                 $"aoe={shot.IsAoE} effects={shot.StatusEffectsToApply?.Count ?? 0}");
 
+            // Pincer Maneuver: fire a second visual + damage at the farthest enemy
+            // with the same (already-halved) damage, mirroring ProjectileAttack.Fire.
+            if (shot.HasReverseShot && !shot.IsAoE && !shot.IsHeal && shot.Damage > 0)
+            {
+                yield return new UnityEngine.WaitForSeconds(0.15f);
+
+                var reverseTarget = em.GetFarthestEnemyFromPlayer();
+                if (reverseTarget != null && reverseTarget.CurrentHealth > 0f)
+                {
+                    string reverseGuid = enemyId?.GetGuid(reverseTarget);
+
+                    try
+                    {
+                        reg?.Dispatch(new Events.Network.Battle.AttackStartedEvent
+                        {
+                            AnimTrigger = "attack",
+                            TargetEnemyGuid = reverseGuid,
+                            NumPegsHit = shot.NumPegsHit,
+                            IsCrit = shot.CriticalHitCount > 0,
+                            OrbName = shot.OrbPrefabName,
+                            SlotIndex = shot.SlotIndex,
+                        });
+                    }
+                    catch { }
+
+                    try { Battle.Attacks.AttackManager.OnAttackPerformed?.Invoke("attack"); } catch { }
+
+                    if (cap != null && !string.IsNullOrEmpty(reverseGuid))
+                        cap.SetupAttack(reverseGuid, shot.NumPegsHit, shot.CriticalHitCount > 0, shot.OrbPrefabName);
+
+                    float reverseWaited = 0f;
+                    while (cap != null && cap.IsAttacking && reverseWaited < 2.0f)
+                    {
+                        reverseWaited += UnityEngine.Time.deltaTime;
+                        yield return null;
+                    }
+
+                    Events.Subscriptions.EnemySubscriptions.DamageAttributionSlotOverride = shot.SlotIndex;
+                    try
+                    {
+                        if (reverseTarget != null && reverseTarget.CurrentHealth > 0f)
+                        {
+                            reverseTarget.Damage(shot.Damage, screenshake: false, 0.25f, 1f,
+                                unblockable: false, Battle.Enemies.Enemy.EnemyDamageSource.TargetedAttack);
+                        }
+                    }
+                    finally
+                    {
+                        Events.Subscriptions.EnemySubscriptions.DamageAttributionSlotOverride = -1;
+                    }
+
+                    MultiplayerPlugin.Logger?.LogInfo(
+                        $"[CoopAttack] Pincer reverse for slot {shot.SlotIndex}: dmg={shot.Damage} target={reverseGuid}");
+                }
+            }
+
             // Brief gap between shots so the enemy flinch animation is visible
             // before the next orb is thrown.
             yield return new UnityEngine.WaitForSeconds(0.3f);
