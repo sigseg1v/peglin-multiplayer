@@ -2549,9 +2549,10 @@ public static class MultiplayerClientPatches
             catch { }
 
             // Fire peglin throw animation on host (AttackStartedClientHandler does
-            // the same on spectating clients). OnFirePoint inside that animation is
-            // what triggers ClientAttackProjectile's actual sprite launch.
-            try { Battle.Attacks.AttackManager.OnPeglinAttackAnimationRequested?.Invoke("attack"); } catch { }
+            // the same on spectating clients). PeglinBattleAnimationController
+            // subscribes to OnAttackPerformed, not OnPeglinAttackAnimationRequested —
+            // the latter has no subscribers and won't drive OnFirePoint.
+            try { Battle.Attacks.AttackManager.OnAttackPerformed?.Invoke("attack"); } catch { }
 
             // Arm ClientAttackProjectile on host to fly the sprite when OnFirePoint fires.
             var cap = Multipeglin.GameState.ClientAttackProjectile.Instance;

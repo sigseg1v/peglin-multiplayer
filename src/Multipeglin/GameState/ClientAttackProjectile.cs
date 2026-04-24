@@ -177,17 +177,15 @@ public class ClientAttackProjectile : MonoBehaviour
         go.transform.position = startPos;
 
         // Target: collider bounds center so we land on the middle of the enemy sprite,
-        // not the transform root which tends to sit at the enemy's feet.
+        // not the transform root which tends to sit at the enemy's feet. Always aim
+        // at the sprite center (grounded or flying) — locking Y to the player's arm
+        // made grounded enemies look like they were missed because the orb vanished
+        // below the sprite.
         Vector3 targetPos = targetEnemy.transform.position;
         var col = targetEnemy.GetComponentInChildren<Collider2D>();
         if (col != null) targetPos = col.bounds.center;
 
-        // Horizontal flight — Y locked to start so grounded enemies take a flat shot.
-        // Flying enemies get a diagonal line up to their hurtbox center.
-        Vector3 endPos = new Vector3(
-            targetPos.x,
-            targetEnemy.IsFlying ? targetPos.y : startPos.y,
-            startPos.z);
+        Vector3 endPos = new Vector3(targetPos.x, targetPos.y, startPos.z);
 
         Vector3 direction = (endPos - startPos).normalized;
         if (direction.sqrMagnitude > 0.001f)
