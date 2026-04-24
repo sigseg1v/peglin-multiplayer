@@ -735,14 +735,14 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             {
                 // Fallback to pos for LPM-on-ancestor pegs (localPosition is
                 // still stable when LPM moves a parent row).
-                peg = PopFromIndex(index.ByPos,
-                    MakePosStructKey(entry.ParentName, entry.LocalPosX, entry.LocalPosY));
+                peg = PopPosMatchingEntry(index.ByPos,
+                    MakePosStructKey(entry.ParentName, entry.LocalPosX, entry.LocalPosY), entry);
             }
         }
         else
         {
-            peg = PopFromIndex(index.ByPos,
-                MakePosStructKey(entry.ParentName, entry.LocalPosX, entry.LocalPosY));
+            peg = PopPosMatchingEntry(index.ByPos,
+                MakePosStructKey(entry.ParentName, entry.LocalPosX, entry.LocalPosY), entry);
             if (peg == null && entry.SiblingIndex >= 0)
             {
                 // Fallback to sibling for legacy layouts where localPos drifts
@@ -766,6 +766,52 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         var peg = list[list.Count - 1];
         list.RemoveAt(list.Count - 1);
         return peg;
+    }
+
+    // LongPegs (and other mesh-baked flat pegs) all share the same localPosition
+    // because their geometry lives in mesh vertices, not the transform. That
+    // makes (parentName|localPos) a many-to-one bucket, and PopFromIndex would
+    // return an arbitrary peg from the list — in MinotaurLayout2 this produced
+    // a horizontal mirror of host state. Disambiguate by worldPos: pick the
+    // peg in the collision list whose world position is closest to the host's
+    // reported position, within a reasonable threshold.
+    private static Peg PopPosMatchingEntry(
+        Dictionary<string, List<Peg>> dict, string key, PegEntry entry)
+    {
+        if (!dict.TryGetValue(key, out var list) || list.Count == 0) return null;
+
+        if (list.Count == 1)
+        {
+            var only = list[0];
+            list.RemoveAt(0);
+            return only;
+        }
+
+        int bestIdx = -1;
+        float bestDistSq = float.MaxValue;
+        for (int i = 0; i < list.Count; i++)
+        {
+            var p = list[i];
+            if (p == null) continue;
+            float dx = p.transform.position.x - entry.PosX;
+            float dy = p.transform.position.y - entry.PosY;
+            float d2 = dx * dx + dy * dy;
+            if (d2 < bestDistSq)
+            {
+                bestDistSq = d2;
+                bestIdx = i;
+            }
+        }
+
+        // Threshold: 1.5 units. Same value as IndexBindPositionSane — if the
+        // closest candidate is farther than this, something structural is off
+        // and we should let Phase 2 (FindClosestUnmatched) handle it rather
+        // than commit to a wrong bind.
+        if (bestIdx < 0 || bestDistSq > 1.5f * 1.5f) return null;
+
+        var picked = list[bestIdx];
+        list.RemoveAt(bestIdx);
+        return picked;
     }
 
     private static void RemovePegFromAllLists(StructIndex index, Peg peg)
