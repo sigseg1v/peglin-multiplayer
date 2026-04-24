@@ -4,6 +4,7 @@ using System.Linq;
 using Battle.Enemies;
 using BepInEx.Logging;
 using Data;
+using DG.Tweening;
 using HarmonyLib;
 using Loading;
 using Multipeglin.GameState.Snapshots;
@@ -125,9 +126,9 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                         // Same type — update state
                         SetMaxHealth(match, entry.MaxHealth);
                         match.CurrentHealth = entry.CurrentHealth;
-                        // Set position directly — enemy animations handle the visual movement
-                        match.transform.position = new Vector3(
-                            entry.PosX, entry.PosY, match.transform.position.z);
+                        // Smoothly tween to the host position when the delta is a plausible
+                        // walk step; snap for first-bind and large jumps (teleports/respawn).
+                        ApplyPosition(match, entry, firstBind: false);
                         ForceUpdateHealthBar(match);
                         SyncStatusEffects(match, entry);
                         SyncShield(match, entry);
@@ -634,6 +635,90 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
 
         _log.LogWarning($"[EnemyApplier] No prefab found for '{cleanName}' (cache={cache?.Count ?? -1}, resources={allEnemies.Length})");
         return null;
+    }
+
+    /// <summary>
+    /// Smoothly move a client enemy to the host-reported position when the delta matches
+    /// a normal walk step; snap for large jumps (teleport, respawn, first bind).
+    /// </summary>
+    private static void ApplyPosition(Enemy enemy, Snapshots.EnemyEntry entry, bool firstBind)
+    {
+        var current = enemy.transform.position;
+        var target = new Vector3(entry.PosX, entry.PosY, current.z);
+        float dx = Mathf.Abs(target.x - current.x);
+        float dy = Mathf.Abs(target.y - current.y);
+
+        // Walk distance window: any horizontal delta up to ~8 units (typical max slot spacing).
+        // Y delta must be tiny — vertical jumps are boss animations or respawn and should snap.
+        bool canTween = !firstBind && dx > 0.05f && dx < 8f && dy < 0.5f;
+
+        if (!canTween)
+        {
+            enemy.transform.position = target;
+            return;
+        }
+
+        string id = "coopEnemyMove_" + (entry.Id ?? enemy.GetInstanceID().ToString());
+        DG.Tweening.DOTween.Kill(id);
+
+        StartWalkAnim(enemy);
+        float duration = Mathf.Clamp(dx / 4f, 0.4f, 1.2f);
+        var enemyRef = enemy;
+        var tween = enemy.transform.DOMoveX(target.x, duration).SetEase(DG.Tweening.Ease.InOutSine);
+        tween.SetId(id);
+        tween.onComplete = () => StopWalkAnim(enemyRef);
+
+        if (dy > 0.01f)
+        {
+            var p = enemy.transform.position;
+            p.y = target.y;
+            enemy.transform.position = p;
+        }
+    }
+
+    private static void StartWalkAnim(Enemy enemy)
+    {
+        try
+        {
+            if (!(enemy is Battle.Enemies.WalkEnemy)) return;
+            var animField = AccessTools.Field(typeof(Enemy), "_anim");
+            var anim = animField?.GetValue(enemy) as Animator;
+            if (anim == null || anim.runtimeAnimatorController == null) return;
+            var moveAnimField = AccessTools.Field(typeof(Battle.Enemies.WalkEnemy), "_moveAnimName");
+            var moveAnim = moveAnimField?.GetValue(enemy) as string ?? "Running";
+            foreach (var p in anim.parameters)
+            {
+                if (p.name == moveAnim && p.type == AnimatorControllerParameterType.Bool)
+                {
+                    anim.SetBool(moveAnim, true);
+                    return;
+                }
+            }
+        }
+        catch { }
+    }
+
+    private static void StopWalkAnim(Enemy enemy)
+    {
+        try
+        {
+            if (enemy == null) return;
+            if (!(enemy is Battle.Enemies.WalkEnemy)) return;
+            var animField = AccessTools.Field(typeof(Enemy), "_anim");
+            var anim = animField?.GetValue(enemy) as Animator;
+            if (anim == null || anim.runtimeAnimatorController == null) return;
+            var moveAnimField = AccessTools.Field(typeof(Battle.Enemies.WalkEnemy), "_moveAnimName");
+            var moveAnim = moveAnimField?.GetValue(enemy) as string ?? "Running";
+            foreach (var p in anim.parameters)
+            {
+                if (p.name == moveAnim && p.type == AnimatorControllerParameterType.Bool)
+                {
+                    anim.SetBool(moveAnim, false);
+                    return;
+                }
+            }
+        }
+        catch { }
     }
 
     private static void SetMaxHealth(Enemy enemy, float maxHealth)
