@@ -52,6 +52,11 @@ public class ClientAttackProjectile : MonoBehaviour
         public float MinForce;
         public float MaxForce;
         public float ForcePerPeg;
+        // Cumulative localScale from the shot prefab's root to the sprite child.
+        // ShotBehavior applies _minSize/_maxSize to the root transform, but the sprite
+        // often sits on a child with its own scale — we must include that multiplier
+        // or the projectile renders roughly double size.
+        public Vector3 SpriteChildScale;
     }
 
     // Per-orb cache so we only reflect once. Null entry means "resolved, nothing useful".
@@ -132,6 +137,7 @@ public class ClientAttackProjectile : MonoBehaviour
         float minForce = DefaultMinForce;
         float maxForce = DefaultMaxForce;
         float forcePerPeg = DefaultForcePerPeg;
+        Vector3 childScale = Vector3.one;
 
         if (visOpt.HasValue)
         {
@@ -147,6 +153,7 @@ public class ClientAttackProjectile : MonoBehaviour
             minForce = vis.MinForce;
             maxForce = vis.MaxForce;
             forcePerPeg = vis.ForcePerPeg;
+            childScale = vis.SpriteChildScale;
             if (vis.StartupOffset.sqrMagnitude > 0.0001f)
                 startupOffset = vis.StartupOffset;
         }
@@ -164,9 +171,11 @@ public class ClientAttackProjectile : MonoBehaviour
         // ShotBehavior.Fire formula:
         //   force = Clamp(numPegsHit * forcePerPeg, minForce, maxForce)
         //   scale = Lerp(minSize, maxSize, |force| / maxForce)
+        // applied to the shot prefab ROOT. Multiply by the sprite child's cumulative
+        // scale so the rendered size matches the real shot.
         float force = Mathf.Clamp(_numPegsHit * forcePerPeg, minForce, maxForce);
         float t = maxForce > 0f ? Mathf.Abs(force) / maxForce : 0f;
-        go.transform.localScale = Vector3.Lerp(minSize, maxSize, t);
+        go.transform.localScale = Vector3.Scale(Vector3.Lerp(minSize, maxSize, t), childScale);
 
         // Starting Y is Peglin's ground position + the shot prefab's startup Y so the
         // sprite leaves from the arm, not the floor. X/Z stay with the player.
@@ -265,6 +274,15 @@ public class ClientAttackProjectile : MonoBehaviour
             float forcePerPeg = (float)(AccessTools.Field(typeof(Battle.Attacks.ShotBehavior), "_forcePerPeg")
                 ?.GetValue(sb) ?? DefaultForcePerPeg);
 
+            // Walk from sprite transform up to shot root, accumulating localScale.
+            Vector3 childScale = Vector3.one;
+            var tf = shotSr.transform;
+            while (tf != null && tf != shotGo.transform)
+            {
+                childScale = Vector3.Scale(childScale, tf.localScale);
+                tf = tf.parent;
+            }
+
             result = new ShotVisual
             {
                 Sprite = shotSr.sprite,
@@ -278,6 +296,7 @@ public class ClientAttackProjectile : MonoBehaviour
                 MinForce = minForce,
                 MaxForce = maxForce,
                 ForcePerPeg = forcePerPeg,
+                SpriteChildScale = childScale,
             };
         }
         catch { result = null; }
