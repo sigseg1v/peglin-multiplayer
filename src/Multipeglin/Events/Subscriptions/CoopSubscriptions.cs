@@ -1471,9 +1471,19 @@ public sealed class CoopSubscriptions
     }
 
     /// <summary>
-    /// Capture status effects from an orb's IAffectEnemyOnHit components and relic-based effects.
-    /// Called at shot completion time for non-host players, since their effects won't be applied
-    /// by the normal DoAttack pipeline (which only processes the host's Attack object).
+    /// Capture status effects from an orb at shot completion time for non-host players,
+    /// since their effects won't be applied by the normal DoAttack pipeline (which only
+    /// processes the host's Attack object).
+    ///
+    /// We collect from three sources matching the native per-hit pipeline:
+    ///   1. attack.GetStatusEffects(critCount) — covers the Attack base class's relic
+    ///      effects (ATTACKS_DEAL_BLIND, Transpherency, Poison, Exploitaball) AND the
+    ///      subclass overrides that orbs like BlindOrb, ThornOrb, PoisonOrb rely on
+    ///      (e.g. BlindAttack adds Blind(BlindIntensity=11)). Invoked natively per-hit
+    ///      from ProjectileAttack.DoDamage; we invoke it once per shot for replay.
+    ///   2. AddStatusEffectOnHit components — per-hit IAffectEnemyOnHit effects
+    ///      attached to the orb prefab.
+    ///   3. AddRandomStatusEffectOnHit — Roundreloquence's random roll.
     /// </summary>
     private static List<(Battle.StatusEffects.StatusEffectType, int)> CaptureOrbStatusEffects(
         Battle.Attacks.Attack attack, int critCount)
@@ -1481,7 +1491,27 @@ public sealed class CoopSubscriptions
         var effects = new List<(Battle.StatusEffects.StatusEffectType, int)>();
         try
         {
-            // 1. AddStatusEffectOnHit — the most common orb effect (Poison, Blind, etc.)
+            // 1. attack.GetStatusEffects — relic-driven base effects + Attack subclass overrides
+            try
+            {
+                var fromAttack = attack.GetStatusEffects(critCount);
+                if (fromAttack != null)
+                {
+                    foreach (var se in fromAttack)
+                    {
+                        if (se == null || se.EffectType == Battle.StatusEffects.StatusEffectType.None)
+                            continue;
+                        effects.Add((se.EffectType, se.Intensity));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MultiplayerPlugin.Logger?.LogWarning(
+                    $"[CoopSubs] attack.GetStatusEffects failed: {ex.Message}");
+            }
+
+            // 2. AddStatusEffectOnHit — orb-prefab per-hit effects
             foreach (var seh in attack.GetComponents<Battle.Attacks.AttackBehaviours.AddStatusEffectOnHit>())
             {
                 int intensity = seh.intensity;
@@ -1492,7 +1522,7 @@ public sealed class CoopSubscriptions
                 effects.Add((seh.type, intensity));
             }
 
-            // 2. AddRandomStatusEffectOnHit (Roundreloquence orb)
+            // 3. AddRandomStatusEffectOnHit — Roundreloquence orb
             foreach (var _ in attack.GetComponents<Battle.Attacks.AttackBehaviours.AddRandomStatusEffectOnHit>())
             {
                 int idx = UnityEngine.Random.Range(0,
@@ -1502,27 +1532,11 @@ public sealed class CoopSubscriptions
                     Battle.Attacks.AttackBehaviours.AddRandomStatusEffectOnHit.RoundreloquenceEffectIntensity[idx]));
             }
 
-            // 3. Relic-based status effects (from Attack.GetStatusEffects equivalent)
-            // Use RelicEffectActive (read-only) rather than AttemptUseRelic to avoid consuming
-            // single-use charges during capture. The non-host player's relics are loaded.
-            var rmField = AccessTools.Field(typeof(Battle.Attacks.Attack), "_relicManager");
-            var rm = rmField?.GetValue(attack) as Relics.RelicManager;
-            if (rm != null)
-            {
-                if (rm.RelicEffectActive(Relics.RelicEffect.ATTACKS_DEAL_BLIND))
-                    effects.Add((Battle.StatusEffects.StatusEffectType.Blind, 4));
-                if (rm.RelicEffectActive(Relics.RelicEffect.ATTACKS_APPLY_TRANSPHERENCY))
-                    effects.Add((Battle.StatusEffects.StatusEffectType.Transpherency, 3));
-                if (rm.RelicEffectActive(Relics.RelicEffect.ATTACKS_DEAL_POISON))
-                    effects.Add((Battle.StatusEffects.StatusEffectType.Poison, 1));
-                if (rm.RelicEffectActive(Relics.RelicEffect.ATTACKS_APPLY_EXPLOITABALL))
-                    effects.Add((Battle.StatusEffects.StatusEffectType.Exploitaball, critCount > 0 ? 2 : 1));
-            }
-
             if (effects.Count > 0)
             {
                 MultiplayerPlugin.Logger?.LogInfo(
-                    $"[CoopSubs] Captured {effects.Count} status effect(s) from orb: " +
+                    $"[CoopSubs] Captured {effects.Count} status effect(s) from orb " +
+                    $"({attack.GetType().Name}): " +
                     string.Join(", ", effects.Select(e => $"{e.Item1}({e.Item2})")));
             }
         }

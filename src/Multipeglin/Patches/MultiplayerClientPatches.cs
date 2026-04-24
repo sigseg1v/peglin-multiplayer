@@ -2246,193 +2246,28 @@ public static class MultiplayerClientPatches
 
     private static IEnumerator EmptyEnumerator() { yield break; }
 
-    // =========================================================================
-    // PEG DOUBLE-HIT DIAGNOSTIC — host-only, detect if HandlePegActivated is
-    // firing twice per physical peg hit. Tracks every peg activation with its
-    // instance ID and timestamp. At shot fire we dump the subscriber count,
-    // during the shot we log any time the SAME peg fires twice within 50 ms
-    // (physically impossible — the ball needs travel time to re-enter a peg),
-    // and at shot complete we summarize double-fires.
-    // =========================================================================
-
-    private sealed class PegHitRecord
-    {
-        public int InstanceId;
-        public int ActivationIndex;
-        public float Timestamp;
-        public string PegName;
-    }
-
-    private static readonly System.Collections.Generic.Dictionary<int, PegHitRecord> _pegDiag_LastHit
-        = new System.Collections.Generic.Dictionary<int, PegHitRecord>();
-    private static int _pegDiag_ActivationCounter = 0;
-    private static int _pegDiag_DoubleFires = 0;
-    private static int _pegDiag_ShotId = 0;
-    private const float PegDiag_DoubleFireThresholdSec = 0.050f; // 50 ms
-
-    [HarmonyPatch(typeof(BattleController), "HandlePegActivated")]
-    [HarmonyPrefix]
-    public static void BattleController_HandlePegActivated_PegDiag(Peg.PegType type, Peg peg)
-    {
-        if (!IsHosting) return;
-        if (peg == null) return;
-        try
-        {
-            int id = peg.GetInstanceID();
-            float now = UnityEngine.Time.realtimeSinceStartup;
-            string pegName = peg.gameObject != null ? peg.gameObject.name : "?";
-            _pegDiag_ActivationCounter++;
-
-            if (_pegDiag_LastHit.TryGetValue(id, out var prev))
-            {
-                float dt = now - prev.Timestamp;
-                // Re-activation of the same peg. If the interval is below the
-                // physical travel threshold, flag it as a suspected double-fire
-                // (the ball cannot leave and return to the same peg in <50 ms).
-                if (dt < PegDiag_DoubleFireThresholdSec)
-                {
-                    _pegDiag_DoubleFires++;
-                    MultiplayerPlugin.Logger?.LogWarning(
-                        $"[PegDiag] DOUBLE-FIRE shot={_pegDiag_ShotId} peg='{pegName}' id={id} " +
-                        $"type={type} activation#={_pegDiag_ActivationCounter} (prev #{prev.ActivationIndex}) dt={dt * 1000f:F1}ms");
-                }
-                else
-                {
-                    MultiplayerPlugin.Logger?.LogInfo(
-                        $"[PegDiag] re-hit shot={_pegDiag_ShotId} peg='{pegName}' id={id} " +
-                        $"type={type} activation#={_pegDiag_ActivationCounter} (prev #{prev.ActivationIndex}) dt={dt * 1000f:F1}ms");
-                }
-            }
-            else
-            {
-                MultiplayerPlugin.Logger?.LogInfo(
-                    $"[PegDiag] first-hit shot={_pegDiag_ShotId} peg='{pegName}' id={id} " +
-                    $"type={type} activation#={_pegDiag_ActivationCounter}");
-            }
-
-            _pegDiag_LastHit[id] = new PegHitRecord
-            {
-                InstanceId = id,
-                ActivationIndex = _pegDiag_ActivationCounter,
-                Timestamp = now,
-                PegName = pegName,
-            };
-        }
-        catch { }
-    }
-
-    /// <summary>
-    /// Reset the per-shot tracking on every PachinkoBall.Fire, and dump the
-    /// current subscriber count of Peg.OnPegActivated so we can see if a second
-    /// HandlePegActivated delegate has been added (double-subscription is the
-    /// most likely cause of double-counting if one peg hit produces two
-    /// activation invocations with dt < 1ms).
-    /// </summary>
-    [HarmonyPatch(typeof(PachinkoBall), "Fire")]
+    // GOLD_ADDS_TO_DAMAGE (Peglin's Cup relic) adds +1 to _pegMultiplierDamageTally
+    // on every coin-peg collection during a shot. This can make damage totals look
+    // "doubled" vs. the visible peg-hit count — flag it explicitly so logs don't
+    // get mistaken for a bug. See PegCoinOverlay.TriggerCoinCollected (decomp).
+    [HarmonyPatch(typeof(Battle.PegBehaviour.PegCoinOverlay), "TriggerCoinCollected")]
     [HarmonyPostfix]
-    public static void PachinkoBall_Fire_PegDiagReset(PachinkoBall __instance)
-    {
-        if (!IsHosting) return;
-        if (__instance == null || __instance.IsDummy) return;
-        try
-        {
-            _pegDiag_ShotId++;
-            _pegDiag_LastHit.Clear();
-            _pegDiag_ActivationCounter = 0;
-            _pegDiag_DoubleFires = 0;
-
-            int subs = 0;
-            try { subs = Peg.OnPegActivated?.GetInvocationList()?.Length ?? 0; } catch { }
-
-            MultiplayerPlugin.Logger?.LogInfo(
-                $"[PegDiag] ==== SHOT {_pegDiag_ShotId} start orb={__instance.gameObject.name} " +
-                $"Peg.OnPegActivated.subscribers={subs} ====");
-
-            if (subs > 0)
-            {
-                try
-                {
-                    var invocations = Peg.OnPegActivated.GetInvocationList();
-                    for (int i = 0; i < invocations.Length; i++)
-                    {
-                        var d = invocations[i];
-                        string targetDesc = d.Target != null
-                            ? $"{d.Target.GetType().Name}#{d.Target.GetHashCode():X}"
-                            : "<static>";
-                        MultiplayerPlugin.Logger?.LogInfo(
-                            $"[PegDiag]   subscriber[{i}]: {targetDesc}.{d.Method?.Name}");
-                    }
-                }
-                catch { }
-            }
-        }
-        catch { }
-    }
-
-    /// <summary>
-    /// On shot end, dump the total activations and how many looked like
-    /// physically-impossible double-fires. Called from DoAttack_Prefix (the
-    /// natural end-of-shot point on host) — `OnShotComplete` is a static
-    /// delegate field, not a property, so it can't be patched directly.
-    /// </summary>
-    private static void PegDiag_DumpShotSummary(string source)
+    public static void PegCoinOverlay_TriggerCoinCollected_GoldLog(
+        Battle.PegBehaviour.PegCoinOverlay __instance)
     {
         if (!IsHosting) return;
         try
         {
-            int uniquePegs = _pegDiag_LastHit.Count;
-            int totalActivations = _pegDiag_ActivationCounter;
+            if (BattleController.CurrentBattleState != BattleController.BattleState.AWAITING_SHOT_COMPLETION)
+                return;
+            var pegField = AccessTools.Field(typeof(Battle.PegBehaviour.PegCoinOverlay), "_peg");
+            var peg = pegField?.GetValue(__instance) as Peg;
+            if (peg == null) return;
+            if (peg.relicManager == null) return;
+            if (!peg.relicManager.RelicEffectActive(Relics.RelicEffect.GOLD_ADDS_TO_DAMAGE)) return;
+            string pegName = peg.gameObject != null ? peg.gameObject.name : "?";
             MultiplayerPlugin.Logger?.LogInfo(
-                $"[PegDiag] ==== SHOT {_pegDiag_ShotId} end ({source}) uniquePegs={uniquePegs} " +
-                $"totalActivations={totalActivations} " +
-                $"grantAdditional={_pegDiag_GrantAdditionalCount} " +
-                $"doubleFires={_pegDiag_DoubleFires} ====");
-            _pegDiag_GrantAdditionalCount = 0;
-        }
-        catch { }
-    }
-
-    // Track how many times GrantAdditionalBasicPeg is called per shot to
-    // explain discrepancies between HandlePegActivated count and BC's
-    // _pegMultiplierDamageTally. GrantAdditionalBasicPeg increments BOTH
-    // _numPegsHit AND _pegMultiplierDamageTally (decomp BC.cs:2393, 2403)
-    // without firing OnPegActivated — so it's invisible to our peg-count
-    // diagnostic above.
-    private static int _pegDiag_GrantAdditionalCount = 0;
-
-    [HarmonyPatch(typeof(BattleController), nameof(BattleController.GrantAdditionalBasicPeg))]
-    [HarmonyPrefix]
-    public static void BC_GrantAdditionalBasicPeg_PegDiag(
-        BattleController __instance, UnityEngine.Vector3 pos, int mult, int bonus)
-    {
-        if (!IsHosting) return;
-        try
-        {
-            _pegDiag_GrantAdditionalCount++;
-            // Best-effort caller identity: walk the stack and log the first
-            // non-Harmony/non-reflection frame so we can see whether this was
-            // a wall bounce, coin collection, INFLIGHT_DAMAGE tick, etc.
-            string caller = "?";
-            try
-            {
-                var st = new System.Diagnostics.StackTrace(1, false);
-                for (int i = 0; i < st.FrameCount; i++)
-                {
-                    var m = st.GetFrame(i)?.GetMethod();
-                    if (m == null) continue;
-                    var t = m.DeclaringType?.FullName ?? "";
-                    if (t.StartsWith("HarmonyLib") || t.StartsWith("System.Reflection")
-                        || t.StartsWith("Multipeglin.Patches")) continue;
-                    caller = $"{m.DeclaringType?.Name}.{m.Name}";
-                    break;
-                }
-            }
-            catch { }
-
-            MultiplayerPlugin.Logger?.LogInfo(
-                $"[PegDiag] GrantAdditionalBasicPeg shot={_pegDiag_ShotId} " +
-                $"mult={mult} bonus={bonus} pos=({pos.x:F2},{pos.y:F2}) " +
-                $"caller={caller} count#={_pegDiag_GrantAdditionalCount}");
+                $"[Relic] GOLD_ADDS_TO_DAMAGE triggered on peg '{pegName}' (+1 peg tally)");
         }
         catch { }
     }
@@ -2568,8 +2403,6 @@ public static class MultiplayerClientPatches
     {
         if (!IsHosting) return true;
         if (!UI.LobbyUI.GameStartReceived) return true;
-
-        PegDiag_DumpShotSummary("DoAttack");
 
         // Clear the pending damage overlay — the attack is now resolving
         try

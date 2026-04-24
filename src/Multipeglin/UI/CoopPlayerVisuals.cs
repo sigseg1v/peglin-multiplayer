@@ -129,6 +129,8 @@ public class CoopPlayerVisuals : MonoBehaviour
     // Cache the game's TMP font once
     private static TMP_FontAsset _gameFont;
     private static bool _gameFontSearched;
+    private static TMP_FontAsset _numberFont;
+    private static bool _numberFontSearched;
 
     private void Update()
     {
@@ -422,6 +424,35 @@ public class CoopPlayerVisuals : MonoBehaviour
         }
         catch { }
         return _gameFont;
+    }
+
+    /// <summary>
+    /// Font used for status-effect intensity numbers. The generic game font picked
+    /// up by GetGameFont is a thin display font that renders poorly for small
+    /// digits above player heads. Use the same font the base game puts on enemy
+    /// status icons: StatusEffectIcon._intensityText.font.
+    /// </summary>
+    private static TMP_FontAsset GetStatusEffectNumberFont()
+    {
+        if (_numberFontSearched) return _numberFont ?? GetGameFont();
+        _numberFontSearched = true;
+        try
+        {
+            var intensityField = HarmonyLib.AccessTools.Field(
+                typeof(Battle.StatusEffects.StatusEffectIcon), "_intensityText");
+            if (intensityField != null)
+            {
+                // Prefer a live enemy-side icon instance; fall back to the manager's prefab.
+                foreach (var icon in Resources.FindObjectsOfTypeAll<Battle.StatusEffects.StatusEffectIcon>())
+                {
+                    if (icon == null) continue;
+                    var tmp = intensityField.GetValue(icon) as TextMeshProUGUI;
+                    if (tmp?.font != null) { _numberFont = tmp.font; break; }
+                }
+            }
+        }
+        catch { }
+        return _numberFont ?? GetGameFont();
     }
 
     /// <summary>Format a name: max 14 chars, 7 per line, max 2 lines.</summary>
@@ -964,7 +995,7 @@ public class CoopPlayerVisuals : MonoBehaviour
             tmp.text = intensity > 999 ? (intensity / 1000) + "K" : intensity.ToString();
             tmp.fontSize = 32;
             tmp.fontStyle = FontStyles.Bold;
-            var font = GetGameFont();
+            var font = GetStatusEffectNumberFont();
             if (font != null) tmp.font = font;
             tmp.alignment = TextAlignmentOptions.BottomRight;
             tmp.color = Color.white;
