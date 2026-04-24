@@ -16,4 +16,7 @@ public class AttackStartedEvent
 
     /// <summary>Name of the orb being fired (for sprite lookup).</summary>
     public string OrbName { get; set; }
+
+    /// <summary>Slot index of the player firing this shot (0 = host). Used for sequencing multi-player coop turns.</summary>
+    public int SlotIndex { get; set; }
 }

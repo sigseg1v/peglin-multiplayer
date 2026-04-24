@@ -20,6 +20,13 @@ public class ClientAttackProjectile : MonoBehaviour
     private string _orbName;
     private bool _waitingForFire;
 
+    /// <summary>
+    /// True from SetupAttack until the visual projectile finishes its flight (or the watchdog
+    /// times out). Host/client attack sequencers poll this to know when one shot is done so
+    /// the next can begin.
+    /// </summary>
+    public bool IsAttacking { get; private set; }
+
     // ShotBehavior default values (from decomp — serialized fields)
     private const float MinForce = 100f;
     private const float MaxForce = 900f;
@@ -44,9 +51,29 @@ public class ClientAttackProjectile : MonoBehaviour
         _isCrit = isCrit;
         _orbName = orbName;
         _waitingForFire = true;
+        IsAttacking = true;
 
         // Subscribe to OnFirePoint to know when to launch
         PeglinBattleAnimationController.OnFirePoint += OnFirePoint;
+        StartCoroutine(WatchdogTimeout());
+    }
+
+    private IEnumerator WatchdogTimeout()
+    {
+        // If OnFirePoint never fires (e.g. peglin animator missing an event), release
+        // IsAttacking after a safety window so the host sequencer isn't stuck forever.
+        float waited = 0f;
+        while (_waitingForFire && waited < 1.5f)
+        {
+            waited += Time.deltaTime;
+            yield return null;
+        }
+        if (_waitingForFire)
+        {
+            _waitingForFire = false;
+            PeglinBattleAnimationController.OnFirePoint -= OnFirePoint;
+            IsAttacking = false;
+        }
     }
 
     private void OnFirePoint()
@@ -56,17 +83,17 @@ public class ClientAttackProjectile : MonoBehaviour
         PeglinBattleAnimationController.OnFirePoint -= OnFirePoint;
 
         // Find target enemy
-        if (string.IsNullOrEmpty(_targetEnemyGuid)) return;
+        if (string.IsNullOrEmpty(_targetEnemyGuid)) { IsAttacking = false; return; }
         var enemyId = MultiplayerPlugin.Services?.TryResolve<EnemyIdentifier>(out var eid) == true ? eid : null;
         var enemy = enemyId?.Find(_targetEnemyGuid);
-        if (enemy == null) return;
+        if (enemy == null) { IsAttacking = false; return; }
 
         // Find player position
         var bc = Object.FindObjectOfType<Battle.BattleController>();
-        if (bc == null) return;
+        if (bc == null) { IsAttacking = false; return; }
         var playerField = HarmonyLib.AccessTools.Field(typeof(Battle.BattleController), "_playerTransform");
         var playerTransform = playerField?.GetValue(bc) as Transform;
-        if (playerTransform == null) return;
+        if (playerTransform == null) { IsAttacking = false; return; }
 
         // Launch projectile
         StartCoroutine(LaunchProjectile(playerTransform.position, enemy.transform));
@@ -144,6 +171,7 @@ public class ClientAttackProjectile : MonoBehaviour
 
         // Destroy projectile
         Destroy(go);
+        IsAttacking = false;
     }
 
     /// <summary>Look up orb prefab by name and copy its sprite + material.</summary>

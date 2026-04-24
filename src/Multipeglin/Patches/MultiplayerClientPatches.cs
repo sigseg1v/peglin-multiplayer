@@ -2415,10 +2415,11 @@ public static class MultiplayerClientPatches
 
         try
         {
-            // Apply ALL players' damage directly (host included) instead of relying
-            // on the ShotBehavior physics pipeline, which can fail when the attack is
-            // restored from a prefab (RestoreAttackFromPrefab temp orb shots may not
-            // collide with enemies reliably).
+            // Apply ALL players' damage through a sequential visual pipeline.
+            // For each slot that shot this round, we play the peglin throw animation,
+            // fly a visual-only projectile carrying that player's orb sprite toward
+            // the target, then apply damage on impact. Clients receive one
+            // AttackStartedEvent per shot and mirror the visual via ClientAttackProjectile.
             var allShots = Events.Subscriptions.CoopSubscriptions.ConsumeNonHostShotData();
             if (allShots == null || allShots.Count == 0) return true;
 
@@ -2428,154 +2429,27 @@ public static class MultiplayerClientPatches
             var em = UnityEngine.Object.FindObjectOfType<EnemyManager>();
             if (em == null) return true;
 
-            foreach (var shot in allShots)
+            // Hold the ATTACKING state while the sequence plays. AttackManager.IsAttacking()
+            // is polled by BattleController.Update; without this the state machine would
+            // advance the moment DoAttack returns.
+            var amField = AccessTools.Field(typeof(BattleController), "_attackManager");
+            var am = amField?.GetValue(__instance) as Battle.Attacks.AttackManager;
+            var isAttackingField = AccessTools.Field(typeof(Battle.Attacks.AttackManager), "_isAttacking");
+            var animFinishedField = AccessTools.Field(typeof(Battle.Attacks.AttackManager), "_attackAnimationFinished");
+            if (am != null)
             {
-                if (shot.IsHeal || shot.Damage <= 0) continue;
-
-                // Route OnEnemyDamaged's DamageDealt tally to THIS shot's owner for the
-                // duration of the damage calls below — otherwise it defaults to
-                // ActivePlayerSlot (already swapped to the next round's first shooter).
-                Events.Subscriptions.EnemySubscriptions.DamageAttributionSlotOverride = shot.SlotIndex;
-                try
-                {
-                if (shot.IsAoE)
-                {
-                    // SimpleAttack orbs hit ALL enemies
-                    for (int i = 0; i < em.Enemies.Count; i++)
-                    {
-                        var enemy = em.Enemies[i];
-                        if (enemy == null || enemy.CurrentHealth <= 0f) continue;
-                        enemy.Damage(shot.Damage, screenshake: false, 0.25f, 1f, unblockable: false,
-                            Battle.Enemies.Enemy.EnemyDamageSource.AOE);
-                        ApplyStatusEffectsToEnemy(enemy, shot.StatusEffectsToApply);
-                    }
-                    MultiplayerPlugin.Logger?.LogInfo(
-                        $"[CoopAttack] {shot.PlayerName} (slot {shot.SlotIndex}): " +
-                        $"AoE {shot.Damage} damage to all enemies, " +
-                        $"effects={shot.StatusEffectsToApply?.Count ?? 0}");
-                }
-                else
-                {
-                    // Targeted orb — apply damage to the selected target
-                    Battle.Enemies.Enemy target = null;
-                    if (!string.IsNullOrEmpty(shot.TargetEnemyGuid))
-                        target = enemyId.Find(shot.TargetEnemyGuid);
-
-                    // Fallback: closest enemy
-                    if (target == null || target.CurrentHealth <= 0f)
-                    {
-                        target = em.GetFarthestEnemyFromPlayer();
-                        if (target == null) continue;
-                    }
-
-                    // Pierce: if the player's orb has ShotType.PIERCE, also damage
-                    // up to N enemies behind the target (farther slot indices).
-                    // Sphear is the canonical pierce orb — without this, the damage
-                    // replay only hits the front enemy and pierce is invisible in coop.
-                    int pierceCount = GetOrbPierceCount(shot.OrbPrefabName);
-                    var pierceTargets = new System.Collections.Generic.List<Battle.Enemies.Enemy> { target };
-                    if (pierceCount > 0)
-                    {
-                        pierceTargets.AddRange(GetEnemiesBehindTarget(em, target, pierceCount));
-                    }
-
-                    // Line-of-sight redirect: in the base game a NORMAL orb flies outward
-                    // and the first enemy collider along the aim line absorbs the hit —
-                    // so a front-row enemy blocks damage from reaching a back-row target.
-                    // Our direct target.Damage() bypass loses that, which lets players
-                    // cheese back-row enemies. Replicate ShotBehavior.RaycastShotFlight
-                    // here; on any failure, fall back to the slot-based list above.
-                    try
-                    {
-                        var raycastTargets = ResolveShotTargetsViaRaycast(
-                            __instance, em, target, shot.OrbPrefabName, pierceCount);
-                        if (raycastTargets != null && raycastTargets.Count > 0)
-                        {
-                            pierceTargets = raycastTargets;
-                            target = raycastTargets[0];
-                        }
-                    }
-                    catch (System.Exception rex)
-                    {
-                        MultiplayerPlugin.Logger?.LogWarning(
-                            $"[CoopAttack] Raycast redirect failed for {shot.OrbPrefabName}, " +
-                            $"falling back to declared target: {rex.Message}");
-                    }
-
-                    foreach (var t in pierceTargets)
-                    {
-                        if (t == null || t.CurrentHealth <= 0f) continue;
-                        t.Damage(shot.Damage, screenshake: false, 0.25f, 1f, unblockable: false,
-                            Battle.Enemies.Enemy.EnemyDamageSource.TargetedAttack);
-                        ApplyStatusEffectsToEnemy(t, shot.StatusEffectsToApply);
-                    }
-
-                    MultiplayerPlugin.Logger?.LogInfo(
-                        $"[CoopAttack] {shot.PlayerName} (slot {shot.SlotIndex}): " +
-                        $"{shot.Damage} damage to {target.name} (+{pierceTargets.Count - 1} pierced, " +
-                        $"orb={shot.OrbPrefabName}), effects={shot.StatusEffectsToApply?.Count ?? 0}");
-                }
-                }
-                finally
-                {
-                    Events.Subscriptions.EnemySubscriptions.DamageAttributionSlotOverride = -1;
-                }
+                isAttackingField?.SetValue(am, true);
+                animFinishedField?.SetValue(am, false);
             }
 
-            // Dispatch AttackStarted event to client for visual animation.
-            // Use the host's (slot 0) shot data since the AttackManager_Attack_Postfix
-            // won't run (we're skipping DoAttack which calls AttackManager.Attack).
-            try
-            {
-                var hostShot = allShots.Find(s => s.SlotIndex == 0);
-                if (hostShot != null && services.TryResolve<IGameEventRegistry>(out var reg))
-                {
-                    reg.Dispatch(new Events.Network.Battle.AttackStartedEvent
-                    {
-                        AnimTrigger = "attack",
-                        TargetEnemyGuid = hostShot.TargetEnemyGuid,
-                        NumPegsHit = hostShot.NumPegsHit,
-                        IsCrit = hostShot.CriticalHitCount > 0,
-                        OrbName = hostShot.OrbPrefabName,
-                    });
-                }
-            }
-            catch { }
+            // Suppress the delegate-driven dispatch that StartAttacking() will fire
+            // right after we return — the coroutine emits its own per-slot events.
+            SuppressOnAttackStartedDispatch = true;
 
-            // Clean up the temp orb that was created for RestoreAttackFromPrefab
-            // (BattleController.OnAttackStarted is invoked by StartAttacking() which
-            // runs after DoAttack returns, so we don't invoke it here)
-            Events.Subscriptions.CoopSubscriptions.CleanupTempOrb();
+            __instance.StartCoroutine(PlayCoopAttackSequence(__instance, am, allShots, em, enemyId));
 
-            // Zero BC tallies so any re-entry into DoAttack (e.g. the bomb-throw
-            // flow that fires OnShotComplete a second time and re-runs the
-            // ALL_DONE branch in CoopSubscriptions, which re-writes host's
-            // tallies back to BC) cannot have the native Attack pipeline replay
-            // the host's damage a second time. The first prefix call already
-            // consumed _accumulatedShotData; without this zeroing, a subsequent
-            // DoAttack call would find the dict empty, return true, and let
-            // native Attack run on the stale tallies — double graphic + double
-            // damage on host shots. Only happens intermittently because it
-            // requires bomb-pegs to have been hit this shot.
-            try
-            {
-                AccessTools.Field(typeof(BattleController), "_pegMultiplierDamageTally")?.SetValue(__instance, 0);
-                AccessTools.Field(typeof(BattleController), "_numPegsHit")?.SetValue(__instance, 0);
-                AccessTools.Field(typeof(BattleController), "_cactusDamageTally")?.SetValue(__instance, 0);
-                AccessTools.Field(typeof(BattleController), "_criticalHitCount")?.SetValue(null, 0);
-                AccessTools.Field(typeof(BattleController), "_damageMultiplier")?.SetValue(__instance, 1f);
-                AccessTools.Field(typeof(BattleController), "_damageBonus")?.SetValue(__instance, 0);
-            }
-            catch (System.Exception tallyEx)
-            {
-                MultiplayerPlugin.Logger?.LogWarning($"[CoopAttack] Failed to zero BC tallies post-consume: {tallyEx.Message}");
-            }
-
-            // Skip the original DoAttack — damage was applied directly above.
-            // The caller (Update's DO_ATTACK case) still calls StartAttacking()
-            // after DoAttack returns, so the state machine advances to ATTACKING.
-            // EnemiesAnimating() keeps the ATTACKING state active until damage
-            // animations finish.
+            // Skip the original DoAttack — the coroutine above runs the full damage +
+            // visuals pipeline and releases the AttackManager state when it finishes.
             return false;
         }
         catch (System.Exception ex)
@@ -2583,6 +2457,180 @@ public static class MultiplayerClientPatches
             MultiplayerPlugin.Logger?.LogWarning($"[CoopAttack] Per-player damage resolution failed: {ex}");
             return true; // Fall back to original DoAttack on error
         }
+    }
+
+    /// <summary>
+    /// Coroutine that plays each player's shot sequentially during the host's attack
+    /// phase. For each slot with shot data we: dispatch an AttackStartedEvent so
+    /// clients can mirror the visual, play the peglin throw animation on host,
+    /// launch a visual-only projectile via ClientAttackProjectile, then apply damage
+    /// on impact. Between shots we pause briefly so enemy damage animations have
+    /// time to read. When the sequence ends we release AttackManager state so the
+    /// BattleController state machine advances from ATTACKING.
+    /// </summary>
+    private static System.Collections.IEnumerator PlayCoopAttackSequence(
+        BattleController bc,
+        Battle.Attacks.AttackManager am,
+        System.Collections.Generic.List<Events.Subscriptions.CoopSubscriptions.PlayerAttackData> shots,
+        EnemyManager em,
+        Utility.EnemyIdentifier enemyId)
+    {
+        var services = MultiplayerPlugin.Services;
+        IGameEventRegistry reg = null;
+        services?.TryResolve<IGameEventRegistry>(out reg);
+
+        // Sort by slot so playback order is stable and matches turn order.
+        shots.Sort((a, b) => a.SlotIndex.CompareTo(b.SlotIndex));
+
+        foreach (var shot in shots)
+        {
+            if (shot.IsHeal || shot.Damage <= 0) continue;
+
+            // Resolve targets (reuse existing targeting/pierce/raycast logic).
+            Battle.Enemies.Enemy primaryTarget = null;
+            var targets = new System.Collections.Generic.List<Battle.Enemies.Enemy>();
+
+            if (shot.IsAoE)
+            {
+                foreach (var e in em.Enemies)
+                    if (e != null && e.CurrentHealth > 0f) targets.Add(e);
+                if (targets.Count == 0) continue;
+                primaryTarget = targets[0];
+            }
+            else
+            {
+                if (!string.IsNullOrEmpty(shot.TargetEnemyGuid))
+                    primaryTarget = enemyId.Find(shot.TargetEnemyGuid);
+                if (primaryTarget == null || primaryTarget.CurrentHealth <= 0f)
+                    primaryTarget = em.GetFarthestEnemyFromPlayer();
+                if (primaryTarget == null) continue;
+
+                int pierceCount = GetOrbPierceCount(shot.OrbPrefabName);
+                targets.Add(primaryTarget);
+                if (pierceCount > 0)
+                    targets.AddRange(GetEnemiesBehindTarget(em, primaryTarget, pierceCount));
+
+                try
+                {
+                    var raycastTargets = ResolveShotTargetsViaRaycast(
+                        bc, em, primaryTarget, shot.OrbPrefabName, pierceCount);
+                    if (raycastTargets != null && raycastTargets.Count > 0)
+                    {
+                        targets = raycastTargets;
+                        primaryTarget = raycastTargets[0];
+                    }
+                }
+                catch (System.Exception rex)
+                {
+                    MultiplayerPlugin.Logger?.LogWarning(
+                        $"[CoopAttack] Raycast redirect failed for {shot.OrbPrefabName}: {rex.Message}");
+                }
+            }
+
+            // Resolve a GUID for the primary target so clients can find the same
+            // enemy even if the shot was AoE (TargetEnemyGuid may be empty in that case).
+            string primaryGuid = shot.TargetEnemyGuid;
+            if (string.IsNullOrEmpty(primaryGuid) && primaryTarget != null)
+                primaryGuid = enemyId?.GetGuid(primaryTarget);
+
+            // Tell clients to play this shot's visual.
+            try
+            {
+                reg?.Dispatch(new Events.Network.Battle.AttackStartedEvent
+                {
+                    AnimTrigger = "attack",
+                    TargetEnemyGuid = primaryGuid,
+                    NumPegsHit = shot.NumPegsHit,
+                    IsCrit = shot.CriticalHitCount > 0,
+                    OrbName = shot.OrbPrefabName,
+                    SlotIndex = shot.SlotIndex,
+                });
+            }
+            catch { }
+
+            // Fire peglin throw animation on host (AttackStartedClientHandler does
+            // the same on spectating clients). OnFirePoint inside that animation is
+            // what triggers ClientAttackProjectile's actual sprite launch.
+            try { Battle.Attacks.AttackManager.OnPeglinAttackAnimationRequested?.Invoke("attack"); } catch { }
+
+            // Arm ClientAttackProjectile on host to fly the sprite when OnFirePoint fires.
+            var cap = Multipeglin.GameState.ClientAttackProjectile.Instance;
+            if (cap != null && !string.IsNullOrEmpty(primaryGuid))
+                cap.SetupAttack(primaryGuid, shot.NumPegsHit, shot.CriticalHitCount > 0, shot.OrbPrefabName);
+
+            // Wait until the projectile has flown and landed (or the watchdog fires).
+            float waited = 0f;
+            while (cap != null && cap.IsAttacking && waited < 2.0f)
+            {
+                waited += UnityEngine.Time.deltaTime;
+                yield return null;
+            }
+
+            // Apply damage at "impact" — route attribution to the shot's owner so
+            // OnEnemyDamaged credits damage to the correct player, not the currently
+            // active singleton slot (which has already rotated to next round's lead).
+            Events.Subscriptions.EnemySubscriptions.DamageAttributionSlotOverride = shot.SlotIndex;
+            try
+            {
+                foreach (var t in targets)
+                {
+                    if (t == null || t.CurrentHealth <= 0f) continue;
+                    var src = shot.IsAoE
+                        ? Battle.Enemies.Enemy.EnemyDamageSource.AOE
+                        : Battle.Enemies.Enemy.EnemyDamageSource.TargetedAttack;
+                    t.Damage(shot.Damage, screenshake: false, 0.25f, 1f, unblockable: false, src);
+                    ApplyStatusEffectsToEnemy(t, shot.StatusEffectsToApply);
+                }
+            }
+            finally
+            {
+                Events.Subscriptions.EnemySubscriptions.DamageAttributionSlotOverride = -1;
+            }
+
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[CoopAttack] Played slot {shot.SlotIndex} ({shot.PlayerName}): " +
+                $"orb={shot.OrbPrefabName} dmg={shot.Damage} targets={targets.Count} " +
+                $"aoe={shot.IsAoE} effects={shot.StatusEffectsToApply?.Count ?? 0}");
+
+            // Brief gap between shots so the enemy flinch animation is visible
+            // before the next orb is thrown.
+            yield return new UnityEngine.WaitForSeconds(0.3f);
+        }
+
+        // Cleanup any temp orb from RestoreAttackFromPrefab and zero BC tallies so
+        // a re-entry into DoAttack (e.g. bomb-throw resolution that replays
+        // ALL_DONE and writes host tallies back) cannot cause the native pipeline
+        // to replay the host's damage a second time.
+        Events.Subscriptions.CoopSubscriptions.CleanupTempOrb();
+        try
+        {
+            AccessTools.Field(typeof(BattleController), "_pegMultiplierDamageTally")?.SetValue(bc, 0);
+            AccessTools.Field(typeof(BattleController), "_numPegsHit")?.SetValue(bc, 0);
+            AccessTools.Field(typeof(BattleController), "_cactusDamageTally")?.SetValue(bc, 0);
+            AccessTools.Field(typeof(BattleController), "_criticalHitCount")?.SetValue(null, 0);
+            AccessTools.Field(typeof(BattleController), "_damageMultiplier")?.SetValue(bc, 1f);
+            AccessTools.Field(typeof(BattleController), "_damageBonus")?.SetValue(bc, 0);
+        }
+        catch (System.Exception tallyEx)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[CoopAttack] Failed to zero BC tallies post-sequence: {tallyEx.Message}");
+        }
+
+        // Release the ATTACKING state so BattleController.Update advances out of it.
+        if (am != null)
+        {
+            try { am.AttackAnimationEnded(); }
+            catch
+            {
+                var isAttackingField = AccessTools.Field(typeof(Battle.Attacks.AttackManager), "_isAttacking");
+                var animFinishedField = AccessTools.Field(typeof(Battle.Attacks.AttackManager), "_attackAnimationFinished");
+                isAttackingField?.SetValue(am, false);
+                animFinishedField?.SetValue(am, true);
+            }
+        }
+
+        // Re-enable the delegate-driven dispatch for any non-coop attacks.
+        SuppressOnAttackStartedDispatch = false;
     }
 
     /// <summary>
@@ -2810,6 +2858,14 @@ public static class MultiplayerClientPatches
     internal static int LastAttackNumPegsHit;
     internal static bool LastAttackIsCrit;
     internal static string LastAttackOrbName;
+
+    /// <summary>
+    /// When true, BattleSubscriptions.OnAttackStarted suppresses its
+    /// AttackStartedEvent dispatch. Set by the coop DoAttack coroutine so the
+    /// generic delegate-driven dispatch doesn't duplicate the per-slot events
+    /// that the coroutine emits itself.
+    /// </summary>
+    internal static bool SuppressOnAttackStartedDispatch;
 
     /// <summary>Capture attack trigger, target enemy, peg count, crit, and orb name when attack starts.</summary>
     [HarmonyPatch(typeof(Battle.Attacks.AttackManager), "Attack")]

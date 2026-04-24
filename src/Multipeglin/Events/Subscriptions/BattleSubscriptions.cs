@@ -68,6 +68,11 @@ public sealed class BattleEventSubscriptions
     private void OnAttackStarted()
     {
         if (!_multiplayerMode.IsHosting) return;
+        // When the coop DoAttack sequencer is running, it dispatches per-slot
+        // AttackStartedEvents itself. Suppress the generic delegate-driven
+        // dispatch that would otherwise fire from StartAttacking() and produce
+        // a duplicate visual on clients with stale cached values.
+        if (Patches.MultiplayerClientPatches.SuppressOnAttackStartedDispatch) return;
         _registry.Dispatch(new AttackStartedEvent
         {
             AnimTrigger = Patches.MultiplayerClientPatches.LastAttackAnimTrigger ?? "attack",
