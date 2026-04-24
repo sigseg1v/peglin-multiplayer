@@ -2247,6 +2247,149 @@ public static class MultiplayerClientPatches
     private static IEnumerator EmptyEnumerator() { yield break; }
 
     // =========================================================================
+    // PEG DOUBLE-HIT DIAGNOSTIC — host-only, detect if HandlePegActivated is
+    // firing twice per physical peg hit. Tracks every peg activation with its
+    // instance ID and timestamp. At shot fire we dump the subscriber count,
+    // during the shot we log any time the SAME peg fires twice within 50 ms
+    // (physically impossible — the ball needs travel time to re-enter a peg),
+    // and at shot complete we summarize double-fires.
+    // =========================================================================
+
+    private sealed class PegHitRecord
+    {
+        public int InstanceId;
+        public int ActivationIndex;
+        public float Timestamp;
+        public string PegName;
+    }
+
+    private static readonly System.Collections.Generic.Dictionary<int, PegHitRecord> _pegDiag_LastHit
+        = new System.Collections.Generic.Dictionary<int, PegHitRecord>();
+    private static int _pegDiag_ActivationCounter = 0;
+    private static int _pegDiag_DoubleFires = 0;
+    private static int _pegDiag_ShotId = 0;
+    private const float PegDiag_DoubleFireThresholdSec = 0.050f; // 50 ms
+
+    [HarmonyPatch(typeof(BattleController), "HandlePegActivated")]
+    [HarmonyPrefix]
+    public static void BattleController_HandlePegActivated_PegDiag(Peg.PegType type, Peg peg)
+    {
+        if (!IsHosting) return;
+        if (peg == null) return;
+        try
+        {
+            int id = peg.GetInstanceID();
+            float now = UnityEngine.Time.realtimeSinceStartup;
+            string pegName = peg.gameObject != null ? peg.gameObject.name : "?";
+            _pegDiag_ActivationCounter++;
+
+            if (_pegDiag_LastHit.TryGetValue(id, out var prev))
+            {
+                float dt = now - prev.Timestamp;
+                // Re-activation of the same peg. If the interval is below the
+                // physical travel threshold, flag it as a suspected double-fire
+                // (the ball cannot leave and return to the same peg in <50 ms).
+                if (dt < PegDiag_DoubleFireThresholdSec)
+                {
+                    _pegDiag_DoubleFires++;
+                    MultiplayerPlugin.Logger?.LogWarning(
+                        $"[PegDiag] DOUBLE-FIRE shot={_pegDiag_ShotId} peg='{pegName}' id={id} " +
+                        $"type={type} activation#={_pegDiag_ActivationCounter} (prev #{prev.ActivationIndex}) dt={dt * 1000f:F1}ms");
+                }
+                else
+                {
+                    MultiplayerPlugin.Logger?.LogInfo(
+                        $"[PegDiag] re-hit shot={_pegDiag_ShotId} peg='{pegName}' id={id} " +
+                        $"type={type} activation#={_pegDiag_ActivationCounter} (prev #{prev.ActivationIndex}) dt={dt * 1000f:F1}ms");
+                }
+            }
+            else
+            {
+                MultiplayerPlugin.Logger?.LogInfo(
+                    $"[PegDiag] first-hit shot={_pegDiag_ShotId} peg='{pegName}' id={id} " +
+                    $"type={type} activation#={_pegDiag_ActivationCounter}");
+            }
+
+            _pegDiag_LastHit[id] = new PegHitRecord
+            {
+                InstanceId = id,
+                ActivationIndex = _pegDiag_ActivationCounter,
+                Timestamp = now,
+                PegName = pegName,
+            };
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// Reset the per-shot tracking on every PachinkoBall.Fire, and dump the
+    /// current subscriber count of Peg.OnPegActivated so we can see if a second
+    /// HandlePegActivated delegate has been added (double-subscription is the
+    /// most likely cause of double-counting if one peg hit produces two
+    /// activation invocations with dt < 1ms).
+    /// </summary>
+    [HarmonyPatch(typeof(PachinkoBall), "Fire")]
+    [HarmonyPostfix]
+    public static void PachinkoBall_Fire_PegDiagReset(PachinkoBall __instance)
+    {
+        if (!IsHosting) return;
+        if (__instance == null || __instance.IsDummy) return;
+        try
+        {
+            _pegDiag_ShotId++;
+            _pegDiag_LastHit.Clear();
+            _pegDiag_ActivationCounter = 0;
+            _pegDiag_DoubleFires = 0;
+
+            int subs = 0;
+            try { subs = Peg.OnPegActivated?.GetInvocationList()?.Length ?? 0; } catch { }
+
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[PegDiag] ==== SHOT {_pegDiag_ShotId} start orb={__instance.gameObject.name} " +
+                $"Peg.OnPegActivated.subscribers={subs} ====");
+
+            if (subs > 0)
+            {
+                try
+                {
+                    var invocations = Peg.OnPegActivated.GetInvocationList();
+                    for (int i = 0; i < invocations.Length; i++)
+                    {
+                        var d = invocations[i];
+                        string targetDesc = d.Target != null
+                            ? $"{d.Target.GetType().Name}#{d.Target.GetHashCode():X}"
+                            : "<static>";
+                        MultiplayerPlugin.Logger?.LogInfo(
+                            $"[PegDiag]   subscriber[{i}]: {targetDesc}.{d.Method?.Name}");
+                    }
+                }
+                catch { }
+            }
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// On shot end, dump the total activations and how many looked like
+    /// physically-impossible double-fires. Called from DoAttack_Prefix (the
+    /// natural end-of-shot point on host) — `OnShotComplete` is a static
+    /// delegate field, not a property, so it can't be patched directly.
+    /// </summary>
+    private static void PegDiag_DumpShotSummary(string source)
+    {
+        if (!IsHosting) return;
+        try
+        {
+            int uniquePegs = _pegDiag_LastHit.Count;
+            int totalActivations = _pegDiag_ActivationCounter;
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[PegDiag] ==== SHOT {_pegDiag_ShotId} end ({source}) uniquePegs={uniquePegs} " +
+                $"totalActivations={totalActivations} doubleFires={_pegDiag_DoubleFires} ====");
+        }
+        catch { }
+    }
+
+    // =========================================================================
     // LIVE PENDING DAMAGE OVERLAY — update per peg hit during coop
     // =========================================================================
 
@@ -2377,6 +2520,8 @@ public static class MultiplayerClientPatches
     {
         if (!IsHosting) return true;
         if (!UI.LobbyUI.GameStartReceived) return true;
+
+        PegDiag_DumpShotSummary("DoAttack");
 
         // Clear the pending damage overlay — the attack is now resolving
         try
