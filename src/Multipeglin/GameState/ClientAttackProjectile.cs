@@ -8,11 +8,10 @@ namespace Multipeglin.GameState;
 
 /// <summary>
 /// Visual-only attack projectile shown on host and spectating clients.
-/// Mirrors the host's ShotBehavior visual: flies horizontally from the player's
-/// arm to the target enemy, sized by peg count using the orb's actual shot-prefab
-/// min/max size values. Sprite, scale, and startup offset are read from the orb's
-/// ProjectileAttack._shotPrefab (or _criticalShotPrefab for crits) so each orb
-/// keeps its own look.
+/// Instantiates the orb's real shot prefab with physics/collision/game-logic
+/// components stripped, then applies the exact same scale formula ShotBehavior
+/// uses. This guarantees the rendered size matches singleplayer and is identical
+/// across players (same prefab, same formula, same inputs).
 /// </summary>
 public class ClientAttackProjectile : MonoBehaviour
 {
@@ -31,7 +30,7 @@ public class ClientAttackProjectile : MonoBehaviour
     /// </summary>
     public bool IsAttacking { get; private set; }
 
-    // Default values used when an orb has no ProjectileAttack / shot prefab (healing, AoE, etc).
+    // Defaults used when the orb has no ProjectileAttack / shot prefab (healing, AoE, etc.).
     private const float DefaultMinForce = 100f;
     private const float DefaultMaxForce = 900f;
     private const float DefaultForcePerPeg = 50f;
@@ -39,28 +38,18 @@ public class ClientAttackProjectile : MonoBehaviour
     private static readonly Vector3 DefaultMaxSize = new Vector3(0.6f, 0.6f, 1f);
     private static readonly Vector3 DefaultStartupOffset = new Vector3(0f, 1.2f, 0f);
 
-    private struct ShotVisual
+    private struct ShotParams
     {
-        public Sprite Sprite;
-        public Material Material;
-        public int SortingLayerId;
-        public int SortingOrder;
-        public bool FlipX;
+        public GameObject ShotPrefab; // real prefab to instantiate (null = fallback path)
         public Vector3 MinSize;
         public Vector3 MaxSize;
         public Vector3 StartupOffset;
         public float MinForce;
         public float MaxForce;
         public float ForcePerPeg;
-        // Cumulative localScale from the shot prefab's root to the sprite child.
-        // ShotBehavior applies _minSize/_maxSize to the root transform, but the sprite
-        // often sits on a child with its own scale — we must include that multiplier
-        // or the projectile renders roughly double size.
-        public Vector3 SpriteChildScale;
     }
 
-    // Per-orb cache so we only reflect once. Null entry means "resolved, nothing useful".
-    private static readonly Dictionary<string, ShotVisual?> _shotCache = new Dictionary<string, ShotVisual?>();
+    private static readonly Dictionary<string, ShotParams?> _shotCache = new Dictionary<string, ShotParams?>();
 
     private void Awake()
     {
@@ -123,13 +112,7 @@ public class ClientAttackProjectile : MonoBehaviour
 
     private IEnumerator LaunchProjectile(Vector3 playerGroundPos, Battle.Enemies.Enemy targetEnemy)
     {
-        // Resolve the shot visual for this orb (sprite, size, offset). Fall back to
-        // copying from the orb prefab sprite / ball renderer / yellow circle when the
-        // orb has no ProjectileAttack (healing, AoE, etc).
-        var visOpt = TryGetShotVisual(_orbName, _isCrit);
-
-        var go = new GameObject("ClientProjectile");
-        var sr = go.AddComponent<SpriteRenderer>();
+        var paramsOpt = TryGetShotParams(_orbName, _isCrit);
 
         Vector3 minSize = DefaultMinSize;
         Vector3 maxSize = DefaultMaxSize;
@@ -137,28 +120,32 @@ public class ClientAttackProjectile : MonoBehaviour
         float minForce = DefaultMinForce;
         float maxForce = DefaultMaxForce;
         float forcePerPeg = DefaultForcePerPeg;
-        Vector3 childScale = Vector3.one;
 
-        if (visOpt.HasValue)
+        GameObject go;
+
+        if (paramsOpt.HasValue && paramsOpt.Value.ShotPrefab != null)
         {
-            var vis = visOpt.Value;
-            sr.sprite = vis.Sprite;
-            if (vis.Material != null) sr.material = vis.Material;
-            sr.sortingLayerID = vis.SortingLayerId;
-            sr.sortingOrder = vis.SortingOrder;
-            sr.flipX = vis.FlipX;
+            var p = paramsOpt.Value;
+            minSize = p.MinSize;
+            maxSize = p.MaxSize;
+            minForce = p.MinForce;
+            maxForce = p.MaxForce;
+            forcePerPeg = p.ForcePerPeg;
+            if (p.StartupOffset.sqrMagnitude > 0.0001f)
+                startupOffset = p.StartupOffset;
 
-            minSize = vis.MinSize;
-            maxSize = vis.MaxSize;
-            minForce = vis.MinForce;
-            maxForce = vis.MaxForce;
-            forcePerPeg = vis.ForcePerPeg;
-            childScale = vis.SpriteChildScale;
-            if (vis.StartupOffset.sqrMagnitude > 0.0001f)
-                startupOffset = vis.StartupOffset;
+            // Instantiate the real shot prefab so the visual (sprite hierarchy,
+            // animator, particle children) is identical to singleplayer. Then
+            // strip every game-logic component so it can't cause collisions,
+            // damage, or state changes.
+            go = Object.Instantiate(p.ShotPrefab);
+            go.name = "ClientProjectile";
+            StripGameLogicComponents(go);
         }
         else
         {
+            go = new GameObject("ClientProjectile");
+            var sr = go.AddComponent<SpriteRenderer>();
             bool ok = TryCopyOrbSprite(sr, _orbName) || TryCopyFromBallRenderer(sr);
             if (!ok)
             {
@@ -168,28 +155,18 @@ public class ClientAttackProjectile : MonoBehaviour
             sr.sortingOrder = 150;
         }
 
-        // ShotBehavior.Fire formula:
-        //   force = Clamp(numPegsHit * forcePerPeg, minForce, maxForce)
-        //   scale = Lerp(minSize, maxSize, |force| / maxForce)
-        // applied to the shot prefab ROOT. Multiply by the sprite child's cumulative
-        // scale so the rendered size matches the real shot.
+        // ShotBehavior.Fire formula, applied to the instance's root transform —
+        // exactly as the game does it.
         float force = Mathf.Clamp(_numPegsHit * forcePerPeg, minForce, maxForce);
         float t = maxForce > 0f ? Mathf.Abs(force) / maxForce : 0f;
-        go.transform.localScale = Vector3.Scale(Vector3.Lerp(minSize, maxSize, t), childScale);
+        go.transform.localScale = Vector3.Lerp(minSize, maxSize, t);
 
-        // Starting Y is Peglin's ground position + the shot prefab's startup Y so the
-        // sprite leaves from the arm, not the floor. X/Z stay with the player.
         Vector3 startPos = new Vector3(
             playerGroundPos.x + startupOffset.x,
             playerGroundPos.y + startupOffset.y,
             playerGroundPos.z);
         go.transform.position = startPos;
 
-        // Target: collider bounds center so we land on the middle of the enemy sprite,
-        // not the transform root which tends to sit at the enemy's feet. Always aim
-        // at the sprite center (grounded or flying) — locking Y to the player's arm
-        // made grounded enemies look like they were missed because the orb vanished
-        // below the sprite.
         Vector3 targetPos = targetEnemy.transform.position;
         var col = targetEnemy.GetComponentInChildren<Collider2D>();
         if (col != null) targetPos = col.bounds.center;
@@ -220,17 +197,49 @@ public class ClientAttackProjectile : MonoBehaviour
     }
 
     /// <summary>
-    /// Looks up the shot prefab for an orb (via ProjectileAttack) and pulls out
-    /// the visual data we need to mirror the host's ShotBehavior: sprite/material,
-    /// serialized min/max size, startup offset, and force range.
+    /// Remove every component on the instance that could interact with the running
+    /// battle: ShotBehavior (damage/collision logic), colliders (peg/enemy overlap),
+    /// Rigidbody2D (physics), AudioSource (reduces duplicate SFX). Leave SpriteRenderer
+    /// and Animator so the visual renders and animates.
     /// </summary>
-    private static ShotVisual? TryGetShotVisual(string orbName, bool isCrit)
+    private static void StripGameLogicComponents(GameObject go)
+    {
+        foreach (var sb in go.GetComponentsInChildren<Battle.Attacks.ShotBehavior>(includeInactive: true))
+            Destroy(sb);
+        foreach (var beh in go.GetComponentsInChildren<MonoBehaviour>(includeInactive: true))
+        {
+            // Kill anything in the Battle.Attacks namespace except what we need for visuals.
+            var ns = beh?.GetType().Namespace ?? "";
+            if (ns.StartsWith("Battle.Attacks"))
+                Destroy(beh);
+        }
+        foreach (var c in go.GetComponentsInChildren<Collider2D>(includeInactive: true))
+            Destroy(c);
+        foreach (var rb in go.GetComponentsInChildren<Rigidbody2D>(includeInactive: true))
+            Destroy(rb);
+        foreach (var audio in go.GetComponentsInChildren<AudioSource>(includeInactive: true))
+            Destroy(audio);
+
+        // ShotBehavior.OnEnable starts with _renderer.enabled = false; ensure all
+        // SpriteRenderers are on so our instantiated visual is actually visible.
+        foreach (var sr in go.GetComponentsInChildren<SpriteRenderer>(includeInactive: true))
+        {
+            sr.enabled = true;
+            if (sr.sortingOrder < 150) sr.sortingOrder = 150;
+        }
+    }
+
+    /// <summary>
+    /// Resolve the shot prefab and scaling params for this orb. Results are cached
+    /// per (orb,crit) key so the reflection only runs once per unique shot.
+    /// </summary>
+    private static ShotParams? TryGetShotParams(string orbName, bool isCrit)
     {
         if (string.IsNullOrEmpty(orbName)) return null;
         string key = orbName.Replace("(Clone)", "").Trim() + (isCrit ? "#crit" : "#normal");
         if (_shotCache.TryGetValue(key, out var cached)) return cached;
 
-        ShotVisual? result = null;
+        ShotParams? result = null;
         try
         {
             var orbGo = FindOrbPrefab(orbName);
@@ -242,7 +251,6 @@ public class ClientAttackProjectile : MonoBehaviour
             string primaryField = isCrit ? "_criticalShotPrefab" : "_shotPrefab";
             var shotGo = AccessTools.Field(typeof(Battle.Attacks.ProjectileAttack), primaryField)
                 ?.GetValue(pa) as GameObject;
-            // Some orbs don't define a critical prefab — fall back to the normal shot.
             if (shotGo == null && isCrit)
             {
                 shotGo = AccessTools.Field(typeof(Battle.Attacks.ProjectileAttack), "_shotPrefab")
@@ -252,14 +260,6 @@ public class ClientAttackProjectile : MonoBehaviour
 
             var sb = shotGo.GetComponent<Battle.Attacks.ShotBehavior>();
             if (sb == null) { _shotCache[key] = null; return null; }
-
-            // Prefer the shot's child SpriteRenderer (the actual projectile graphic).
-            // Fall back to the orb's renderer if the shot uses only an Animator that
-            // hasn't populated the default sprite.
-            var shotSr = shotGo.GetComponentInChildren<SpriteRenderer>(includeInactive: true);
-            if (shotSr == null || shotSr.sprite == null)
-                shotSr = orbGo.GetComponentInChildren<SpriteRenderer>(includeInactive: true);
-            if (shotSr == null || shotSr.sprite == null) { _shotCache[key] = null; return null; }
 
             Vector3 minSize = (Vector3)(AccessTools.Field(typeof(Battle.Attacks.ShotBehavior), "_minSize")
                 ?.GetValue(sb) ?? DefaultMinSize);
@@ -274,29 +274,15 @@ public class ClientAttackProjectile : MonoBehaviour
             float forcePerPeg = (float)(AccessTools.Field(typeof(Battle.Attacks.ShotBehavior), "_forcePerPeg")
                 ?.GetValue(sb) ?? DefaultForcePerPeg);
 
-            // Walk from sprite transform up to shot root, accumulating localScale.
-            Vector3 childScale = Vector3.one;
-            var tf = shotSr.transform;
-            while (tf != null && tf != shotGo.transform)
+            result = new ShotParams
             {
-                childScale = Vector3.Scale(childScale, tf.localScale);
-                tf = tf.parent;
-            }
-
-            result = new ShotVisual
-            {
-                Sprite = shotSr.sprite,
-                Material = shotSr.sharedMaterial,
-                SortingLayerId = shotSr.sortingLayerID,
-                SortingOrder = Mathf.Max(shotSr.sortingOrder, 150),
-                FlipX = shotSr.flipX,
+                ShotPrefab = shotGo,
                 MinSize = minSize,
                 MaxSize = maxSize,
                 StartupOffset = startupOffset,
                 MinForce = minForce,
                 MaxForce = maxForce,
                 ForcePerPeg = forcePerPeg,
-                SpriteChildScale = childScale,
             };
         }
         catch { result = null; }
@@ -327,7 +313,7 @@ public class ClientAttackProjectile : MonoBehaviour
         return null;
     }
 
-    /// <summary>Last-resort fallback: copy the orb's ball sprite.</summary>
+    /// <summary>Fallback when no shot prefab is available (healing, AoE orbs).</summary>
     private static bool TryCopyOrbSprite(SpriteRenderer sr, string orbName)
     {
         if (string.IsNullOrEmpty(orbName)) return false;
@@ -344,7 +330,6 @@ public class ClientAttackProjectile : MonoBehaviour
         return true;
     }
 
-    /// <summary>Copy sprite + material from ClientBallRenderer's active ball.</summary>
     private static bool TryCopyFromBallRenderer(SpriteRenderer sr)
     {
         var cbr = ClientBallRenderer.Instance;
