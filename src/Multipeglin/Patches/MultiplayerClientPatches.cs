@@ -2384,7 +2384,55 @@ public static class MultiplayerClientPatches
             int totalActivations = _pegDiag_ActivationCounter;
             MultiplayerPlugin.Logger?.LogInfo(
                 $"[PegDiag] ==== SHOT {_pegDiag_ShotId} end ({source}) uniquePegs={uniquePegs} " +
-                $"totalActivations={totalActivations} doubleFires={_pegDiag_DoubleFires} ====");
+                $"totalActivations={totalActivations} " +
+                $"grantAdditional={_pegDiag_GrantAdditionalCount} " +
+                $"doubleFires={_pegDiag_DoubleFires} ====");
+            _pegDiag_GrantAdditionalCount = 0;
+        }
+        catch { }
+    }
+
+    // Track how many times GrantAdditionalBasicPeg is called per shot to
+    // explain discrepancies between HandlePegActivated count and BC's
+    // _pegMultiplierDamageTally. GrantAdditionalBasicPeg increments BOTH
+    // _numPegsHit AND _pegMultiplierDamageTally (decomp BC.cs:2393, 2403)
+    // without firing OnPegActivated — so it's invisible to our peg-count
+    // diagnostic above.
+    private static int _pegDiag_GrantAdditionalCount = 0;
+
+    [HarmonyPatch(typeof(BattleController), nameof(BattleController.GrantAdditionalBasicPeg))]
+    [HarmonyPrefix]
+    public static void BC_GrantAdditionalBasicPeg_PegDiag(
+        BattleController __instance, UnityEngine.Vector3 pos, int mult, int bonus)
+    {
+        if (!IsHosting) return;
+        try
+        {
+            _pegDiag_GrantAdditionalCount++;
+            // Best-effort caller identity: walk the stack and log the first
+            // non-Harmony/non-reflection frame so we can see whether this was
+            // a wall bounce, coin collection, INFLIGHT_DAMAGE tick, etc.
+            string caller = "?";
+            try
+            {
+                var st = new System.Diagnostics.StackTrace(1, false);
+                for (int i = 0; i < st.FrameCount; i++)
+                {
+                    var m = st.GetFrame(i)?.GetMethod();
+                    if (m == null) continue;
+                    var t = m.DeclaringType?.FullName ?? "";
+                    if (t.StartsWith("HarmonyLib") || t.StartsWith("System.Reflection")
+                        || t.StartsWith("Multipeglin.Patches")) continue;
+                    caller = $"{m.DeclaringType?.Name}.{m.Name}";
+                    break;
+                }
+            }
+            catch { }
+
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[PegDiag] GrantAdditionalBasicPeg shot={_pegDiag_ShotId} " +
+                $"mult={mult} bonus={bonus} pos=({pos.x:F2},{pos.y:F2}) " +
+                $"caller={caller} count#={_pegDiag_GrantAdditionalCount}");
         }
         catch { }
     }
