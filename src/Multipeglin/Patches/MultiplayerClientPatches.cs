@@ -2889,22 +2889,27 @@ public static class MultiplayerClientPatches
         // Awakes, the game code sees `instance != null` and self-destroys the new GO,
         // leaving the stale 37-node ForestMap _nodes as the "active" MC.
         //
-        // Fix: only swap when the stale MC is from a DIFFERENT map scene (cross-act).
-        // For same-scene re-entries (ForestMap -> Battle -> ForestMap) we MUST let
-        // the game's default "keep old singleton, destroy new" path run — otherwise
-        // every re-entry re-triggers _firstLoad == true, which re-runs PrePanWait
-        // with a fresh `_playerInitialPosition` captured at the scene-default spawn
-        // and produces a disoriented fast camera scroll from far away.
+        // Fix: only swap when the stale MC belongs to a DIFFERENT act (cross-act).
+        // Compare `Act` (prefab-baked int) — NOT `gameObject.scene.name`, because once
+        // the MC has been DDoL'd its scene.name is "DontDestroyOnLoad" regardless of
+        // which map it came from, so scene-name comparison always mis-fires on
+        // same-act re-entries and destroys the legitimate DDoL'd singleton. The
+        // consequence of that mistake: each ForestMap->Battle->ForestMap re-entry
+        // handed control to a brand-new MC with _firstLoad=true, which captured
+        // `_playerInitialPosition` at the scene's default spawn and made PrePanWait
+        // scroll the camera in from far away.
         if (!IsHosting && MapController.instance != null && MapController.instance != __instance)
         {
             try
             {
                 var stale = MapController.instance;
-                string staleScene = stale.gameObject.scene.name;
-                string newScene = __instance.gameObject.scene.name;
-                if (!string.Equals(staleScene, newScene, StringComparison.OrdinalIgnoreCase))
+                bool sameAct = stale.Act == __instance.Act
+                    && string.Equals(stale.mapNameLocKey, __instance.mapNameLocKey, StringComparison.Ordinal);
+                if (!sameAct)
                 {
-                    MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Client: destroying stale MapController from scene '{staleScene}' so new MC from '{newScene}' can take over");
+                    string staleScene = stale.gameObject.scene.name;
+                    string newScene = __instance.gameObject.scene.name;
+                    MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Client: destroying stale MapController (act {stale.Act} '{stale.mapNameLocKey}' from '{staleScene}') so new MC (act {__instance.Act} '{__instance.mapNameLocKey}' from '{newScene}') can take over");
                     MapController.instance = null;
                     UnityEngine.Object.Destroy(stale.gameObject);
                 }
