@@ -34,20 +34,18 @@ public sealed class PegActivatedClientHandler : IClientHandler<PegActivatedEvent
             // the bouncer's visual state in sync; nothing to do here.
             if (peg is global::Battle.BouncerPeg) return;
 
-            // LongPeg pops once on host then lingers ~0.5s before SetActiveStatus(false).
-            // Previously we SetActive(false)'d immediately, which made the heartbeat
-            // racing against the 0.5s window resurrect the peg every sync — user saw
-            // the peg "stuck" after a hit. Instead, mark _cleared=true and let the
-            // heartbeat drive the fade (provider now reports IsCleared once host's
-            // _hit flag is set, below, so the applier correctly force-pops it).
-            if (peg is LongPeg)
+            // LongPeg has a two-phase host lifecycle:
+            //   (a) PegActivated → _hit=true, _cleared=true, gray "Hit" color, but
+            //       collider STAYS enabled. Visually the peg is still there, just gray.
+            //   (b) Later (5+ bounces or 0.5s _beingHit timer or end-of-shot hook):
+            //       SetActiveStatus(false) → collider off, fade via RemoveIfCleared.
+            // The PegActivatedEvent represents phase (a), so the client must mirror
+            // the gray visual without disabling the collider or popping the peg.
+            // Phase (b) is detected via heartbeat (provider reports IsCleared once
+            // the host actually disables the collider) and handled by the applier.
+            if (peg is LongPeg longPeg)
             {
-                try
-                {
-                    var clearedField = AccessTools.Field(typeof(global::Peg), "_cleared");
-                    clearedField?.SetValue(peg, true);
-                }
-                catch { }
+                LongPegVisualHelper.ApplyHitVisual(longPeg);
                 return;
             }
 

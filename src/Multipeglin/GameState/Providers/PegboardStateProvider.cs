@@ -58,20 +58,22 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                 // so peg.Cleared is NOT reliable for "is this peg functionally popped."
                 bool cleared = false;
                 bool wasPreviouslyCleared = false;
+                bool isLongPegHit = false;
                 if (!destroyed)
                 {
                     try { cleared = peg.IsDisabled(); } catch { }
-                    // LongPeg collider stays enabled for TimeToDisappear (~0.5s) after
-                    // being hit, even though logically it's been "popped" — its _hit
-                    // flag is the authoritative signal. Treat _hit=true as cleared so
-                    // the client doesn't race-resurrect it on heartbeat.
+                    // LongPeg-specific: capture the _hit flag (host's "half-hit gray
+                    // state during shot") separately from cleared. When _hit=true and
+                    // collider is still enabled, the client should render gray without
+                    // popping. When the host eventually disables the collider via
+                    // SetActiveStatus(false), IsDisabled() flips to true and IsCleared
+                    // takes over → client fades the peg.
                     if (!cleared && peg is LongPeg)
                     {
                         try
                         {
                             var hitField = HarmonyLib.AccessTools.Field(typeof(LongPeg), "_hit");
-                            if ((bool)(hitField?.GetValue(peg) ?? false))
-                                cleared = true;
+                            isLongPegHit = (bool)(hitField?.GetValue(peg) ?? false);
                         }
                         catch { }
                     }
@@ -96,6 +98,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     SlimeType = (int)peg.slimeType,
                     IsDestroyed = destroyed,
                     IsCleared = cleared,
+                    IsLongPegHit = isLongPegHit,
                     WasPreviouslyCleared = wasPreviouslyCleared,
                     CoinCount = peg.NumCoins(),
                     BuffAmount = peg.buffAmount,

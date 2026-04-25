@@ -83,7 +83,37 @@ public sealed class BattleEventSubscriptions
         });
     }
     private void OnTurnComplete() { if (_multiplayerMode.IsHosting) _registry.Dispatch(new TurnCompleteEvent()); }
-    private void OnShotComplete() { if (_multiplayerMode.IsHosting) _registry.Dispatch(new ShotCompleteEvent()); }
+    private void OnShotComplete()
+    {
+        if (!_multiplayerMode.IsHosting) return;
+        // Force-fade any LongPeg the host hit during this shot (collider still
+        // enabled, _hit=true, gray). The native game leaves them gray indefinitely
+        // unless the 0.5s _beingHit timer or the 5-bounce path fires; the user
+        // wants a clean fade between player turns. SetActiveStatus(false) disables
+        // the collider and triggers LongPeg_SetActiveStatus_Postfix → RemoveIfCleared,
+        // which fades alpha→0 and deactivates. Heartbeat propagates the
+        // collider-disabled state to clients (IsCleared=true → applier fades).
+        try
+        {
+            var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
+            var pm = bc?.pegManager;
+            if (pm?.allPegs != null)
+            {
+                var hitField = AccessTools.Field(typeof(LongPeg), "_hit");
+                foreach (var peg in pm.allPegs)
+                {
+                    if (peg is LongPeg longPeg && longPeg.gameObject.activeSelf)
+                    {
+                        bool isHit = (bool)(hitField?.GetValue(longPeg) ?? false);
+                        if (isHit && !longPeg.IsDisabled())
+                            longPeg.SetActiveStatus(active: false);
+                    }
+                }
+            }
+        }
+        catch { }
+        _registry.Dispatch(new ShotCompleteEvent());
+    }
     private void OnRoundIncremented(int roundCount) { if (_multiplayerMode.IsHosting) _registry.Dispatch(new RoundIncrementedEvent { RoundCount = roundCount }); }
     private void OnReloadStarted() { if (_multiplayerMode.IsHosting) _registry.Dispatch(new ReloadStartedEvent()); }
     private void OnCritActivated() { if (_multiplayerMode.IsHosting) _registry.Dispatch(new CritActivatedEvent()); }

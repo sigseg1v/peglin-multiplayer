@@ -973,18 +973,21 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         {
             try
             {
-                peg.PegActivated(playAudio: false, forcePop: true);
-
-                // LongPeg.PegActivated sets _hit + swaps material but does NOT
-                // disable its collider inline — the host relies on a delayed
-                // SetActiveStatus(false) timer that the client never runs. Force
-                // the collider off so IsDisabled() returns true and the peg stops
-                // counting as "active" in the Consistency check.
-                if (peg is LongPeg)
+                if (peg is LongPeg longPegCleared)
                 {
-                    var col = HarmonyLib.AccessTools.Field(typeof(Peg), "_collider")
-                        ?.GetValue(peg) as Collider2D;
-                    if (col != null) col.enabled = false;
+                    // Host has disabled this LongPeg's collider (SetActiveStatus(false)
+                    // ran). Mirror host visually: ensure gray hit state is applied
+                    // (in case we missed the PegActivatedEvent) and fade out via
+                    // RemoveIfCleared, which handles collider/trigger/poppedPegCollider
+                    // state and the alpha-fade tween. Calling PegActivated here would
+                    // run relic logic and could NRE on client where relicManager state
+                    // isn't authoritative.
+                    LongPegVisualHelper.ApplyHitVisual(longPegCleared);
+                    try { longPegCleared.RemoveIfCleared(); } catch { }
+                }
+                else
+                {
+                    peg.PegActivated(playAudio: false, forcePop: true);
                 }
 
                 cleared++;
@@ -1057,18 +1060,14 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
         }
 
-        // LongPeg-specific: normalize transient hit state when host says peg is alive.
-        // Client-side physics on the local ball can trigger LongPeg.DoPegCollision →
-        // PegActivated(), which sets _hit=true, _beingHit=true, pegType=REGULAR, and
-        // swaps to the destroyed material. Two problems follow:
-        //   (a) SupportsPegType(CRIT/RESET) returns false while _hit=true — the type
-        //       conversion block below silently falls through (just assigns pegType
-        //       without running ConvertPegToType), so the crit/reset collider/sprite
-        //       never get set up and the peg stays in "hit" visual state.
-        //   (b) Update()'s TimeToDisappear=0.5s timer will fire and call
-        //       SetActiveStatus(false), popping the peg entirely even though the host
-        //       considers it alive. Next heartbeat then reactivates it — visible
-        //       flicker and position drift during the gap.
+        // LongPeg-specific: reconcile half-hit "gray" state with host.
+        //   - entry.IsLongPegHit == true  → host says peg is in gray half-hit state
+        //     (collider still enabled, _hit=true, _colors.Hit material). Ensure the
+        //     client visual matches even if we missed PegActivatedEvent.
+        //   - entry.IsLongPegHit == false → host says peg is fresh (not hit). If the
+        //     client's peg has stale _hit/_beingHit (e.g. event was applied locally
+        //     but host has since cleared the state via Reset/HardReset on the peg
+        //     across turn boundaries), HardReset to normalize.
         // HardReset() resets _hit/_beingHit/_numBounces/_timeHit, calls
         // SetActiveStatus(true) (re-enables collider, restores active material), and
         // re-runs ConvertPegToType(pegType) — so if we pre-set pegType to the target
@@ -1079,7 +1078,19 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             var beingHitField = HarmonyLib.AccessTools.Field(typeof(LongPeg), "_beingHit");
             bool isHit = (bool)(hitField?.GetValue(peg) ?? false);
             bool beingHit = (bool)(beingHitField?.GetValue(peg) ?? false);
-            if (isHit || beingHit)
+
+            if (entry.IsLongPegHit)
+            {
+                // Host says peg should look gray. Apply visual if client doesn't
+                // already have it. Don't HardReset — that would erase the gray state.
+                if (!isHit)
+                {
+                    LongPegVisualHelper.ApplyHitVisual(longPeg);
+                    _log.LogInfo($"[PegboardApplier] LongPeg gray-state recovered (missed event): " +
+                        $"guid={entry.Guid} at ({entry.PosX:F1},{entry.PosY:F1})");
+                }
+            }
+            else if (isHit || beingHit)
             {
                 var targetType = (Peg.PegType)entry.PegType;
                 if (targetType != Peg.PegType.DESTROYED)

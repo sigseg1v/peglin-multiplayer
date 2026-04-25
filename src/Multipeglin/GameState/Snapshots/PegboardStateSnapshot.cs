@@ -33,6 +33,16 @@ public class PegEntry
     /// <summary>True if the peg is currently popped (collider disabled).</summary>
     public bool IsCleared { get; set; }
 
+    /// <summary>
+    /// LongPeg-specific: host has called PegActivated and set _hit=true, but the
+    /// peg is still alive (collider enabled, gray "half-hit" visual). The client
+    /// should mirror this visual state without popping. When IsLongPegHit is true,
+    /// IsCleared will be false. When IsCleared becomes true, the host has actually
+    /// disabled the collider (via SetActiveStatus(false)) and the client should
+    /// fade the peg out.
+    /// </summary>
+    public bool IsLongPegHit { get; set; }
+
     /// <summary>True if the peg was previously cleared (shows different background after refresh).</summary>
     public bool WasPreviouslyCleared { get; set; }
 
