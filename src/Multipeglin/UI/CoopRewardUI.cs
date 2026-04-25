@@ -292,9 +292,10 @@ public class CoopRewardUI : MonoBehaviour
 
         // Use context-specific messages
         if (CoopRewardState.ShopAwaitingHostNavigation
-            || CoopRewardState.TextScenarioAwaitingHostNavigation)
+            || CoopRewardState.TextScenarioAwaitingHostNavigation
+            || CoopRewardState.PegMinigameAwaitingHostNavigation)
         {
-            // Client-side post-shop/event: choice is done, host is picking next stage.
+            // Client-side post-shop/event/peg-minigame: choice is done, host is picking next stage.
             _titleText.text = "Waiting for host to select the next stage...";
         }
         else if (CoopRewardState.TreasureAwaitingHostNavigation)

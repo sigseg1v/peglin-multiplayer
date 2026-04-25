@@ -117,6 +117,7 @@ public class GameStateApplyService
         Events.Handlers.Coop.CoopRewardState.ClientTreasureChoiceSent = false;
         Events.Handlers.Coop.CoopRewardState.ClientPegMinigameChoiceSent = false;
         Events.Handlers.Coop.CoopRewardState.ClientTextScenarioChoiceSent = false;
+        Events.Handlers.Coop.CoopRewardState.PegMinigameAwaitingHostNavigation = false;
 
         var svc = MultiplayerPlugin.Services;
         IMultiplayerMode mpModeRef = null;

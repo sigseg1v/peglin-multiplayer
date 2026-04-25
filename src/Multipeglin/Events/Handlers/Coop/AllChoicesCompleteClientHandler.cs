@@ -21,7 +21,7 @@ public sealed class AllChoicesCompleteClientHandler : IClientHandler<AllChoicesC
         // re-interact with the event UI or leave them staring at a blank scene
         // with no indicator that they're waiting.
         if (networkEvent.Phase != "shop" && networkEvent.Phase != "text_scenario"
-            && networkEvent.Phase != "treasure")
+            && networkEvent.Phase != "treasure" && networkEvent.Phase != "peg_minigame")
         {
             CoopRewardState.AllChoicesComplete = true;
             CoopRewardState.WaitingForOtherPlayers = false;
@@ -70,10 +70,13 @@ public sealed class AllChoicesCompleteClientHandler : IClientHandler<AllChoicesC
         }
         else if (networkEvent.Phase == "peg_minigame")
         {
+            // Keep the overlay up — host is still inside PegMinigame doing the
+            // post-reward navigation shot to pick the next stage on the map.
             CoopRewardState.PegMinigamePhaseActive = false;
+            CoopRewardState.PegMinigameAwaitingHostNavigation = true;
+            CoopRewardState.WaitingForOtherPlayers = true;
             Patches.MultiplayerClientPatches.AllowPegMinigameLogic = false;
-            CoopRewardState.ClientPegMinigameChoiceSent = false;
-            MultiplayerPlugin.Logger?.LogInfo("[CoopReward] PegMinigame phase ended");
+            MultiplayerPlugin.Logger?.LogInfo("[CoopReward] PegMinigame phase ended — awaiting host navigation shot");
         }
     }
 }

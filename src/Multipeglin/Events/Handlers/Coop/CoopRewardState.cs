@@ -159,6 +159,12 @@ public static class CoopRewardState
     /// <summary>True on client when the client has already sent their PegMinigame completion event.</summary>
     public static bool ClientPegMinigameChoiceSent;
 
+    /// <summary>Client-side: true once all players have finished picking their PegMinigame
+    /// reward and the host is doing the second (navigation) shot to pick the next stage.
+    /// The waiting overlay stays up with a "Waiting for host to select the next stage..."
+    /// message until the scene actually changes away.</summary>
+    public static bool PegMinigameAwaitingHostNavigation;
+
     // --- TextScenario wait-for-all ---
 
     /// <summary>True when the TextScenario dialogue phase is active (all players making choices).</summary>
@@ -242,6 +248,7 @@ public static class CoopRewardState
         TotalPegMinigameClientsExpected = 0;
         PendingPegMinigameManager = null;
         ClientPegMinigameChoiceSent = false;
+        PegMinigameAwaitingHostNavigation = false;
         TextScenarioPhaseActive = false;
         HostTextScenarioDone = false;
         ClientTextScenarioChoicesReceived.Clear();

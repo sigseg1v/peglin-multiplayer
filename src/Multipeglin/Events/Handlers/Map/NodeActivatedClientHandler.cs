@@ -49,6 +49,14 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
                     StaticGameData.dataToLoad = minigameData;
                     GameState.Appliers.MapStateApplier.AwaitingHostSceneConfirmation = "PegMinigame";
                     MultiplayerClientPatches.AllowNextSceneLoad = true;
+                    // Set BEFORE LoadScene: PegMinigameManager.OnEnable -> Initialize ->
+                    // CreateOrb runs synchronously when the scene activates, BEFORE
+                    // SceneManager.sceneLoaded fires. If we wait for OnSceneLoaded to
+                    // flip the flag, the client's navigation orb is never spawned.
+                    MultiplayerClientPatches.AllowPegMinigameLogic = true;
+                    Events.Handlers.Coop.CoopRewardState.PegMinigamePhaseActive = true;
+                    Events.Handlers.Coop.CoopRewardState.ClientPegMinigameChoiceSent = false;
+                    Events.Handlers.Coop.CoopRewardState.PegMinigameAwaitingHostNavigation = false;
                     PeglinSceneLoader.Instance?.LoadScene(PeglinSceneLoader.Scene.PEG_MINIGAME);
                     return;
                 }
