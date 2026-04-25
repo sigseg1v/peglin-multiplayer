@@ -21,5 +21,8 @@ public class RelicEntry
     public string LocKey { get; set; }
     public int Rarity { get; set; }
     public int RemainingCountdown { get; set; }
+    public int RemainingUsesPerShot { get; set; }
+    public int RemainingUsesPerBattle { get; set; }
+    public int RemainingUsesPerRun { get; set; }
     public bool IsEnabled { get; set; }
 }

@@ -568,6 +568,7 @@ public class GameStateApplyService
                 // In coop, apply this client's own deck from AllDecks.
                 // The host sends per-player deck data; we pick our slot.
                 Snapshots.DeckStateSnapshot myDeck = null;
+                Snapshots.RelicStateSnapshot myRelics = null;
                 int mySlotIdx = -1;
                 if (snapshot.AllDecks != null)
                 {
@@ -577,6 +578,7 @@ public class GameStateApplyService
                     {
                         mySlotIdx = registry.LocalSlot.SlotIndex;
                         snapshot.AllDecks.TryGetValue(mySlotIdx, out myDeck);
+                        snapshot.AllRelics?.TryGetValue(mySlotIdx, out myRelics);
                     }
                 }
 
@@ -590,6 +592,21 @@ public class GameStateApplyService
                 {
                     _log.LogWarning($"[ApplyService] Coop: AllDecks missing slot {mySlotIdx}, falling back to orb-only");
                     SafeApply("Deck(coop-orb-only)", () => _deckApplier.ApplyActiveOrbOnly(snapshot.Deck));
+                }
+
+                // Per-slot relic apply: each client must see its OWN relics, not
+                // whichever player's relics happen to be loaded into the host
+                // singleton this tick. Falls back to the legacy single-slot
+                // snapshot.Relics field for back-compat with older hosts.
+                if (myRelics != null)
+                {
+                    _log.LogInfo($"[ApplyService] Coop relics for mySlot={mySlotIdx}: {myRelics.OwnedRelics?.Count ?? 0} relics");
+                    SafeApply("Relics(coop-own)", () => _relicApplier.Apply(myRelics));
+                }
+                else if (snapshot.Relics != null)
+                {
+                    _log.LogWarning($"[ApplyService] Coop: AllRelics missing slot {mySlotIdx}, falling back to active-slot relics");
+                    SafeApply("Relics(coop-fallback)", () => _relicApplier.Apply(snapshot.Relics));
                 }
 
                 // Aimer-orb sync for coop: AllDecks[mySlot].CurrentOrb is the
@@ -656,7 +673,23 @@ public class GameStateApplyService
                 if (snapshot.Deck != null) SafeApply("Deck", () => _deckApplier.Apply(snapshot.Deck));
                 if (snapshot.Relics != null) SafeApply("Relics", () => _relicApplier.Apply(snapshot.Relics));
             }
-            _log.LogInfo($"[ApplyService] Non-battle scene '{currentScene}': applied player/deck/relics, skipped enemies/pegs{(isCoop ? " (coop: deck/relic sync skipped)" : "")}");
+            else if (snapshot.AllRelics != null)
+            {
+                // Coop non-battle scenes: still apply this client's own relics so
+                // map-screen relic UI counts and effects stay correct.
+                int mySlotIdx = -1;
+                Snapshots.RelicStateSnapshot myRelics = null;
+                var services = MultiplayerPlugin.Services;
+                if (services?.TryResolve<Multiplayer.PlayerRegistry>(out var registry) == true
+                    && registry.LocalSlot != null)
+                {
+                    mySlotIdx = registry.LocalSlot.SlotIndex;
+                    snapshot.AllRelics.TryGetValue(mySlotIdx, out myRelics);
+                }
+                if (myRelics != null)
+                    SafeApply("Relics(coop-own-nonbattle)", () => _relicApplier.Apply(myRelics));
+            }
+            _log.LogInfo($"[ApplyService] Non-battle scene '{currentScene}': applied player/deck/relics, skipped enemies/pegs{(isCoop ? " (coop: own relics applied)" : "")}");
         }
 
         // TextScenario spectator UI — driven by heartbeat

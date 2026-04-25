@@ -994,7 +994,7 @@ public class CoopPlayerVisuals : MonoBehaviour
 
             tmp.text = intensity > 999 ? (intensity / 1000) + "K" : intensity.ToString();
             tmp.fontSize = 32;
-            tmp.fontStyle = FontStyles.Bold;
+            tmp.fontStyle = FontStyles.Normal;
             var font = GetStatusEffectNumberFont();
             if (font != null) tmp.font = font;
             tmp.alignment = TextAlignmentOptions.BottomRight;

@@ -86,6 +86,7 @@ public class GameStateSyncService : IGameStateSyncService
                 snapshot.PlayerSummaries = new List<CoopPlayerSummary>();
 
                 snapshot.AllDecks = new Dictionary<int, Snapshots.DeckStateSnapshot>();
+                snapshot.AllRelics = new Dictionary<int, Snapshots.RelicStateSnapshot>();
 
                 foreach (var kvp in _coopStateManager.PlayerStates)
                 {
@@ -141,6 +142,48 @@ public class GameStateSyncService : IGameStateSyncService
                             CurrentOrb = null,
                             CurrentOrbLevel = 0,
                         };
+                    }
+
+                    // Per-player relics. Active player uses the live singleton capture
+                    // (snapshot.Relics, which has accurate countdowns); inactive players
+                    // are reconstructed from CoopPlayerState. Without this, every client
+                    // applies the active player's relics regardless of slot, so coop
+                    // players see each other's Pocket Sand, Slimy Salve countdowns, etc.
+                    if (isActive)
+                    {
+                        snapshot.AllRelics[kvp.Key] = snapshot.Relics;
+                    }
+                    else
+                    {
+                        var relicSnap = new Snapshots.RelicStateSnapshot
+                        {
+                            ActiveSlotIndex = kvp.Key,
+                            TotalRelicCount = ps.OwnedRelics?.Count ?? 0,
+                        };
+                        if (ps.OwnedRelics != null)
+                        {
+                            foreach (var sr in ps.OwnedRelics)
+                            {
+                                int countdown = 0, ups = 0, upb = 0, upr = 0;
+                                ps.RelicCountdowns?.TryGetValue(sr.Effect, out countdown);
+                                ps.RelicUsesPerShot?.TryGetValue(sr.Effect, out ups);
+                                ps.RelicUsesPerBattle?.TryGetValue(sr.Effect, out upb);
+                                ps.RelicUsesPerRun?.TryGetValue(sr.Effect, out upr);
+                                relicSnap.OwnedRelics.Add(new Snapshots.RelicEntry
+                                {
+                                    Effect = sr.Effect,
+                                    EffectName = ((Relics.RelicEffect)sr.Effect).ToString(),
+                                    LocKey = sr.LocKey ?? "",
+                                    Rarity = sr.Rarity,
+                                    RemainingCountdown = countdown,
+                                    RemainingUsesPerShot = ups,
+                                    RemainingUsesPerBattle = upb,
+                                    RemainingUsesPerRun = upr,
+                                    IsEnabled = true,
+                                });
+                            }
+                        }
+                        snapshot.AllRelics[kvp.Key] = relicSnap;
                     }
                 }
             }

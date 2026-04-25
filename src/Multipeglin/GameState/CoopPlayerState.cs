@@ -30,6 +30,9 @@ public class CoopPlayerState
     // Relics
     public List<SerializedRelic> OwnedRelics { get; set; } = new List<SerializedRelic>();
     public Dictionary<int, int> RelicCountdowns { get; set; } = new Dictionary<int, int>();
+    public Dictionary<int, int> RelicUsesPerShot { get; set; } = new Dictionary<int, int>();
+    public Dictionary<int, int> RelicUsesPerBattle { get; set; } = new Dictionary<int, int>();
+    public Dictionary<int, int> RelicUsesPerRun { get; set; } = new Dictionary<int, int>();
 
     // Status effects
     public List<SerializedStatusEffect> StatusEffects { get; set; } = new List<SerializedStatusEffect>();

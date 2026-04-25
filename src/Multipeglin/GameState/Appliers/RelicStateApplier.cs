@@ -152,7 +152,13 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
             if (snapshot.OwnedRelics == null) return;
 
             var countdownField = AccessTools.Field(typeof(RelicManager), "_relicRemainingCountdowns");
+            var perShotField = AccessTools.Field(typeof(RelicManager), "_relicRemainingUsesPerShot");
+            var perBattleField = AccessTools.Field(typeof(RelicManager), "_relicRemainingUsesPerBattle");
+            var perRunField = AccessTools.Field(typeof(RelicManager), "_relicRemainingUsesPerRun");
             var countdowns = countdownField?.GetValue(rm) as IDictionary<RelicEffect, int>;
+            var perShot = perShotField?.GetValue(rm) as IDictionary<RelicEffect, int>;
+            var perBattle = perBattleField?.GetValue(rm) as IDictionary<RelicEffect, int>;
+            var perRun = perRunField?.GetValue(rm) as IDictionary<RelicEffect, int>;
 
             var ownedField = AccessTools.Field(typeof(RelicManager), "_ownedRelics");
             var owned = ownedField?.GetValue(rm) as IDictionary<RelicEffect, Relic>;
@@ -184,6 +190,13 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
                     countdowns[effect] = entry.RemainingCountdown;
                     wrote = true;
                 }
+
+                // Per-shot / per-battle / per-run counters: no public setter exists,
+                // so always write the dicts directly. These drive "X / Y" displays
+                // for relics like Tipped Pegs, Dive Reload, etc.
+                if (perShot != null) perShot[effect] = entry.RemainingUsesPerShot;
+                if (perBattle != null) perBattle[effect] = entry.RemainingUsesPerBattle;
+                if (perRun != null) perRun[effect] = entry.RemainingUsesPerRun;
 
                 if (wrote)
                 {

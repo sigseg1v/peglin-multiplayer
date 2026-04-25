@@ -599,11 +599,37 @@ public class CoopStateManager
                 foreach (var kvp in countdowns)
                     state.RelicCountdowns[(int)kvp.Key] = kvp.Value;
             }
+
+            // Per-shot / per-battle / per-run counters live in separate dicts —
+            // each player's shot tally must be saved/restored on slot swap or
+            // the next shooter will inherit the previous shooter's "X uses left".
+            CopyDictToState(relicMgr, "_relicRemainingUsesPerShot", state.RelicUsesPerShot);
+            CopyDictToState(relicMgr, "_relicRemainingUsesPerBattle", state.RelicUsesPerBattle);
+            CopyDictToState(relicMgr, "_relicRemainingUsesPerRun", state.RelicUsesPerRun);
         }
         catch (Exception ex)
         {
             _log.LogWarning($"[CoopState] SaveRelicState failed: {ex.Message}");
         }
+    }
+
+    private void CopyDictToState(RelicManager rm, string fieldName, Dictionary<int, int> target)
+    {
+        target.Clear();
+        var f = AccessTools.Field(typeof(RelicManager), fieldName);
+        var src = f?.GetValue(rm) as Dictionary<RelicEffect, int>;
+        if (src == null) return;
+        foreach (var kvp in src)
+            target[(int)kvp.Key] = kvp.Value;
+    }
+
+    private void CopyStateToDict(RelicManager rm, string fieldName, Dictionary<int, int> source)
+    {
+        var f = AccessTools.Field(typeof(RelicManager), fieldName);
+        var dst = f?.GetValue(rm) as Dictionary<RelicEffect, int>;
+        if (dst == null) return;
+        foreach (var kvp in source)
+            dst[(RelicEffect)kvp.Key] = kvp.Value;
     }
 
     private void LoadRelicState(CoopPlayerState state)
@@ -674,6 +700,14 @@ public class CoopStateManager
                         countdowns[(RelicEffect)kvp.Key] = kvp.Value;
                 }
             }
+
+            // Restore the three usage-counter dicts. Without this, swapping to a
+            // player resets per-shot/per-battle/per-run counters to whatever the
+            // previous active player had — Pocket Sand uses, Reload Strength
+            // stacks, etc. all leak between players.
+            CopyStateToDict(relicMgr, "_relicRemainingUsesPerShot", state.RelicUsesPerShot);
+            CopyStateToDict(relicMgr, "_relicRemainingUsesPerBattle", state.RelicUsesPerBattle);
+            CopyStateToDict(relicMgr, "_relicRemainingUsesPerRun", state.RelicUsesPerRun);
 
             _log.LogInfo($"[CoopState] LoadRelicState for slot {state.SlotIndex}: {added}/{state.OwnedRelics.Count} relics loaded");
         }

@@ -30,17 +30,28 @@ public class RelicStateProvider : IGameStateProvider<RelicStateSnapshot>
             var owned = ownedField?.GetValue(rm) as IDictionary<RelicEffect, Relic>;
             if (owned == null) return snapshot;
 
-            // Countdown data
+            // Countdown / per-shot / per-battle / per-run counters. RelicManager
+            // tracks each in its own dict; we capture all four so the client can
+            // mirror "X / Y" displays (Slimy Salve, Tipped Pegs, Dive Reload, etc.).
             var countdownField = AccessTools.Field(typeof(RelicManager), "_relicRemainingCountdowns");
+            var perShotField = AccessTools.Field(typeof(RelicManager), "_relicRemainingUsesPerShot");
+            var perBattleField = AccessTools.Field(typeof(RelicManager), "_relicRemainingUsesPerBattle");
+            var perRunField = AccessTools.Field(typeof(RelicManager), "_relicRemainingUsesPerRun");
             var countdowns = countdownField?.GetValue(rm) as IDictionary<RelicEffect, int>;
+            var perShot = perShotField?.GetValue(rm) as IDictionary<RelicEffect, int>;
+            var perBattle = perBattleField?.GetValue(rm) as IDictionary<RelicEffect, int>;
+            var perRun = perRunField?.GetValue(rm) as IDictionary<RelicEffect, int>;
 
             foreach (var kvp in owned)
             {
                 var relic = kvp.Value;
                 if (relic == null) continue;
 
-                int countdown = 0;
+                int countdown = 0, ps = 0, pb = 0, pr = 0;
                 countdowns?.TryGetValue(kvp.Key, out countdown);
+                perShot?.TryGetValue(kvp.Key, out ps);
+                perBattle?.TryGetValue(kvp.Key, out pb);
+                perRun?.TryGetValue(kvp.Key, out pr);
 
                 snapshot.OwnedRelics.Add(new RelicEntry
                 {
@@ -49,6 +60,9 @@ public class RelicStateProvider : IGameStateProvider<RelicStateSnapshot>
                     LocKey = relic.locKey ?? "",
                     Rarity = 0, // relic.rarity may not be public
                     RemainingCountdown = countdown,
+                    RemainingUsesPerShot = ps,
+                    RemainingUsesPerBattle = pb,
+                    RemainingUsesPerRun = pr,
                     IsEnabled = true,
                 });
             }
