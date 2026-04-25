@@ -1230,6 +1230,58 @@ public static class MultiplayerClientPatches
                     }
                 }
 
+                // Apply cruciball starting-deck penalties to non-host players. The
+                // host's slot already has these added by GameInit.Start (native
+                // code reads CruciballManager.AdditionalStarterStones / ShouldAdd*),
+                // but non-host decks here are built straight from ClassLoadoutData
+                // and would otherwise miss the stone/Horriball/Terriball additions
+                // entirely. Re-applies the same rules so every player sees the
+                // same penalties as the host at their cruciball level.
+                try
+                {
+                    var cms = UnityEngine.Resources.FindObjectsOfTypeAll<Cruciball.CruciballManager>();
+                    var cm = (cms != null && cms.Length > 0) ? cms[0] : null;
+                    if (cm != null)
+                    {
+                        int extraStones = cm.AdditionalStarterStones();
+                        if (extraStones > 0 && cm.stonePrefab != null)
+                        {
+                            var stoneName = cm.stonePrefab.gameObject.name;
+                            for (int s = 0; s < extraStones; s++)
+                            {
+                                playerState.CompleteDeck.Add(new GameState.SerializedOrb
+                                {
+                                    PrefabName = stoneName,
+                                    Level = 0,
+                                });
+                            }
+                            MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Slot {player.SlotIndex}: cruciball added {extraStones}x {stoneName}");
+                        }
+
+                        if (cm.ShouldAddCursedOrb() && cm.dudOrb1Prefab != null)
+                        {
+                            var dudName = cm.dudOrb1Prefab.gameObject.name;
+                            playerState.CompleteDeck.Add(new GameState.SerializedOrb { PrefabName = dudName, Level = 0 });
+                            MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Slot {player.SlotIndex}: cruciball added cursed orb {dudName}");
+                        }
+
+                        if (cm.ShouldAddUnremovableCursedOrb() && cm.unremovalbeDudOrb1Prefab != null)
+                        {
+                            var unrDudName = cm.unremovalbeDudOrb1Prefab.gameObject.name;
+                            playerState.CompleteDeck.Add(new GameState.SerializedOrb { PrefabName = unrDudName, Level = 0 });
+                            MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Slot {player.SlotIndex}: cruciball added unremovable cursed orb {unrDudName}");
+                        }
+                    }
+                    else
+                    {
+                        MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] Slot {player.SlotIndex}: no CruciballManager — skipping cruciball deck penalties");
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] Slot {player.SlotIndex}: cruciball deck penalties failed: {ex.Message}");
+                }
+
                 playerState.IsInitialized = true;
                 MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Built slot {player.SlotIndex} state from ClassLoadoutData: " +
                     $"hp={playerState.CurrentHealth}/{playerState.MaxHealth}, deck={playerState.CompleteDeck.Count}, relics={playerState.OwnedRelics.Count}");
