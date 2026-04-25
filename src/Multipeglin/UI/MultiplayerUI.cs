@@ -138,7 +138,7 @@ public class MultiplayerUI : MonoBehaviour
             }
 
             _transport.OnClientConnected += peerId => OnConnected();
-            _transport.OnDisconnected += peerId => OnDisconnected();
+            _transport.OnDisconnected += peerId => OnDisconnected(peerId);
             _transport.OnConnectionRejected += reason => OnConnectionRejected(reason);
 
             if (_steamTransport != null)
@@ -1245,17 +1245,44 @@ public class MultiplayerUI : MonoBehaviour
         Log.LogInfo("Connected — showing lobby");
     }
 
-    private void OnDisconnected()
+    private void OnDisconnected(int peerId)
     {
+        // Host in lobby (game not yet started): a single client dropping should
+        // not tear down the lobby. ServiceRegistration's host-side OnDisconnected
+        // already removes the slot from PlayerRegistry; we just need to rebroadcast
+        // lobby state so the host UI stops showing the dropped client.
+        if (_multiplayerMode != null && _multiplayerMode.IsHosting && !LobbyUI.GameStartReceived)
+        {
+            Log?.LogInfo($"[Lobby] Client peer {peerId} disconnected during lobby — keeping lobby open");
+            var dispatcher = Utility.MainThreadDispatcher.Instance;
+            Action rebroadcast = () =>
+            {
+                try
+                {
+                    var services = MultiplayerPlugin.Services;
+                    if (services != null
+                        && services.TryResolve<Multiplayer.PlayerRegistry>(out var reg)
+                        && services.TryResolve<Multipeglin.Events.IGameEventRegistry>(out var er))
+                    {
+                        Multipeglin.Events.Handlers.Lobby.LobbyHelper.BroadcastLobbyState(reg, er);
+                    }
+                }
+                catch (Exception ex) { Log?.LogWarning($"[Lobby] Rebroadcast after disconnect failed: {ex.Message}"); }
+            };
+            if (dispatcher != null) dispatcher.Enqueue(rebroadcast);
+            else rebroadcast();
+            return;
+        }
+
         _lastConnectionStatus = "Disconnected";
         Log?.LogInfo("Transport disconnected — scheduling full reset");
 
         // Queue the reset to next frame to avoid calling transport.Stop() from
         // within the PollEvents callback that fired this event.
-        var dispatcher = Utility.MainThreadDispatcher.Instance;
-        if (dispatcher != null)
+        var disp = Utility.MainThreadDispatcher.Instance;
+        if (disp != null)
         {
-            dispatcher.Enqueue(HandleDisconnectReset);
+            disp.Enqueue(HandleDisconnectReset);
         }
         else
         {
