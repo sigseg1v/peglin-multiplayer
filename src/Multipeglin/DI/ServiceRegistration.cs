@@ -266,6 +266,7 @@ public static class ServiceRegistration
         registry.Register(new ShotTimeoutServerHandler(), new ShotTimeoutClientHandler());
         registry.Register(new DamageTextServerHandler(), new DamageTextClientHandler());
         registry.Register(new AnimationSyncServerHandler(), new AnimationSyncClientHandler());
+        registry.Register(new SpiritOfRadiaPhaseTransitionServerHandler(), new SpiritOfRadiaPhaseTransitionClientHandler());
 
         // Health events
         registry.Register(new PlayerDamagedServerHandler(), new PlayerDamagedClientHandler());

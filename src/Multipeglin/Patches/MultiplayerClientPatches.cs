@@ -5303,4 +5303,104 @@ public static class MultiplayerClientPatches
         UnityEngine.Object.DontDestroyOnLoad(__instance.gameObject);
         return false;
     }
+
+    // --- SpiritOfRadia phase-2 transition: host signals client, client mirrors visuals ---
+    //
+    // Host: AI fires the boss's StartPhase2PreTransition coroutine, which after a delay
+    // invokes PreTransitionStarted (cracks walls, hides floor/crystals, fades, moves
+    // boss). That coroutine ends with StartCoroutine(boss.StartPhase2Transition()),
+    // which fires OnSpiritOfRadiaPhaseTransitionStarted (clears roof/floor, shows void
+    // walls, moves UI). On the host we hook those two delegates to dispatch a network
+    // event with Step=1 / Step=2.
+    //
+    // Client: Act4BossPegBoardFrameManager.RegisterCallbacks runs from BattleController.Start
+    // on both sides, so the visual subscribers exist on the client. The client handler
+    // for the network event invokes the same static delegate, triggering the same visual
+    // coroutines. We block the boss's own StartPhase2Transition IEnumerator on the
+    // client because Act4BossPegBoardFrameManager.Phase2PreTransition (which does run
+    // on client when PreTransitionStarted fires) ends with StartCoroutine(boss.StartPhase2Transition())
+    // — that's host-authoritative state we don't want re-running on the client.
+
+    private static bool _spiritRadiaHostSubscribed;
+
+    [HarmonyPatch(typeof(Act4BossPegBoardFrameManager), nameof(Act4BossPegBoardFrameManager.RegisterCallbacks))]
+    [HarmonyPostfix]
+    public static void Act4BossPegBoardFrameManager_RegisterCallbacks_Postfix()
+    {
+        if (!IsHosting) return;
+        if (_spiritRadiaHostSubscribed) return;
+        _spiritRadiaHostSubscribed = true;
+
+        global::Battle.Enemies.SpiritOfRadiaBoss.PreTransitionStarted += DispatchPreTransition;
+        global::Battle.Enemies.SpiritOfRadiaBoss.OnSpiritOfRadiaPhaseTransitionStarted += DispatchMainTransition;
+        MultiplayerPlugin.Logger?.LogInfo("[SpiritOfRadia] Host: subscribed to phase-2 delegates");
+    }
+
+    private static void DispatchPreTransition()
+    {
+        try
+        {
+            if (MultiplayerPlugin.Services == null) return;
+            if (!MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out var registry)) return;
+            MultiplayerPlugin.Logger?.LogInfo("[SpiritOfRadia] Host: dispatching Step=1 (pre-transition)");
+            registry.Dispatch(new Multipeglin.Events.Network.Battle.SpiritOfRadiaPhaseTransitionEvent { Step = 1 });
+        }
+        catch (Exception e)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[SpiritOfRadia] DispatchPreTransition failed: {e.Message}");
+        }
+    }
+
+    private static void DispatchMainTransition()
+    {
+        try
+        {
+            if (MultiplayerPlugin.Services == null) return;
+            if (!MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out var registry)) return;
+            MultiplayerPlugin.Logger?.LogInfo("[SpiritOfRadia] Host: dispatching Step=2 (main transition)");
+            registry.Dispatch(new Multipeglin.Events.Network.Battle.SpiritOfRadiaPhaseTransitionEvent { Step = 2 });
+        }
+        catch (Exception e)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[SpiritOfRadia] DispatchMainTransition failed: {e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Block boss's StartPhase2Transition IEnumerator on the client. The frame
+    /// manager's Phase2PreTransition coroutine (which runs on the client to drive
+    /// the wall-crack and floor-hide visuals) ends by calling this — but on the
+    /// client it must not run host state changes (currentPhase, peg conversion,
+    /// status effects, pachinko spawn). The visual delegate is still fired
+    /// separately by Step=2 from the host.
+    /// </summary>
+    [HarmonyPatch(typeof(global::Battle.Enemies.SpiritOfRadiaBoss), nameof(global::Battle.Enemies.SpiritOfRadiaBoss.StartPhase2Transition))]
+    [HarmonyPrefix]
+    public static bool SpiritOfRadiaBoss_StartPhase2Transition_Prefix(ref IEnumerator __result)
+    {
+        if (ShouldSuppressClientLogic)
+        {
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked SpiritOfRadiaBoss.StartPhase2Transition — host drives phase-2 state");
+            __result = EmptyEnumerator();
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Symmetric block for boss's StartPhase2PreTransition IEnumerator on the
+    /// client. The AI action that calls it is host-only, so this is defensive
+    /// in case any path reaches it (e.g. relic effects).
+    /// </summary>
+    [HarmonyPatch(typeof(global::Battle.Enemies.SpiritOfRadiaBoss), nameof(global::Battle.Enemies.SpiritOfRadiaBoss.StartPhase2PreTransition))]
+    [HarmonyPrefix]
+    public static bool SpiritOfRadiaBoss_StartPhase2PreTransition_Prefix(ref IEnumerator __result)
+    {
+        if (ShouldSuppressClientLogic)
+        {
+            __result = EmptyEnumerator();
+            return false;
+        }
+        return true;
+    }
 }

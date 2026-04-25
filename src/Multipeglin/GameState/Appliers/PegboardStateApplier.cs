@@ -976,6 +976,12 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     // isn't authoritative.
                     LongPegVisualHelper.ApplyHitVisual(longPegCleared);
                     try { longPegCleared.RemoveIfCleared(); } catch { }
+                    // RemoveIfCleared early-returns for VINE/SPINFECTION/MAX_HP peg
+                    // types (used by SpiritOfRadia boss), leaving the collider enabled.
+                    // Host disables it via LongPeg.Update after _beingHit time
+                    // accumulates from a real ball collision; client never simulates
+                    // that, so force the collider-off state directly to match host.
+                    try { if (!longPegCleared.IsDisabled()) longPegCleared.SetActiveStatus(active: false); } catch { }
                 }
                 else
                 {
