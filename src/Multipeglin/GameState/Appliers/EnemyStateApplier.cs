@@ -121,6 +121,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                             _enemyId.Register(spawned, entry.Id);
                             SyncStatusEffects(spawned, entry);
                             SyncShield(spawned, entry);
+                            ApplyC19Extra(spawned, entry);
                         }
                     }
                     else
@@ -134,6 +135,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                         ForceUpdateHealthBar(match);
                         SyncStatusEffects(match, entry);
                         SyncShield(match, entry);
+                        ApplyC19Extra(match, entry);
                         matched.Add(match);
                         updated++;
                         _enemyId.Register(match, entry.Id);
@@ -149,6 +151,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                         // Register newly created enemy with host GUID
                         _enemyId.Register(spawned, entry.Id);
                         SyncStatusEffects(spawned, entry);
+                        ApplyC19Extra(spawned, entry);
                     }
                     else
                     {
@@ -777,6 +780,35 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
         catch (Exception ex)
         {
             _log.LogWarning($"[EnemyApplier] SyncShield failed for '{enemy?.locKey}': {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Apply the cruciball "extra enemy" HP bar background (blue border) when the host
+    /// flagged this enemy as a c19 bonus spawn. Idempotent — only switches the sprite
+    /// when it isn't already the c19 background.
+    /// </summary>
+    private void ApplyC19Extra(Enemy enemy, Snapshots.EnemyEntry entry)
+    {
+        try
+        {
+            if (!entry.IsC19Extra) return;
+            var slider = enemy?.HealthBarBarSprite;
+            if (slider == null) return;
+
+            var bgField = AccessTools.Field(typeof(UpdateSlider), "_background");
+            var c19Field = AccessTools.Field(typeof(UpdateSlider), "_c19Background");
+            var bgImg = bgField?.GetValue(slider) as UnityEngine.UI.Image;
+            var c19Sprite = c19Field?.GetValue(slider) as UnityEngine.Sprite;
+            if (bgImg == null || c19Sprite == null) return;
+            if (bgImg.sprite == c19Sprite) return;
+
+            slider.SetIsC19ExtraEnemy();
+            _log.LogInfo($"[EnemyApplier] Applied c19 HP bar to '{enemy.locKey}' (guid={entry.Id})");
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[EnemyApplier] ApplyC19Extra failed for '{enemy?.locKey}': {ex.Message}");
         }
     }
 

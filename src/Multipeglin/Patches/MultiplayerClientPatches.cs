@@ -421,6 +421,22 @@ public static class MultiplayerClientPatches
                     MultiplayerPlugin.Logger?.LogInfo("[ClientAim] Sent OrbDiscardRequest to host");
                 }
             }
+
+            // Direct left-click to fire — fallback for when PachinkoBall.LateUpdate's
+            // native click→Fire path breaks. This has been observed after the second
+            // battle: Arm() throws, _predictionManager / _player / _mainCamera wiring
+            // is fragile, and the native LateUpdate never reaches Fire(). The Fire
+            // prefix's "Fire intercepted" path therefore never runs and the player is
+            // soft-locked. Polling Input here mirrors the right-click discard pattern
+            // that has always worked, and stays idempotent: Fire prefix sets
+            // ClientShotSentThisTurn first if it ever runs, so we won't double-send.
+            if (_clientBallInitialized && _clientBallGO != null
+                && !ClientShotSentThisTurn
+                && UnityEngine.Input.GetMouseButtonDown(0)
+                && !IsPointerOverUI())
+            {
+                TrySendDirectShot();
+            }
         }
         else
         {
@@ -607,7 +623,10 @@ public static class MultiplayerClientPatches
                     // Arm the ball — this enables TrajectorySimulation and prediction line
                     try { ball.Arm(); } catch (System.Exception armEx)
                     {
-                        MultiplayerPlugin.Logger?.LogWarning($"[ClientAim] Arm() failed (non-fatal): {armEx.Message}");
+                        MultiplayerPlugin.Logger?.LogWarning(
+                            $"[ClientAim] Arm() failed (non-fatal): {armEx.GetType().Name}: " +
+                            $"'{armEx.Message}' pm={(pm == null ? "null" : "ok")} " +
+                            $"trajSim={(ball.GetComponent<TrajectorySimulation>() == null ? "null" : "ok")}\n{armEx.StackTrace}");
                     }
 
                     // Set AIMING state for proper mouse input handling in PachinkoBall.Update
@@ -642,6 +661,63 @@ public static class MultiplayerClientPatches
         // When the player clicks, PachinkoBall calls Fire() which is intercepted by
         // PachinkoBall_Fire_Prefix, which sends the ShootRequest to the host.
         // No manual mouse tracking needed here.
+    }
+
+    private static bool IsPointerOverUI()
+    {
+        var es = UnityEngine.EventSystems.EventSystem.current;
+        return es != null && es.IsPointerOverGameObject();
+    }
+
+    /// <summary>
+    /// Send a ShootRequestEvent computed directly from the camera + mouse position,
+    /// bypassing PachinkoBall.LateUpdate's native click→Fire path. Used when the
+    /// native path is broken (Arm failed, _predictionManager null, Camera.main
+    /// races on scene load, etc). Mirrors Fire-prefix's send logic.
+    /// </summary>
+    private static void TrySendDirectShot()
+    {
+        try
+        {
+            var cam = UnityEngine.Camera.main;
+            if (cam == null) return;
+            var ballPos = _clientBallGO.transform.position;
+            var worldMouse = cam.ScreenToWorldPoint(UnityEngine.Input.mousePosition);
+            var aim = ((UnityEngine.Vector2)(worldMouse - ballPos)).normalized;
+            if (aim.sqrMagnitude < 0.0001f) return;
+
+            string targetGuid = null;
+            try
+            {
+                var targetMgr = UnityEngine.Object.FindObjectOfType<Battle.TargetingManager>();
+                var tservices = MultiplayerPlugin.Services;
+                if (targetMgr?.currentTarget != null
+                    && tservices?.TryResolve<Utility.EnemyIdentifier>(out var enemyId) == true)
+                {
+                    targetGuid = enemyId.GetGuid(targetMgr.currentTarget);
+                }
+            }
+            catch { }
+
+            var services = MultiplayerPlugin.Services;
+            if (services?.TryResolve<Network.IMessageSender>(out var sender) == true)
+            {
+                sender.Send(new Events.Network.Coop.ShootRequestEvent
+                {
+                    AimDirectionX = aim.x,
+                    AimDirectionY = aim.y,
+                    TargetEnemyGuid = targetGuid,
+                });
+                ClientShotSentThisTurn = true;
+
+                MultiplayerPlugin.Logger?.LogInfo(
+                    $"[ClientAim] Direct click → ShootRequest: aim=({aim.x:F2},{aim.y:F2}), target={targetGuid ?? "auto"}");
+            }
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[ClientAim] TrySendDirectShot failed: {ex.GetType().Name}: {ex.Message}");
+        }
     }
 
     /// <summary>

@@ -46,4 +46,7 @@ public class EnemyEntry
     public float ShieldMaxHealth { get; set; }
     /// <summary>True while the shield GameObject is active on the host — flips to false once the barricade dies.</summary>
     public bool ShieldActive { get; set; }
+
+    /// <summary>True if this enemy was spawned as a cruciball "extra" (gets the blue HP bar background).</summary>
+    public bool IsC19Extra { get; set; }
 }

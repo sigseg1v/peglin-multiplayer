@@ -85,6 +85,23 @@ public class EnemyStateProvider : IGameStateProvider<EnemyStateSnapshot>
                         if (chargeLenField != null)
                             entry.ChargeTime = (int)chargeLenField.GetValue(enemy);
 
+                        // Cruciball-extra HP bar — detect by comparing UpdateSlider's
+                        // current background sprite to its _c19Background slot.
+                        try
+                        {
+                            var slider = enemy.HealthBarBarSprite;
+                            if (slider != null)
+                            {
+                                var bgField = AccessTools.Field(typeof(UpdateSlider), "_background");
+                                var c19Field = AccessTools.Field(typeof(UpdateSlider), "_c19Background");
+                                var bgImg = bgField?.GetValue(slider) as UnityEngine.UI.Image;
+                                var c19Sprite = c19Field?.GetValue(slider) as UnityEngine.Sprite;
+                                if (bgImg != null && c19Sprite != null && bgImg.sprite == c19Sprite)
+                                    entry.IsC19Extra = true;
+                            }
+                        }
+                        catch { }
+
                         // Shield barricade (ShieldKnight etc). BarricadeEnemy is a separate
                         // Enemy instance wired via ShieldEnemy._shield — not in EnemyManager.Enemies,
                         // so we attach its state to the parent's entry.
