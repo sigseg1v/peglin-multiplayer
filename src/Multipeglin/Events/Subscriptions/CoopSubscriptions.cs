@@ -53,6 +53,13 @@ public sealed class CoopSubscriptions
         // damage has already been halved (rounded up) and a second shot of the same
         // halved damage should land on the farthest enemy from the player.
         public bool HasReverseShot;
+
+        // Alien's Rock (SPLASH_EFFECT_ON_TARGETED_ATTACKS): targeted attacks splash to
+        // adjacent enemies (range 1, SIDE). Captured at shot time using the shooter's
+        // active relics; applied during PlayCoopAttackSequence by expanding targets.
+        public bool HasTargetedSplash;
+        // TARGETED_ATTACKS_HIT_ALL: targeted attacks hit every alive enemy.
+        public bool HasTargetedHitAll;
     }
 
     private readonly IMultiplayerMode _mode;
@@ -642,11 +649,17 @@ public sealed class CoopSubscriptions
             // up) and schedules a second shot at the farthest enemy with the same
             // halved value. We bypass Fire in coop, so replicate the split here.
             bool hasReverseShot = false;
+            bool hasTargetedSplash = false;
+            bool hasTargetedHitAll = false;
             {
                 var rms = Resources.FindObjectsOfTypeAll<Relics.RelicManager>();
                 var rm = rms != null && rms.Length > 0 ? rms[0] : null;
                 if (rm != null)
+                {
                     hasReverseShot = rm.RelicEffectActive(Relics.RelicEffect.ADDITIONAL_REVERSE_PROJECTILE_ATTACK);
+                    hasTargetedSplash = rm.RelicEffectActive(Relics.RelicEffect.SPLASH_EFFECT_ON_TARGETED_ATTACKS);
+                    hasTargetedHitAll = rm.RelicEffectActive(Relics.RelicEffect.TARGETED_ATTACKS_HIT_ALL);
+                }
             }
 
             if (am != null)
@@ -745,6 +758,8 @@ public sealed class CoopSubscriptions
                 StatusEffectsToApply = capturedEffects,
                 OrbPrefabName = capturedOrbName,
                 HasReverseShot = hasReverseShot && !isHeal && precomputedDamage > 0,
+                HasTargetedSplash = hasTargetedSplash,
+                HasTargetedHitAll = hasTargetedHitAll,
             };
 
             _log.LogInfo($"[CoopSubs] Saved shot data for slot {activeSlot}: " +
@@ -1335,6 +1350,10 @@ public sealed class CoopSubscriptions
         // Pincer Maneuver: damage above is the halved primary shot; the coop
         // sequencer must apply the same damage to the farthest enemy.
         public bool HasReverseShot;
+        // Alien's Rock — splash to adjacent enemies on targeted hit.
+        public bool HasTargetedSplash;
+        // TARGETED_ATTACKS_HIT_ALL — targeted hit damages every alive enemy.
+        public bool HasTargetedHitAll;
     }
 
     /// <summary>
@@ -1366,6 +1385,8 @@ public sealed class CoopSubscriptions
                 CriticalHitCount = d.CriticalHitCount,
                 OrbPrefabName = d.OrbPrefabName,
                 HasReverseShot = d.HasReverseShot,
+                HasTargetedSplash = d.HasTargetedSplash,
+                HasTargetedHitAll = d.HasTargetedHitAll,
             });
         }
         inst._accumulatedShotData.Clear();

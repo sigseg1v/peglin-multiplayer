@@ -2579,6 +2579,8 @@ public static class MultiplayerClientPatches
                     MultiplayerPlugin.Logger?.LogWarning(
                         $"[CoopAttack] Raycast redirect failed for {shot.OrbPrefabName}: {rex.Message}");
                 }
+
+                ExpandTargetsForShooterRelics(em, shot, primaryTarget, targets);
             }
 
             // Resolve a GUID for the primary target so clients can find the same
@@ -2684,12 +2686,16 @@ public static class MultiplayerClientPatches
                         yield return null;
                     }
 
+                    var reverseTargets = new System.Collections.Generic.List<Battle.Enemies.Enemy> { reverseTarget };
+                    ExpandTargetsForShooterRelics(em, shot, reverseTarget, reverseTargets);
+
                     Events.Subscriptions.EnemySubscriptions.DamageAttributionSlotOverride = shot.SlotIndex;
                     try
                     {
-                        if (reverseTarget != null && reverseTarget.CurrentHealth > 0f)
+                        foreach (var rt in reverseTargets)
                         {
-                            reverseTarget.Damage(shot.Damage, screenshake: false, 0.25f, 1f,
+                            if (rt == null || rt.CurrentHealth <= 0f) continue;
+                            rt.Damage(shot.Damage, screenshake: false, 0.25f, 1f,
                                 unblockable: false, Battle.Enemies.Enemy.EnemyDamageSource.TargetedAttack);
                         }
                     }
@@ -2699,7 +2705,7 @@ public static class MultiplayerClientPatches
                     }
 
                     MultiplayerPlugin.Logger?.LogInfo(
-                        $"[CoopAttack] Pincer reverse for slot {shot.SlotIndex}: dmg={shot.Damage} target={reverseGuid}");
+                        $"[CoopAttack] Pincer reverse for slot {shot.SlotIndex}: dmg={shot.Damage} target={reverseGuid} splashTargets={reverseTargets.Count}");
                 }
             }
 
@@ -2775,6 +2781,51 @@ public static class MultiplayerClientPatches
 
     private static readonly System.Collections.Generic.Dictionary<string, int> _orbPierceCache
         = new System.Collections.Generic.Dictionary<string, int>();
+
+    /// <summary>
+    /// Apply shooter-owned splash relics (Alien's Rock = SPLASH_EFFECT_ON_TARGETED_ATTACKS,
+    /// TARGETED_ATTACKS_HIT_ALL) to a coop-replayed targeted shot. We capture these
+    /// flags at OnShotComplete on the host while the shooter's RelicManager is loaded;
+    /// here we just expand the resolved target list. Mirrors TargetedAttack.HandleSpellHit.
+    /// </summary>
+    private static void ExpandTargetsForShooterRelics(
+        EnemyManager em,
+        Events.Subscriptions.CoopSubscriptions.PlayerAttackData shot,
+        Battle.Enemies.Enemy primaryTarget,
+        System.Collections.Generic.List<Battle.Enemies.Enemy> targets)
+    {
+        if (em == null || shot == null || primaryTarget == null) return;
+        if (shot.IsAoE) return;
+        if (!shot.HasTargetedSplash && !shot.HasTargetedHitAll) return;
+
+        try
+        {
+            if (shot.HasTargetedHitAll)
+            {
+                foreach (var e in em.Enemies)
+                {
+                    if (e == null || e.CurrentHealth <= 0f) continue;
+                    if (!targets.Contains(e)) targets.Add(e);
+                }
+                return;
+            }
+
+            bool isStationary;
+            int slotIdx = em.GetSlotIndexForEnemy(primaryTarget, out isStationary);
+            var slotType = em.GetSlotForEnemy(primaryTarget);
+            var splash = em.GetSplashRangeEnemies(slotIdx, slotType, 1, Battle.Attacks.AoeAttack.AoeType.SIDE);
+            if (splash == null) return;
+            foreach (var e in splash)
+            {
+                if (e == null || e.CurrentHealth <= 0f) continue;
+                if (!targets.Contains(e)) targets.Add(e);
+            }
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[CoopAttack] ExpandTargetsForShooterRelics failed: {ex.Message}");
+        }
+    }
 
     /// <summary>
     /// Reads ShotBehavior._shotType / _enemiesToPierce off the orb prefab's
