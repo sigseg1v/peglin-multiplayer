@@ -250,6 +250,31 @@ public static class MultiplayerClientPatches
     }
 
     /// <summary>
+    /// Set CruciballManager.currentCruciballLevel directly. Used by both host and
+    /// client at game-start to apply the level chosen in the multiplayer lobby — the
+    /// native CruciballLevelSelector UI is skipped in multiplayer.
+    /// </summary>
+    public static void SetCruciballManagerLevel(int level)
+    {
+        try
+        {
+            var cms = Resources.FindObjectsOfTypeAll<Cruciball.CruciballManager>();
+            if (cms == null || cms.Length == 0)
+            {
+                MultiplayerPlugin.Logger?.LogWarning("[ClientPatches] CruciballManager not found — cruciball level not applied");
+                return;
+            }
+            var cm = cms[0];
+            cm.currentCruciballLevel = level;
+            MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Set CruciballManager.currentCruciballLevel = {level}");
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] SetCruciballManagerLevel failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Look up the ClassLoadoutData for the given class and set StaticGameData.StartingOrbs
     /// and StaticGameData.StartingRelics so GameInit.Start() can initialize the deck properly.
     /// </summary>

@@ -1,6 +1,7 @@
 using System.Linq;
 using Multipeglin.Events.Network.Lobby;
 using Multipeglin.Multiplayer;
+using Multipeglin.UI;
 
 namespace Multipeglin.Events.Handlers.Lobby;
 
@@ -29,7 +30,8 @@ public static class LobbyHelper
                 IsHost = s.IsHost,
                 GameVersion = s.GameVersion,
                 ModVersion = s.ModVersion,
-            }).ToList()
+            }).ToList(),
+            CruciballLevel = LobbyUI.HostCruciballLevel,
         };
 
         eventRegistry.Dispatch(lobbyState);

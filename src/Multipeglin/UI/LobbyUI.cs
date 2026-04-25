@@ -26,6 +26,7 @@ public static class LobbyUI
     private static bool _localIsReady;
     private static bool _gameStartReceived;
     private static GameStartEvent _gameStartEvent;
+    private static int _hostCruciballLevel;
 
     // UI references (set by MultiplayerUI when creating the lobby panel)
     private static GameObject _lobbyRoot;
@@ -34,7 +35,14 @@ public static class LobbyUI
     private static TextMeshProUGUI _startButtonText;
     private static Button _readyButton;
     private static TextMeshProUGUI _readyButtonText;
+    private static GameObject _cruciballRow;
+    private static TextMeshProUGUI _cruciballValueText;
+    private static Button _cruciballLeftBtn;
+    private static Button _cruciballRightBtn;
     private static bool _isHost;
+
+    /// <summary>Host-authoritative cruciball level (0–20). Read by LobbyHelper.</summary>
+    public static int HostCruciballLevel => _hostCruciballLevel;
 
     private class PlayerRow
     {
@@ -59,6 +67,7 @@ public static class LobbyUI
         _localIsReady = false;
         _gameStartReceived = false;
         _gameStartEvent = null;
+        _hostCruciballLevel = 0;
 
         // Destroy dynamically created GameObjects before clearing references
         foreach (var row in _playerRows)
@@ -82,6 +91,15 @@ public static class LobbyUI
             _readyButtonText = null;
         }
 
+        if (_cruciballRow != null)
+        {
+            UnityEngine.Object.Destroy(_cruciballRow);
+            _cruciballRow = null;
+            _cruciballValueText = null;
+            _cruciballLeftBtn = null;
+            _cruciballRightBtn = null;
+        }
+
         if (_lobbyRoot != null)
         {
             UnityEngine.Object.Destroy(_lobbyRoot);
@@ -93,6 +111,7 @@ public static class LobbyUI
     public static void ApplyLobbyState(LobbyStateEvent state)
     {
         _latestLobbyState = state;
+        if (state != null) _hostCruciballLevel = state.CruciballLevel;
     }
 
     /// <summary>Called by GameStartClientHandler when host starts the game.</summary>
@@ -235,6 +254,13 @@ public static class LobbyUI
                 : new Color(1f, 0.4f, 0.4f);
         }
 
+        // Cruciball selector row — host can change, client is read-only
+        if (_cruciballRow == null)
+        {
+            CreateCruciballRow(lobbyParent, createText, createButton);
+        }
+        UpdateCruciballRow(isHost);
+
         // Start button (host only)
         if (_startButton == null && isHost)
         {
@@ -358,6 +384,72 @@ public static class LobbyUI
         _playerRows.Add(row);
     }
 
+    private static void CreateCruciballRow(
+        Transform parent,
+        Func<Transform, string, string, int, TextMeshProUGUI> createText,
+        Func<Transform, string, string, Color, Vector2, Vector2, Button> createButton)
+    {
+        // Positioned just below the player rows. The Start/Ready button sits at y=-160,
+        // so put the cruciball row at y=-100 so it doesn't collide with either.
+        _cruciballRow = new GameObject("CruciballRow");
+        _cruciballRow.transform.SetParent(parent, false);
+        var rowRect = _cruciballRow.AddComponent<RectTransform>();
+        rowRect.anchorMin = new Vector2(0.5f, 0.5f);
+        rowRect.anchorMax = new Vector2(0.5f, 0.5f);
+        rowRect.pivot = new Vector2(0.5f, 0.5f);
+        rowRect.anchoredPosition = new Vector2(0, -100);
+        rowRect.sizeDelta = new Vector2(560, 48);
+
+        var label = createText(_cruciballRow.transform, "CruciballLabel", "Cruciball Level:", 28);
+        var labelRect = label.rectTransform;
+        labelRect.anchorMin = new Vector2(0.5f, 0.5f);
+        labelRect.anchorMax = new Vector2(0.5f, 0.5f);
+        labelRect.pivot = new Vector2(0.5f, 0.5f);
+        labelRect.anchoredPosition = new Vector2(-110, 0);
+        labelRect.sizeDelta = new Vector2(260, 44);
+        label.alignment = TextAlignmentOptions.Right;
+
+        _cruciballLeftBtn = createButton(_cruciballRow.transform, "CruciballLeft", "<",
+            new Color(0.3f, 0.3f, 0.4f, 1f), new Vector2(50, 0), new Vector2(40, 40));
+        _cruciballLeftBtn.onClick.AddListener(() => OnCruciballArrow(-1));
+
+        _cruciballValueText = createText(_cruciballRow.transform, "CruciballValue", "0", 30);
+        var valRect = _cruciballValueText.rectTransform;
+        valRect.anchorMin = new Vector2(0.5f, 0.5f);
+        valRect.anchorMax = new Vector2(0.5f, 0.5f);
+        valRect.pivot = new Vector2(0.5f, 0.5f);
+        valRect.anchoredPosition = new Vector2(120, 0);
+        valRect.sizeDelta = new Vector2(80, 44);
+        _cruciballValueText.alignment = TextAlignmentOptions.Center;
+
+        _cruciballRightBtn = createButton(_cruciballRow.transform, "CruciballRight", ">",
+            new Color(0.3f, 0.3f, 0.4f, 1f), new Vector2(190, 0), new Vector2(40, 40));
+        _cruciballRightBtn.onClick.AddListener(() => OnCruciballArrow(1));
+    }
+
+    private static void UpdateCruciballRow(bool isHost)
+    {
+        if (_cruciballValueText == null) return;
+        _cruciballValueText.text = _hostCruciballLevel.ToString();
+        // Client never sees the arrows — display is read-only.
+        if (_cruciballLeftBtn != null) _cruciballLeftBtn.gameObject.SetActive(isHost);
+        if (_cruciballRightBtn != null) _cruciballRightBtn.gameObject.SetActive(isHost);
+    }
+
+    private static void OnCruciballArrow(int direction)
+    {
+        if (!_isHost) return;
+        var next = _hostCruciballLevel + direction;
+        if (next < 0) next = 20;
+        if (next > 20) next = 0;
+        _hostCruciballLevel = next;
+
+        var services = MultiplayerPlugin.Services;
+        if (services == null) return;
+        if (services.TryResolve<PlayerRegistry>(out var registry) && services.TryResolve<IGameEventRegistry>(out var er))
+            LobbyHelper.BroadcastLobbyState(registry, er);
+    }
+
     private static void OnClassArrow(int rowIndex, int direction)
     {
         _localChosenClass = (_localChosenClass + direction + ClassNames.Length) % ClassNames.Length;
@@ -426,8 +518,8 @@ public static class LobbyUI
             catch (Exception ex) { MultiplayerPlugin.Logger?.LogWarning($"[Lobby] CloseLobbyOnStart failed: {ex.Message}"); }
         }
 
-        // Broadcast game start
-        eventRegistry.Dispatch(new GameStartEvent { FinalPlayers = finalPlayers });
+        // Broadcast game start (include the lobby-selected cruciball level)
+        eventRegistry.Dispatch(new GameStartEvent { FinalPlayers = finalPlayers, CruciballLevel = _hostCruciballLevel });
 
         // Host sets its own class and starts the game
         var hostSlot = registry.GetHostSlot();
@@ -436,13 +528,14 @@ public static class LobbyUI
             var hostClass = (Peglin.ClassSystem.Class)hostSlot.ChosenClass;
             StaticGameData.chosenClass = hostClass;
             Patches.MultiplayerClientPatches.SetCruciballManagerClass(hostClass);
-            MultiplayerPlugin.Logger?.LogInfo($"[Lobby] Starting game: host class={hostSlot.ChosenClass}, {finalPlayers.Count} players");
+            Patches.MultiplayerClientPatches.SetCruciballManagerLevel(_hostCruciballLevel);
+            MultiplayerPlugin.Logger?.LogInfo($"[Lobby] Starting game: host class={hostSlot.ChosenClass}, cruciball={_hostCruciballLevel}, {finalPlayers.Count} players");
         }
 
         // Start the game by calling PlayButton.MovetoCharacterSelect()
         // The class select screen will be skipped by a patch since we already chose
         _gameStartReceived = true;
-        _gameStartEvent = new GameStartEvent { FinalPlayers = finalPlayers };
+        _gameStartEvent = new GameStartEvent { FinalPlayers = finalPlayers, CruciballLevel = _hostCruciballLevel };
 
         var playButton = UnityEngine.Object.FindObjectOfType<PeglinUI.MainMenu.PlayButton>();
         if (playButton != null)

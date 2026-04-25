@@ -41,6 +41,10 @@ public sealed class GameStartClientHandler : IClientHandler<GameStartEvent>
                     // and we skip the native class-select flow entirely in multiplayer.
                     Patches.MultiplayerClientPatches.SetCruciballManagerClass(chosenClass);
 
+                    // Apply the host-chosen cruciball level so client-side systems that
+                    // gate visuals/text on currentCruciballLevel render correctly.
+                    Patches.MultiplayerClientPatches.SetCruciballManagerLevel(networkEvent.CruciballLevel);
+
                     // Populate the RelicManager's pools + _selectedClass for the client's
                     // chosen class. Normally LoadoutManager.SetupLoadout does this when the
                     // player confirms their character; since we skip that UI in multiplayer,
