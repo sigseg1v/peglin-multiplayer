@@ -75,6 +75,7 @@ public class MultiplayerPlugin : BaseUnityPlugin
 
             _modObject.AddComponent<CoopRewardUI>();
             _modObject.AddComponent<ClientRelicChoiceApplier>();
+            _modObject.AddComponent<Debug.DebugHotkeys>();
 
             _harmony = new Harmony(MultiplayerPluginInfo.GUID);
             try
