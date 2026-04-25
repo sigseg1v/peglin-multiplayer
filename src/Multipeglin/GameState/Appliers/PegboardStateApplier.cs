@@ -199,17 +199,19 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         ApplyPegState(peg, entry, clientBombs, ref typeChanged, ref destroyed, ref reactivated, ref cleared);
                     }
 
-                    // Log bomb entry matching details
-                    if (entry.IsBomb)
+                    // Bomb matching details only logged when host/client state diverges
+                    // (was a per-heartbeat 6× spam for stable bomb fields).
+                    if (entry.IsBomb && peg is Bomb bombPeg)
                     {
-                        bool pegActive = peg.gameObject.activeSelf;
                         bool pegDisabled = false;
                         try { pegDisabled = peg.IsDisabled(); } catch { }
-                        _log.LogInfo($"[PegboardApplier] BOMB MATCH: guid={entry.Guid} " +
-                            $"hostPos=({entry.PosX:F1},{entry.PosY:F1}) " +
-                            $"clientPos=({peg.transform.position.x:F1},{peg.transform.position.y:F1}) " +
-                            $"active={pegActive} disabled={pegDisabled} type={peg.pegType} " +
-                            $"entry(cleared={entry.IsCleared},destroyed={entry.IsDestroyed},hits={entry.HitCount})");
+                        bool stateMatchesHost = pegDisabled == entry.IsDestroyed && bombPeg.HitCount == entry.HitCount;
+                        if (!stateMatchesHost)
+                        {
+                            _log.LogInfo($"[PegboardApplier] BOMB DRIFT: guid={entry.Guid} " +
+                                $"clientDisabled={pegDisabled} hostDestroyed={entry.IsDestroyed} " +
+                                $"clientHits={bombPeg.HitCount} hostHits={entry.HitCount}");
+                        }
                     }
 
                     SyncPegPosition(peg, entry);
@@ -445,36 +447,26 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             // Sync bramball vines
             SyncVines(snapshot, bc);
 
-            LogActualPegState(clientPegs, clientBombs, clientBouncers);
-
-            // Dump all client bombs for debugging
-            if (clientBombs != null)
+            // Per-bomb dump previously logged 6 lines per heartbeat — now only logged
+            // when the client/host bomb count diverges (a real sync issue).
+            int hostBombCount = snapshot.BombPegCount;
+            int clientBombCount = clientBombs?.Count ?? 0;
+            if (clientBombCount != hostBombCount)
             {
-                for (int i = 0; i < clientBombs.Count; i++)
+                LogActualPegState(clientPegs, clientBombs, clientBouncers);
+                if (clientBombs != null)
                 {
-                    var b = clientBombs[i];
-                    if (b == null) { _log.LogInfo($"[PegboardApplier] CLIENT_BOMB[{i}] NULL"); continue; }
-                    bool dis = false;
-                    try { dis = b.IsDisabled(); } catch { }
-                    var guid = _pegId.GetGuid(b) ?? "none";
-                    var parentInfo = "";
-                    if (dis && b.gameObject.activeSelf)
+                    for (int i = 0; i < clientBombs.Count; i++)
                     {
-                        // activeSelf=true but activeInHierarchy=false means parent is inactive
-                        var p = b.transform.parent;
-                        while (p != null)
-                        {
-                            if (!p.gameObject.activeSelf)
-                            {
-                                parentInfo = $" inactiveParent='{p.name}'";
-                                break;
-                            }
-                            p = p.parent;
-                        }
+                        var b = clientBombs[i];
+                        if (b == null) { _log.LogInfo($"[PegboardApplier] CLIENT_BOMB[{i}] NULL"); continue; }
+                        bool dis = false;
+                        try { dis = b.IsDisabled(); } catch { }
+                        var guid = _pegId.GetGuid(b) ?? "none";
+                        _log.LogInfo($"[PegboardApplier] CLIENT_BOMB[{i}] guid={guid} " +
+                            $"pos=({b.transform.position.x:F1},{b.transform.position.y:F1}) " +
+                            $"type={b.pegType} active={b.gameObject.activeSelf} disabled={dis} hits={b.HitCount}");
                     }
-                    _log.LogInfo($"[PegboardApplier] CLIENT_BOMB[{i}] guid={guid} " +
-                        $"pos=({b.transform.position.x:F1},{b.transform.position.y:F1}) " +
-                        $"type={b.pegType} active={b.gameObject.activeSelf} disabled={dis} hits={b.HitCount}{parentInfo}");
                 }
             }
         }

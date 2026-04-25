@@ -213,17 +213,13 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             // we check if the deck UI shows it. If not, we set it directly.
             // This is the "dumb canvas" approach — no dependency on BallUsedEvent timing.
             var scene = SceneManager.GetActiveScene().name;
-            _log.LogInfo($"[DeckApplier] ActiveOrb check: host='{snapshot.CurrentOrb ?? "NULL"}' scene='{scene}'");
             if (!string.IsNullOrEmpty(snapshot.CurrentOrb) && scene == "Battle")
             {
                 EnsureDeckUIShowsActiveOrb(dm, snapshot.CurrentOrb);
                 EnsureAimerOrbShown(snapshot.CurrentOrb);
             }
 
-            // Diagnostic: log what the game actually sees
-            LogActualDeckState(dm);
-
-            // === Post-apply verification ===
+            // === Post-apply verification === (logs the deck dump only if mismatched)
             VerifyDeckState(dm, snapshot);
         }
         catch (Exception ex)
@@ -583,6 +579,9 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             var battleDeck = dm.battleDeck;
             var shuffledDeck = dm.shuffledDeck;
 
+            // Per-orb dump previously fired every heartbeat (5+ lines × 1Hz). Now this
+            // method is only invoked from VerifyDeckState on count mismatch — keeping
+            // the bulk dump for diagnostic value when something's actually wrong.
             _log.LogInfo($"[DeckApplier] CLIENT ACTUAL: complete={completeDeck?.Count ?? 0}, " +
                 $"battle={battleDeck?.Count ?? 0}, shuffled={shuffledDeck?.Count ?? 0}");
 
@@ -594,13 +593,6 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                     var atk = go?.GetComponent<Attack>();
                     _log.LogInfo($"[DeckApplier]   complete[{i}]: {go?.name ?? "NULL"} loc={atk?.locNameString ?? "?"}");
                 }
-            }
-
-            if (shuffledDeck != null && shuffledDeck.Count > 0)
-            {
-                var peek = shuffledDeck.Peek();
-                var atk = peek?.GetComponent<Attack>();
-                _log.LogInfo($"[DeckApplier]   next draw: {peek?.name ?? "NULL"} loc={atk?.locNameString ?? "?"}");
             }
         }
         catch (Exception logEx) { _log.LogWarning($"[DeckApplier] LogActualDeckState failed: {logEx.Message}"); }
@@ -660,6 +652,8 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
 
             if (allMatch)
                 _log.LogInfo($"[Verify] DeckState OK: complete={actualComplete} battle={actualBattle} shuffled={actualShuffled}");
+            else
+                LogActualDeckState(dm);
         }
         catch (Exception ex)
         {

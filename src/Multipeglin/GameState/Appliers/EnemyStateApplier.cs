@@ -24,6 +24,10 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
 {
     private readonly ManualLogSource _log;
     private readonly EnemyIdentifier _enemyId;
+    // Cache of host enemy names that have no matching prefab on the client.
+    // Without this, Resources.FindObjectsOfTypeAll<Enemy>() runs every heartbeat
+    // for runtime-only variants like "Knight_Variant_4" — extremely expensive.
+    private readonly HashSet<string> _missingPrefabs = new HashSet<string>();
 
     public EnemyStateApplier(ManualLogSource log, EnemyIdentifier enemyId)
     {
@@ -72,37 +76,35 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             var matched = new HashSet<Enemy>();
             int updated = 0, created = 0, destroyed = 0;
 
-            _log.LogInfo($"[EnemyApplier] Applying {snapshot.Enemies.Count} host enemies to {liveEnemies.Count} client enemies");
-
             // Pass 1: match host enemies to client enemies by GUID first, then by name+position
             foreach (var entry in snapshot.Enemies)
             {
-                _log.LogInfo($"[EnemyApplier] Host enemy: guid={entry.Id} loc={entry.LocKey} name={entry.EnemyName} " +
-                    $"hp={entry.CurrentHealth}/{entry.MaxHealth} pos=({entry.PosX:F1},{entry.PosY:F1}) slot={entry.SlotIndex}");
-
                 // Try GUID match first
                 var match = FindByGuid(entry.Id);
-                if (match != null && !matched.Contains(match))
+                bool matchedByGuid = match != null && !matched.Contains(match);
+                if (!matchedByGuid)
                 {
-                    _log.LogInfo($"[EnemyApplier] GUID match: {entry.Id} → '{match.locKey}'");
-                }
-                else
-                {
-                    // Fallback to locKey + position match
+                    // Fallback to locKey + position match (used on first-bind only)
                     match = FindBestMatch(liveEnemies, entry, matched);
                     if (match != null)
                     {
-                        _log.LogInfo($"[EnemyApplier] Position match: '{match.locKey}' at ({match.transform.position.x:F1},{match.transform.position.y:F1}) → guid={entry.Id}");
+                        _log.LogInfo($"[EnemyApplier] First-bind match: '{match.locKey}' at ({match.transform.position.x:F1},{match.transform.position.y:F1}) → guid={entry.Id}");
                     }
                 }
 
                 if (match != null)
                 {
                     // Check if the enemy type changed (e.g. Stump → StumpDead)
-                    // If the name doesn't match, destroy the old and spawn the new
+                    // If the name doesn't match, destroy the old and spawn the new —
+                    // BUT only if the new prefab is actually known. Otherwise keep the
+                    // existing enemy alive (host runtime variants like Knight_Variant_4
+                    // aren't in the client prefab cache; destroying then failing to
+                    // respawn caused a per-heartbeat flicker).
                     string matchName = match.gameObject.name.Replace("(Clone)", "").Trim();
                     string hostName = (entry.EnemyName ?? "").Replace("(Clone)", "").Trim();
-                    if (!string.IsNullOrEmpty(hostName) && matchName != hostName)
+                    bool typeMismatch = !string.IsNullOrEmpty(hostName) && matchName != hostName;
+                    bool newPrefabKnown = typeMismatch && !_missingPrefabs.Contains(hostName) && FindEnemyPrefab(hostName) != null;
+                    if (typeMismatch && newPrefabKnown)
                     {
                         _log.LogInfo($"[EnemyApplier] Enemy type changed: '{matchName}' → '{hostName}', replacing");
                         _enemyId.Unregister(match);
@@ -169,9 +171,11 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                 }
             }
 
-            _log.LogInfo($"[EnemyApplier] RESULT: Updated={updated}, Created={created}, Destroyed={destroyed} " +
-                $"(host={snapshot.Enemies.Count}, client_before={liveEnemies.Count}, battle={snapshot.BattleStateName})");
-            _enemyId.DumpState("AfterApply");
+            if (created > 0 || destroyed > 0)
+            {
+                _log.LogInfo($"[EnemyApplier] RESULT: Updated={updated}, Created={created}, Destroyed={destroyed} " +
+                    $"(host={snapshot.Enemies.Count}, client_before={liveEnemies.Count}, battle={snapshot.BattleStateName})");
+            }
 
             // === Post-apply verification ===
             VerifyEnemyState(snapshot);
@@ -482,14 +486,17 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
 
         if (best != null) return best;
 
-        // Fallback: any enemy within 3 units (regardless of locKey)
+        // Cross-locKey position fallback ONLY for near-exact matches (<= 0.5 units).
+        // Loose 3-unit fallback was wrong-matching different enemies that happened to
+        // share a row (e.g. Knight_Variant_4 at x=1.0 → ArcherKnight at x=3.8) and
+        // then triggering a destroy/respawn flicker on every heartbeat.
         foreach (var e in liveEnemies)
         {
             if (e == null || alreadyMatched.Contains(e)) continue;
             float dx = e.transform.position.x - entry.PosX;
             float dy = e.transform.position.y - entry.PosY;
             float dist = dx * dx + dy * dy;
-            if (dist < 9f && dist < bestDist) // 3 units
+            if (dist < 0.25f && dist < bestDist) // 0.5 units
             {
                 bestDist = dist;
                 best = e;
@@ -586,11 +593,15 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
         if (string.IsNullOrEmpty(name)) return null;
         string cleanName = name.Replace("(Clone)", "").Trim();
 
+        // Short-circuit known-missing names — Resources.FindObjectsOfTypeAll is very
+        // expensive and runtime-only variants (Knight_Variant_4, etc.) will never
+        // appear in any cache.
+        if (_missingPrefabs.Contains(cleanName)) return null;
+
         // Strategy 1: AssetLoading cache (keyed by RuntimeKey, so match by prefab name)
         var cache = AssetLoading.Instance?.EnemyPrefabs;
         if (cache != null && cache.Count > 0)
         {
-            _log.LogInfo($"[EnemyApplier] Prefab cache has {cache.Count} entries, searching for '{cleanName}'");
             foreach (var kvp in cache)
             {
                 if (kvp.Value != null && kvp.Value.name == cleanName)
@@ -600,15 +611,8 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             foreach (var kvp in cache)
             {
                 if (kvp.Value != null && (kvp.Value.name.Contains(cleanName) || cleanName.Contains(kvp.Value.name)))
-                {
-                    _log.LogInfo($"[EnemyApplier] Partial cache match: '{kvp.Value.name}' for '{cleanName}'");
                     return kvp.Value;
-                }
             }
-        }
-        else
-        {
-            _log.LogWarning($"[EnemyApplier] Prefab cache {(cache == null ? "is null" : "has 0 entries")} — using Resources fallback");
         }
 
         // Strategy 2: search all loaded GameObjects with Enemy component (finds prefabs)
@@ -616,10 +620,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
         foreach (var e in allEnemies)
         {
             if (e != null && e.gameObject.name == cleanName && e.gameObject.scene.name == null)
-            {
-                _log.LogInfo($"[EnemyApplier] Found prefab via Resources: '{cleanName}'");
                 return e.gameObject;
-            }
         }
 
         // Strategy 3: partial name match on prefabs
@@ -627,13 +628,12 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
         {
             if (e != null && e.gameObject.scene.name == null &&
                 (e.gameObject.name.Contains(cleanName) || cleanName.Contains(e.gameObject.name)))
-            {
-                _log.LogInfo($"[EnemyApplier] Found prefab via partial Resources match: '{e.gameObject.name}' for '{cleanName}'");
                 return e.gameObject;
-            }
         }
 
-        _log.LogWarning($"[EnemyApplier] No prefab found for '{cleanName}' (cache={cache?.Count ?? -1}, resources={allEnemies.Length})");
+        // Cache the miss so we don't run Resources.FindObjectsOfTypeAll every heartbeat.
+        _missingPrefabs.Add(cleanName);
+        _log.LogWarning($"[EnemyApplier] No prefab found for '{cleanName}' (cache={cache?.Count ?? -1}, resources={allEnemies.Length}) — caching as missing");
         return null;
     }
 
@@ -810,14 +810,6 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
 
             var uiField = AccessTools.Field(typeof(Enemy), "_statusEffectUI");
             var ui = uiField?.GetValue(enemy) as Battle.StatusEffects.StatusEffectIconManager;
-
-            // Log current state before sync
-            if (effects.Count > 0)
-            {
-                var beforeStr = string.Join(",", effects.ConvertAll(e =>
-                    $"{e.EffectType}({(int)e.EffectType})={e.Intensity}"));
-                _log.LogInfo($"[EnemyApplier] StatusSync BEFORE '{enemy.locKey}': [{beforeStr}]");
-            }
 
             // Build what the host has
             var hostEffects = new Dictionary<Battle.StatusEffects.StatusEffectType, int>();

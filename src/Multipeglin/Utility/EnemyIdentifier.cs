@@ -33,8 +33,6 @@ public class EnemyIdentifier
         var guid = Guid.NewGuid().ToString("N")[..12]; // 12 hex chars, compact
         _guidToEnemy[guid] = enemy;
         _enemyToGuid[enemy] = guid;
-        Log?.LogInfo($"[EnemyGUID] Assigned {guid} to '{enemy.locKey}' ({enemy.gameObject.name}) " +
-            $"at ({enemy.transform.position.x:F1},{enemy.transform.position.y:F1}) hp={enemy.CurrentHealth}");
         return guid;
     }
 
@@ -62,8 +60,6 @@ public class EnemyIdentifier
 
         _guidToEnemy[guid] = enemy;
         _enemyToGuid[enemy] = guid;
-        Log?.LogInfo($"[EnemyGUID] Registered {guid} → '{enemy.locKey}' ({enemy.gameObject.name}) " +
-            $"at ({enemy.transform.position.x:F1},{enemy.transform.position.y:F1}) hp={enemy.CurrentHealth}");
     }
 
     /// <summary>
@@ -77,12 +73,9 @@ public class EnemyIdentifier
         if (_guidToEnemy.TryGetValue(guid, out var enemy) && enemy != null)
             return enemy;
 
-        // Enemy was destroyed or reference is stale — clean up
+        // Enemy was destroyed or reference is stale — clean up silently
         if (enemy == null && _guidToEnemy.ContainsKey(guid))
-        {
             _guidToEnemy.Remove(guid);
-            Log?.LogInfo($"[EnemyGUID] Cleaned up destroyed enemy for GUID {guid}");
-        }
 
         return null;
     }
@@ -107,7 +100,6 @@ public class EnemyIdentifier
         {
             _enemyToGuid.Remove(enemy);
             _guidToEnemy.Remove(guid);
-            Log?.LogInfo($"[EnemyGUID] Unregistered {guid} ('{enemy.locKey}')");
         }
     }
 
@@ -122,7 +114,6 @@ public class EnemyIdentifier
             _guidToEnemy.Remove(guid);
             if (enemy != null)
                 _enemyToGuid.Remove(enemy);
-            Log?.LogInfo($"[EnemyGUID] Unregistered {guid}");
         }
     }
 
