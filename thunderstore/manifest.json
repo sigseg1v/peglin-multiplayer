@@ -1,6 +1,6 @@
 {
     "name": "Multipeglin",
-    "version_number": "0.1.2",
+    "version_number": "0.1.3",
     "website_url": "",
     "description": "Cooperative multiplayer for Peglin. Play through runs together with friends!",
     "dependencies": [
