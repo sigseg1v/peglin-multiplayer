@@ -624,10 +624,34 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
             if (_cachedBombPrefab == null) return null;
 
+            // Prefer parenting under the matching LPM row transform when the host
+            // marks this bomb as living under LinearPegMovement. Without this, the
+            // bomb sits under an arbitrary static parent and the heartbeat-only
+            // position sync visibly teleports it; under the LPM row, the existing
+            // moving-peg sync (parent-nudge + LPM tween) carries it smoothly.
             Transform parent = null;
-            foreach (var p in clientPegs)
+            bool parentedUnderLpm = false;
+            if (entry.HasLpm && entry.LpmParentPosX.HasValue && entry.LpmParentPosY.HasValue)
             {
-                if (p != null && p.transform.parent != null) { parent = p.transform.parent; break; }
+                var lpms = UnityEngine.Object.FindObjectsOfType<Battle.PegBehaviour.LinearPegMovement>();
+                float bestDistSq = 0.5f * 0.5f;
+                foreach (var lpm in lpms)
+                {
+                    if (lpm == null) continue;
+                    var lp = lpm.transform.position;
+                    float dx = lp.x - entry.LpmParentPosX.Value;
+                    float dy = lp.y - entry.LpmParentPosY.Value;
+                    float d = dx * dx + dy * dy;
+                    if (d < bestDistSq) { bestDistSq = d; parent = lpm.transform; }
+                }
+                if (parent != null) parentedUnderLpm = true;
+            }
+            if (parent == null)
+            {
+                foreach (var p in clientPegs)
+                {
+                    if (p != null && p.transform.parent != null) { parent = p.transform.parent; break; }
+                }
             }
 
             var pos = new Vector3(entry.PosX, entry.PosY, 0f);
@@ -643,7 +667,8 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             if (clientBombs != null && !clientBombs.Contains(bomb))
                 clientBombs.Add(bomb);
             _log.LogInfo($"[PegboardApplier] BOMB SYNTHESIZED: guid={entry.Guid} " +
-                $"pos=({entry.PosX:F1},{entry.PosY:F1}) from _bombPrefab");
+                $"pos=({entry.PosX:F1},{entry.PosY:F1}) from _bombPrefab " +
+                $"underLpm={parentedUnderLpm}");
             return bomb;
         }
         catch (Exception ex)
