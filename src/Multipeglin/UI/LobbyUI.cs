@@ -261,11 +261,11 @@ public static class LobbyUI
         }
         UpdateCruciballRow(isHost);
 
-        // Start button (host only)
+        // Start button (host only) — gap below the cruciball row
         if (_startButton == null && isHost)
         {
             _startButton = createButton(lobbyParent, "StartGameBtn", "Start Game",
-                new Color(0.2f, 0.55f, 0.25f, 1f), new Vector2(0, -160), new Vector2(400, 72));
+                new Color(0.2f, 0.55f, 0.25f, 1f), new Vector2(0, -280), new Vector2(400, 72));
             _startButton.onClick.AddListener(OnStartClicked);
             _startButtonText = _startButton.GetComponentInChildren<TextMeshProUGUI>();
         }
@@ -296,7 +296,7 @@ public static class LobbyUI
         if (_readyButton == null && !isHost)
         {
             _readyButton = createButton(lobbyParent, "ReadyBtn", "Ready",
-                new Color(0.5f, 0.3f, 0.2f, 1f), new Vector2(0, -160), new Vector2(400, 72));
+                new Color(0.5f, 0.3f, 0.2f, 1f), new Vector2(0, -280), new Vector2(400, 72));
             _readyButton.onClick.AddListener(OnReadyToggle);
             _readyButtonText = _readyButton.GetComponentInChildren<TextMeshProUGUI>();
         }
@@ -317,8 +317,8 @@ public static class LobbyUI
         Func<Transform, string, string, int, TextMeshProUGUI> createText,
         Func<Transform, string, string, Color, Vector2, Vector2, Button> createButton)
     {
-        // Rows positioned from top of lobby area: first row at y=60, each row 72px apart
-        float yBase = 60 - rowIndex * 72;
+        // Rows positioned from top of lobby area: first row at y=60, each row 67px apart
+        float yBase = 60 - rowIndex * 67;
 
         var rowObj = new GameObject($"PlayerRow_{rowIndex}");
         rowObj.transform.SetParent(parent, false);
@@ -347,6 +347,7 @@ public static class LobbyUI
         row.LeftArrow = createButton(rowObj.transform, $"Left_{rowIndex}", "<",
             new Color(0.3f, 0.3f, 0.4f, 1f), new Vector2(-100, 0), new Vector2(44, 44));
         row.LeftArrow.onClick.AddListener(() => OnClassArrow(ri, -1));
+        OffsetArrowLabel(row.LeftArrow);
 
         row.ClassText = createText(rowObj.transform, $"Class_{rowIndex}", "Peglin", 30);
         var classRect = row.ClassText.rectTransform;
@@ -360,6 +361,7 @@ public static class LobbyUI
         row.RightArrow = createButton(rowObj.transform, $"Right_{rowIndex}", ">",
             new Color(0.3f, 0.3f, 0.4f, 1f), new Vector2(80, 0), new Vector2(44, 44));
         row.RightArrow.onClick.AddListener(() => OnClassArrow(ri, 1));
+        OffsetArrowLabel(row.RightArrow);
 
         // Column 3: Ready status text (shifted left to make room for version)
         row.ReadyText = createText(rowObj.transform, $"Ready_{rowIndex}", "", 28);
@@ -389,15 +391,15 @@ public static class LobbyUI
         Func<Transform, string, string, int, TextMeshProUGUI> createText,
         Func<Transform, string, string, Color, Vector2, Vector2, Button> createButton)
     {
-        // Positioned just below the player rows. The Start/Ready button sits at y=-160,
-        // so put the cruciball row at y=-100 so it doesn't collide with either.
+        // Positioned below the (up to 4) player rows, with breathing room above the
+        // Start/Ready button at y=-280. Player rows now end at y ≈ -141 for 4 players.
         _cruciballRow = new GameObject("CruciballRow");
         _cruciballRow.transform.SetParent(parent, false);
         var rowRect = _cruciballRow.AddComponent<RectTransform>();
         rowRect.anchorMin = new Vector2(0.5f, 0.5f);
         rowRect.anchorMax = new Vector2(0.5f, 0.5f);
         rowRect.pivot = new Vector2(0.5f, 0.5f);
-        rowRect.anchoredPosition = new Vector2(0, -100);
+        rowRect.anchoredPosition = new Vector2(0, -200);
         rowRect.sizeDelta = new Vector2(560, 48);
 
         var label = createText(_cruciballRow.transform, "CruciballLabel", "Cruciball Level:", 28);
@@ -412,6 +414,7 @@ public static class LobbyUI
         _cruciballLeftBtn = createButton(_cruciballRow.transform, "CruciballLeft", "<",
             new Color(0.3f, 0.3f, 0.4f, 1f), new Vector2(50, 0), new Vector2(40, 40));
         _cruciballLeftBtn.onClick.AddListener(() => OnCruciballArrow(-1));
+        OffsetArrowLabel(_cruciballLeftBtn);
 
         _cruciballValueText = createText(_cruciballRow.transform, "CruciballValue", "0", 30);
         var valRect = _cruciballValueText.rectTransform;
@@ -425,6 +428,23 @@ public static class LobbyUI
         _cruciballRightBtn = createButton(_cruciballRow.transform, "CruciballRight", ">",
             new Color(0.3f, 0.3f, 0.4f, 1f), new Vector2(190, 0), new Vector2(40, 40));
         _cruciballRightBtn.onClick.AddListener(() => OnCruciballArrow(1));
+        OffsetArrowLabel(_cruciballRightBtn);
+    }
+
+    /// <summary>
+    /// The "&lt;" / "&gt;" glyphs in this UI font sit visually high inside the button.
+    /// Shift the label rect down a few pixels so the arrow appears vertically
+    /// centered. CreateButton stretches the label to fill the button, so adjusting
+    /// offsetMin/offsetMax shifts the entire text rect.
+    /// </summary>
+    private static void OffsetArrowLabel(Button btn)
+    {
+        if (btn == null) return;
+        var label = btn.GetComponentInChildren<TextMeshProUGUI>();
+        if (label == null) return;
+        var r = label.rectTransform;
+        r.offsetMin = new Vector2(r.offsetMin.x, r.offsetMin.y - 3f);
+        r.offsetMax = new Vector2(r.offsetMax.x, r.offsetMax.y - 3f);
     }
 
     private static void UpdateCruciballRow(bool isHost)

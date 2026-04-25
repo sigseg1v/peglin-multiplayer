@@ -292,7 +292,7 @@ public class MultiplayerUI : MonoBehaviour
 
         // Centered content panel
         var centerPanel = CreatePanel(_overlayPanel.transform, "CenterPanel",
-            new Color(0.12f, 0.12f, 0.12f, 1f), new Vector2(960, 720));
+            new Color(0.12f, 0.12f, 0.12f, 1f), new Vector2(960, 880));
 
         // Title
         var title = CreateText(centerPanel.transform, "Title", "Multiplayer", 48);
@@ -514,13 +514,13 @@ public class MultiplayerUI : MonoBehaviour
 
         // Invite Friend button (only meaningful when hosting via Steam; toggled in UpdateLobbyPanel)
         _inviteFriendButton = CreateButton(_lobbyPanel.transform, "InviteFriendBtn", "Invite Friend",
-            new Color(0.2f, 0.45f, 0.55f, 1f), new Vector2(0, -250), new Vector2(400, 56));
+            new Color(0.2f, 0.45f, 0.55f, 1f), new Vector2(0, -345), new Vector2(400, 56));
         _inviteFriendButton.onClick.AddListener(OnInviteFriendClicked);
         _inviteFriendButton.gameObject.SetActive(false);
 
         // Disconnect button at the bottom
         var disconnectBtn = CreateButton(_lobbyPanel.transform, "DisconnectBtn", "Disconnect",
-            new Color(0.5f, 0.2f, 0.2f, 1f), new Vector2(0, -310), new Vector2(400, 56));
+            new Color(0.5f, 0.2f, 0.2f, 1f), new Vector2(0, -405), new Vector2(400, 56));
         disconnectBtn.onClick.AddListener(OnDisconnectClicked);
 
         _lobbyPanel.SetActive(false);
