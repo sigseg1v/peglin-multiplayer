@@ -33,13 +33,19 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
                 log?.LogInfo("[NodeActivated] Stored host RNG state for pegboard sync");
             }
 
-            // PegMinigame node — load the scene so the client can spectate
+            // PegMinigame node — load the scene so the client can play independently
             if (string.IsNullOrEmpty(e.BattleName) && !string.IsNullOrEmpty(e.MapDataName))
             {
                 var minigameData = FindPegMinigameData(e.MapDataName, log);
                 if (minigameData != null)
                 {
                     log?.LogInfo($"[NodeActivated] PegMinigame node — loading scene for spectating (asset={e.MapDataName})");
+                    // PegMinigameManager.Initialize instantiates _mapData.background and
+                    // _mapData.pegboardFrame. On the host those are populated by
+                    // MapController.LoadSceneFromMapData, which we skip on the client.
+                    // Without this assignment, Initialize NREs and the scene renders
+                    // blank to the player.
+                    PegMinigameVisualAssigner.Assign(minigameData, log, "NodeActivated");
                     StaticGameData.dataToLoad = minigameData;
                     GameState.Appliers.MapStateApplier.AwaitingHostSceneConfirmation = "PegMinigame";
                     MultiplayerClientPatches.AllowNextSceneLoad = true;
@@ -227,6 +233,88 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
     /// </summary>
     private static void AssignBattleVisuals(MapDataBattle battle, BepInEx.Logging.ManualLogSource log)
         => BattleVisualAssigner.Assign(battle, log, "NodeActivated");
+}
+
+/// <summary>
+/// Assigns background and pegboardFrame on a MapDataPegMinigame. The game's
+/// MapController.LoadSceneFromMapData populates these from pegMinigamePegboardFrame,
+/// but we skip that call on the client, so PegMinigameManager.Initialize would
+/// NRE when it instantiates the background / pegboardFrame.
+/// </summary>
+internal static class PegMinigameVisualAssigner
+{
+    public static void Assign(MapDataPegMinigame data, BepInEx.Logging.ManualLogSource log, string tag)
+    {
+        try
+        {
+            var mc = MapController.instance;
+            if (mc == null)
+            {
+                log?.LogWarning($"[{tag}] MapController.instance is null — cannot assign PegMinigame visuals");
+                return;
+            }
+
+            var bgDataField = AccessTools.Field(typeof(MapController), "backgroundData");
+            var bgIndexField = AccessTools.Field(typeof(MapController), "backgroundIndex");
+            var bgData = bgDataField?.GetValue(mc) as Array;
+            var bgIndex = bgIndexField != null ? (int)bgIndexField.GetValue(mc) : 0;
+
+            if (data.background == null && bgData != null && bgIndex >= 0 && bgIndex < bgData.Length)
+            {
+                var bgEntry = bgData.GetValue(bgIndex);
+                if (bgEntry != null)
+                {
+                    var bgGo = bgEntry.GetType().GetField("Background")?.GetValue(bgEntry) as GameObject
+                        ?? bgEntry.GetType().GetProperty("Background")?.GetValue(bgEntry) as GameObject;
+
+                    if (bgGo != null)
+                    {
+                        data.background = bgGo;
+                        log?.LogInfo($"[{tag}] Assigned PegMinigame background: {bgGo.name}");
+                    }
+                }
+            }
+
+            if (data.pegboardFrame == null)
+            {
+                var frameField = AccessTools.Field(typeof(MapController), "pegMinigamePegboardFrame");
+                var frames = frameField?.GetValue(mc) as GameObject[];
+                if (frames != null && bgIndex >= 0 && bgIndex < frames.Length)
+                {
+                    data.pegboardFrame = frames[bgIndex];
+                    log?.LogInfo($"[{tag}] Assigned PegMinigame pegboardFrame: {frames[bgIndex]?.name ?? "NULL"}");
+                }
+                else if (frames != null && frames.Length > 0)
+                {
+                    data.pegboardFrame = frames[0];
+                    log?.LogInfo($"[{tag}] Assigned PegMinigame pegboardFrame (fallback idx 0): {frames[0]?.name ?? "NULL"}");
+                }
+            }
+
+            // Also ensure bouncerPrefab is set (MapController.GetPegMinigameScenario
+            // copies this from backgroundData). PegMinigameManager.CreateBouncers
+            // instantiates from it.
+            if (data.bouncerPrefab == null && bgData != null && bgIndex >= 0 && bgIndex < bgData.Length)
+            {
+                var bgEntry = bgData.GetValue(bgIndex);
+                if (bgEntry != null)
+                {
+                    var bouncer = bgEntry.GetType().GetField("BouncerPrefab")?.GetValue(bgEntry) as GameObject
+                        ?? bgEntry.GetType().GetProperty("BouncerPrefab")?.GetValue(bgEntry) as GameObject;
+
+                    if (bouncer != null)
+                    {
+                        data.bouncerPrefab = bouncer;
+                        log?.LogInfo($"[{tag}] Assigned PegMinigame bouncerPrefab: {bouncer.name}");
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            log?.LogWarning($"[{tag}] PegMinigameVisualAssigner.Assign failed: {ex.Message}");
+        }
+    }
 }
 
 /// <summary>
