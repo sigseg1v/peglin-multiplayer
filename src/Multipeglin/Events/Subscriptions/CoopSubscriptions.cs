@@ -381,6 +381,7 @@ public sealed class CoopSubscriptions
                     _log.LogInfo($"[CoopSubs] Battle init: slot {kvp.Key} — rebuilding deck from completeDeck ({state.CompleteDeck.Count})");
                     _coopStateManager.SwapToPlayer(kvp.Key);
                     EnsureBattleDeckPopulated($"battle init slot {kvp.Key}");
+                    ApplyNonHostStartingBonuses(kvp.Key);
                     _coopStateManager.SaveActivePlayerState();
                 }
             }
@@ -1244,6 +1245,43 @@ public sealed class CoopSubscriptions
             // WAITING_FOR_PLAYERS or DAMAGE_PHASE — just broadcast the updated state
             BroadcastTurnChange();
             _log.LogInfo($"[CoopSubs] Disconnect handled in phase {_turnManager.Phase}");
+        }
+    }
+
+    /// <summary>
+    /// Mirror BattleController's native ApplyStartingBonuses for a non-host player
+    /// at battle init. Native code only runs for the host (the slot loaded into the
+    /// singletons when BattleController.Start() executes), so non-host relics like
+    /// Spiral Slayer (START_WITH_STR) never grant their starting status effect.
+    ///
+    /// Call this AFTER SwapToPlayer(slot) loads the slot's relics into the singleton
+    /// and BEFORE SaveActivePlayerState() captures the resulting status effects.
+    /// We also reset per-battle relic counters here so the bonus actually applies on
+    /// every battle (AttemptUseRelic decrements the counter each call).
+    /// </summary>
+    private void ApplyNonHostStartingBonuses(int slot)
+    {
+        try
+        {
+            var relicMgr = UnityEngine.Resources.FindObjectsOfTypeAll<Relics.RelicManager>()?.FirstOrDefault();
+            if (relicMgr != null)
+            {
+                try { relicMgr.ResetBattleRelics(); }
+                catch (Exception rex) { _log.LogWarning($"[CoopSubs] ResetBattleRelics for slot {slot} failed: {rex.Message}"); }
+            }
+
+            var psec = UnityEngine.Object.FindObjectOfType<Battle.StatusEffects.PlayerStatusEffectController>();
+            if (psec == null)
+            {
+                _log.LogWarning($"[CoopSubs] ApplyNonHostStartingBonuses: PlayerStatusEffectController not found for slot {slot}");
+                return;
+            }
+            psec.ApplyStartingBonuses();
+            _log.LogInfo($"[CoopSubs] Applied starting bonuses for slot {slot}");
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[CoopSubs] ApplyNonHostStartingBonuses for slot {slot} failed: {ex.Message}");
         }
     }
 

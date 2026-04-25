@@ -475,6 +475,14 @@ public class CoopStateManager
     /// are complete, right before DrawBall. Must be called at the last moment because
     /// EnsureBattleDeckPopulated may reshuffle and invalidate the display.
     /// </summary>
+    // Cached signature of the last-rebuilt shuffledDeck for the current DeckInfoManager
+    // so heartbeat-driven calls become a no-op when nothing has changed.
+    // Tracks the DeckInfoManager instance via WeakReference so a scene reload
+    // (new DIM instance) automatically invalidates the cache.
+    private System.WeakReference _lastRebuildDim;
+    private int _lastRebuildDisplayCount = -1;
+    private string _lastRebuildSignature;
+
     public void RebuildDeckInfoDisplay(DeckManager deckMgr = null)
     {
         try
@@ -490,6 +498,22 @@ public class CoopStateManager
             var displayOrbsField = AccessTools.Field(typeof(DeckInfoManager), "_displayOrbs");
             var displayOrbs = displayOrbsField?.GetValue(dim) as System.Collections.Generic.Stack<GameObject>;
             if (displayOrbs == null) { _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: _displayOrbs null"); return; }
+
+            // Fast path: skip the destroy-and-recreate churn when the cached signature
+            // matches the current shuffledDeck, the same DeckInfoManager is still
+            // active, and the existing displayOrbs count matches what we'd produce.
+            // This converts heartbeat-driven calls into no-ops while still rebuilding
+            // whenever the deck actually changes (turn swap, draw, shuffle).
+            string signature = ComputeShuffledDeckSignature(deckMgr);
+            bool sameDim = _lastRebuildDim != null && _lastRebuildDim.IsAlive && ReferenceEquals(_lastRebuildDim.Target, dim);
+            if (sameDim
+                && _lastRebuildSignature != null
+                && _lastRebuildSignature == signature
+                && _lastRebuildDisplayCount == displayOrbs.Count
+                && AllDisplayOrbsAlive(displayOrbs))
+            {
+                return;
+            }
 
             foreach (var go in displayOrbs)
                 if (go != null) UnityEngine.Object.Destroy(go);
@@ -523,12 +547,6 @@ public class CoopStateManager
             for (int i = arr.Length - 1; i >= 0; i--)
             {
                 if (arr[i] == null) continue;
-                // Log source orb info for debugging visual issues
-                var pb = arr[i].GetComponent<PachinkoBall>();
-                var srcSR = arr[i].GetComponentInChildren<UnityEngine.SpriteRenderer>();
-                _log.LogInfo($"[CoopState] RebuildDeck orb[{i}]: name={arr[i].name} active={arr[i].activeSelf} " +
-                    $"pbSprite={(pb != null ? (pb.sprite != null ? pb.sprite.name : "NULL") : "noPB")} " +
-                    $"srcSR={(srcSR != null ? (srcSR.sprite != null ? srcSR.sprite.name : "NULL_sprite") : "NULL_sr")}");
 
                 // Temporarily activate inactive orbs so PachinkoBall.sprite is populated
                 // (UpcomingOrbDisplay.Initialize reads it, which is null on inactive clones)
@@ -541,8 +559,6 @@ public class CoopStateManager
                     previewGO.transform.parent = plungerParent;
                     var sr = previewGO.GetComponent<UnityEngine.SpriteRenderer>();
                     float spriteHeight = sr != null ? sr.bounds.size.y : 0f;
-                    _log.LogInfo($"[CoopState] RebuildDeck preview[{i}]: srNull={sr == null} sprite={(sr?.sprite != null ? sr.sprite.name : "NULL")} " +
-                        $"height={spriteHeight:F3} yAccum={yAccum:F3} active={previewGO.activeSelf}");
                     previewGO.transform.localPosition = UnityEngine.Vector3.up * (yAccum + fudge + spriteHeight * 0.5f);
                     yAccum += spriteHeight;
                     displayOrbs.Push(previewGO);
@@ -557,12 +573,45 @@ public class CoopStateManager
                     topTransform.position.y - yAccum,
                     plungerParent.position.z);
 
+            _lastRebuildDim = new System.WeakReference(dim);
+            _lastRebuildSignature = signature;
+            _lastRebuildDisplayCount = displayOrbs.Count;
+
             _log.LogInfo($"[CoopState] RebuildDeckInfoDisplay: {created}/{arr.Length} display orbs from shuffledDeck yAccum={yAccum:F3}");
         }
         catch (Exception ex)
         {
             _log.LogWarning($"[CoopState] RebuildDeckInfoDisplay failed: {ex.Message}");
         }
+    }
+
+    private static string ComputeShuffledDeckSignature(DeckManager deckMgr)
+    {
+        try
+        {
+            var shuffled = deckMgr?.shuffledDeck;
+            if (shuffled == null) return "<null>";
+            var sb = new System.Text.StringBuilder();
+            foreach (var go in shuffled)
+            {
+                if (go == null) { sb.Append("<n>|"); continue; }
+                sb.Append(go.GetInstanceID()).Append(':').Append(go.name).Append('|');
+            }
+            return sb.ToString();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool AllDisplayOrbsAlive(System.Collections.Generic.Stack<GameObject> displayOrbs)
+    {
+        foreach (var go in displayOrbs)
+        {
+            if (go == null) return false;
+        }
+        return true;
     }
 
     // --- Relic save/load ---
