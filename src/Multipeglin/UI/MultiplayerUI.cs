@@ -498,7 +498,7 @@ public class MultiplayerUI : MonoBehaviour
         statusRect.anchorMin = new Vector2(0.5f, 0.5f);
         statusRect.anchorMax = new Vector2(0.5f, 0.5f);
         statusRect.pivot = new Vector2(0.5f, 0.5f);
-        statusRect.anchoredPosition = new Vector2(0, 160);
+        statusRect.anchoredPosition = new Vector2(0, 290);
         statusRect.sizeDelta = new Vector2(640, 36);
 
         // Persistent join-link line (steam://joinlobby/... when hosting via Steam)
@@ -509,7 +509,7 @@ public class MultiplayerUI : MonoBehaviour
         linkRect.anchorMin = new Vector2(0.5f, 0.5f);
         linkRect.anchorMax = new Vector2(0.5f, 0.5f);
         linkRect.pivot = new Vector2(0.5f, 0.5f);
-        linkRect.anchoredPosition = new Vector2(0, 120);
+        linkRect.anchoredPosition = new Vector2(0, 240);
         linkRect.sizeDelta = new Vector2(780, 44);
 
         // Invite Friend button (only meaningful when hosting via Steam; toggled in UpdateLobbyPanel)
@@ -520,7 +520,7 @@ public class MultiplayerUI : MonoBehaviour
 
         // Disconnect button at the bottom
         var disconnectBtn = CreateButton(_lobbyPanel.transform, "DisconnectBtn", "Disconnect",
-            new Color(0.5f, 0.2f, 0.2f, 1f), new Vector2(0, -405), new Vector2(400, 56));
+            new Color(0.5f, 0.2f, 0.2f, 1f), new Vector2(0, -395), new Vector2(400, 56));
         disconnectBtn.onClick.AddListener(OnDisconnectClicked);
 
         _lobbyPanel.SetActive(false);

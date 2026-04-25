@@ -317,8 +317,8 @@ public static class LobbyUI
         Func<Transform, string, string, int, TextMeshProUGUI> createText,
         Func<Transform, string, string, Color, Vector2, Vector2, Button> createButton)
     {
-        // Rows positioned from top of lobby area: first row at y=60, each row 67px apart
-        float yBase = 60 - rowIndex * 67;
+        // Rows positioned from top of lobby area: first row at y=170, each row 67px apart
+        float yBase = 170 - rowIndex * 67;
 
         var rowObj = new GameObject($"PlayerRow_{rowIndex}");
         rowObj.transform.SetParent(parent, false);
