@@ -278,10 +278,15 @@ public static class RunStatisticsDetailsInitializePatch
             {
                 if (string.IsNullOrEmpty(orb.PrefabName)) continue;
                 var orbGO = Loading.AssetLoading.Instance?.GetOrbPrefab(orb.PrefabName);
-                if (orbGO == null) continue;
+                if (orbGO == null)
+                {
+                    MultiplayerPlugin.Logger?.LogWarning($"[RunStatsSync] Orb prefab not found: {orb.PrefabName}");
+                    continue;
+                }
                 var icon = UnityEngine.Object.Instantiate(orbPrefab, orbsParent).GetComponent<PeglinUI.LoadoutManager.LoadoutIcon>();
                 if (icon == null) continue;
                 icon.InitializeOrb(orbGO, Mathf.Clamp(orb.Level, 0, 2));
+                ForceIconUnlocked(icon, orbGO, null);
                 list.Add(icon.gameObject);
             }
             orbsCarousel.Initialize(list);
@@ -302,13 +307,71 @@ public static class RunStatisticsDetailsInitializePatch
             foreach (var effectInt in player.Relics)
             {
                 var relic = relicMgr.GetRelicForEffectFromAllData((Relics.RelicEffect)effectInt);
-                if (relic == null) continue;
+                if (relic == null)
+                {
+                    MultiplayerPlugin.Logger?.LogWarning($"[RunStatsSync] Relic not found for effect: {(Relics.RelicEffect)effectInt}");
+                    continue;
+                }
                 var icon = UnityEngine.Object.Instantiate(relicPrefab, relicsParent).GetComponent<PeglinUI.LoadoutManager.LoadoutIcon>();
                 if (icon == null) continue;
                 icon.InitializeRelic(relic);
+                ForceIconUnlocked(icon, null, relic);
                 list.Add(icon.gameObject);
             }
             relicsCarousel.Initialize(list);
+        }
+    }
+
+    /// <summary>
+    /// LoadoutIcon.InitializeOrb/InitializeRelic check the local client's
+    /// PersistentPlayerData unlock list and gray-out (and disable click) anything
+    /// the local client has never personally unlocked. In coop the run summary
+    /// shows other players' loadouts — we must show them as fully visible
+    /// regardless of this client's unlock history. Restore the correct color
+    /// and clear the desaturation UIEffect.
+    /// </summary>
+    private static void ForceIconUnlocked(PeglinUI.LoadoutManager.LoadoutIcon icon, GameObject orbPrefabOrNull, Relics.Relic relicOrNull)
+    {
+        try
+        {
+            icon.isUnlocked = true;
+            if (icon.image != null)
+            {
+                if (orbPrefabOrNull != null)
+                {
+                    var visuals = PeglinUI.UIUtils.OrbUIUtils.GetOrbVisuals(orbPrefabOrNull);
+                    icon.image.color = visuals.color;
+                }
+                else
+                {
+                    icon.image.color = Color.white;
+                }
+
+                // Zero out the desaturation UIEffect (Coffee.UIEffects.UIEffect.colorFactor).
+                var components = icon.image.GetComponents<Component>();
+                foreach (var comp in components)
+                {
+                    if (comp == null) continue;
+                    var t = comp.GetType();
+                    if (t.Name != "UIEffect") continue;
+                    var prop = t.GetProperty("colorFactor");
+                    if (prop != null && prop.CanWrite)
+                    {
+                        prop.SetValue(comp, 0f, null);
+                        break;
+                    }
+                    var field = t.GetField("colorFactor");
+                    if (field != null)
+                    {
+                        field.SetValue(comp, 0f);
+                        break;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[RunStatsSync] ForceIconUnlocked failed: {ex.Message}");
         }
     }
 
