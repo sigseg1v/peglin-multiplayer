@@ -39,12 +39,37 @@ public sealed class PegSubscriptions
         if (!IsHosting) return;
         var pos = peg != null ? peg.transform.position : UnityEngine.Vector3.zero;
         var pegId = MultiplayerPlugin.Services?.TryResolve<PegIdentifier>(out var p) == true ? p : null;
+
+        int hitCount = -1, coinCount = -1, shieldHits = -1, shieldLimit = -1;
+        if (peg != null)
+        {
+            try { if (peg is Bomb bomb) hitCount = bomb.HitCount; } catch { }
+            try
+            {
+                var overlayField = HarmonyLib.AccessTools.Field(typeof(Peg), "PegCoinOverlayInstance");
+                var overlay = overlayField?.GetValue(peg) as Battle.PegBehaviour.PegCoinOverlay;
+                if (overlay != null) coinCount = overlay.NumCoins;
+            }
+            catch { }
+            try
+            {
+                var overlayField = HarmonyLib.AccessTools.Field(typeof(Peg), "PegShieldOverlayInstance");
+                var shield = overlayField?.GetValue(peg) as Battle.PegBehaviour.PegShieldOverlay;
+                if (shield != null) { shieldHits = shield.hitCount; shieldLimit = shield.hitLimit; }
+            }
+            catch { }
+        }
+
         _registry.Dispatch(new PegHitEvent
         {
             PegType = (int)pegType,
             PosX = pos.x,
             PosY = pos.y,
             PegGuid = pegId?.GetGuid(peg),
+            HitCount = hitCount,
+            CoinCount = coinCount,
+            ShieldHitCount = shieldHits,
+            ShieldHitLimit = shieldLimit,
         });
     }
 
