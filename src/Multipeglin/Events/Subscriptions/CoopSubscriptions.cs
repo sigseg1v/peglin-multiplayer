@@ -837,6 +837,12 @@ public sealed class CoopSubscriptions
             // native game flow (PlungerPlungeComplete + DrawNextOrb) keeps the
             // host's deck tube correct across rounds.
 
+            // Finalize any pegs left in a "half-hit" visual state (look cleared
+            // but collider still enabled) so the next shooter's ball doesn't
+            // bounce off them on the host, and the client sees them as fully
+            // popped in the SyncAll that follows.
+            NormalizeHalfHitPegs();
+
             BroadcastTurnChange();
 
             // Push updated AllDecks to client immediately so the client
@@ -1229,6 +1235,75 @@ public sealed class CoopSubscriptions
             // WAITING_FOR_PLAYERS or DAMAGE_PHASE — just broadcast the updated state
             BroadcastTurnChange();
             _log.LogInfo($"[CoopSubs] Disconnect handled in phase {_turnManager.Phase}");
+        }
+    }
+
+    /// <summary>
+    /// At a coop turn swap, Peglin's shared pegboard can leave pegs in a
+    /// "half-hit" limbo: _cleared flips to true (faded-background visual)
+    /// but the collider is still enabled (LongPeg TimeToDisappear window,
+    /// ShouldPopPegOnHit gated by bounce count, etc). The host's physics
+    /// will still collide with them on the next shooter's turn — making
+    /// them look cleared on both players' screens but actually solid.
+    /// Force these into a fully-popped state so (a) the next ball passes
+    /// through and (b) the SyncAll right after propagates IsDisabled=true
+    /// to the client.
+    /// </summary>
+    private void NormalizeHalfHitPegs()
+    {
+        try
+        {
+            var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
+            var pm = bc?.pegManager;
+            var allPegs = pm?.allPegs;
+            if (allPegs == null) return;
+
+            var colliderField = AccessTools.Field(typeof(Peg), "_collider");
+            var triggerField = AccessTools.Field(typeof(Peg), "_trigger");
+            var specialColliderField = AccessTools.Field(typeof(Peg), "_specialPegCollider");
+            var poppedColliderField = AccessTools.Field(typeof(Peg), "_poppedPegCollider");
+            var poppedTriggerField = AccessTools.Field(typeof(Peg), "_poppedPegTrigger");
+
+            int normalized = 0;
+            foreach (var peg in allPegs)
+            {
+                if (peg == null) continue;
+                if (!peg.Cleared) continue;
+
+                bool disabled = false;
+                try { disabled = peg.IsDisabled(); } catch { }
+                if (disabled) continue;
+
+                if (peg is LongPeg longPeg)
+                {
+                    try { longPeg.SetActiveStatus(active: false); normalized++; }
+                    catch { }
+                    continue;
+                }
+
+                // Regular / slime / indestructible pegs — flip colliders so
+                // IsDisabled() returns true and the peg enters the popped
+                // state visually and physically.
+                var col = colliderField?.GetValue(peg) as Collider2D;
+                var trig = triggerField?.GetValue(peg) as Collider2D;
+                var specialCol = specialColliderField?.GetValue(peg) as Collider2D;
+                var poppedCol = poppedColliderField?.GetValue(peg) as Collider2D;
+                var poppedTrig = poppedTriggerField?.GetValue(peg) as Collider2D;
+
+                if (col != null) col.enabled = false;
+                if (trig != null) trig.enabled = false;
+                if (specialCol != null) specialCol.enabled = false;
+                if (poppedCol != null) poppedCol.enabled = true;
+                if (poppedTrig != null) poppedTrig.enabled = true;
+                normalized++;
+            }
+
+            if (normalized > 0)
+                _log.LogInfo($"[CoopSubs] Turn swap: normalized {normalized} half-hit peg(s)");
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[CoopSubs] NormalizeHalfHitPegs failed: {ex.Message}");
         }
     }
 
