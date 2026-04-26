@@ -521,6 +521,10 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             // Sync Spirit of Radia black-hole obstacles
             SyncBlackHoles(snapshot);
 
+            // Sync PegSplineFollow phases so the client's spline-driven pegs
+            // don't drift around the loop relative to the host's.
+            SyncSplineGenerators(snapshot);
+
             // Per-bomb dump previously logged 6 lines per heartbeat — now only logged
             // when the client/host bomb count diverges (a real sync issue).
             var hostBombCount = snapshot.BombPegCount;
@@ -2222,6 +2226,141 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         {
             _log.LogWarning($"[PegboardApplier] SyncBlackHoles failed: {ex.Message}");
         }
+    }
+
+    private static System.Reflection.FieldInfo _splineDistancesField;
+    private static readonly Dictionary<string, Battle.PegBehaviour.PegSplineFollow> _splineGeneratorCache =
+        new Dictionary<string, Battle.PegBehaviour.PegSplineFollow>(System.StringComparer.Ordinal);
+
+    /// <summary>
+    /// For each <see cref="Battle.PegBehaviour.PegSplineFollow"/> generator the host reports,
+    /// rewrite the client's <c>_pegSplineDistances</c> list so all pegs sit at host phase plus
+    /// the same evenly-spaced offsets the generator started with. The client's FixedUpdate
+    /// continues to advance the list smoothly between heartbeats — this only corrects the
+    /// accumulated drift between two independent FixedUpdate clocks.
+    /// </summary>
+    private void SyncSplineGenerators(PegboardStateSnapshot snapshot)
+    {
+        try
+        {
+            var entries = snapshot.SplineGenerators;
+            if (entries == null || entries.Count == 0)
+            {
+                return;
+            }
+
+            if (_splineDistancesField == null)
+            {
+                _splineDistancesField = HarmonyLib.AccessTools.Field(
+                    typeof(Battle.PegBehaviour.PegSplineFollow), "_pegSplineDistances");
+                if (_splineDistancesField == null)
+                {
+                    return;
+                }
+            }
+
+            // Refresh cache when stale (scene reload etc. invalidates references).
+            var needsRebuild = false;
+            foreach (var kvp in _splineGeneratorCache)
+            {
+                if (kvp.Value == null)
+                {
+                    needsRebuild = true;
+                    break;
+                }
+            }
+
+            if (needsRebuild || _splineGeneratorCache.Count == 0)
+            {
+                _splineGeneratorCache.Clear();
+                var live = UnityEngine.Object.FindObjectsOfType<Battle.PegBehaviour.PegSplineFollow>();
+                for (var i = 0; i < live.Length; i++)
+                {
+                    var g = live[i];
+                    if (g == null)
+                    {
+                        continue;
+                    }
+
+                    _splineGeneratorCache[BuildHierarchyPath(g.transform)] = g;
+                }
+            }
+
+            for (var i = 0; i < entries.Count; i++)
+            {
+                var entry = entries[i];
+                if (entry == null || string.IsNullOrEmpty(entry.HierarchyPath))
+                {
+                    continue;
+                }
+
+                if (!_splineGeneratorCache.TryGetValue(entry.HierarchyPath, out var gen) || gen == null)
+                {
+                    continue;
+                }
+
+                var distances = _splineDistancesField.GetValue(gen) as List<float>;
+                if (distances == null || distances.Count == 0)
+                {
+                    continue;
+                }
+
+                if (distances.Count != entry.NumPegs)
+                {
+                    continue;
+                }
+
+                // Preserve the existing relative spacing between pegs (which the
+                // generator set up at Init time) — only shift the whole sequence
+                // so distances[0] matches the host's reported phase.
+                var shift = entry.Phase - distances[0];
+                if (System.Math.Abs(shift) >= 0.001f)
+                {
+                    for (var j = 0; j < distances.Count; j++)
+                    {
+                        distances[j] += shift;
+                    }
+                }
+
+                // PegSplineFollow.FixedUpdate offsets every peg by the generator's
+                // parent.position. If that parent (often the moving boss / a child
+                // anchor under the boss) sits at different world coords on host vs
+                // client, the entire loop is translated across the screen and pegs
+                // appear in regions of the board they'd never naturally trace.
+                // Snap the parent to host coords so the loop lands in the right spot.
+                if (entry.HasParent && gen.transform.parent != null)
+                {
+                    var parent = gen.transform.parent;
+                    var cur = parent.position;
+                    var dx = entry.ParentPosX - cur.x;
+                    var dy = entry.ParentPosY - cur.y;
+                    if ((dx * dx + dy * dy) > 0.0001f)
+                    {
+                        parent.position = new Vector3(entry.ParentPosX, entry.ParentPosY, cur.z);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[PegboardApplier] SyncSplineGenerators failed: {ex.Message}");
+        }
+    }
+
+    private static string BuildHierarchyPath(Transform t)
+    {
+        var sb = new System.Text.StringBuilder();
+        for (var cur = t; cur != null; cur = cur.parent)
+        {
+            if (sb.Length > 0)
+            {
+                sb.Insert(0, '/');
+            }
+
+            sb.Insert(0, cur.name);
+        }
+
+        return sb.ToString();
     }
 
     private static GameObject FindBlackHolePrefab()

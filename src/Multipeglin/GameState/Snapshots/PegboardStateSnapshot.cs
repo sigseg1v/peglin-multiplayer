@@ -10,6 +10,8 @@ public class PegboardStateSnapshot
 
     public List<BlackHoleEntry> BlackHoles { get; set; } = new List<BlackHoleEntry>();
 
+    public List<SplineGeneratorEntry> SplineGenerators { get; set; } = new List<SplineGeneratorEntry>();
+
     public int TotalPegCount { get; set; }
 
     public int CritPegCount { get; set; }
@@ -127,6 +129,37 @@ public class VineEntry
     public string Peg1Guid { get; set; }
 
     public string Peg2Guid { get; set; }
+}
+
+/// <summary>
+/// One <see cref="Battle.PegBehaviour.PegSplineFollow"/> generator's current spline phase
+/// (the distance offset of its sibling#0 peg along the spline). Both host and client run
+/// PegSplineFollow.FixedUpdate independently, so without a periodic phase reset the client's
+/// pegs slowly drift around the loop and end up far from where the host says they are —
+/// visible as some pegs appearing in totally wrong areas of the figure-8 / spline path.
+/// </summary>
+public class SplineGeneratorEntry
+{
+    /// <summary>Slash-joined ancestry chain of the generator GameObject; stable across host/client because it comes from the prefab hierarchy.</summary>
+    public string HierarchyPath { get; set; }
+
+    /// <summary>Distance along the spline of sibling#0 (all pegs share a single phase offset, evenly spaced behind it).</summary>
+    public float Phase { get; set; }
+
+    /// <summary>Number of pegs the generator instantiated — sanity check the match.</summary>
+    public int NumPegs { get; set; }
+
+    /// <summary>World position of the generator GameObject's parent. PegSplineFollow positions
+    /// each peg at <c>splinePoint + transform.parent.position</c>, so if the parent (often the
+    /// moving boss) sits at different world coords on host vs client, the entire loop is offset
+    /// across the screen even after phase is synced.</summary>
+    public float ParentPosX { get; set; }
+
+    public float ParentPosY { get; set; }
+
+    /// <summary>True if the generator actually has a parent. When false, the parent-pos fields
+    /// are not meaningful and the applier should skip the parent-pos correction.</summary>
+    public bool HasParent { get; set; }
 }
 
 /// <summary>

@@ -334,12 +334,14 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
             }
 
             CaptureBlackHoles(snapshot);
+            CaptureSplineGenerators(snapshot);
 
             var bombsListCount = bombs?.Count ?? -1;
             _log.LogInfo($"[PegProvider] Captured {snapshot.TotalPegCount} pegs from PegManager " +
                 $"(crit={snapshot.CritPegCount}, bomb={snapshot.BombPegCount}, reset={snapshot.ResetPegCount}, " +
                 $"bouncer={snapshot.BouncerPegCount}, registry={_pegId.Count}, " +
-                $"_bombs={bombsListCount}, allPegsBombs={allPegsBombCount}, blackHoles={snapshot.BlackHoles.Count})");
+                $"_bombs={bombsListCount}, allPegsBombs={allPegsBombCount}, " +
+                $"blackHoles={snapshot.BlackHoles.Count}, splineGens={snapshot.SplineGenerators.Count})");
 
             return snapshot;
         }
@@ -483,6 +485,77 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
         {
             _log.LogWarning($"[PegProvider] Failed to capture black holes: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Capture each <see cref="PegSplineFollow"/> generator's current spline
+    /// phase. The client runs PegSplineFollow.FixedUpdate independently and
+    /// drifts; the applier resets <c>_pegSplineDistances</c> from this each
+    /// heartbeat so positions converge instead of slowly walking apart.
+    /// </summary>
+    private void CaptureSplineGenerators(PegboardStateSnapshot snapshot)
+    {
+        try
+        {
+            var distancesField = HarmonyLib.AccessTools.Field(typeof(PegSplineFollow), "_pegSplineDistances");
+            if (distancesField == null)
+            {
+                return;
+            }
+
+            var generators = UnityEngine.Object.FindObjectsOfType<PegSplineFollow>();
+            for (var i = 0; i < generators.Length; i++)
+            {
+                var g = generators[i];
+                if (g == null)
+                {
+                    continue;
+                }
+
+                var distances = distancesField.GetValue(g) as System.Collections.Generic.List<float>;
+                if (distances == null || distances.Count == 0)
+                {
+                    continue;
+                }
+
+                var parent = g.transform.parent;
+                var entry = new Snapshots.SplineGeneratorEntry
+                {
+                    HierarchyPath = HierarchyPath(g.transform),
+                    Phase = distances[0],
+                    NumPegs = distances.Count,
+                };
+                if (parent != null)
+                {
+                    var pp = parent.position;
+                    entry.ParentPosX = pp.x;
+                    entry.ParentPosY = pp.y;
+                    entry.HasParent = true;
+                }
+
+                snapshot.SplineGenerators.Add(entry);
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[PegProvider] Failed to capture spline generators: {ex.Message}");
+        }
+    }
+
+    private static string HierarchyPath(UnityEngine.Transform t)
+    {
+        var sb = new System.Text.StringBuilder();
+        for (var cur = t; cur != null; cur = cur.parent)
+        {
+            if (sb.Length > 0)
+            {
+                sb.Insert(0, '/');
+            }
+
+            sb.Insert(0, cur.name);
+        }
+
+        return sb.ToString();
     }
 
     private static bool HasMovingAncestor(UnityEngine.Transform t)
