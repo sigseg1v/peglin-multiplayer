@@ -1,4 +1,3 @@
-namespace Multipeglin.Events.Handlers.Peg;
 
 using System;
 using HarmonyLib;
@@ -7,6 +6,7 @@ using Multipeglin.Multiplayer;
 using Multipeglin.Utility;
 using UnityEngine;
 
+namespace Multipeglin.Events.Handlers.Peg;
 /// <summary>
 /// Real-time visual sync for pegs that get hit but DON'T pop (bombs ticking
 /// down hit count, coin pegs decrementing on collection, shield overlays).
@@ -23,14 +23,21 @@ public sealed class PegHitClientHandler : IClientHandler<PegHitEvent>
         {
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
             if (mode == null || !mode.IsSpectating)
+            {
                 return;
+            }
+
             if (string.IsNullOrEmpty(e.PegGuid))
+            {
                 return;
+            }
 
             var pegId = MultiplayerPlugin.Services?.TryResolve<PegIdentifier>(out var p) == true ? p : null;
             var peg = pegId?.Find(e.PegGuid);
             if (peg == null || !peg.gameObject.activeSelf)
+            {
                 return;
+            }
 
             // Bomb hit count → animator NumHits.
             if (e.HitCount >= 0 && peg is Bomb bomb)
@@ -75,8 +82,7 @@ public sealed class PegHitClientHandler : IClientHandler<PegHitEvent>
                             var anim = shield.GetComponent<Animator>();
                             anim?.SetInteger(Animator.StringToHash("HitCount"), e.ShieldHitCount);
                             var rend = shield.GetComponent<SpriteRenderer>();
-                            if (rend != null)
-                                rend.enabled = e.ShieldHitCount < e.ShieldHitLimit;
+                            rend?.enabled = e.ShieldHitCount < e.ShieldHitLimit;
                         }
                         catch { }
                     }

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using BepInEx.Logging;
 using HarmonyLib;
 using Multipeglin.GameState.Snapshots;
@@ -90,6 +89,7 @@ public class PlayerStateProvider : IGameStateProvider<PlayerStateSnapshot>
                     var spedUpProp = AccessTools.Property(typeof(TimescaleManager), "isSpedUp");
                     snapshot.IsSpedUp = (bool)(spedUpProp?.GetValue(tsInstance) ?? false);
                 }
+
                 if (SettingsManager.Instance != null)
                 {
                     snapshot.SpeedupLevel = SettingsManager.Instance.SpeedupLevel;

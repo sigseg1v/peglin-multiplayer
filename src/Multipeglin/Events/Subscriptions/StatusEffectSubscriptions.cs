@@ -28,7 +28,10 @@ public sealed class StatusEffectEventSubscriptions
     private void OnStatusUpdated()
     {
         if (!_multiplayerMode.IsHosting)
+        {
             return;
+        }
+
         _registry.Dispatch(new StatusEffectsUpdatedEvent());
     }
 }

@@ -35,7 +35,9 @@ public sealed class BallSubscriptions
     private void OnShotFired(Vector2 aimVector)
     {
         if (!IsHosting)
+        {
             return;
+        }
 
         // Get the current orb name from the active PachinkoBall (not the deck —
         // the current orb was already popped from shuffledDeck during DrawBall,
@@ -80,7 +82,10 @@ public sealed class BallSubscriptions
     private void OnWallBounce(Vector3 pos)
     {
         if (!IsHosting)
+        {
             return;
+        }
+
         _registry.Dispatch(new BallWallBounceEvent
         {
             PosX = pos.x,

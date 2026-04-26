@@ -1,10 +1,9 @@
-namespace Multipeglin.Events.Handlers.Enemy;
 
 using System;
-using global::Battle.Enemies;
 using Multipeglin.Events.Network.Enemy;
 using Multipeglin.Utility;
 
+namespace Multipeglin.Events.Handlers.Enemy;
 public sealed class EnemyDamagedClientHandler : IClientHandler<EnemyDamagedEvent>
 {
     // Track which missing GUIDs we've already warned about so per-frame DOTs (relic

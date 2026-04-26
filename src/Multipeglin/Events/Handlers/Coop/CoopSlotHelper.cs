@@ -17,25 +17,38 @@ public static class CoopSlotHelper
     public static int GetLocalSlotIndex(IServiceContainer services)
     {
         if (services == null)
+        {
             return -1;
+        }
 
         if (!services.TryResolve<PlayerRegistry>(out var registry))
+        {
             return -1;
+        }
+
         if (!services.TryResolve<INetworkTransport>(out var transport))
+        {
             return -1;
+        }
 
         if (transport.IsHost)
+        {
             return 0;
+        }
 
         // Client: check LocalSlot first (set by GameStartClientHandler)
         if (registry.LocalSlot != null)
+        {
             return registry.LocalSlot.SlotIndex;
+        }
 
         // Fallback: iterate registered slots
         foreach (var slot in registry.GetAllSlots())
         {
             if (!slot.IsHost)
+            {
                 return slot.SlotIndex;
+            }
         }
 
         return -1;

@@ -19,18 +19,28 @@ public sealed class DebugHotkeys : MonoBehaviour
         var v = Environment.GetEnvironmentVariable(EnvVar);
         _enabled = v == "1" || string.Equals(v, "true", StringComparison.OrdinalIgnoreCase);
         if (_enabled)
+        {
             MultiplayerPlugin.Logger?.LogInfo($"[DebugHotkeys] enabled via {EnvVar}; F10 = nuke enemies");
+        }
     }
 
     private void Update()
     {
         if (!_enabled)
+        {
             return;
+        }
+
         if (!Input.GetKeyDown(KeyCode.F10))
+        {
             return;
+        }
 
         if (MultiplayerPlugin.Services == null)
+        {
             return;
+        }
+
         if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting)
         {
             MultiplayerPlugin.Logger?.LogInfo("[DebugHotkeys] F10 ignored — not hosting");
@@ -45,11 +55,14 @@ public sealed class DebugHotkeys : MonoBehaviour
         }
 
         var snapshot = new System.Collections.Generic.List<global::Battle.Enemies.Enemy>(em.Enemies);
-        int killed = 0;
+        var killed = 0;
         foreach (var enemy in snapshot)
         {
             if (enemy == null)
+            {
                 continue;
+            }
+
             try
             {
                 enemy.Damage(99999L, screenshake: false, audioScale: 0f, damageMod: 1f,
@@ -63,6 +76,7 @@ public sealed class DebugHotkeys : MonoBehaviour
                 MultiplayerPlugin.Logger?.LogWarning($"[DebugHotkeys] Damage failed on enemy: {ex.Message}");
             }
         }
+
         MultiplayerPlugin.Logger?.LogInfo($"[DebugHotkeys] F10 nuked {killed} enemies");
     }
 }

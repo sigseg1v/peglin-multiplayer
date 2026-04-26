@@ -23,15 +23,22 @@ public class ClientAimRenderer : MonoBehaviour
     private void OnDestroy()
     {
         if (Instance == this)
+        {
             Instance = null;
+        }
+
         if (_lineObject != null)
+        {
             Destroy(_lineObject);
+        }
     }
 
     public void UpdateAim(float aimX, float aimY, float spawnX, float spawnY)
     {
         if (_lineObject == null)
+        {
             CreateLine();
+        }
 
         var origin = new Vector3(spawnX, spawnY, -0.5f);
         var dir = new Vector3(aimX, aimY, 0f).normalized;
@@ -54,14 +61,15 @@ public class ClientAimRenderer : MonoBehaviour
     public void HideAim()
     {
         _isVisible = false;
-        if (_lineObject != null)
-            _lineObject.SetActive(false);
+        _lineObject?.SetActive(false);
     }
 
     private void CreateLine()
     {
-        _lineObject = new GameObject("ClientAimLine");
-        _lineObject.hideFlags = HideFlags.HideAndDontSave;
+        _lineObject = new GameObject("ClientAimLine")
+        {
+            hideFlags = HideFlags.HideAndDontSave
+        };
         DontDestroyOnLoad(_lineObject);
 
         _lineRenderer = _lineObject.AddComponent<LineRenderer>();

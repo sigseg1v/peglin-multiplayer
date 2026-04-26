@@ -13,7 +13,9 @@ public sealed class BallStateSnapshotClientHandler : IClientHandler<BallStateSna
         {
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
             if (mode == null || !mode.IsSpectating)
+            {
                 return;
+            }
 
             ClientBallRenderer.Instance?.ApplyBallSnapshot(e);
         }

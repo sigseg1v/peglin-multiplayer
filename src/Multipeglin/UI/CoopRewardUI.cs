@@ -130,7 +130,9 @@ public class CoopRewardUI : MonoBehaviour
         try
         {
             if (_overlayPanel == null)
+            {
                 return;
+            }
 
             // Hide overlay on scene changes:
             // 1. When entering Battle (previous reward phase is over)
@@ -139,7 +141,7 @@ public class CoopRewardUI : MonoBehaviour
             var currentScene = SceneManager.GetActiveScene().name;
             if (_lastSceneName != null && _lastSceneName != currentScene)
             {
-                bool shouldHide = currentScene == "Battle"
+                var shouldHide = currentScene == "Battle"
                     || _lastSceneName == "Battle"
                     || currentScene == "ForestMap" || currentScene == "CastleMap"
                     || currentScene == "MinesMap" || currentScene == "CoreMap";
@@ -150,16 +152,25 @@ public class CoopRewardUI : MonoBehaviour
                     CoopRewardState.Reset();
                 }
             }
+
             _lastSceneName = currentScene;
 
             // Only active in multiplayer
             var services = MultiplayerPlugin.Services;
             if (services == null)
+            {
                 return;
+            }
+
             if (!services.TryResolve<IMultiplayerMode>(out var mode))
+            {
                 return;
+            }
+
             if (!mode.IsHosting && !mode.IsSpectating)
+            {
                 return;
+            }
 
             // Check if all choices are complete -- hide overlay
             if (CoopRewardState.AllChoicesComplete)
@@ -169,6 +180,7 @@ public class CoopRewardUI : MonoBehaviour
                     HideOverlay();
                     CoopRewardState.Reset();
                 }
+
                 return;
             }
 
@@ -176,7 +188,10 @@ public class CoopRewardUI : MonoBehaviour
             if (CoopRewardState.WaitingForOtherPlayers)
             {
                 if (_currentState != DisplayState.Waiting)
+                {
                     ShowWaiting();
+                }
+
                 TickHostForceContinue();
                 return;
             }
@@ -186,7 +201,10 @@ public class CoopRewardUI : MonoBehaviour
             if (relicChoices?.Choices != null && relicChoices.Choices.Count > 0)
             {
                 if (_currentState != DisplayState.RelicChoices || _displayedRelicCount != relicChoices.Choices.Count)
+                {
                     ShowRelicChoices(relicChoices);
+                }
+
                 return;
             }
 
@@ -196,7 +214,9 @@ public class CoopRewardUI : MonoBehaviour
 
             // Nothing to show
             if (_currentState != DisplayState.Hidden)
+            {
                 HideOverlay();
+            }
         }
         catch (Exception ex)
         {
@@ -216,27 +236,32 @@ public class CoopRewardUI : MonoBehaviour
 
         float buttonWidth = 340;
         float spacing = 20;
-        float totalWidth = choices.Choices.Count * buttonWidth + (choices.Choices.Count - 1) * spacing;
-        float startX = -totalWidth / 2f + buttonWidth / 2f;
+        var totalWidth = choices.Choices.Count * buttonWidth + (choices.Choices.Count - 1) * spacing;
+        var startX = -totalWidth / 2f + buttonWidth / 2f;
 
-        for (int i = 0; i < choices.Choices.Count; i++)
+        for (var i = 0; i < choices.Choices.Count; i++)
         {
             var relic = choices.Choices[i];
-            float xPos = startX + i * (buttonWidth + spacing);
+            var xPos = startX + i * (buttonWidth + spacing);
 
             // Try to resolve relic description via localization as a fallback
-            string desc = relic.LocKey ?? "";
+            var desc = relic.LocKey ?? "";
             try
             {
                 // If LocKey looks like a raw loc key (no spaces, starts with lowercase),
                 // try to resolve it via the localization system
                 if (!string.IsNullOrEmpty(desc) && !desc.Contains(" "))
                 {
-                    string resolved = I2.Loc.LocalizationManager.GetTranslation("Relics/" + desc + "_desc");
+                    var resolved = I2.Loc.LocalizationManager.GetTranslation("Relics/" + desc + "_desc");
                     if (string.IsNullOrEmpty(resolved))
+                    {
                         resolved = I2.Loc.LocalizationManager.GetTranslation(desc);
+                    }
+
                     if (!string.IsNullOrEmpty(resolved))
+                    {
                         desc = resolved;
+                    }
                 }
             }
             catch { /* localization not available, use as-is */ }
@@ -250,7 +275,7 @@ public class CoopRewardUI : MonoBehaviour
                 new Vector2(xPos, 0),
                 new Vector2(buttonWidth, 260));
 
-            int capturedEffect = relic.Effect;
+            var capturedEffect = relic.Effect;
             btn.onClick.AddListener(() => OnRelicChosen(capturedEffect));
         }
 
@@ -269,13 +294,13 @@ public class CoopRewardUI : MonoBehaviour
 
         float buttonWidth = 240;
         float spacing = 16;
-        float totalWidth = choices.Options.Count * buttonWidth + (choices.Options.Count - 1) * spacing;
-        float startX = -totalWidth / 2f + buttonWidth / 2f;
+        var totalWidth = choices.Options.Count * buttonWidth + (choices.Options.Count - 1) * spacing;
+        var startX = -totalWidth / 2f + buttonWidth / 2f;
 
-        for (int i = 0; i < choices.Options.Count; i++)
+        for (var i = 0; i < choices.Options.Count; i++)
         {
             var option = choices.Options[i];
-            float xPos = startX + i * (buttonWidth + spacing);
+            var xPos = startX + i * (buttonWidth + spacing);
 
             var bgColor = GetRewardColor(option.Type);
 
@@ -288,7 +313,7 @@ public class CoopRewardUI : MonoBehaviour
                 new Vector2(xPos, 0),
                 new Vector2(buttonWidth, 200));
 
-            int capturedIndex = option.OptionIndex;
+            var capturedIndex = option.OptionIndex;
             btn.onClick.AddListener(() => OnRewardChosen(capturedIndex));
         }
 
@@ -300,7 +325,7 @@ public class CoopRewardUI : MonoBehaviour
         ClearButtons();
 
         var services = MultiplayerPlugin.Services;
-        bool isHost = services?.TryResolve<IMultiplayerMode>(out var m) == true && m.IsHosting;
+        var isHost = services?.TryResolve<IMultiplayerMode>(out var m) == true && m.IsHosting;
 
         // Use context-specific messages
         if (CoopRewardState.ShopAwaitingHostNavigation
@@ -347,6 +372,7 @@ public class CoopRewardUI : MonoBehaviour
         {
             _titleText.text = "Waiting...";
         }
+
         _statusText.text = "";
         _overlayPanel.SetActive(true);
         _currentState = DisplayState.Waiting;
@@ -355,7 +381,7 @@ public class CoopRewardUI : MonoBehaviour
         // Reset the timer whenever the host transitions between distinct phases.
         if (isHost)
         {
-            string phaseKey = ResolveHostWaitingPhase();
+            var phaseKey = ResolveHostWaitingPhase();
             if (phaseKey != null)
             {
                 if (_hostWaitingPhaseKey != phaseKey)
@@ -394,17 +420,35 @@ public class CoopRewardUI : MonoBehaviour
     private static string ResolveHostWaitingPhase()
     {
         if (CoopRewardState.ShopPhaseActive && CoopRewardState.HostShopDone)
+        {
             return "shop";
+        }
+
         if (CoopRewardState.TreasurePhaseActive && CoopRewardState.HostTreasureDone)
+        {
             return "treasure";
+        }
+
         if (CoopRewardState.PegMinigamePhaseActive && CoopRewardState.HostPegMinigameDone)
+        {
             return "peg_minigame";
+        }
+
         if (CoopRewardState.TextScenarioPhaseActive && CoopRewardState.HostTextScenarioDone)
+        {
             return "text_scenario";
+        }
+
         if (CoopRewardState.HostRewardPhaseActive && CoopRewardState.HostRewardsDone)
+        {
             return "post_battle";
+        }
+
         if (CoopRewardState.HostRelicSelectionActive && CoopRewardState.HostHasChosenRelic)
+        {
             return "starting_relic";
+        }
+
         return null;
     }
 
@@ -430,9 +474,14 @@ public class CoopRewardUI : MonoBehaviour
     private void TickHostForceContinue()
     {
         if (_currentState != DisplayState.Waiting)
+        {
             return;
+        }
+
         if (_hostWaitingStartTime < 0f || _hostWaitingPhaseKey == null)
+        {
             return;
+        }
 
         // Re-validate the phase: clients may have completed naturally meanwhile
         // (in which case AllChoicesComplete will hide the overlay on the next tick).
@@ -444,9 +493,14 @@ public class CoopRewardUI : MonoBehaviour
         }
 
         if (_forceContinueButton != null)
+        {
             return;
+        }
+
         if (Time.unscaledTime - _hostWaitingStartTime < ForceContinueDelaySeconds)
+        {
             return;
+        }
 
         _forceContinueButton = CreateForceContinueButton();
     }
@@ -535,7 +589,9 @@ public class CoopRewardUI : MonoBehaviour
     {
         var services = MultiplayerPlugin.Services;
         if (services?.TryResolve<IGameEventRegistry>(out var reg) == true)
+        {
             reg.Dispatch(new AllChoicesCompleteEvent { Phase = phase });
+        }
     }
 
     private void ForceContinueShop()
@@ -657,6 +713,7 @@ public class CoopRewardUI : MonoBehaviour
                             { relicMgrs[0].AddRelic(relic); }
                             finally { Patches.MultiplayerClientPatches.AllowRelicSync = false; }
                         }
+
                         Log?.LogInfo($"[CoopRewardUI] Host added relic: {relic.effect} ({relic.locKey})");
                         break;
                     }
@@ -666,7 +723,9 @@ public class CoopRewardUI : MonoBehaviour
 
                 // Save host state with the new relic
                 if (services.TryResolve<CoopStateManager>(out var coopState))
+                {
                     coopState.SaveActivePlayerState();
+                }
 
                 // Check if all clients have also chosen
                 if (CoopRewardState.AllClientRelicChoicesReceived)
@@ -676,7 +735,9 @@ public class CoopRewardUI : MonoBehaviour
                     CoopRewardState.AllChoicesComplete = true;
                     CoopRewardState.WaitingForOtherPlayers = false;
                     if (services.TryResolve<IGameEventRegistry>(out var reg))
+                    {
                         reg.Dispatch(new AllChoicesCompleteEvent { Phase = "starting_relic" });
+                    }
 
                     var gameInit = CoopRewardState.PendingGameInitInstance as GameInit;
                     if (gameInit != null)
@@ -691,7 +752,9 @@ public class CoopRewardUI : MonoBehaviour
             {
                 // Client: send to host via network
                 if (services?.TryResolve<IMessageSender>(out var sender) == true)
+                {
                     sender.Send(new RelicChoiceEvent { ChosenRelicEffect = relicEffect });
+                }
 
                 // Also add the relic to the CLIENT's local RelicManager so it shows in the UI.
                 // The host tracks it in CoopPlayerState; the client needs it in RelicManager for display.
@@ -707,6 +770,7 @@ public class CoopRewardUI : MonoBehaviour
                             try
                             { clientRelicMgrs[0].AddRelic(relic); }
                             finally { Patches.MultiplayerClientPatches.AllowRelicSync = false; }
+
                             Log?.LogInfo($"[CoopRewardUI] Client added relic locally: {relic.effect}");
                             break;
                         }
@@ -735,7 +799,9 @@ public class CoopRewardUI : MonoBehaviour
         {
             var services = MultiplayerPlugin.Services;
             if (services?.TryResolve<IMessageSender>(out var sender) == true)
+            {
                 sender.Send(new RewardChoiceEvent { ChosenOptionIndex = optionIndex });
+            }
         }
         catch (Exception ex)
         {
@@ -819,8 +885,11 @@ public class CoopRewardUI : MonoBehaviour
         foreach (var btn in _buttons)
         {
             if (btn != null)
+            {
                 Destroy(btn);
+            }
         }
+
         _buttons.Clear();
     }
 
@@ -857,6 +926,8 @@ public class CoopRewardUI : MonoBehaviour
     {
         ClearButtons();
         if (_canvasObj != null)
+        {
             Destroy(_canvasObj);
+        }
     }
 }

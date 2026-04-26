@@ -1,12 +1,10 @@
 using System;
-using System.Linq;
 using Battle.Attacks;
 using Multipeglin.Events.Handlers.Coop;
 using Multipeglin.Events.Network.Coop;
 using Multipeglin.Events.Network.Scenarios;
 using Multipeglin.GameState;
 using Multipeglin.Multiplayer;
-using Relics;
 using UnityEngine;
 
 namespace Multipeglin.Events.Handlers.Scenarios;
@@ -23,15 +21,23 @@ public sealed class ShopCompleteClientHandler : IClientHandler<ShopCompleteEvent
         {
             var services = MultiplayerPlugin.Services;
             if (services == null)
+            {
                 return;
+            }
+
             if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting)
+            {
                 return;
+            }
 
             var eventRegistry = services.TryResolve<IGameEventRegistry>(out var reg) ? reg : null;
             var senderPeerId = (eventRegistry as GameEventRegistry)?.CurrentSenderPeerId ?? -1;
 
             if (!services.TryResolve<PlayerRegistry>(out var registry))
+            {
                 return;
+            }
+
             var slot = registry.GetSlotByPeerId(senderPeerId);
             if (slot == null)
             {
@@ -44,7 +50,10 @@ public sealed class ShopCompleteClientHandler : IClientHandler<ShopCompleteEvent
                 $"{e.Purchases?.Count ?? 0} purchases, goldSpent={e.GoldSpent}, remaining={e.RemainingGold}");
 
             if (!services.TryResolve<CoopStateManager>(out var coopState))
+            {
                 return;
+            }
+
             var playerState = coopState.GetPlayerState(slot.SlotIndex);
             if (playerState == null)
             {
@@ -60,6 +69,7 @@ public sealed class ShopCompleteClientHandler : IClientHandler<ShopCompleteEvent
             {
                 playerState.Gold = e.RemainingGold;
             }
+
             MultiplayerPlugin.Logger?.LogInfo(
                 $"[ShopComplete] Finalized slot {slot.SlotIndex}: deck={playerState.CompleteDeck.Count}, " +
                 $"relics={playerState.OwnedRelics.Count}, gold={playerState.Gold} (e.RemainingGold={e.RemainingGold})");
@@ -80,7 +90,9 @@ public sealed class ShopCompleteClientHandler : IClientHandler<ShopCompleteEvent
                 CoopRewardState.ShopPhaseActive = false;
 
                 if (services.TryResolve<IGameEventRegistry>(out var evtReg))
+                {
                     evtReg.Dispatch(new AllChoicesCompleteEvent { Phase = "shop" });
+                }
 
                 // Resume host's blocked CloseStore
                 if (CoopRewardState.PendingShopManager is global::Scenarios.Shop.ShopManager shopMgr)
@@ -139,7 +151,9 @@ public sealed class ShopCompleteClientHandler : IClientHandler<ShopCompleteEvent
         try
         {
             if (purchase.RelicEffect < 0)
+            {
                 return;
+            }
 
             var allRelics = Resources.FindObjectsOfTypeAll<Relics.Relic>();
             foreach (var relic in allRelics)

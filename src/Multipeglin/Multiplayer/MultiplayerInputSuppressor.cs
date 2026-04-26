@@ -20,7 +20,9 @@ public class MultiplayerInputSuppressor
     public void SuppressInput()
     {
         if (_inputSuppressed)
+        {
             return;
+        }
 
         if (!ReInput.isReady)
         {
@@ -40,10 +42,14 @@ public class MultiplayerInputSuppressor
     public void RestoreInput()
     {
         if (!_inputSuppressed)
+        {
             return;
+        }
 
         if (!ReInput.isReady)
+        {
             return;
+        }
 
         var player = ReInput.players.GetPlayer(0);
         if (player != null)

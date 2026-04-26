@@ -42,7 +42,9 @@ public sealed class CurrencySubscriptions
     private void OnGoldAdded(int originalAmount, int currencyChange, bool silent)
     {
         if (!IsHosting)
+        {
             return;
+        }
 
         // In coop, distribute gold earned (peg hits, battle rewards) to all
         // inactive players. The active player already receives it via the
@@ -52,7 +54,9 @@ public sealed class CurrencySubscriptions
         // its AddGold call would otherwise re-distribute the loaded amount as
         // phantom earnings every turn swap.
         if (IsCoop && currencyChange > 0 && !CoopStateManager.IsLoadingPlayerGold)
+        {
             _coopStateManager.DistributeGoldToInactivePlayers(currencyChange);
+        }
 
         // In coop, each player has their own gold. The host's CurrencyManager
         // reflects only whichever slot is active on the host — broadcasting its
@@ -60,7 +64,9 @@ public sealed class CurrencySubscriptions
         // Gold is synced per-slot via the PlayerState heartbeat, and client
         // shop spending flows through ShopPurchaseEvent. Skip the broadcast.
         if (IsCoop)
+        {
             return;
+        }
 
         _registry.Dispatch(new GoldChangedEvent
         {
@@ -74,11 +80,15 @@ public sealed class CurrencySubscriptions
     private void OnGoldRemoved(int originalAmount, int currencyChange, bool silent)
     {
         if (!IsHosting)
+        {
             return;
+        }
 
         // In coop, skip broadcasting host spending — see OnGoldAdded for rationale.
         if (IsCoop)
+        {
             return;
+        }
 
         _registry.Dispatch(new GoldChangedEvent
         {

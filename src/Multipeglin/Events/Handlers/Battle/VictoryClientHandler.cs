@@ -1,4 +1,3 @@
-namespace Multipeglin.Events.Handlers.Battle;
 
 using System;
 using global::Battle;
@@ -6,6 +5,7 @@ using Multipeglin.Events.Network.Battle;
 using Multipeglin.GameState.Appliers;
 using Multipeglin.Multiplayer;
 
+namespace Multipeglin.Events.Handlers.Battle;
 public sealed class VictoryClientHandler : IClientHandler<VictoryEvent>
 {
     public void Handle(VictoryEvent networkEvent)

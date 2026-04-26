@@ -46,7 +46,11 @@ public class ClientBallRenderer : MonoBehaviour
     private const float PositionSmoothRate = 25f;
 
     private void Awake() { Instance = this; }
-    private void OnDestroy() { if (Instance == this) Instance = null; }
+    private void OnDestroy() { if (Instance == this)
+        {
+            Instance = null;
+        }
+    }
 
     // =========================================================================
     // AIMING PHASE
@@ -93,15 +97,20 @@ public class ClientBallRenderer : MonoBehaviour
     {
         // Leaving aiming → flight. The snapshot will spawn the actual flight
         // visual. Hide the aiming orb so it doesn't double with the spawn.
-        if (_aimingBall != null)
-            _aimingBall.SetActive(false);
+        _aimingBall?.SetActive(false);
+
         _isAiming = false;
 
         // Clear any stale flight visuals from a previous shot that never got
         // cleaned up (e.g. because the host dropped their "empty snapshot" tick).
         foreach (var v in _flightBalls.Values)
+        {
             if (v?.GameObject != null)
+            {
                 Destroy(v.GameObject);
+            }
+        }
+
         _flightBalls.Clear();
     }
 
@@ -112,7 +121,9 @@ public class ClientBallRenderer : MonoBehaviour
     public void ApplyBallSnapshot(BallStateSnapshot snap)
     {
         if (snap == null)
+        {
             return;
+        }
 
         // Hide the aiming visual while flight balls exist.
         if (snap.Balls != null && snap.Balls.Count > 0 && _aimingBall != null && _aimingBall.activeSelf)
@@ -127,7 +138,10 @@ public class ClientBallRenderer : MonoBehaviour
             foreach (var entry in snap.Balls)
             {
                 if (string.IsNullOrEmpty(entry.Guid))
+                {
                     continue;
+                }
+
                 seen.Add(entry.Guid);
 
                 if (!_flightBalls.TryGetValue(entry.Guid, out var v))
@@ -145,16 +159,14 @@ public class ClientBallRenderer : MonoBehaviour
                 v.TargetPos = new Vector2(entry.PosX, entry.PosY);
                 v.Velocity = new Vector2(entry.VelX, entry.VelY);
                 v.LastUpdateTime = Time.time;
-                if (v.GameObject != null)
-                    v.GameObject.transform.localScale = new Vector3(entry.ScaleX, entry.ScaleY, 1f);
+                v.GameObject?.transform.localScale = new Vector3(entry.ScaleX, entry.ScaleY, 1f);
 
                 if (!v.HasReceivedPosition)
                 {
                     v.HasReceivedPosition = true;
-                    if (v.GameObject != null)
-                        v.GameObject.transform.position = new Vector3(entry.PosX, entry.PosY, -1f);
-                    if (v.Trail != null)
-                        v.Trail.Clear();
+                    v.GameObject?.transform.position = new Vector3(entry.PosX, entry.PosY, -1f);
+
+                    v.Trail?.Clear();
                 }
             }
         }
@@ -164,12 +176,20 @@ public class ClientBallRenderer : MonoBehaviour
         {
             var toRemove = new List<string>();
             foreach (var kvp in _flightBalls)
+            {
                 if (!seen.Contains(kvp.Key))
+                {
                     toRemove.Add(kvp.Key);
+                }
+            }
+
             foreach (var guid in toRemove)
             {
                 if (_flightBalls.TryGetValue(guid, out var v) && v.GameObject != null)
+                {
                     Destroy(v.GameObject);
+                }
+
                 _flightBalls.Remove(guid);
             }
         }
@@ -177,8 +197,10 @@ public class ClientBallRenderer : MonoBehaviour
 
     private FlightVisual SpawnFlightVisual(BallEntry entry)
     {
-        var go = new GameObject($"ClientBall_{entry.Guid}");
-        go.hideFlags = HideFlags.HideAndDontSave;
+        var go = new GameObject($"ClientBall_{entry.Guid}")
+        {
+            hideFlags = HideFlags.HideAndDontSave
+        };
         DontDestroyOnLoad(go);
 
         var sr = go.AddComponent<SpriteRenderer>();
@@ -216,10 +238,13 @@ public class ClientBallRenderer : MonoBehaviour
         float scaleFactor, bool wantTrail, TrailRenderer existingTrail = null)
     {
         if (target == null)
+        {
             return;
+        }
+
         try
         {
-            string cleanName = orbName?.Replace("(Clone)", "").Trim();
+            var cleanName = orbName?.Replace("(Clone)", "").Trim();
             GameObject orbGo = FindOrbPrefab(cleanName);
 
             if (orbGo != null)
@@ -229,7 +254,10 @@ public class ClientBallRenderer : MonoBehaviour
                 {
                     target.sprite = orbRenderer.sprite;
                     if (orbRenderer.sharedMaterial != null)
+                    {
                         target.material = orbRenderer.sharedMaterial;
+                    }
+
                     target.sortingLayerID = orbRenderer.sortingLayerID;
                     target.sortingOrder = 100;
                     targetGO.transform.localScale = orbGo.transform.localScale * scaleFactor;
@@ -261,12 +289,16 @@ public class ClientBallRenderer : MonoBehaviour
     private static GameObject FindOrbPrefab(string cleanName)
     {
         if (string.IsNullOrEmpty(cleanName))
+        {
             return null;
+        }
 
         var loader = Loading.AssetLoading.Instance;
         var orbGo = loader?.GetOrbPrefab(cleanName);
         if (orbGo != null)
+        {
             return orbGo;
+        }
 
         if (cleanName == "NavigationOrb")
         {
@@ -276,7 +308,9 @@ public class ClientBallRenderer : MonoBehaviour
                 var navField = HarmonyLib.AccessTools.Field(typeof(Battle.BattleController), "_navigationOrb");
                 orbGo = navField?.GetValue(bc) as GameObject;
                 if (orbGo != null)
+                {
                     return orbGo;
+                }
             }
         }
 
@@ -287,21 +321,28 @@ public class ClientBallRenderer : MonoBehaviour
             foreach (var orb in dm.battleDeck)
             {
                 if (orb != null && orb.name.Replace("(Clone)", "").Trim() == cleanName)
+                {
                     return orb;
+                }
             }
         }
+
         return null;
     }
 
     private static void CopyTrailSettings(TrailRenderer dst, TrailRenderer src)
     {
         if (dst == null)
+        {
             return;
+        }
+
         if (src == null)
         {
             dst.emitting = true;
             return;
         }
+
         dst.time = src.time;
         dst.minVertexDistance = src.minVertexDistance;
         dst.widthCurve = src.widthCurve;
@@ -322,7 +363,9 @@ public class ClientBallRenderer : MonoBehaviour
         dst.autodestruct = false;
         dst.emitting = true;
         if (src.sharedMaterial != null)
+        {
             dst.sharedMaterial = src.sharedMaterial;
+        }
     }
 
     // =========================================================================
@@ -336,28 +379,34 @@ public class ClientBallRenderer : MonoBehaviour
             _aimingBall.transform.position = new Vector3(_spawnPos.x, _spawnPos.y, -0.5f);
             if (_aimDirection.sqrMagnitude > 0.01f)
             {
-                float angle = Mathf.Atan2(_aimDirection.y, _aimDirection.x) * Mathf.Rad2Deg;
+                var angle = Mathf.Atan2(_aimDirection.y, _aimDirection.x) * Mathf.Rad2Deg;
                 _aimingBall.transform.rotation = Quaternion.Euler(0, 0, angle);
             }
         }
 
         if (_flightBalls.Count == 0)
+        {
             return;
+        }
 
         foreach (var v in _flightBalls.Values)
         {
             if (v?.GameObject == null || !v.HasReceivedPosition)
+            {
                 continue;
+            }
 
-            float dt = Time.time - v.LastUpdateTime;
+            var dt = Time.time - v.LastUpdateTime;
             if (dt > 0.25f)
+            {
                 dt = 0.25f;
+            }
 
             var predicted = v.TargetPos + v.Velocity * dt;
             predicted.y += -9.81f * dt * dt * 0.5f;
 
             var current = (Vector2)v.GameObject.transform.position;
-            float t = 1f - Mathf.Exp(-PositionSmoothRate * Time.deltaTime);
+            var t = 1f - Mathf.Exp(-PositionSmoothRate * Time.deltaTime);
             var lerped = Vector2.Lerp(current, predicted, t);
             v.GameObject.transform.position = new Vector3(lerped.x, lerped.y, -1f);
         }
@@ -370,9 +419,14 @@ public class ClientBallRenderer : MonoBehaviour
     private void EnsureAimingBall()
     {
         if (_aimingBall != null)
+        {
             return;
-        _aimingBall = new GameObject("ClientBall_Aiming");
-        _aimingBall.hideFlags = HideFlags.HideAndDontSave;
+        }
+
+        _aimingBall = new GameObject("ClientBall_Aiming")
+        {
+            hideFlags = HideFlags.HideAndDontSave
+        };
         DontDestroyOnLoad(_aimingBall);
         _aimingRenderer = _aimingBall.AddComponent<SpriteRenderer>();
         _aimingRenderer.sortingOrder = 100;
@@ -396,17 +450,20 @@ public class ClientBallRenderer : MonoBehaviour
 
     private static Sprite CreateCircleSprite()
     {
-        int size = 32;
+        var size = 32;
         var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
-        float center = size / 2f;
-        float radius = center - 1;
+        var center = size / 2f;
+        var radius = center - 1;
 
-        for (int y = 0; y < size; y++)
-            for (int x = 0; x < size; x++)
+        for (var y = 0; y < size; y++)
+        {
+            for (var x = 0; x < size; x++)
             {
-                float dist = Vector2.Distance(new Vector2(x, y), new Vector2(center, center));
+                var dist = Vector2.Distance(new Vector2(x, y), new Vector2(center, center));
                 tex.SetPixel(x, y, dist <= radius ? Color.white : Color.clear);
             }
+        }
+
         tex.Apply();
         return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size);
     }

@@ -1,8 +1,8 @@
-namespace Multipeglin.Events.Handlers.Map;
 
 using System;
 using Multipeglin.Events.Network.Map;
 
+namespace Multipeglin.Events.Handlers.Map;
 public sealed class NodeSelectedClientHandler : IClientHandler<NodeSelectedEvent>
 {
     public void Handle(NodeSelectedEvent networkEvent)

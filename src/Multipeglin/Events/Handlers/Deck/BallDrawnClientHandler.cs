@@ -1,10 +1,10 @@
-namespace Multipeglin.Events.Handlers.Deck;
 
 using System;
 using Multipeglin.Events.Network.Deck;
 using Multipeglin.Multiplayer;
 using UnityEngine;
 
+namespace Multipeglin.Events.Handlers.Deck;
 public sealed class BallDrawnClientHandler : IClientHandler<BallDrawnEvent>
 {
     public void Handle(BallDrawnEvent e)
@@ -14,11 +14,15 @@ public sealed class BallDrawnClientHandler : IClientHandler<BallDrawnEvent>
             // In coop mode, deck draw events reflect the HOST's active player.
             // Don't modify the client's own deck — heartbeat sync handles it.
             if (UI.LobbyUI.GameStartReceived)
+            {
                 return;
+            }
 
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
             if (mode == null || !mode.IsSpectating)
+            {
                 return;
+            }
 
             MultiplayerPlugin.Logger.LogInfo($"Multiplayer: Drew orb {e.OrbName} (level {e.Level})");
 

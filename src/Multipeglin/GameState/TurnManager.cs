@@ -77,7 +77,9 @@ public class TurnManager
     public void StartNewRound()
     {
         if (TurnOrder.Count == 0)
+        {
             BuildTurnOrder();
+        }
 
         RoundNumber++;
         CurrentTurnIndex = 0;
@@ -85,8 +87,7 @@ public class TurnManager
         foreach (var slot in TurnOrder)
         {
             var state = _coopState.GetPlayerState(slot);
-            if (state != null)
-                state.HasShotThisRound = false;
+            state?.HasShotThisRound = false;
         }
 
         // Skip dead players at the start of the round
@@ -128,11 +129,12 @@ public class TurnManager
     {
         var slot = CurrentPlayerSlot;
         if (slot < 0)
+        {
             return;
+        }
 
         var state = _coopState.GetPlayerState(slot);
-        if (state != null)
-            state.HasShotThisRound = true;
+        state?.HasShotThisRound = true;
 
         Phase = TurnPhase.SHOT_IN_FLIGHT;
         UpdateSnapshot();
@@ -201,10 +203,12 @@ public class TurnManager
     public bool IsLocalPlayerTurn(bool isHost)
     {
         if (Phase != TurnPhase.PLAYER_AIMING)
+        {
             return false;
+        }
+
         return isHost && CurrentPlayerSlot == 0;
     }
-
 
     /// <summary>
     /// Remove a player from the turn order (e.g., on disconnect).
@@ -219,14 +223,14 @@ public class TurnManager
         var beforeCount = TurnOrder.Count;
         var beforeSlot = CurrentPlayerSlot;
 
-        int removeIdx = TurnOrder.IndexOf(slotIndex);
+        var removeIdx = TurnOrder.IndexOf(slotIndex);
         if (removeIdx < 0)
         {
             _log.LogInfo($"[TurnManager] RemovePlayer: slot {slotIndex} not in TurnOrder [{string.Join(", ", TurnOrder)}], no-op");
             return false;
         }
 
-        bool wasCurrentTurn = (removeIdx == CurrentTurnIndex) &&
+        var wasCurrentTurn = (removeIdx == CurrentTurnIndex) &&
             (Phase == TurnPhase.PLAYER_AIMING || Phase == TurnPhase.SHOT_IN_FLIGHT);
         TurnOrder.RemoveAt(removeIdx);
 
@@ -294,7 +298,10 @@ public class TurnManager
     {
         var slot = CurrentPlayerSlot;
         if (slot < 0)
+        {
             return "";
+        }
+
         var state = _coopState.GetPlayerState(slot);
         return state?.PlayerName ?? $"Player {slot}";
     }

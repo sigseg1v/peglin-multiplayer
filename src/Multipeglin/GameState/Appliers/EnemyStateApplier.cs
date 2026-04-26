@@ -50,8 +50,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             if (snapshot.BallSpawnX != 0f || snapshot.BallSpawnY != 0f)
             {
                 var spawnBc = UnityEngine.Object.FindObjectOfType<Battle.BattleController>();
-                if (spawnBc != null)
-                    spawnBc.pachinkoBallSpawnLocation = new UnityEngine.Vector2(snapshot.BallSpawnX, snapshot.BallSpawnY);
+                spawnBc?.pachinkoBallSpawnLocation = new UnityEngine.Vector2(snapshot.BallSpawnX, snapshot.BallSpawnY);
             }
 
             if (snapshot.Enemies == null || snapshot.Enemies.Count == 0)
@@ -81,7 +80,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             {
                 // Try GUID match first
                 var match = FindByGuid(entry.Id);
-                bool matchedByGuid = match != null && !matched.Contains(match);
+                var matchedByGuid = match != null && !matched.Contains(match);
                 if (!matchedByGuid)
                 {
                     // Fallback to locKey + position match (used on first-bind only)
@@ -100,10 +99,10 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                     // existing enemy alive (host runtime variants like Knight_Variant_4
                     // aren't in the client prefab cache; destroying then failing to
                     // respawn caused a per-heartbeat flicker).
-                    string matchName = match.gameObject.name.Replace("(Clone)", "").Trim();
-                    string hostName = (entry.EnemyName ?? "").Replace("(Clone)", "").Trim();
-                    bool typeMismatch = !string.IsNullOrEmpty(hostName) && matchName != hostName;
-                    bool newPrefabKnown = typeMismatch && !_missingPrefabs.Contains(hostName) && FindEnemyPrefab(hostName) != null;
+                    var matchName = match.gameObject.name.Replace("(Clone)", "").Trim();
+                    var hostName = (entry.EnemyName ?? "").Replace("(Clone)", "").Trim();
+                    var typeMismatch = !string.IsNullOrEmpty(hostName) && matchName != hostName;
+                    var newPrefabKnown = typeMismatch && !_missingPrefabs.Contains(hostName) && FindEnemyPrefab(hostName) != null;
                     if (typeMismatch && newPrefabKnown)
                     {
                         _log.LogInfo($"[EnemyApplier] Enemy type changed: '{matchName}' → '{hostName}', replacing");
@@ -200,21 +199,25 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
     {
         try
         {
-            bool allMatch = true;
-            int checked_ = 0;
+            var allMatch = true;
+            var checked_ = 0;
             const int MAX_CHECK = 3;
 
             foreach (var entry in snapshot.Enemies)
             {
                 if (checked_ >= MAX_CHECK)
+                {
                     break;
+                }
 
                 var enemy = FindByGuid(entry.Id);
                 if (enemy == null)
+                {
                     continue;
+                }
 
                 checked_++;
-                float actualHp = enemy.CurrentHealth;
+                var actualHp = enemy.CurrentHealth;
                 if (Math.Abs(actualHp - entry.CurrentHealth) > 0.1f)
                 {
                     _log.LogWarning($"[Verify] MISMATCH enemy '{entry.LocKey}' (guid={entry.Id}) health: actual={actualHp:F1} expected={entry.CurrentHealth:F1}");
@@ -222,7 +225,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                 }
 
                 var maxField = AccessTools.Field(typeof(Enemy), "_maxHealth");
-                float actualMax = maxField != null ? (float)maxField.GetValue(enemy) : -1f;
+                var actualMax = maxField != null ? (float)maxField.GetValue(enemy) : -1f;
                 if (entry.MaxHealth > 0 && Math.Abs(actualMax - entry.MaxHealth) > 0.1f)
                 {
                     _log.LogWarning($"[Verify] MISMATCH enemy '{entry.LocKey}' (guid={entry.Id}) maxHealth: actual={actualMax:F1} expected={entry.MaxHealth:F1}");
@@ -231,9 +234,13 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             }
 
             if (allMatch && checked_ > 0)
+            {
                 _log.LogInfo($"[Verify] EnemyState OK: checked {checked_}/{snapshot.Enemies.Count} enemies");
+            }
             else if (checked_ == 0)
+            {
                 _log.LogInfo("[Verify] EnemyState: no GUID-matched enemies to verify");
+            }
         }
         catch (Exception ex)
         {
@@ -254,29 +261,37 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
         {
             var eim = UnityEngine.Object.FindObjectOfType<Battle.EnemyInfoManager>();
             if (eim == null)
+            {
                 return;
+            }
 
             var elementsField = HarmonyLib.AccessTools.Field(typeof(Battle.EnemyInfoManager), "_enemyInfoElements");
             var elements = elementsField?.GetValue(eim) as System.Collections.Generic.Queue<Battle.EnemyInfoElement>;
             if (elements == null)
+            {
                 return;
+            }
 
-            int hostCount = hostNames?.Count ?? 0;
+            var hostCount = hostNames?.Count ?? 0;
 
             // Skip rebuild only if names are identical (avoid flicker on unchanged lists)
             if (_lastSyncedUpcoming != null && hostNames != null &&
                 _lastSyncedUpcoming.Count == hostNames.Count &&
                 _lastSyncedUpcoming.SequenceEqual(hostNames) &&
                 elements.Count == hostCount)
+            {
                 return;
+            }
 
             // Destroy all existing UI elements
-            int oldCount = elements.Count;
+            var oldCount = elements.Count;
             while (elements.Count > 0)
             {
                 var el = elements.Dequeue();
                 if (el != null)
+                {
                     UnityEngine.Object.Destroy(el.gameObject);
+                }
             }
 
             // Clear the backing _upcomingSpawns list too
@@ -293,8 +308,12 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                     scrollAnim?.SetTrigger(UnityEngine.Animator.StringToHash("RollUp"));
                 }
                 catch { }
+
                 if (oldCount > 0)
+                {
                     _log.LogInfo($"[EnemyApplier] Upcoming sync: cleared {oldCount} → 0");
+                }
+
                 return;
             }
 
@@ -306,9 +325,11 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             var elementPrefab = prefabField?.GetValue(eim) as Battle.EnemyInfoElement;
 
             if (prefabs == null || container == null || elementPrefab == null)
+            {
                 return;
+            }
 
-            int created = 0;
+            var created = 0;
             foreach (var name in hostNames)
             {
                 // Find the enemy prefab by name — try exact match then substring
@@ -321,6 +342,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                         break;
                     }
                 }
+
                 if (prefabGo == null)
                 {
                     // Try partial match (prefab key often differs from name)
@@ -336,7 +358,9 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
 
                 var enemy = prefabGo?.GetComponent<Battle.Enemies.Enemy>();
                 if (enemy == null)
+                {
                     continue;
+                }
 
                 var uiGo = UnityEngine.Object.Instantiate(elementPrefab.gameObject, container);
                 var element = uiGo.GetComponent<Battle.EnemyInfoElement>();
@@ -367,8 +391,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             // Update the "+N" indicator
             var moreField = HarmonyLib.AccessTools.Field(typeof(Battle.EnemyInfoManager), "_moreUpcomingEnemiesIndicator");
             var moreText = moreField?.GetValue(eim) as TMPro.TMP_Text;
-            if (moreText != null)
-                moreText.gameObject.SetActive(false);
+            moreText?.gameObject.SetActive(false);
 
             _lastSyncedUpcoming = hostNames != null ? new List<string>(hostNames) : null;
             _log.LogInfo($"[EnemyApplier] Upcoming sync: rebuilt {oldCount} → {created} (host={hostNames.Count}, names={string.Join(",", hostNames)})");
@@ -388,7 +411,9 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
     {
         var cache = AssetLoading.Instance?.EnemyPrefabs;
         if (cache != null && cache.Count > 0)
+        {
             return;
+        }
 
         var battle = StaticGameData.dataToLoad as MapDataBattle;
         if (battle == null)
@@ -397,7 +422,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             return;
         }
 
-        int loaded = 0;
+        var loaded = 0;
         if (cache == null)
         {
             _log.LogWarning("[EnemyApplier] AssetLoading.Instance.EnemyPrefabs is null!");
@@ -412,10 +437,16 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                 try
                 {
                     if (spawn?.spawnData?.enemyAssetReference == null)
+                    {
                         continue;
+                    }
+
                     var key = spawn.spawnData.enemyAssetReference.RuntimeKey.ToString();
                     if (cache.ContainsKey(key))
+                    {
                         continue;
+                    }
+
                     var go = spawn.spawnData.enemyAssetReference.LoadAssetAsync<GameObject>().WaitForCompletion();
                     if (go != null)
                     {
@@ -437,16 +468,25 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             foreach (var wg in battle.waveGroups)
             {
                 if (wg?.waveData == null)
+                {
                     continue;
+                }
+
                 foreach (var wd in wg.waveData)
                 {
                     try
                     {
                         if (wd?.spawnData?.enemyAssetReference == null)
+                        {
                             continue;
+                        }
+
                         var key = wd.spawnData.enemyAssetReference.RuntimeKey.ToString();
                         if (cache.ContainsKey(key))
+                        {
                             continue;
+                        }
+
                         var go = wd.spawnData.enemyAssetReference.LoadAssetAsync<GameObject>().WaitForCompletion();
                         if (go != null)
                         {
@@ -472,7 +512,10 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
     private Enemy FindByGuid(string guid)
     {
         if (string.IsNullOrEmpty(guid))
+        {
             return null;
+        }
+
         return _enemyId.Find(guid);
     }
 
@@ -484,18 +527,23 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
     {
         // Prefer locKey match, then closest position
         Enemy best = null;
-        float bestDist = float.MaxValue;
+        var bestDist = float.MaxValue;
 
         foreach (var e in liveEnemies)
         {
             if (e == null || alreadyMatched.Contains(e))
+            {
                 continue;
-            if (e.locKey != entry.LocKey)
-                continue;
+            }
 
-            float dx = e.transform.position.x - entry.PosX;
-            float dy = e.transform.position.y - entry.PosY;
-            float dist = dx * dx + dy * dy;
+            if (e.locKey != entry.LocKey)
+            {
+                continue;
+            }
+
+            var dx = e.transform.position.x - entry.PosX;
+            var dy = e.transform.position.y - entry.PosY;
+            var dist = dx * dx + dy * dy;
             if (dist < bestDist)
             {
                 bestDist = dist;
@@ -504,7 +552,9 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
         }
 
         if (best != null)
+        {
             return best;
+        }
 
         // Cross-locKey position fallback ONLY for near-exact matches (<= 0.5 units).
         // Loose 3-unit fallback was wrong-matching different enemies that happened to
@@ -513,10 +563,13 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
         foreach (var e in liveEnemies)
         {
             if (e == null || alreadyMatched.Contains(e))
+            {
                 continue;
-            float dx = e.transform.position.x - entry.PosX;
-            float dy = e.transform.position.y - entry.PosY;
-            float dist = dx * dx + dy * dy;
+            }
+
+            var dx = e.transform.position.x - entry.PosX;
+            var dy = e.transform.position.y - entry.PosY;
+            var dist = dx * dx + dy * dy;
             if (dist < 0.25f && dist < bestDist) // 0.5 units
             {
                 bestDist = dist;
@@ -538,7 +591,9 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
         {
             var prefab = FindEnemyPrefab(entry.EnemyName ?? entry.LocKey);
             if (prefab == null)
+            {
                 return null;
+            }
 
             var pos = new Vector3(entry.PosX, entry.PosY, 0);
             var go = UnityEngine.Object.Instantiate(prefab, pos, Quaternion.identity, em.transform);
@@ -583,8 +638,11 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                         enemiesList = new List<Enemy>();
                         HarmonyLib.AccessTools.Field(typeof(EnemyManager), "Enemies")?.SetValue(em, enemiesList);
                     }
+
                     if (!enemiesList.Contains(enemy))
+                    {
                         enemiesList.Add(enemy);
+                    }
                 }
                 catch { }
             }
@@ -613,14 +671,19 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
     private GameObject FindEnemyPrefab(string name)
     {
         if (string.IsNullOrEmpty(name))
+        {
             return null;
-        string cleanName = name.Replace("(Clone)", "").Trim();
+        }
+
+        var cleanName = name.Replace("(Clone)", "").Trim();
 
         // Short-circuit known-missing names — Resources.FindObjectsOfTypeAll is very
         // expensive and runtime-only variants (Knight_Variant_4, etc.) will never
         // appear in any cache.
         if (_missingPrefabs.Contains(cleanName))
+        {
             return null;
+        }
 
         // Strategy 1: AssetLoading cache (keyed by RuntimeKey, so match by prefab name)
         var cache = AssetLoading.Instance?.EnemyPrefabs;
@@ -629,13 +692,17 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             foreach (var kvp in cache)
             {
                 if (kvp.Value != null && kvp.Value.name == cleanName)
+                {
                     return kvp.Value;
+                }
             }
             // Try partial match (enemy prefabs sometimes have variant names)
             foreach (var kvp in cache)
             {
                 if (kvp.Value != null && (kvp.Value.name.Contains(cleanName) || cleanName.Contains(kvp.Value.name)))
+                {
                     return kvp.Value;
+                }
             }
         }
 
@@ -644,7 +711,9 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
         foreach (var e in allEnemies)
         {
             if (e != null && e.gameObject.name == cleanName && e.gameObject.scene.name == null)
+            {
                 return e.gameObject;
+            }
         }
 
         // Strategy 3: partial name match on prefabs
@@ -652,7 +721,9 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
         {
             if (e != null && e.gameObject.scene.name == null &&
                 (e.gameObject.name.Contains(cleanName) || cleanName.Contains(e.gameObject.name)))
+            {
                 return e.gameObject;
+            }
         }
 
         // Cache the miss so we don't run Resources.FindObjectsOfTypeAll every heartbeat.
@@ -669,12 +740,12 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
     {
         var current = enemy.transform.position;
         var target = new Vector3(entry.PosX, entry.PosY, current.z);
-        float dx = Mathf.Abs(target.x - current.x);
-        float dy = Mathf.Abs(target.y - current.y);
+        var dx = Mathf.Abs(target.x - current.x);
+        var dy = Mathf.Abs(target.y - current.y);
 
         // Walk distance window: any horizontal delta up to ~8 units (typical max slot spacing).
         // Y delta must be tiny — vertical jumps are boss animations or respawn and should snap.
-        bool canTween = !firstBind && dx > 0.05f && dx < 8f && dy < 0.5f;
+        var canTween = !firstBind && dx > 0.05f && dx < 8f && dy < 0.5f;
 
         if (!canTween)
         {
@@ -682,11 +753,11 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             return;
         }
 
-        string id = "coopEnemyMove_" + (entry.Id ?? enemy.GetInstanceID().ToString());
+        var id = "coopEnemyMove_" + (entry.Id ?? enemy.GetInstanceID().ToString());
         DG.Tweening.DOTween.Kill(id);
 
         StartWalkAnim(enemy);
-        float duration = Mathf.Clamp(dx / 4f, 0.4f, 1.2f);
+        var duration = Mathf.Clamp(dx / 4f, 0.4f, 1.2f);
         var enemyRef = enemy;
         var tween = enemy.transform.DOMoveX(target.x, duration).SetEase(DG.Tweening.Ease.InOutSine);
         tween.SetId(id);
@@ -705,11 +776,17 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
         try
         {
             if (!(enemy is Battle.Enemies.WalkEnemy))
+            {
                 return;
+            }
+
             var animField = AccessTools.Field(typeof(Enemy), "_anim");
             var anim = animField?.GetValue(enemy) as Animator;
             if (anim == null || anim.runtimeAnimatorController == null)
+            {
                 return;
+            }
+
             var moveAnimField = AccessTools.Field(typeof(Battle.Enemies.WalkEnemy), "_moveAnimName");
             var moveAnim = moveAnimField?.GetValue(enemy) as string ?? "Running";
             foreach (var p in anim.parameters)
@@ -729,13 +806,22 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
         try
         {
             if (enemy == null)
+            {
                 return;
+            }
+
             if (!(enemy is Battle.Enemies.WalkEnemy))
+            {
                 return;
+            }
+
             var animField = AccessTools.Field(typeof(Enemy), "_anim");
             var anim = animField?.GetValue(enemy) as Animator;
             if (anim == null || anim.runtimeAnimatorController == null)
+            {
                 return;
+            }
+
             var moveAnimField = AccessTools.Field(typeof(Battle.Enemies.WalkEnemy), "_moveAnimName");
             var moveAnim = moveAnimField?.GetValue(enemy) as string ?? "Running";
             foreach (var p in anim.parameters)
@@ -753,7 +839,10 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
     private static void SetMaxHealth(Enemy enemy, float maxHealth)
     {
         if (maxHealth <= 0)
+        {
             return;
+        }
+
         var field = AccessTools.Field(typeof(Enemy), "_maxHealth");
         field?.SetValue(enemy, maxHealth);
     }
@@ -768,15 +857,23 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
         try
         {
             if (!entry.HasShield)
+            {
                 return;
+            }
+
             if (!(enemy is ShieldEnemy se))
+            {
                 return;
+            }
+
             var shield = se.shield;
             if (shield == null)
+            {
                 return;
+            }
 
             var shieldGO = shield.gameObject;
-            bool clientActive = shieldGO.activeInHierarchy;
+            var clientActive = shieldGO.activeInHierarchy;
 
             // Host shield dead — hide it on client.
             if (!entry.ShieldActive)
@@ -790,6 +887,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                     shieldGO.SetActive(false);
                     _log.LogInfo($"[EnemyApplier] Shield KILLED on '{enemy.locKey}' (guid={entry.Id})");
                 }
+
                 return;
             }
 
@@ -823,19 +921,29 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
         try
         {
             if (!entry.IsC19Extra)
+            {
                 return;
+            }
+
             var slider = enemy?.HealthBarBarSprite;
             if (slider == null)
+            {
                 return;
+            }
 
             var bgField = AccessTools.Field(typeof(UpdateSlider), "_background");
             var c19Field = AccessTools.Field(typeof(UpdateSlider), "_c19Background");
             var bgImg = bgField?.GetValue(slider) as UnityEngine.UI.Image;
             var c19Sprite = c19Field?.GetValue(slider) as UnityEngine.Sprite;
             if (bgImg == null || c19Sprite == null)
+            {
                 return;
+            }
+
             if (bgImg.sprite == c19Sprite)
+            {
                 return;
+            }
 
             slider.SetIsC19ExtraEnemy();
             _log.LogInfo($"[EnemyApplier] Applied c19 HP bar to '{enemy.locKey}' (guid={entry.Id})");
@@ -873,7 +981,9 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             var statusField = AccessTools.Field(typeof(Enemy), "_statusEffects");
             var effects = statusField?.GetValue(enemy) as System.Collections.Generic.List<Battle.StatusEffects.StatusEffect>;
             if (effects == null)
+            {
                 return;
+            }
 
             var uiField = AccessTools.Field(typeof(Enemy), "_statusEffectUI");
             var ui = uiField?.GetValue(enemy) as Battle.StatusEffects.StatusEffectIconManager;
@@ -890,7 +1000,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             }
 
             // Remove effects that the host doesn't have
-            for (int i = effects.Count - 1; i >= 0; i--)
+            for (var i = effects.Count - 1; i >= 0; i--)
             {
                 if (!hostEffects.ContainsKey(effects[i].EffectType))
                 {
@@ -900,6 +1010,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                     try
                     { ui?.UpdateStatusEffect(removed); }
                     catch { }
+
                     effects.RemoveAt(i);
                 }
             }
@@ -907,7 +1018,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             // Update existing / add missing — direct list manipulation only
             foreach (var kvp in hostEffects)
             {
-                bool found = false;
+                var found = false;
                 foreach (var eff in effects)
                 {
                     if (eff.EffectType == kvp.Key)
@@ -936,7 +1047,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                 }
             }
 
-            bool hasUiData = ui != null && ui.EffectData != null;
+            var hasUiData = ui != null && ui.EffectData != null;
             if (hasUiData)
             {
                 try

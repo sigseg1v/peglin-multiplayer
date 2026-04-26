@@ -1,7 +1,7 @@
-namespace Multipeglin.Events.Handlers.Lobby;
 
 using Multipeglin.Events.Network.Lobby;
 
+namespace Multipeglin.Events.Handlers.Lobby;
 /// <summary>
 /// On host: receives ClassSelectEvent from a client, updates PlayerRegistry,
 /// and broadcasts updated LobbyStateEvent. The Dispatch call in the registry

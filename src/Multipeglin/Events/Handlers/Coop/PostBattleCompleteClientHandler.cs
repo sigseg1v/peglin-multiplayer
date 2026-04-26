@@ -21,17 +21,24 @@ public sealed class PostBattleCompleteClientHandler : IClientHandler<PostBattleC
         {
             var services = MultiplayerPlugin.Services;
             if (services == null)
+            {
                 return;
+            }
 
             if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting)
+            {
                 return;
+            }
 
             // Identify the sending client by peer ID
             var eventRegistry = services.TryResolve<IGameEventRegistry>(out var reg) ? reg : null;
             var senderPeerId = (eventRegistry as GameEventRegistry)?.CurrentSenderPeerId ?? -1;
 
             if (!services.TryResolve<PlayerRegistry>(out var registry))
+            {
                 return;
+            }
+
             var slot = registry.GetSlotByPeerId(senderPeerId);
             if (slot == null)
             {
@@ -46,7 +53,10 @@ public sealed class PostBattleCompleteClientHandler : IClientHandler<PostBattleC
 
             // Update CoopPlayerState with the client's post-reward state
             if (!services.TryResolve<CoopStateManager>(out var coopState))
+            {
                 return;
+            }
+
             var playerState = coopState.GetPlayerState(slot.SlotIndex);
             if (playerState == null)
             {
@@ -60,16 +70,20 @@ public sealed class PostBattleCompleteClientHandler : IClientHandler<PostBattleC
             // values by a SyncPlayer delta before entering the reward phase, the
             // client may report HP/max lower than the authoritative slot value.
             // Enforce monotonicity so a wrong local view cannot regress the slot.
-            float prevHp = playerState.CurrentHealth;
-            float prevMax = playerState.MaxHealth;
-            int prevGold = playerState.Gold;
+            var prevHp = playerState.CurrentHealth;
+            var prevMax = playerState.MaxHealth;
+            var prevGold = playerState.Gold;
 
             if (networkEvent.MaxHealth > prevMax)
+            {
                 playerState.MaxHealth = networkEvent.MaxHealth;
+            }
 
-            float maxAllowed = playerState.MaxHealth;
+            var maxAllowed = playerState.MaxHealth;
             if (networkEvent.CurrentHealth > prevHp)
+            {
                 playerState.CurrentHealth = networkEvent.CurrentHealth > maxAllowed ? maxAllowed : networkEvent.CurrentHealth;
+            }
 
             // Gold: PostBattleGoldSpentEvent already applied per-purchase deductions,
             // so trust the slot's tracked Gold rather than the client-reported total
@@ -150,7 +164,9 @@ public sealed class PostBattleCompleteClientHandler : IClientHandler<PostBattleC
                 CoopRewardState.WaitingForOtherPlayers = false;
 
                 if (services.TryResolve<IGameEventRegistry>(out var evtReg))
+                {
                     evtReg.Dispatch(new AllChoicesCompleteEvent { Phase = "post_battle" });
+                }
 
                 // Call the stored PostBattleController.StartNavigation on the host
                 var pbc = CoopRewardState.PendingPostBattleController;

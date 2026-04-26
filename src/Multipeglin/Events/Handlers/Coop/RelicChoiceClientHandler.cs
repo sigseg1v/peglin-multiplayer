@@ -20,16 +20,23 @@ public sealed class RelicChoiceClientHandler : IClientHandler<RelicChoiceEvent>
         {
             var services = MultiplayerPlugin.Services;
             if (services == null)
+            {
                 return;
+            }
 
             if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting)
+            {
                 return;
+            }
 
             var eventRegistry = services.TryResolve<IGameEventRegistry>(out var reg) ? reg : null;
             var senderPeerId = (eventRegistry as GameEventRegistry)?.CurrentSenderPeerId ?? -1;
 
             if (!services.TryResolve<PlayerRegistry>(out var registry))
+            {
                 return;
+            }
+
             var slot = registry.GetSlotByPeerId(senderPeerId);
             if (slot == null)
             {
@@ -49,8 +56,8 @@ public sealed class RelicChoiceClientHandler : IClientHandler<RelicChoiceEvent>
                 {
                     // Find the relic data to get display info — can't use CommonRelicPool
                     // because GetMultipleRelicsOffOfQueue already dequeued relics from the pool.
-                    string locKey = "";
-                    int rarity = 0;
+                    var locKey = "";
+                    var rarity = 0;
                     var allRelics = Resources.FindObjectsOfTypeAll<Relics.Relic>();
                     foreach (var r in allRelics)
                     {
@@ -84,7 +91,7 @@ public sealed class RelicChoiceClientHandler : IClientHandler<RelicChoiceEvent>
                 CoopRewardState.WaitingForOtherPlayers = false;
 
                 var gameInit = CoopRewardState.PendingGameInitInstance as GameInit;
-                string phase = gameInit != null ? "starting_relic" : "treasure";
+                var phase = gameInit != null ? "starting_relic" : "treasure";
 
                 MultiplayerPlugin.Logger?.LogInfo($"[CoopReward] All relic choices received (phase={phase})");
 
@@ -129,14 +136,14 @@ public sealed class RelicChoiceClientHandler : IClientHandler<RelicChoiceEvent>
     private static void ApplyRelicStatEffects(CoopPlayerState playerState, int relicEffect)
     {
         // Check if the player has the INCREASE_MAX_HP_GAIN relic (effect 106)
-        bool hasHpGainBoost = false;
+        var hasHpGainBoost = false;
         foreach (var r in playerState.OwnedRelics)
         {
             if (r.Effect == 106) // INCREASE_MAX_HP_GAIN
             { hasHpGainBoost = true; break; }
         }
 
-        float hpBonus = 0f;
+        var hpBonus = 0f;
         switch (relicEffect)
         {
             case 23: // MAX_HEALTH_SMALL (+15)
@@ -154,13 +161,17 @@ public sealed class RelicChoiceClientHandler : IClientHandler<RelicChoiceEvent>
         }
 
         if (hpBonus <= 0f)
+        {
             return;
+        }
 
         if (hasHpGainBoost)
+        {
             hpBonus += 1f;
+        }
 
-        float beforeMax = playerState.MaxHealth;
-        float beforeCur = playerState.CurrentHealth;
+        var beforeMax = playerState.MaxHealth;
+        var beforeCur = playerState.CurrentHealth;
         playerState.MaxHealth += hpBonus;
         playerState.CurrentHealth += hpBonus;
         MultiplayerPlugin.Logger?.LogInfo(
@@ -180,7 +191,9 @@ public sealed class RelicChoiceClientHandler : IClientHandler<RelicChoiceEvent>
         {
             var services = MultiplayerPlugin.Services;
             if (services == null || !services.TryResolve<CoopStateManager>(out var coopState))
+            {
                 return;
+            }
 
             var relic = FindRelicByEffect(88);
             if (relic == null)
@@ -191,13 +204,15 @@ public sealed class RelicChoiceClientHandler : IClientHandler<RelicChoiceEvent>
             }
 
             // Swap to this player so DeckManager singletons point at their deck
-            int previousSlot = coopState.ActivePlayerSlot;
+            var previousSlot = coopState.ActivePlayerSlot;
             coopState.SwapToPlayer(playerState.SlotIndex);
 
             // Run the native deck modification (adds orbs + upgrades)
             var dm = Resources.FindObjectsOfTypeAll<DeckManager>();
             if (dm != null && dm.Length > 0)
+            {
                 dm[0].RelicModifyDeck(relic);
+            }
 
             // +100 gold
             playerState.Gold += 100;
@@ -207,7 +222,9 @@ public sealed class RelicChoiceClientHandler : IClientHandler<RelicChoiceEvent>
 
             // Swap back to whoever was active before
             if (previousSlot != playerState.SlotIndex)
+            {
                 coopState.SwapToPlayer(previousSlot);
+            }
 
             MultiplayerPlugin.Logger?.LogInfo(
                 $"[CoopReward] Haglin's Satchel applied to slot {playerState.SlotIndex}: " +
@@ -227,8 +244,11 @@ public sealed class RelicChoiceClientHandler : IClientHandler<RelicChoiceEvent>
         foreach (var r in allRelics)
         {
             if ((int)r.effect == effect)
+            {
                 return r;
+            }
         }
+
         return null;
     }
 }

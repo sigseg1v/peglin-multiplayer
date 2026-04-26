@@ -32,7 +32,10 @@ public class CursorSync : MonoBehaviour
     {
         var services = MultiplayerPlugin.Services;
         if (services == null)
+        {
             return;
+        }
+
         services.TryResolve(out _sender);
         services.TryResolve(out _mode);
         services.TryResolve(out _registry);
@@ -42,35 +45,53 @@ public class CursorSync : MonoBehaviour
     private void Update()
     {
         if (_sender == null || _mode == null || _transport == null)
+        {
             return;
+        }
+
         if (!_transport.IsConnected)
+        {
             return;
+        }
+
         if (!_mode.IsHosting && !_mode.IsSpectating)
+        {
             return;
+        }
 
         var cam = Camera.main;
         if (cam == null)
+        {
             return;
+        }
 
         if (Time.unscaledTime - _lastSendTime < SendInterval)
+        {
             return;
+        }
 
         Vector3 screenPos = Input.mousePosition;
         // Guard against mouse outside the window — Input.mousePosition clamps
         // but can report negative values on some platforms.
         if (screenPos.x < 0 || screenPos.y < 0
             || screenPos.x > Screen.width || screenPos.y > Screen.height)
+        {
             return;
+        }
 
         Vector3 worldPos = cam.ScreenToWorldPoint(new Vector3(screenPos.x, screenPos.y, -cam.transform.position.z));
         Vector2 flat = new Vector2(worldPos.x, worldPos.y);
 
         if (_hasSent && (flat - _lastSentWorldPos).sqrMagnitude < MinMoveDelta * MinMoveDelta)
+        {
             return;
+        }
 
-        int slot = LocalSlotIndex();
+        var slot = LocalSlotIndex();
         if (slot < 0)
+        {
             return;
+        }
 
         _sender.Send(new CursorPositionEvent
         {
@@ -87,7 +108,10 @@ public class CursorSync : MonoBehaviour
     private int LocalSlotIndex()
     {
         if (_mode.IsHosting)
+        {
             return 0;
+        }
+
         return _registry?.LocalSlot?.SlotIndex ?? -1;
     }
 }

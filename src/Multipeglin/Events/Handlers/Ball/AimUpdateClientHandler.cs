@@ -15,7 +15,9 @@ public sealed class AimUpdateClientHandler : IClientHandler<AimUpdateEvent>
             // have native trajectory rendering via PredictionManager/TrajectorySimulation.
             // This event is a rebroadcast from the host of our own aim data.
             if (TurnChangeClientHandler.IsMyTurn)
+            {
                 return;
+            }
 
             ClientAimRenderer.Instance?.UpdateAim(e.AimX, e.AimY, e.SpawnX, e.SpawnY);
         }

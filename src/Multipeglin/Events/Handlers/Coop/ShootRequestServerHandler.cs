@@ -1,8 +1,8 @@
-namespace Multipeglin.Events.Handlers.Coop;
 
 using BepInEx.Logging;
 using Multipeglin.Events.Network.Coop;
 
+namespace Multipeglin.Events.Handlers.Coop;
 /// <summary>
 /// ShootRequest is a client-to-host message. The host processes it locally
 /// (via the client handler) but does NOT rebroadcast to other clients.

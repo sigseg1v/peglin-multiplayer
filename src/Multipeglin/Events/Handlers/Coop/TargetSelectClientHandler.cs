@@ -1,11 +1,10 @@
-namespace Multipeglin.Events.Handlers.Coop;
 
 using System;
 using Multipeglin.Events.Network.Coop;
 using Multipeglin.Multiplayer;
 using Multipeglin.Utility;
-using UnityEngine;
 
+namespace Multipeglin.Events.Handlers.Coop;
 /// <summary>
 /// On host: receives a client's target selection and toggles a visual
 /// targeting indicator on the selected enemy. This lets the host see
@@ -25,7 +24,9 @@ public sealed class TargetSelectClientHandler : IClientHandler<TargetSelectEvent
         {
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
             if (mode == null || !mode.IsHosting)
+            {
                 return;
+            }
 
             // Clear previous highlight
             if (_currentClientTarget != null)
@@ -33,21 +34,28 @@ public sealed class TargetSelectClientHandler : IClientHandler<TargetSelectEvent
                 try
                 { _currentClientTarget.ToggleTargetedUI(on: false); }
                 catch { }
+
                 _currentClientTarget = null;
             }
 
             CurrentClientTargetGuid = networkEvent.TargetEnemyGuid;
 
             if (string.IsNullOrEmpty(networkEvent.TargetEnemyGuid))
+            {
                 return;
+            }
 
             var enemyId = MultiplayerPlugin.Services?.TryResolve<EnemyIdentifier>(out var eid) == true ? eid : null;
             if (enemyId == null)
+            {
                 return;
+            }
 
             var enemy = enemyId.Find(networkEvent.TargetEnemyGuid);
             if (enemy == null || enemy.CurrentHealth <= 0f)
+            {
                 return;
+            }
 
             // Show targeting UI on the client's selected enemy
             enemy.ToggleTargetedUI(on: true);
@@ -67,8 +75,10 @@ public sealed class TargetSelectClientHandler : IClientHandler<TargetSelectEvent
             try
             { _currentClientTarget.ToggleTargetedUI(on: false); }
             catch { }
+
             _currentClientTarget = null;
         }
+
         CurrentClientTargetGuid = null;
     }
 }

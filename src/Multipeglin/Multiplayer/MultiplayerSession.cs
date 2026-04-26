@@ -11,8 +11,8 @@ using Multipeglin.Network;
 using Multipeglin.Patches;
 using Multipeglin.UI;
 using Multipeglin.Utility;
-using LobbyUI = Multipeglin.UI.LobbyUI;
 using UnityEngine.SceneManagement;
+using LobbyUI = Multipeglin.UI.LobbyUI;
 
 namespace Multipeglin.Multiplayer;
 
@@ -34,7 +34,10 @@ public static class MultiplayerSession
     public static void DisconnectAndReset(string reason = null)
     {
         if (_disconnecting)
+        {
             return;
+        }
+
         _disconnecting = true;
 
         try
@@ -73,9 +76,15 @@ public static class MultiplayerSession
 
             // 6. Clear player registry, coop state, and lobby state
             if (services.TryResolve<PlayerRegistry>(out var playerRegistry))
+            {
                 playerRegistry.Clear();
+            }
+
             if (services.TryResolve<GameState.CoopStateManager>(out var coopState))
+            {
                 coopState.Reset();
+            }
+
             LobbyUI.Reset();
 
             // 7. Clear event feed + remote cursors
@@ -132,11 +141,19 @@ public static class MultiplayerSession
         try
         {
             if (!services.TryResolve<INetworkTransport>(out var transport))
+            {
                 return;
+            }
+
             if (!transport.IsConnected)
+            {
                 return;
+            }
+
             if (!services.TryResolve<IGameEventRegistry>(out var registry))
+            {
                 return;
+            }
 
             registry.Dispatch(new DisconnectEvent { Reason = reason ?? "Disconnected" });
         }
@@ -162,13 +179,20 @@ public static class MultiplayerSession
 
         // GUID registries
         if (services.TryResolve<EnemyIdentifier>(out var enemyId))
+        {
             enemyId.Clear();
+        }
+
         if (services.TryResolve<PegIdentifier>(out var pegId))
+        {
             pegId.Clear();
+        }
 
         // GameStateApplyService — reset internal queued state
         if (services.TryResolve<GameStateApplyService>(out var applyService))
+        {
             applyService.Reset();
+        }
 
         Log?.LogInfo("[Session] Static state reset");
     }

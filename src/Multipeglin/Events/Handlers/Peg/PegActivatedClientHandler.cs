@@ -1,12 +1,11 @@
-namespace Multipeglin.Events.Handlers.Peg;
 
 using System;
 using HarmonyLib;
 using Multipeglin.Events.Network.Peg;
 using Multipeglin.Multiplayer;
 using Multipeglin.Utility;
-using UnityEngine;
 
+namespace Multipeglin.Events.Handlers.Peg;
 public sealed class PegActivatedClientHandler : IClientHandler<PegActivatedEvent>
 {
     public void Handle(PegActivatedEvent networkEvent)
@@ -15,7 +14,9 @@ public sealed class PegActivatedClientHandler : IClientHandler<PegActivatedEvent
         {
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
             if (mode == null || !mode.IsSpectating)
+            {
                 return;
+            }
 
             global::Peg peg = null;
             if (!string.IsNullOrEmpty(networkEvent.PegGuid))
@@ -25,18 +26,24 @@ public sealed class PegActivatedClientHandler : IClientHandler<PegActivatedEvent
             }
 
             if (peg == null || !peg.gameObject.activeSelf)
+            {
                 return;
+            }
 
             // Skip bombs — heartbeat handles bomb state
             if (peg is Bomb)
+            {
                 return;
+            }
 
             // BouncerPeg never pops — it bounces and accumulates damage over N hits.
             // Previously we SetActive(false)'d it, which hid it after the first hit
             // and prevented the user from perceiving subsequent hits. Heartbeat keeps
             // the bouncer's visual state in sync; nothing to do here.
             if (peg is global::Battle.BouncerPeg)
+            {
                 return;
+            }
 
             // LongPeg has a two-phase host lifecycle:
             //   (a) PegActivated → _hit=true, _cleared=true, gray "Hit" color, but

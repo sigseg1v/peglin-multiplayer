@@ -12,7 +12,10 @@ public static class LobbyHelper
     public static string GetClassName(int classIndex)
     {
         if (classIndex >= 0 && classIndex < ClassNames.Length)
+        {
             return ClassNames[classIndex];
+        }
+
         return $"Unknown({classIndex})";
     }
 

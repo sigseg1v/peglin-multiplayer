@@ -4,7 +4,6 @@ using System.Linq;
 using Battle;
 using BepInEx.Logging;
 using HarmonyLib;
-using Multipeglin.Events;
 using Multipeglin.Events.Handlers.Coop;
 using Multipeglin.Events.Network.Coop;
 using Multipeglin.GameState;
@@ -137,9 +136,14 @@ public sealed class CoopSubscriptions
     private void OnAttackStarted()
     {
         if (!_mode.IsHosting)
+        {
             return;
+        }
+
         if (_coopStateManager.TotalPlayerCount < 2)
+        {
             return;
+        }
 
         try
         {
@@ -171,24 +175,37 @@ public sealed class CoopSubscriptions
     public void DistributeDamageToNonActive(float rawDamage, string source)
     {
         if (!_mode.IsHosting)
+        {
             return;
-        if (_coopStateManager.TotalPlayerCount < 2)
-            return;
-        if (rawDamage <= 0f)
-            return;
+        }
 
-        int activeSlot = _coopStateManager.ActivePlayerSlot;
+        if (_coopStateManager.TotalPlayerCount < 2)
+        {
+            return;
+        }
+
+        if (rawDamage <= 0f)
+        {
+            return;
+        }
+
+        var activeSlot = _coopStateManager.ActivePlayerSlot;
         foreach (var state in _coopStateManager.PlayerStates.Values)
         {
             if (state.SlotIndex == activeSlot)
+            {
                 continue;
+            }
 
-            float oldHp = state.CurrentHealth;
-            float effectiveDamage = ApplyDefensiveBuffs(state, rawDamage);
+            var oldHp = state.CurrentHealth;
+            var effectiveDamage = ApplyDefensiveBuffs(state, rawDamage);
             state.CurrentHealth = Mathf.Max(0f, state.CurrentHealth - effectiveDamage);
-            float actualTaken = oldHp - state.CurrentHealth;
+            var actualTaken = oldHp - state.CurrentHealth;
             if (actualTaken > 0)
+            {
                 state.DamageTaken += (long)actualTaken;
+            }
+
             _log.LogInfo($"[CoopSubs] DistributeDamage({source}) slot {state.SlotIndex} ({state.PlayerName}): " +
                 $"hp {oldHp} -> {state.CurrentHealth} (raw={rawDamage}, after buffs={effectiveDamage})");
         }
@@ -203,11 +220,19 @@ public sealed class CoopSubscriptions
     public void HandleImmediateDamage(float amount)
     {
         if (!_mode.IsHosting)
+        {
             return;
+        }
+
         if (_coopStateManager.TotalPlayerCount < 2)
+        {
             return;
+        }
+
         if (amount <= 0f)
+        {
             return;
+        }
 
         DistributeDamageToNonActive(amount, "OnPlayerDamaged");
         _damageDistributedSinceAttackStart += amount;
@@ -217,7 +242,7 @@ public sealed class CoopSubscriptions
         // died. Without this, state.CurrentHealth only refreshes on the next
         // SaveActivePlayerState (swap boundary) — which means a player who
         // dies mid-damage-phase still gets scheduled as round-start slot 0.
-        int activeSlot = _coopStateManager.ActivePlayerSlot;
+        var activeSlot = _coopStateManager.ActivePlayerSlot;
         if (activeSlot >= 0)
         {
             var activeState = _coopStateManager.GetPlayerState(activeSlot);
@@ -230,7 +255,9 @@ public sealed class CoopSubscriptions
                 }
                 // Accumulate damage taken for the active slot's run-summary tally.
                 if (amount > 0)
+                {
                     activeState.DamageTaken += (long)amount;
+                }
             }
         }
     }
@@ -243,9 +270,14 @@ public sealed class CoopSubscriptions
     private void OnTurnComplete()
     {
         if (!_mode.IsHosting)
+        {
             return;
+        }
+
         if (_coopStateManager.TotalPlayerCount < 2)
+        {
             return;
+        }
 
         try
         {
@@ -257,8 +289,8 @@ public sealed class CoopSubscriptions
             var phc = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
             if (phc != null)
             {
-                float currentHealth = phc.CurrentHealth;
-                float damage = _healthBeforeAttack - currentHealth - _damageDistributedSinceAttackStart;
+                var currentHealth = phc.CurrentHealth;
+                var damage = _healthBeforeAttack - currentHealth - _damageDistributedSinceAttackStart;
 
                 if (damage > 0f)
                 {
@@ -302,7 +334,7 @@ public sealed class CoopSubscriptions
             // player and the display matches.
             if (_turnManager.Phase == TurnPhase.ALL_DONE)
             {
-                int nextSlot = 0;
+                var nextSlot = 0;
                 foreach (var slot in _turnManager.TurnOrder)
                 {
                     var st = _coopStateManager.GetPlayerState(slot);
@@ -347,9 +379,14 @@ public sealed class CoopSubscriptions
     private void OnBattleStarted()
     {
         if (!_mode.IsHosting)
+        {
             return;
+        }
+
         if (_coopStateManager.TotalPlayerCount < 2)
+        {
             return;
+        }
 
         _accumulatedShotData.Clear();
         Multipeglin.UI.PendingDamageOverlay.ClearAll();
@@ -387,7 +424,10 @@ public sealed class CoopSubscriptions
             foreach (var kvp in _coopStateManager.PlayerStates)
             {
                 if (kvp.Key == 0)
+                {
                     continue; // Always skip host (slot 0)
+                }
+
                 var state = kvp.Value;
                 if (state.CompleteDeck.Count > 0)
                 {
@@ -439,9 +479,14 @@ public sealed class CoopSubscriptions
     private void OnAwaitingShot()
     {
         if (!_mode.IsHosting)
+        {
             return;
+        }
+
         if (_coopStateManager.TotalPlayerCount < 2)
+        {
             return;
+        }
 
         // After a full turn cycle (all players shot + attack + enemy turn),
         // the game naturally reaches AWAITING_SHOT. Start a new round.
@@ -472,7 +517,9 @@ public sealed class CoopSubscriptions
             {
                 var services = MultiplayerPlugin.Services;
                 if (services?.TryResolve<IGameEventRegistry>(out var reg) == true)
+                {
                     reg.Dispatch(new Events.Network.Coop.PendingDamagePreviewEvent());
+                }
             }
             catch { }
 
@@ -491,6 +538,7 @@ public sealed class CoopSubscriptions
                 SwapAndRedrawForRoundStart($"round {_turnManager.RoundNumber} start, slot 0 dead");
             }
         }
+
         BroadcastTurnChange();
 
         // Defensive: if the newly-active player is dead (e.g. a DoT killed them
@@ -522,6 +570,7 @@ public sealed class CoopSubscriptions
                     UnityEngine.Object.Destroy(activeBall);
                     activeBallField.SetValue(bc, null);
                 }
+
                 AccessTools.Field(typeof(BattleController), "_remainingPachinkoBalls")?.SetValue(bc, 0);
 
                 AccessTools.Field(typeof(BattleController), "_pegMultiplierDamageTally")?.SetValue(bc, 0);
@@ -551,7 +600,9 @@ public sealed class CoopSubscriptions
         catch (Exception cbEx) { _log.LogWarning($"[CoopSubs] SwapAndRedraw ({context}): callback disconnect failed: {cbEx.Message}"); }
 
         if (!EnsureBattleDeckPopulated($"{context} swap"))
+        {
             _log.LogWarning($"[CoopSubs] SwapAndRedraw ({context}): EnsureBattleDeckPopulated failed — deck may be empty");
+        }
 
         // Rebuild the deck tube display for the newly loaded slot BEFORE the
         // manual DrawBall. Otherwise _displayOrbs still holds stale orb instances
@@ -579,9 +630,14 @@ public sealed class CoopSubscriptions
             try
             {
                 if (savedOnBallUsed != null)
+                {
                     DeckManager.onBallUsed = savedOnBallUsed;
+                }
+
                 if (savedOnDeckShuffled != null)
+                {
                     DeckManager.onDeckShuffled = savedOnDeckShuffled;
+                }
             }
             catch (Exception restoreEx) { _log.LogWarning($"[CoopSubs] SwapAndRedraw ({context}): callback restore failed: {restoreEx.Message}"); }
         }
@@ -598,21 +654,34 @@ public sealed class CoopSubscriptions
     private void SkipActiveSlotIfDead(string reason)
     {
         if (!_mode.IsHosting)
+        {
             return;
-        if (_coopStateManager.TotalPlayerCount < 2)
-            return;
+        }
 
-        int safety = 0;
+        if (_coopStateManager.TotalPlayerCount < 2)
+        {
+            return;
+        }
+
+        var safety = 0;
         while (_turnManager.Phase == TurnPhase.PLAYER_AIMING && safety++ < 16)
         {
-            int slot = _turnManager.CurrentPlayerSlot;
+            var slot = _turnManager.CurrentPlayerSlot;
             if (slot < 0)
+            {
                 break;
+            }
+
             var state = _coopStateManager.GetPlayerState(slot);
             if (state == null || !state.IsInitialized)
+            {
                 break;
+            }
+
             if (state.CurrentHealth > 0)
+            {
                 break;
+            }
 
             _log.LogInfo($"[CoopSubs] Auto-skip dead slot {slot} (hp=0) source={reason}");
             SkipCurrentTurn(slot, $"auto-skip dead ({reason})");
@@ -627,9 +696,14 @@ public sealed class CoopSubscriptions
     private void OnShotComplete()
     {
         if (!_mode.IsHosting)
+        {
             return;
+        }
+
         if (_coopStateManager.TotalPlayerCount < 2)
+        {
             return;
+        }
 
         // BattleController.OnShotComplete also fires when bomb balls finish
         // during THROW_BOMBS. By then all players have shot (Phase == ALL_DONE)
@@ -644,7 +718,7 @@ public sealed class CoopSubscriptions
             return;
         }
 
-        int activeSlot = _coopStateManager.ActivePlayerSlot;
+        var activeSlot = _coopStateManager.ActivePlayerSlot;
 
         // Read BattleController's peg damage tallies for this player's shot
         var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
@@ -657,30 +731,30 @@ public sealed class CoopSubscriptions
 
         if (bc != null)
         {
-            int pegTally = pegTallyField != null ? (int)pegTallyField.GetValue(bc) : 0;
+            var pegTally = pegTallyField != null ? (int)pegTallyField.GetValue(bc) : 0;
             // _criticalHitCount is static, so pass null for the instance
-            int critCount = critField != null ? (int)critField.GetValue(null) : 0;
-            int numPegs = numPegsField != null ? (int)numPegsField.GetValue(bc) : 0;
-            int cactusTally = cactusField != null ? (int)cactusField.GetValue(bc) : 0;
+            var critCount = critField != null ? (int)critField.GetValue(null) : 0;
+            var numPegs = numPegsField != null ? (int)numPegsField.GetValue(bc) : 0;
+            var cactusTally = cactusField != null ? (int)cactusField.GetValue(bc) : 0;
 
-            float dmgMult = dmgMultField != null ? (float)dmgMultField.GetValue(bc) : 1f;
+            var dmgMult = dmgMultField != null ? (float)dmgMultField.GetValue(bc) : 1f;
             long dmgBonus = dmgBonusField != null ? (int)dmgBonusField.GetValue(bc) : 0;
 
             // Pre-compute this player's damage using the currently loaded Attack
             var amField = AccessTools.Field(typeof(BattleController), "_attackManager");
             var am = amField?.GetValue(bc) as Battle.Attacks.AttackManager;
             long precomputedDamage = 0;
-            bool isAoE = false;
-            bool isHeal = false;
+            var isAoE = false;
+            var isHeal = false;
             List<(Battle.StatusEffects.StatusEffectType, int)> capturedEffects = null;
             string capturedOrbName = null;
             // Pincer Maneuver (ADDITIONAL_REVERSE_PROJECTILE_ATTACK): when the active
             // player has this relic, ProjectileAttack.Fire halves the damage (rounded
             // up) and schedules a second shot at the farthest enemy with the same
             // halved value. We bypass Fire in coop, so replicate the split here.
-            bool hasReverseShot = false;
-            bool hasTargetedSplash = false;
-            bool hasTargetedHitAll = false;
+            var hasReverseShot = false;
+            var hasTargetedSplash = false;
+            var hasTargetedHitAll = false;
             {
                 var rms = Resources.FindObjectsOfTypeAll<Relics.RelicManager>();
                 var rm = rms != null && rms.Length > 0 ? rms[0] : null;
@@ -698,7 +772,7 @@ public sealed class CoopSubscriptions
                 isHeal = am.isHeal;
                 if (hasReverseShot && !isHeal && precomputedDamage > 0)
                 {
-                    long remainder = precomputedDamage % 2;
+                    var remainder = precomputedDamage % 2;
                     precomputedDamage = precomputedDamage / 2 + remainder;
                 }
 
@@ -706,7 +780,9 @@ public sealed class CoopSubscriptions
                 var attackField = AccessTools.Field(typeof(Battle.Attacks.AttackManager), "_attack");
                 var attack = attackField?.GetValue(am) as Battle.Attacks.Attack;
                 if (attack is Battle.Attacks.SimpleAttack)
+                {
                     isAoE = true;
+                }
 
                 // Capture status effects from the orb's components for non-host players.
                 // The host's effects are applied by the normal attack pipeline in DoAttack,
@@ -758,7 +834,9 @@ public sealed class CoopSubscriptions
                 {
                     var services = MultiplayerPlugin.Services;
                     if (services?.TryResolve<Utility.EnemyIdentifier>(out var eid) == true)
+                    {
                         targetGuid = eid.GetGuid(tmgr.currentTarget);
+                    }
                 }
             }
             else // Client — read from stored pending shot data
@@ -770,7 +848,9 @@ public sealed class CoopSubscriptions
             // Resolve player name
             string playerName = null;
             if (_coopStateManager.PlayerStates.TryGetValue(activeSlot, out var pState))
+            {
                 playerName = pState.PlayerName;
+            }
 
             _accumulatedShotData[activeSlot] = new ShotDamageData
             {
@@ -840,7 +920,9 @@ public sealed class CoopSubscriptions
             catch (Exception cbEx) { _log.LogWarning($"[CoopSubs] Failed to disconnect DeckManager callbacks: {cbEx.Message}"); }
 
             if (!EnsureBattleDeckPopulated("shot complete swap"))
+            {
                 _log.LogWarning("[CoopSubs] EnsureBattleDeckPopulated failed after shot complete swap — deck may be empty");
+            }
 
             // Override BattleState back to AWAITING_SHOT so the state machine
             // re-enters the aiming phase instead of proceeding to attack.
@@ -870,9 +952,14 @@ public sealed class CoopSubscriptions
                 try
                 {
                     if (savedOnBallUsed != null)
+                    {
                         DeckManager.onBallUsed = savedOnBallUsed;
+                    }
+
                     if (savedOnDeckShuffled != null)
+                    {
                         DeckManager.onDeckShuffled = savedOnDeckShuffled;
+                    }
                 }
                 catch (Exception restoreEx) { _log.LogWarning($"[CoopSubs] Failed to restore DeckManager callbacks: {restoreEx.Message}"); }
             }
@@ -1007,16 +1094,22 @@ public sealed class CoopSubscriptions
     public void SkipCurrentTurn(int requestingSlot, string source)
     {
         if (!_mode.IsHosting)
+        {
             return;
-        if (_coopStateManager.TotalPlayerCount < 2)
-            return;
+        }
 
-        int activeSlot = _coopStateManager.ActivePlayerSlot;
+        if (_coopStateManager.TotalPlayerCount < 2)
+        {
+            return;
+        }
+
+        var activeSlot = _coopStateManager.ActivePlayerSlot;
         if (requestingSlot != activeSlot)
         {
             _log.LogWarning($"[CoopSubs] SkipCurrentTurn denied — requester {requestingSlot} is not active slot {activeSlot} (source={source})");
             return;
         }
+
         if (_turnManager.Phase != TurnPhase.PLAYER_AIMING)
         {
             _log.LogWarning($"[CoopSubs] SkipCurrentTurn denied — Phase is {_turnManager.Phase}, not PLAYER_AIMING (source={source})");
@@ -1050,6 +1143,7 @@ public sealed class CoopSubscriptions
                     UnityEngine.Object.Destroy(activeBall);
                     activeBallField.SetValue(bc, null);
                 }
+
                 AccessTools.Field(typeof(BattleController), "_remainingPachinkoBalls")?.SetValue(bc, 0);
             }
             catch (Exception ex) { _log.LogWarning($"[CoopSubs] Skip: clear ball failed: {ex.Message}"); }
@@ -1086,9 +1180,14 @@ public sealed class CoopSubscriptions
     private void OnVictory()
     {
         if (!_mode.IsHosting)
+        {
             return;
+        }
+
         if (_coopStateManager.TotalPlayerCount < 2)
+        {
             return;
+        }
 
         try
         {
@@ -1103,6 +1202,7 @@ public sealed class CoopSubscriptions
                 _coopStateManager.SwapToPlayer(0);
                 _log.LogInfo("[CoopSubs] OnVictory: swapped to host (slot 0) before reward selection");
             }
+
             _coopStateManager.SaveActivePlayerState();
 
             // Revive dead players with 1 HP so they can participate in rewards
@@ -1120,7 +1220,9 @@ public sealed class CoopSubscriptions
             // Signal clients to open their native post-battle reward screen
             var services = MultiplayerPlugin.Services;
             if (services?.TryResolve<IGameEventRegistry>(out var registry) != true)
+            {
                 return;
+            }
 
             // Clear previous reward tracking state
             CoopRewardState.PendingSentRewardChoices.Clear();
@@ -1129,11 +1231,14 @@ public sealed class CoopSubscriptions
             CoopRewardState.HostRewardsDone = false;
             CoopRewardState.PendingPostBattleController = null;
 
-            int rewardClientCount = 0;
+            var rewardClientCount = 0;
             foreach (var kvp in _coopStateManager.PlayerStates)
             {
                 if (kvp.Key == 0)
+                {
                     continue; // Host picks rewards via the normal game UI
+                }
+
                 rewardClientCount++;
             }
 
@@ -1189,6 +1294,7 @@ public sealed class CoopSubscriptions
             _log.LogWarning("[CoopSubs] GenerateAndBroadcastPerSlotOrbChoices: no DeckManager found");
             return;
         }
+
         var commonPool = deckMgr.CommonOrbPool;
         var uncommonPool = deckMgr.UncommonOrbPool;
         var rarePool = deckMgr.RareOrbPool;
@@ -1202,35 +1308,52 @@ public sealed class CoopSubscriptions
 
         foreach (var kvp in _coopStateManager.PlayerStates)
         {
-            int slot = kvp.Key;
+            var slot = kvp.Key;
             var state = kvp.Value;
             if (state == null || !state.IsInitialized)
+            {
                 continue;
+            }
 
-            int count = 3;
+            var count = 3;
             if (SlotHasRelic(state, RELIC_ADDITIONAL_ORB_RELIC_OPTIONS))
+            {
                 count++;
+            }
+
             if (SlotHasRelic(state, RELIC_ADDITIONAL_PEGLIN_CHOICES))
+            {
                 count++;
+            }
 
             var picked = new List<string>();
-            int safety = 0;
+            var safety = 0;
             while (picked.Count < count && safety++ < 200)
             {
                 List<GameObject> pool;
-                float roll = UnityEngine.Random.value;
+                var roll = UnityEngine.Random.value;
                 if (roll <= 0.6f)
+                {
                     pool = commonPool;
+                }
                 else if (roll <= 0.9f && uncommonPool != null && uncommonPool.Count > 0)
+                {
                     pool = uncommonPool;
+                }
                 else if (rarePool != null && rarePool.Count > 0)
+                {
                     pool = rarePool;
+                }
                 else
+                {
                     pool = commonPool;
+                }
 
                 var prefab = pool[UnityEngine.Random.Range(0, pool.Count)];
                 if (prefab == null)
+                {
                     continue;
+                }
 
                 // Floor-based promotion to next-level prefab (mirrors native logic).
                 if (UnityEngine.Random.value < (float)(StaticGameData.totalFloorCount - 5) / 100f)
@@ -1243,13 +1366,18 @@ public sealed class CoopSubscriptions
                         {
                             var attack2 = prefab.GetComponent<Battle.Attacks.Attack>();
                             if (attack2 != null && attack2.NextLevelPrefab != null)
+                            {
                                 prefab = attack2.NextLevelPrefab;
+                            }
                         }
                     }
                 }
 
                 if (picked.Contains(prefab.name))
+                {
                     continue;
+                }
+
                 picked.Add(prefab.name);
             }
 
@@ -1257,7 +1385,10 @@ public sealed class CoopSubscriptions
             _log.LogInfo($"[CoopSubs] Per-slot orb roll slot={slot} count={picked.Count}: {string.Join(",", picked)}");
 
             if (slot == 0)
+            {
                 continue; // Host reads its own list locally.
+            }
+
             registry.Dispatch(new CoopOrbRewardChoicesEvent
             {
                 TargetSlotIndex = slot,
@@ -1269,10 +1400,18 @@ public sealed class CoopSubscriptions
     private static bool SlotHasRelic(CoopPlayerState state, Relics.RelicEffect effect)
     {
         if (state?.OwnedRelics == null)
+        {
             return false;
+        }
+
         foreach (var r in state.OwnedRelics)
+        {
             if (r != null && r.Effect == (int)effect)
+            {
                 return true;
+            }
+        }
+
         return false;
     }
 
@@ -1288,7 +1427,9 @@ public sealed class CoopSubscriptions
     public void HandlePlayerDisconnect(int slotIndex, string playerName)
     {
         if (!_mode.IsHosting)
+        {
             return;
+        }
 
         _log.LogInfo($"[CoopSubs] HandlePlayerDisconnect: slot {slotIndex} ({playerName}) — " +
             $"turnPhase={_turnManager.Phase}, activeSlot={_turnManager.CurrentPlayerSlot}, " +
@@ -1305,7 +1446,7 @@ public sealed class CoopSubscriptions
         }
 
         // Remove from TurnManager — this tells us if it was their turn
-        bool wasTheirTurn = _turnManager.RemovePlayer(slotIndex);
+        var wasTheirTurn = _turnManager.RemovePlayer(slotIndex);
 
         // If only 1 player remains (the host), log that we're continuing solo
         if (_coopStateManager.TotalPlayerCount <= 1)
@@ -1342,7 +1483,9 @@ public sealed class CoopSubscriptions
             }
 
             if (_coopStateManager.ActivePlayerSlot != 0)
+            {
                 _coopStateManager.SwapToPlayer(0);
+            }
 
             BroadcastTurnChange();
             _log.LogInfo($"[CoopSubs] Disconnect during turn: all remaining players done, per-player resolution active");
@@ -1351,7 +1494,7 @@ public sealed class CoopSubscriptions
         {
             // Next player needs to shoot. Swap to the next player's state and
             // redirect BattleController back to AWAITING_SHOT.
-            int nextSlot = _turnManager.CurrentPlayerSlot;
+            var nextSlot = _turnManager.CurrentPlayerSlot;
 
             _coopStateManager.SwapToPlayer(nextSlot);
 
@@ -1392,9 +1535,14 @@ public sealed class CoopSubscriptions
                 try
                 {
                     if (savedOnBallUsed != null)
+                    {
                         DeckManager.onBallUsed = savedOnBallUsed;
+                    }
+
                     if (savedOnDeckShuffled != null)
+                    {
                         DeckManager.onDeckShuffled = savedOnDeckShuffled;
+                    }
                 }
                 catch (Exception restoreEx) { _log.LogWarning($"[CoopSubs] Disconnect: failed to restore DeckManager callbacks: {restoreEx.Message}"); }
             }
@@ -1445,6 +1593,7 @@ public sealed class CoopSubscriptions
                 _log.LogWarning($"[CoopSubs] ApplyNonHostStartingBonuses: PlayerStatusEffectController not found for slot {slot}");
                 return;
             }
+
             psec.ApplyStartingBonuses();
             _log.LogInfo($"[CoopSubs] Applied starting bonuses for slot {slot}");
         }
@@ -1468,11 +1617,13 @@ public sealed class CoopSubscriptions
         {
             var dms = UnityEngine.Resources.FindObjectsOfTypeAll<DeckManager>();
             if (dms == null || dms.Length == 0)
+            {
                 return false;
+            }
 
             var dm = dms[0];
-            bool hasBattle = dm.battleDeck != null && dm.battleDeck.Count > 0;
-            bool hasShuffled = dm.shuffledDeck != null && dm.shuffledDeck.Count > 0;
+            var hasBattle = dm.battleDeck != null && dm.battleDeck.Count > 0;
+            var hasShuffled = dm.shuffledDeck != null && dm.shuffledDeck.Count > 0;
 
             if (hasBattle && hasShuffled)
             {
@@ -1507,7 +1658,10 @@ public sealed class CoopSubscriptions
                     // Fallback: manually copy completeDeck into battleDeck, then shuffle
                     _log.LogWarning($"[CoopSubs] {context}: ShuffleCompleteDeck not found, manually copying completeDeck to battleDeck");
                     if (dm.battleDeck == null)
+                    {
                         dm.battleDeck = new System.Collections.Generic.List<GameObject>();
+                    }
+
                     foreach (var orb in DeckManager.completeDeck)
                     {
                         if (orb != null)
@@ -1518,6 +1672,7 @@ public sealed class CoopSubscriptions
                             dm.battleDeck.Add(instance);
                         }
                     }
+
                     dm.ShuffleBattleDeck();
                     _log.LogInfo($"[CoopSubs] {context}: after fallback shuffle: battleDeck={dm.battleDeck?.Count ?? 0}, shuffledDeck={dm.shuffledDeck?.Count ?? 0}");
                 }
@@ -1525,7 +1680,7 @@ public sealed class CoopSubscriptions
             // else: both empty — nothing to do, likely pre-battle state
 
             // Return success: both battleDeck and shuffledDeck are non-empty
-            bool success = (dm.battleDeck != null && dm.battleDeck.Count > 0) &&
+            var success = (dm.battleDeck != null && dm.battleDeck.Count > 0) &&
                            (dm.shuffledDeck != null && dm.shuffledDeck.Count > 0);
             return success;
         }
@@ -1575,7 +1730,9 @@ public sealed class CoopSubscriptions
     {
         var inst = Instance;
         if (inst == null)
+        {
             return null;
+        }
 
         var result = new List<PlayerAttackData>();
         foreach (var kvp in inst._accumulatedShotData)
@@ -1598,6 +1755,7 @@ public sealed class CoopSubscriptions
                 HasTargetedHitAll = d.HasTargetedHitAll,
             });
         }
+
         inst._accumulatedShotData.Clear();
         return result;
     }
@@ -1610,14 +1768,19 @@ public sealed class CoopSubscriptions
     {
         var inst = Instance;
         if (inst == null)
+        {
             return null;
+        }
 
         var result = new List<Events.Network.Coop.PendingDamagePreviewEvent.DamageEntry>();
         foreach (var kvp in inst._accumulatedShotData)
         {
             var d = kvp.Value;
             if (d.IsHeal || d.PrecomputedDamage <= 0)
+            {
                 continue;
+            }
+
             result.Add(new Events.Network.Coop.PendingDamagePreviewEvent.DamageEntry
             {
                 SlotIndex = kvp.Key,
@@ -1627,6 +1790,7 @@ public sealed class CoopSubscriptions
                 IsAoE = d.IsAoE,
             });
         }
+
         return result;
     }
 
@@ -1759,7 +1923,10 @@ public sealed class CoopSubscriptions
                     foreach (var se in fromAttack)
                     {
                         if (se == null || se.EffectType == Battle.StatusEffects.StatusEffectType.None)
+                        {
                             continue;
+                        }
+
                         effects.Add((se.EffectType, se.Intensity));
                     }
                 }
@@ -1773,18 +1940,23 @@ public sealed class CoopSubscriptions
             // 2. AddStatusEffectOnHit — orb-prefab per-hit effects
             foreach (var seh in attack.GetComponents<Battle.Attacks.AttackBehaviours.AddStatusEffectOnHit>())
             {
-                int intensity = seh.intensity;
+                var intensity = seh.intensity;
                 if (seh.isCritThresholdCumulative && seh.critCountThreshold > 0)
+                {
                     intensity += critCount / seh.critCountThreshold * seh.critAddIntensity;
+                }
                 else if (seh.critCountThreshold <= critCount)
+                {
                     intensity += seh.critAddIntensity;
+                }
+
                 effects.Add((seh.type, intensity));
             }
 
             // 3. AddRandomStatusEffectOnHit — Roundreloquence orb
             foreach (var _ in attack.GetComponents<Battle.Attacks.AttackBehaviours.AddRandomStatusEffectOnHit>())
             {
-                int idx = UnityEngine.Random.Range(0,
+                var idx = UnityEngine.Random.Range(0,
                     Battle.Attacks.AttackBehaviours.AddRandomStatusEffectOnHit.RoundreloquencePotentialEffects.Length);
                 effects.Add((
                     Battle.Attacks.AttackBehaviours.AddRandomStatusEffectOnHit.RoundreloquencePotentialEffects[idx],
@@ -1803,6 +1975,7 @@ public sealed class CoopSubscriptions
         {
             MultiplayerPlugin.Logger?.LogWarning($"[CoopSubs] CaptureOrbStatusEffects failed: {ex.Message}");
         }
+
         return effects.Count > 0 ? effects : null;
     }
 
@@ -1822,10 +1995,12 @@ public sealed class CoopSubscriptions
         {
             var statusCtrl = UnityEngine.Object.FindObjectOfType<Battle.StatusEffects.PlayerStatusEffectController>();
             if (statusCtrl == null)
+            {
                 return;
+            }
 
-            int grantCount = 0;
-            int grantShieldCount = 0;
+            var grantCount = 0;
+            var grantShieldCount = 0;
 
             foreach (var grant in attack.GetComponents<Battle.Attacks.AttackBehaviours.GrantStatusAfterAttack>())
             {
@@ -1877,7 +2052,9 @@ public sealed class CoopSubscriptions
         {
             var services = MultiplayerPlugin.Services;
             if (services?.TryResolve<IGameEventRegistry>(out var eventRegistry) != true)
+            {
                 return;
+            }
 
             eventRegistry.Dispatch(new TurnChangeEvent
             {
@@ -1905,31 +2082,36 @@ public sealed class CoopSubscriptions
     /// </summary>
     private float ApplyDefensiveBuffs(GameState.CoopPlayerState state, float rawDamage)
     {
-        float damage = rawDamage;
+        var damage = rawDamage;
 
-        int ballusionStacks = GetEffectIntensity(state, (int)Battle.StatusEffects.StatusEffectType.Ballusion);
-        int intangiballCap = GetEffectIntensity(state, (int)Battle.StatusEffects.StatusEffectType.Intangiball);
-        int ballwarkStacks = GetEffectIntensity(state, (int)Battle.StatusEffects.StatusEffectType.Ballwark);
+        var ballusionStacks = GetEffectIntensity(state, (int)Battle.StatusEffects.StatusEffectType.Ballusion);
+        var intangiballCap = GetEffectIntensity(state, (int)Battle.StatusEffects.StatusEffectType.Intangiball);
+        var ballwarkStacks = GetEffectIntensity(state, (int)Battle.StatusEffects.StatusEffectType.Ballwark);
 
         // 1. Ballusion (evasion): 1% dodge chance per stack
         if (ballusionStacks > 0 && damage > 0f)
         {
-            float evasionChance = ballusionStacks * Battle.StatusEffects.StatusEffectData.BALLUSION_EVASION_PER_STACK;
-            float roll = UnityEngine.Random.value;
+            var evasionChance = ballusionStacks * Battle.StatusEffects.StatusEffectData.BALLUSION_EVASION_PER_STACK;
+            var roll = UnityEngine.Random.value;
             if (roll < evasionChance)
             {
                 // Dodge! Reduce Ballusion stacks by ~50%
-                float reduction = Battle.StatusEffects.StatusEffectData.BALLUSION_REDUCTION_PERCENTAGE;
+                var reduction = Battle.StatusEffects.StatusEffectData.BALLUSION_REDUCTION_PERCENTAGE;
 
                 // Check for relics that modify reduction
                 if (HasRelic(state, Relics.RelicEffect.BALLUSION_DOUBLE_MAX) ||
                     HasRelic(state, Relics.RelicEffect.RETAIN_DODGE_BETWEEN_BATTLES))
+                {
                     reduction -= 0.1f;
-                if (HasRelic(state, Relics.RelicEffect.BALLUSION_DOUBLE_GAIN_AND_LOSS))
-                    reduction *= 2f;
+                }
 
-                float keep = Mathf.Clamp(1f - reduction, 0f, 1f);
-                int newStacks = Mathf.RoundToInt(ballusionStacks * keep);
+                if (HasRelic(state, Relics.RelicEffect.BALLUSION_DOUBLE_GAIN_AND_LOSS))
+                {
+                    reduction *= 2f;
+                }
+
+                var keep = Mathf.Clamp(1f - reduction, 0f, 1f);
+                var newStacks = Mathf.RoundToInt(ballusionStacks * keep);
                 SetEffectIntensity(state, (int)Battle.StatusEffects.StatusEffectType.Ballusion, newStacks);
 
                 _log.LogInfo($"[CoopSubs] Slot {state.SlotIndex} DODGED (Ballusion {ballusionStacks}->{newStacks}, roll={roll:F3} < {evasionChance:F3})");
@@ -1957,6 +2139,7 @@ public sealed class CoopSubscriptions
                 damage -= armour;
                 armour = 0f;
             }
+
             SetEffectIntensity(state, (int)Battle.StatusEffects.StatusEffectType.Ballwark, Mathf.RoundToInt(armour));
             _log.LogInfo($"[CoopSubs] Slot {state.SlotIndex} Ballwark absorbed: {ballwarkStacks}->{Mathf.RoundToInt(armour)}");
         }
@@ -1967,21 +2150,31 @@ public sealed class CoopSubscriptions
     private static int GetEffectIntensity(GameState.CoopPlayerState state, int effectType)
     {
         foreach (var e in state.StatusEffects)
+        {
             if (e.EffectType == effectType)
+            {
                 return e.Intensity;
+            }
+        }
+
         return 0;
     }
 
     private static void SetEffectIntensity(GameState.CoopPlayerState state, int effectType, int intensity)
     {
-        for (int i = 0; i < state.StatusEffects.Count; i++)
+        for (var i = 0; i < state.StatusEffects.Count; i++)
         {
             if (state.StatusEffects[i].EffectType == effectType)
             {
                 if (intensity <= 0)
+                {
                     state.StatusEffects.RemoveAt(i);
+                }
                 else
+                {
                     state.StatusEffects[i].Intensity = intensity;
+                }
+
                 return;
             }
         }
@@ -1998,10 +2191,15 @@ public sealed class CoopSubscriptions
 
     private static bool HasRelic(GameState.CoopPlayerState state, Relics.RelicEffect effect)
     {
-        int effectInt = (int)effect;
+        var effectInt = (int)effect;
         foreach (var r in state.OwnedRelics)
+        {
             if (r.Effect == effectInt)
+            {
                 return true;
+            }
+        }
+
         return false;
     }
 }

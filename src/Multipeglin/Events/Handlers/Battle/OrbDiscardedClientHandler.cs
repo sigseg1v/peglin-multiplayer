@@ -1,4 +1,3 @@
-namespace Multipeglin.Events.Handlers.Battle;
 
 using System;
 using global::Battle;
@@ -6,6 +5,7 @@ using HarmonyLib;
 using Multipeglin.Events.Network.Battle;
 using UnityEngine;
 
+namespace Multipeglin.Events.Handlers.Battle;
 public sealed class OrbDiscardedClientHandler : IClientHandler<OrbDiscardedEvent>
 {
     public void Handle(OrbDiscardedEvent networkEvent)
@@ -34,6 +34,7 @@ public sealed class OrbDiscardedClientHandler : IClientHandler<OrbDiscardedEvent
                     MultiplayerPlugin.Logger?.LogInfo("[OrbDiscarded] Client's discard processed — resetting aiming ball");
                     Multipeglin.Patches.MultiplayerClientPatches.ResetClientAimingBall();
                 }
+
                 return;
             }
 
@@ -51,7 +52,10 @@ public sealed class OrbDiscardedClientHandler : IClientHandler<OrbDiscardedEvent
         {
             var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
             if (dms == null || dms.Length == 0)
+            {
                 return;
+            }
+
             var dm = dms[0];
 
             var shuffledField = AccessTools.Field(typeof(DeckManager), "shuffledDeck");

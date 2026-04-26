@@ -1,7 +1,4 @@
-using System;
 using Multipeglin.Events.Network.Scenarios;
-using Multipeglin.Multiplayer;
-using Multipeglin.UI;
 
 namespace Multipeglin.Events.Handlers.Scenarios;
 

@@ -93,14 +93,18 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
             // In coop mode, do NOT remove the client's own relics. The heartbeat
             // sends the active player's relics which may differ from the client's.
             // Each player keeps their own relics; the sync only adds missing ones.
-            bool isCoop = UI.LobbyUI.GameStartReceived;
+            var isCoop = UI.LobbyUI.GameStartReceived;
             if (!isCoop)
             {
                 // Non-coop (spectator mode): remove relics that host doesn't have
                 var hostEffects = new HashSet<RelicEffect>();
                 if (snapshot.OwnedRelics != null)
+                {
                     foreach (var e in snapshot.OwnedRelics)
+                    {
                         hostEffects.Add((RelicEffect)e.Effect);
+                    }
+                }
 
                 var toRemove = owned.Keys.Where(k => !hostEffects.Contains(k)).ToList();
                 foreach (var key in toRemove)
@@ -131,7 +135,9 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
             // Without SoftInit, Attack._relicManager is null and CalculateStaticDamageBuffs
             // skips all relic checks → orbs show base damage instead of modified damage.
             if (added > 0)
+            {
                 ReinitOrbDamageDisplays(rm);
+            }
         }
         catch (Exception ex)
         {
@@ -150,7 +156,9 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
         try
         {
             if (snapshot.OwnedRelics == null)
+            {
                 return;
+            }
 
             var countdownField = AccessTools.Field(typeof(RelicManager), "_relicRemainingCountdowns");
             var perShotField = AccessTools.Field(typeof(RelicManager), "_relicRemainingUsesPerShot");
@@ -174,16 +182,18 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
             var ownedField = AccessTools.Field(typeof(RelicManager), "_ownedRelics");
             var owned = ownedField?.GetValue(rm) as IDictionary<RelicEffect, Relic>;
 
-            int updated = 0;
+            var updated = 0;
             foreach (var entry in snapshot.OwnedRelics)
             {
                 var effect = (RelicEffect)entry.Effect;
 
                 // Skip relics the client doesn't actually own yet
                 if (owned == null || !owned.ContainsKey(effect))
+                {
                     continue;
+                }
 
-                bool wroteCountdown = false;
+                var wroteCountdown = false;
                 if (hasCountdown != null && hasCountdown.ContainsKey(effect))
                 {
                     try
@@ -208,11 +218,19 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
                 // that the game actually tracks counters for. Otherwise the UI will
                 // show a stale "0" badge on non-stackable relics.
                 if (perShot != null && hasPerShot != null && hasPerShot.ContainsKey(effect))
+                {
                     perShot[effect] = entry.RemainingUsesPerShot;
+                }
+
                 if (perBattle != null && perBattleStatic != null && perBattleStatic.ContainsKey(effect))
+                {
                     perBattle[effect] = entry.RemainingUsesPerBattle;
+                }
+
                 if (perRun != null && hasPerRun != null && hasPerRun.ContainsKey(effect))
+                {
                     perRun[effect] = entry.RemainingUsesPerRun;
+                }
 
                 if (wroteCountdown)
                 {
@@ -221,12 +239,15 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
                         RelicManager.OnCountdownDecremented?.Invoke(owned[effect], entry.RemainingCountdown);
                     }
                     catch { }
+
                     updated++;
                 }
             }
 
             if (updated > 0)
+            {
                 _log.LogInfo($"[RelicApplier] Applied countdowns for {updated} relic(s)");
+            }
         }
         catch (Exception ex)
         {
@@ -242,8 +263,8 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
     {
         try
         {
-            int actualCount = owned?.Count ?? 0;
-            int expectedCount = snapshot.OwnedRelics?.Count ?? 0;
+            var actualCount = owned?.Count ?? 0;
+            var expectedCount = snapshot.OwnedRelics?.Count ?? 0;
 
             if (actualCount != expectedCount)
             {
@@ -254,17 +275,24 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
                 {
                     var expectedEffects = new HashSet<RelicEffect>();
                     foreach (var entry in snapshot.OwnedRelics)
+                    {
                         expectedEffects.Add((RelicEffect)entry.Effect);
+                    }
 
                     foreach (var effect in expectedEffects)
                     {
                         if (!owned.ContainsKey(effect))
+                        {
                             _log.LogWarning($"[Verify]   MISSING relic: {effect}");
+                        }
                     }
+
                     foreach (var effect in owned.Keys)
                     {
                         if (!expectedEffects.Contains(effect))
+                        {
                             _log.LogWarning($"[Verify]   EXTRA relic: {effect}");
+                        }
                     }
                 }
             }
@@ -289,14 +317,18 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
         {
             var relicUI = UnityEngine.Object.FindObjectOfType<RelicUI>();
             if (relicUI == null)
+            {
                 return;
+            }
 
             var iconsField = AccessTools.Field(typeof(RelicUI), "icons");
             var icons = iconsField?.GetValue(relicUI) as Dictionary<RelicEffect, RelicIcon>;
             if (icons == null)
+            {
                 return;
+            }
 
-            int refreshed = 0;
+            var refreshed = 0;
             foreach (var kvp in owned)
             {
                 if (!icons.ContainsKey(kvp.Key) && kvp.Value != null)
@@ -308,7 +340,9 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
             }
 
             if (refreshed > 0)
+            {
                 _log.LogInfo($"[RelicApplier] Refreshed {refreshed} relic icons in UI");
+            }
         }
         catch (Exception ex)
         {
@@ -334,7 +368,7 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
 
             // Re-init all Attack components in the scene (active orbs, UI displays)
             var attacks = UnityEngine.Object.FindObjectsOfType<Attack>(true);
-            int count = 0;
+            var count = 0;
             foreach (var atk in attacks)
             {
                 try
@@ -352,7 +386,10 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
                 foreach (var orbGo in DeckManager.completeDeck)
                 {
                     if (orbGo == null)
+                    {
                         continue;
+                    }
+
                     var atk = orbGo.GetComponent<Attack>();
                     if (atk != null)
                     {

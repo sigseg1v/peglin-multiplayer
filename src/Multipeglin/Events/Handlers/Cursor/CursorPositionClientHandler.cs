@@ -1,4 +1,3 @@
-namespace Multipeglin.Events.Handlers.Cursor;
 
 using System;
 using Multipeglin.Events.Network.Cursor;
@@ -6,6 +5,7 @@ using Multipeglin.GameState;
 using Multipeglin.Multiplayer;
 using Multipeglin.Network;
 
+namespace Multipeglin.Events.Handlers.Cursor;
 public sealed class CursorPositionClientHandler : IClientHandler<CursorPositionEvent>
 {
     public void Handle(CursorPositionEvent e)
@@ -14,15 +14,19 @@ public sealed class CursorPositionClientHandler : IClientHandler<CursorPositionE
         {
             var services = MultiplayerPlugin.Services;
             if (services == null)
+            {
                 return;
+            }
 
             services.TryResolve<IMultiplayerMode>(out var mode);
             services.TryResolve<PlayerRegistry>(out var registry);
 
             // Ignore echoes of our own broadcast.
-            int localSlot = LocalSlotIndex(mode, registry);
+            var localSlot = LocalSlotIndex(mode, registry);
             if (e.FromSlot == localSlot)
+            {
                 return;
+            }
 
             // Render the incoming cursor locally.
             RemoteCursorRenderer.Instance?.SetRemoteCursor(e.FromSlot, e.WorldX, e.WorldY);
@@ -45,7 +49,10 @@ public sealed class CursorPositionClientHandler : IClientHandler<CursorPositionE
     private static int LocalSlotIndex(IMultiplayerMode mode, PlayerRegistry registry)
     {
         if (mode != null && mode.IsHosting)
+        {
             return 0;
+        }
+
         return registry?.LocalSlot?.SlotIndex ?? -1;
     }
 }

@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using BepInEx.Logging;
 using Multipeglin.DI;
-using Multipeglin.Events.Handlers.Lobby;
 using Multipeglin.GameState;
 using Multipeglin.GameState.Snapshots;
 using Multipeglin.Multiplayer;
@@ -67,10 +66,16 @@ public class CoopPlayerVisuals : MonoBehaviour
         public void OnPointerEnter(PointerEventData eventData)
         {
             if (_tooltipShowing)
+            {
                 return;
+            }
+
             var mgr = TooltipManager.Instance;
             if (mgr == null)
+            {
                 return;
+            }
+
             try
             {
                 mgr.ShowTooltipStatusEffect(EffectType, WorldAnchor, new Vector3(1f, -1f), isOnPlayer: true);
@@ -82,10 +87,14 @@ public class CoopPlayerVisuals : MonoBehaviour
         public void OnPointerExit(PointerEventData eventData)
         {
             if (!_tooltipShowing)
+            {
                 return;
+            }
+
             try
             { TooltipManager.Instance?.HideTooltip(); }
             catch { }
+
             _tooltipShowing = false;
         }
 
@@ -96,6 +105,7 @@ public class CoopPlayerVisuals : MonoBehaviour
                 try
                 { TooltipManager.Instance?.HideTooltip(); }
                 catch { }
+
                 _tooltipShowing = false;
             }
         }
@@ -158,16 +168,25 @@ public class CoopPlayerVisuals : MonoBehaviour
 
             var services = MultiplayerPlugin.Services;
             if (services == null)
+            {
                 return;
+            }
+
             if (!services.TryResolve<IMultiplayerMode>(out var mode))
+            {
                 return;
+            }
+
             if (!mode.IsHosting && !mode.IsSpectating)
+            {
                 return;
+            }
 
             if (scene != "Battle")
             {
                 if (_inBattle)
                 { CleanupVisuals(); _inBattle = false; }
+
                 return;
             }
 
@@ -178,7 +197,7 @@ public class CoopPlayerVisuals : MonoBehaviour
             // only needs to happen at UI-refresh rate, not every frame. Throttle to
             // ~5Hz. Per-frame label positioning/scaling below still runs every frame
             // so visuals remain smooth.
-            float now = Time.unscaledTime;
+            var now = Time.unscaledTime;
             if (now - _lastHeavyTickTime >= HeavyTickInterval)
             {
                 _lastHeavyTickTime = now;
@@ -194,24 +213,32 @@ public class CoopPlayerVisuals : MonoBehaviour
                 HideNativeStatusIcons();
 
                 if (mode.IsHosting)
+                {
                     BuildHostSummaries(services);
+                }
             }
 
             var summaries = LatestPlayerSummaries;
             if (summaries == null || summaries.Count <= 1)
+            {
                 return;
+            }
 
             // Re-find the player ref if it was destroyed (e.g. during attack animations)
             if (_playerRef == null)
             {
                 _playerRef = GameObject.FindGameObjectWithTag("Player");
                 if (_playerRef == null)
+                {
                     return;
+                }
             }
 
             // Camera.main can be null during transitions
             if (Camera.main == null)
+            {
                 return;
+            }
 
             EnsureVisuals(summaries);
             UpdateVisuals(summaries);
@@ -232,9 +259,14 @@ public class CoopPlayerVisuals : MonoBehaviour
         try
         {
             if (!services.TryResolve<CoopStateManager>(out var coopState))
+            {
                 return;
+            }
+
             if (coopState.TotalPlayerCount < 2)
+            {
                 return;
+            }
 
             // Read live status effects from the singleton for the active player
             List<StatusEffectEntry> liveEffects = null;
@@ -254,11 +286,17 @@ public class CoopPlayerVisuals : MonoBehaviour
                             var typeField = HarmonyLib.AccessTools.Field(effect.GetType(), "EffectType");
                             var intensityField = HarmonyLib.AccessTools.Field(effect.GetType(), "Intensity");
                             if (typeField == null)
+                            {
                                 continue;
+                            }
+
                             var effectType = typeField.GetValue(effect);
                             var intensity = (int)(intensityField?.GetValue(effect) ?? 0);
                             if (intensity <= 0)
+                            {
                                 continue;
+                            }
+
                             liveEffects.Add(new StatusEffectEntry
                             {
                                 EffectType = (int)effectType,
@@ -291,9 +329,9 @@ public class CoopPlayerVisuals : MonoBehaviour
             foreach (var kvp in coopState.PlayerStates)
             {
                 var ps = kvp.Value;
-                bool isActive = ps.SlotIndex == coopState.ActivePlayerSlot;
-                float summaryHp = (isActive && liveHp >= 0f) ? liveHp : ps.CurrentHealth;
-                float summaryMaxHp = (isActive && liveMaxHp > 0f) ? liveMaxHp : ps.MaxHealth;
+                var isActive = ps.SlotIndex == coopState.ActivePlayerSlot;
+                var summaryHp = (isActive && liveHp >= 0f) ? liveHp : ps.CurrentHealth;
+                var summaryMaxHp = (isActive && liveMaxHp > 0f) ? liveMaxHp : ps.MaxHealth;
 
                 var summary = new CoopPlayerSummary
                 {
@@ -343,22 +381,27 @@ public class CoopPlayerVisuals : MonoBehaviour
 
     private void EnsureVisuals(List<CoopPlayerSummary> summaries)
     {
-        int localSlot = GetLocalSlotIndex();
+        var localSlot = GetLocalSlotIndex();
 
         CoopPlayerSummary hostSummary = null;
         foreach (var s in summaries)
+        {
             if (s.SlotIndex == HostSlot)
             { hostSummary = s; break; }
+        }
 
         // Remove stale clones. Slot 0 (host) never has a clone — it uses
         // _playerRef at the "main" position.
-        for (int i = _visuals.Count - 1; i >= 0; i--)
+        for (var i = _visuals.Count - 1; i >= 0; i--)
         {
             var v = _visuals[i];
-            bool found = false;
+            var found = false;
             foreach (var s in summaries)
+            {
                 if (s.SlotIndex == v.SlotIndex)
                 { found = true; break; }
+            }
+
             if (!found || v.SpriteClone == null || v.SlotIndex == HostSlot)
             {
                 DestroyVisual(v);
@@ -371,9 +414,14 @@ public class CoopPlayerVisuals : MonoBehaviour
         // the host's own character; on the client we override _playerRef's sprite
         // below so it also shows the host's class.
         if (_hostLabel != null && _hostLabel.NamePanel == null)
+        {
             _hostLabel = null;
+        }
+
         if (_hostLabel == null && _playerRef != null && hostSummary != null)
+        {
             _hostLabel = CreatePlayerLabels(hostSummary, spriteClone: null);
+        }
 
         // On client (localSlot != 0), override the main Player's sprite AND
         // animator controller so it displays the host's class. Setting the
@@ -393,17 +441,27 @@ public class CoopPlayerVisuals : MonoBehaviour
         foreach (var summary in summaries)
         {
             if (summary.SlotIndex == HostSlot)
+            {
                 continue;
-            bool exists = false;
+            }
+
+            var exists = false;
             foreach (var v in _visuals)
+            {
                 if (v.SlotIndex == summary.SlotIndex)
                 { exists = true; break; }
+            }
+
             if (exists)
+            {
                 continue;
+            }
 
             var visual = CreatePlayerVisual(summary);
             if (visual != null)
+            {
                 _visuals.Add(visual);
+            }
         }
     }
 
@@ -422,7 +480,10 @@ public class CoopPlayerVisuals : MonoBehaviour
     private void EnsureOverlayCanvas()
     {
         if (_overlayCanvasObj != null)
+        {
             return;
+        }
+
         _overlayCanvasObj = new GameObject("CoopPlayerLabelsOverlay");
         DontDestroyOnLoad(_overlayCanvasObj);
         _overlayCanvas = _overlayCanvasObj.AddComponent<Canvas>();
@@ -441,15 +502,21 @@ public class CoopPlayerVisuals : MonoBehaviour
     private static TMP_FontAsset GetGameFont()
     {
         if (_gameFontSearched)
+        {
             return _gameFont;
+        }
+
         _gameFontSearched = true;
         try
         {
             foreach (var tmp in UnityEngine.Object.FindObjectsOfType<TextMeshProUGUI>())
+            {
                 if (tmp.font != null)
                 { _gameFont = tmp.font; break; }
+            }
         }
         catch { }
+
         return _gameFont;
     }
 
@@ -462,7 +529,10 @@ public class CoopPlayerVisuals : MonoBehaviour
     private static TMP_FontAsset GetStatusEffectNumberFont()
     {
         if (_numberFontSearched)
+        {
             return _numberFont ?? GetGameFont();
+        }
+
         _numberFontSearched = true;
         try
         {
@@ -474,7 +544,10 @@ public class CoopPlayerVisuals : MonoBehaviour
                 foreach (var icon in Resources.FindObjectsOfTypeAll<Battle.StatusEffects.StatusEffectIcon>())
                 {
                     if (icon == null)
+                    {
                         continue;
+                    }
+
                     var tmp = intensityField.GetValue(icon) as TextMeshProUGUI;
                     if (tmp?.font != null)
                     { _numberFont = tmp.font; break; }
@@ -482,6 +555,7 @@ public class CoopPlayerVisuals : MonoBehaviour
             }
         }
         catch { }
+
         return _numberFont ?? GetGameFont();
     }
 
@@ -489,11 +563,20 @@ public class CoopPlayerVisuals : MonoBehaviour
     private static string FormatName(string name, int slot)
     {
         if (string.IsNullOrEmpty(name))
+        {
             name = $"P{slot}";
+        }
+
         if (name.Length > 14)
+        {
             name = name.Substring(0, 14);
+        }
+
         if (name.Length > 7)
+        {
             name = name.Substring(0, 7) + "\n" + name.Substring(7);
+        }
+
         return name;
     }
 
@@ -525,15 +608,20 @@ public class CoopPlayerVisuals : MonoBehaviour
         tmpText.fontStyle = FontStyles.Bold;
         var font = GetGameFont();
         if (font != null)
+        {
             tmpText.font = font;
+        }
+
         tmpText.alignment = TextAlignmentOptions.Center;
         tmpText.color = textColor;
         try
         { tmpText.outlineWidth = 0.3f; }
         catch { }
+
         try
         { tmpText.outlineColor = Color.black; }
         catch { }
+
         tmpText.enableWordWrapping = false;
         tmpText.overflowMode = TextOverflowModes.Overflow;
         tmpText.lineSpacing = -25f; // tighter line spacing for 2-line names
@@ -558,8 +646,8 @@ public class CoopPlayerVisuals : MonoBehaviour
             var arrowColor = new Color(1f, 0.9f, 0.3f);    // yellow
             var bgColor = new Color(0, 0, 0, 0.3f);
 
-            string formattedName = FormatName(summary.PlayerName, summary.SlotIndex);
-            bool twoLines = formattedName.Contains("\n");
+            var formattedName = FormatName(summary.PlayerName, summary.SlotIndex);
+            var twoLines = formattedName.Contains("\n");
 
             var namePanel = CreateTextPanel(
                 $"CoopName_Slot{summary.SlotIndex}",
@@ -582,6 +670,7 @@ public class CoopPlayerVisuals : MonoBehaviour
             try
             { arrowText.outlineWidth = 0.4f; }
             catch { }
+
             arrowPanel.SetActive(false); // only visible for active player
 
             // Status icon container — horizontal row positioned above the name
@@ -621,7 +710,9 @@ public class CoopPlayerVisuals : MonoBehaviour
     private PlayerVisual CreatePlayerVisual(CoopPlayerSummary summary)
     {
         if (_playerRef == null)
+        {
             return null;
+        }
 
         try
         {
@@ -641,7 +732,10 @@ public class CoopPlayerVisuals : MonoBehaviour
                 var classSprite = GetClassBaseSprite(summary.ChosenClass);
                 sr.sprite = classSprite;
                 if (classSprite == null)
+                {
                     Log?.LogWarning($"[CoopPlayerVisuals] GetClassBaseSprite returned null for slot {summary.SlotIndex} class {summary.ChosenClass}");
+                }
+
                 sr.material = originalRenderer.material;
                 sr.sortingLayerID = originalRenderer.sortingLayerID;
                 sr.sortingOrder = originalRenderer.sortingOrder - 1;
@@ -657,7 +751,9 @@ public class CoopPlayerVisuals : MonoBehaviour
                 var animator = clone.AddComponent<Animator>();
                 var ctrl = GetClassAnimationController(summary.ChosenClass);
                 if (ctrl != null)
+                {
                     animator.runtimeAnimatorController = ctrl;
+                }
             }
             else
             {
@@ -682,10 +778,16 @@ public class CoopPlayerVisuals : MonoBehaviour
     private SpriteRenderer FindPlayerSpriteRenderer()
     {
         if (_playerRef == null)
+        {
             return null;
+        }
+
         var sr = _playerRef.GetComponent<SpriteRenderer>();
         if (sr != null)
+        {
             return sr;
+        }
+
         return _playerRef.GetComponentInChildren<SpriteRenderer>(true);
     }
 
@@ -703,7 +805,9 @@ public class CoopPlayerVisuals : MonoBehaviour
             var sr = FindPlayerSpriteRenderer();
             var switcher = FindClassAnimationSwitcher();
             if (switcher == null)
+            {
                 return;
+            }
 
             Sprite targetSprite;
             RuntimeAnimatorController targetController;
@@ -733,6 +837,7 @@ public class CoopPlayerVisuals : MonoBehaviour
             {
                 animator.runtimeAnimatorController = targetController;
             }
+
             if (sr != null && targetSprite != null && sr.sprite != targetSprite)
             {
                 sr.sprite = targetSprite;
@@ -757,34 +862,48 @@ public class CoopPlayerVisuals : MonoBehaviour
                 var onPlayer = player.GetComponentInChildren<Peglin.PeglinClassAnimationSwitcher>(true)
                     ?? player.GetComponentInParent<Peglin.PeglinClassAnimationSwitcher>();
                 if (onPlayer != null)
+                {
                     return onPlayer;
+                }
             }
+
             var switcher = UnityEngine.Object.FindObjectOfType<Peglin.PeglinClassAnimationSwitcher>();
             if (switcher != null)
+            {
                 return switcher;
+            }
+
             var all = Resources.FindObjectsOfTypeAll<Peglin.PeglinClassAnimationSwitcher>();
             if (all != null && all.Length > 0)
+            {
                 return all[0];
+            }
         }
         catch { }
+
         return null;
     }
 
     private void UpdateVisuals(List<CoopPlayerSummary> summaries)
     {
         if (_playerRef == null)
+        {
             return;
+        }
+
         var cam = Camera.main;
         if (cam == null)
+        {
             return;
+        }
 
         var basePos = _playerRef.transform.position;
-        int activeSlot = LatestActiveSlot;
+        var activeSlot = LatestActiveSlot;
 
         // Scale the "main" (slot 0) position when the host is active.
         try
         {
-            float localScale = (activeSlot == HostSlot) ? 1.15f : 1f;
+            var localScale = (activeSlot == HostSlot) ? 1.15f : 1f;
             _playerRef.transform.localScale = Vector3.Lerp(
                 _playerRef.transform.localScale, Vector3.one * localScale, Time.deltaTime * 5f);
         }
@@ -795,25 +914,36 @@ public class CoopPlayerVisuals : MonoBehaviour
         {
             CoopPlayerSummary hostSummary = null;
             foreach (var s in summaries)
+            {
                 if (s.SlotIndex == HostSlot)
                 { hostSummary = s; break; }
+            }
 
             if (hostSummary != null)
+            {
                 UpdatePlayerLabel(_hostLabel, hostSummary, basePos, activeSlot, cam);
+            }
         }
 
         // Update clone labels — slot N sits -2.5*N units to the left of host.
         foreach (var visual in _visuals)
         {
             if (visual.SpriteClone == null)
+            {
                 continue;
+            }
 
             CoopPlayerSummary summary = null;
             foreach (var s in summaries)
+            {
                 if (s.SlotIndex == visual.SlotIndex)
                 { summary = s; break; }
+            }
+
             if (summary == null)
+            {
                 continue;
+            }
 
             // Static position offset — the clone's Animator handles any idle
             // animation (breathing, blink, etc). No procedural bob.
@@ -824,7 +954,7 @@ public class CoopPlayerVisuals : MonoBehaviour
             UpdatePlayerLabel(visual, summary, clonePos, activeSlot, cam);
 
             // Scale highlight for the active player.
-            float targetScale = (activeSlot == visual.SlotIndex) ? 1.15f : 1f;
+            var targetScale = (activeSlot == visual.SlotIndex) ? 1.15f : 1f;
             visual.SpriteClone.transform.localScale = Vector3.Lerp(
                 visual.SpriteClone.transform.localScale,
                 Vector3.one * targetScale, Time.deltaTime * 5f);
@@ -839,7 +969,9 @@ public class CoopPlayerVisuals : MonoBehaviour
                 {
                     var classSprite = GetClassBaseSprite(summary.ChosenClass);
                     if (classSprite != null)
+                    {
                         sr.sprite = classSprite;
+                    }
                 }
 
                 var baseColor = GetSlotColor(visual.SlotIndex);
@@ -856,7 +988,9 @@ public class CoopPlayerVisuals : MonoBehaviour
             {
                 var ctrl = GetClassAnimationController(summary.ChosenClass);
                 if (ctrl != null)
+                {
                     anim.runtimeAnimatorController = ctrl;
+                }
             }
         }
     }
@@ -871,26 +1005,27 @@ public class CoopPlayerVisuals : MonoBehaviour
         Vector3 charPos, int activeSlot, Camera cam)
     {
         if (visual == null || cam == null)
+        {
             return;
+        }
 
         // Update texts
-        if (visual.HpText != null)
-            visual.HpText.text = $"{summary.CurrentHealth:F0}/{summary.MaxHealth:F0}";
-        if (visual.NameText != null)
-            visual.NameText.text = FormatName(summary.PlayerName, summary.SlotIndex);
+        visual.HpText?.text = $"{summary.CurrentHealth:F0}/{summary.MaxHealth:F0}";
+
+        visual.NameText?.text = FormatName(summary.PlayerName, summary.SlotIndex);
 
         // Position name above character, HP below, arrow to the right-middle
         PositionPanelAtWorld(visual.NamePanel, charPos + new Vector3(0, 2.0f, 0), cam);
         PositionPanelAtWorld(visual.HpPanel, charPos + new Vector3(0, -0.6f, 0), cam);
 
-        bool isActive = (activeSlot == visual.SlotIndex);
+        var isActive = (activeSlot == visual.SlotIndex);
 
         // Pulsate name color when this player is active
         if (visual.NameText != null)
         {
             if (isActive)
             {
-                float t = (Mathf.Sin(Time.unscaledTime * 3f) + 1f) * 0.5f; // 0..1 at ~3Hz
+                var t = (Mathf.Sin(Time.unscaledTime * 3f) + 1f) * 0.5f; // 0..1 at ~3Hz
                 visual.NameText.color = Color.Lerp(_nameColorBase, _nameColorActive, t);
             }
             else
@@ -907,12 +1042,11 @@ public class CoopPlayerVisuals : MonoBehaviour
             {
                 PositionPanelAtWorld(visual.ArrowPanel, charPos + new Vector3(1.0f, 0.5f, 0), cam);
 
-                float pulse = (Mathf.Sin(Time.unscaledTime * 4f) + 1f) * 0.5f; // 0..1 at ~4Hz
-                float scale = Mathf.Lerp(0.85f, 1.15f, pulse);
+                var pulse = (Mathf.Sin(Time.unscaledTime * 4f) + 1f) * 0.5f; // 0..1 at ~4Hz
+                var scale = Mathf.Lerp(0.85f, 1.15f, pulse);
                 visual.ArrowPanel.transform.localScale = new Vector3(scale, scale, 1f);
 
-                if (visual.ArrowText != null)
-                    visual.ArrowText.color = Color.Lerp(_arrowColorDim, _arrowColorBright, pulse);
+                visual.ArrowText?.color = Color.Lerp(_arrowColorDim, _arrowColorBright, pulse);
             }
         }
 
@@ -924,9 +1058,11 @@ public class CoopPlayerVisuals : MonoBehaviour
         Vector3 charPos, Camera cam)
     {
         if (visual.StatusIconContainer == null)
+        {
             return;
+        }
 
-        bool hasEffects = effects != null && effects.Count > 0;
+        var hasEffects = effects != null && effects.Count > 0;
 
         // Perf: reuse instance scratch collections instead of allocating each frame.
         _activeTypesScratch.Clear();
@@ -935,8 +1071,12 @@ public class CoopPlayerVisuals : MonoBehaviour
         if (hasEffects)
         {
             foreach (var e in effects)
+            {
                 if (e.Intensity > 0)
+                {
                     _activeTypesScratch.Add(e.EffectType);
+                }
+            }
         }
 
         // Remove icons for effects that are no longer active
@@ -945,13 +1085,21 @@ public class CoopPlayerVisuals : MonoBehaviour
             if (!_activeTypesScratch.Contains(kvp.Key))
             {
                 try
-                { if (kvp.Value.Root != null) Destroy(kvp.Value.Root); }
+                { if (kvp.Value.Root != null)
+                    {
+                        Destroy(kvp.Value.Root);
+                    }
+                }
                 catch { }
+
                 _removeScratch.Add(kvp.Key);
             }
         }
+
         foreach (var key in _removeScratch)
+        {
             visual.StatusIcons.Remove(key);
+        }
 
         if (!hasEffects)
         {
@@ -963,13 +1111,14 @@ public class CoopPlayerVisuals : MonoBehaviour
         foreach (var e in effects)
         {
             if (e.Intensity <= 0)
+            {
                 continue;
+            }
 
             if (visual.StatusIcons.TryGetValue(e.EffectType, out var existing))
             {
                 // Update intensity text
-                if (existing.IntensityText != null)
-                    existing.IntensityText.text = e.Intensity > 999
+                existing.IntensityText?.text = e.Intensity > 999
                         ? (e.Intensity / 1000) + "K"
                         : e.Intensity.ToString();
             }
@@ -979,7 +1128,9 @@ public class CoopPlayerVisuals : MonoBehaviour
                 var entry = CreateStatusIcon(e.EffectType, e.Intensity,
                     visual.StatusIconContainer.transform);
                 if (entry != null)
+                {
                     visual.StatusIcons[e.EffectType] = entry;
+                }
             }
         }
 
@@ -992,8 +1143,7 @@ public class CoopPlayerVisuals : MonoBehaviour
         var tooltipAnchor = charPos + new Vector3(0, 2.2f, 0);
         foreach (var kvp in visual.StatusIcons)
         {
-            if (kvp.Value.Hover != null)
-                kvp.Value.Hover.WorldAnchor = tooltipAnchor;
+            kvp.Value.Hover?.WorldAnchor = tooltipAnchor;
         }
     }
 
@@ -1009,8 +1159,7 @@ public class CoopPlayerVisuals : MonoBehaviour
             icon.transform.SetParent(parent, false);
 
             var rect = icon.GetComponent<RectTransform>();
-            if (rect != null)
-                rect.sizeDelta = new Vector2(50, 50);
+            rect?.sizeDelta = new Vector2(50, 50);
 
             // Add LayoutElement so HorizontalLayoutGroup respects preferred size
             var le = icon.AddComponent<LayoutElement>();
@@ -1036,6 +1185,7 @@ public class CoopPlayerVisuals : MonoBehaviour
                     // Fallback: tinted square with effect abbreviation
                     img.color = new Color(0.4f, 0.3f, 0.6f, 0.8f);
                 }
+
                 img.raycastTarget = true;
             }
 
@@ -1060,7 +1210,10 @@ public class CoopPlayerVisuals : MonoBehaviour
             tmp.fontStyle = FontStyles.Normal;
             var font = GetStatusEffectNumberFont();
             if (font != null)
+            {
                 tmp.font = font;
+            }
+
             tmp.alignment = TextAlignmentOptions.BottomRight;
             tmp.color = Color.white;
             // TMP outline width setter internally dereferences a material that may
@@ -1069,9 +1222,11 @@ public class CoopPlayerVisuals : MonoBehaviour
             try
             { tmp.outlineWidth = 0.35f; }
             catch { }
+
             try
             { tmp.outlineColor = Color.black; }
             catch { }
+
             tmp.enableWordWrapping = false;
             tmp.overflowMode = TextOverflowModes.Overflow;
             tmp.raycastTarget = false;
@@ -1116,13 +1271,17 @@ public class CoopPlayerVisuals : MonoBehaviour
         {
             var statusCtrl = GetCachedStatusController();
             if (statusCtrl == null)
+            {
                 return;
+            }
 
             var uiField = HarmonyLib.AccessTools.Field(
                 typeof(Battle.StatusEffects.PlayerStatusEffectController), "_statusEffectUI");
             var ui = uiField?.GetValue(statusCtrl) as Battle.StatusEffects.StatusEffectIconManager;
             if (ui == null)
+            {
                 return;
+            }
 
             if (ui.horizontalContainer != null && ui.horizontalContainer.gameObject.activeSelf)
             {
@@ -1144,21 +1303,28 @@ public class CoopPlayerVisuals : MonoBehaviour
         {
             _cachedStatusCtrl = FindObjectOfType<Battle.StatusEffects.PlayerStatusEffectController>();
         }
+
         return _cachedStatusCtrl;
     }
 
     private static Battle.StatusEffects.StatusEffectData GetStatusEffectData()
     {
         if (_statusEffectDataSearched)
+        {
             return _statusEffectData;
+        }
+
         _statusEffectDataSearched = true;
         try
         {
             var all = Resources.FindObjectsOfTypeAll<Battle.StatusEffects.StatusEffectData>();
             if (all.Length > 0)
+            {
                 _statusEffectData = all[0];
+            }
         }
         catch { }
+
         return _statusEffectData;
     }
 
@@ -1166,7 +1332,10 @@ public class CoopPlayerVisuals : MonoBehaviour
     {
         var data = GetStatusEffectData();
         if (data == null)
+        {
             return null;
+        }
+
         return data.GetStatusEffectIcon((Battle.StatusEffects.StatusEffectType)effectType);
     }
 
@@ -1178,16 +1347,24 @@ public class CoopPlayerVisuals : MonoBehaviour
     private void PositionPanelAtWorld(GameObject panel, Vector3 worldPos, Camera cam)
     {
         if (panel == null || cam == null)
+        {
             return;
+        }
+
         var screenPos = cam.WorldToScreenPoint(worldPos);
         if (screenPos.z < 0)
         { panel.SetActive(false); return; }
+
         if (!panel.activeSelf)
+        {
             panel.SetActive(true);
+        }
 
         var rect = panel.GetComponent<RectTransform>();
         if (rect == null)
+        {
             return;
+        }
 
         // Convert screen pixels to canvas local coords (accounts for CanvasScaler)
         if (_overlayCanvasRect != null)
@@ -1205,7 +1382,10 @@ public class CoopPlayerVisuals : MonoBehaviour
     private void CleanupVisuals()
     {
         foreach (var v in _visuals)
+        {
             DestroyVisual(v);
+        }
+
         _visuals.Clear();
 
         if (_hostLabel != null)
@@ -1218,25 +1398,50 @@ public class CoopPlayerVisuals : MonoBehaviour
     private void DestroyVisual(PlayerVisual v)
     {
         try
-        { if (v.SpriteClone != null) Destroy(v.SpriteClone); }
+        { if (v.SpriteClone != null)
+            {
+                Destroy(v.SpriteClone);
+            }
+        }
         catch { }
+
         DestroyPanels(v);
     }
 
     private void DestroyPanels(PlayerVisual v)
     {
         try
-        { if (v.NamePanel != null) Destroy(v.NamePanel); }
+        { if (v.NamePanel != null)
+            {
+                Destroy(v.NamePanel);
+            }
+        }
         catch { }
+
         try
-        { if (v.HpPanel != null) Destroy(v.HpPanel); }
+        { if (v.HpPanel != null)
+            {
+                Destroy(v.HpPanel);
+            }
+        }
         catch { }
+
         try
-        { if (v.ArrowPanel != null) Destroy(v.ArrowPanel); }
+        { if (v.ArrowPanel != null)
+            {
+                Destroy(v.ArrowPanel);
+            }
+        }
         catch { }
+
         try
-        { if (v.StatusIconContainer != null) Destroy(v.StatusIconContainer); }
+        { if (v.StatusIconContainer != null)
+            {
+                Destroy(v.StatusIconContainer);
+            }
+        }
         catch { }
+
         v.StatusIcons?.Clear();
     }
 
@@ -1277,7 +1482,9 @@ public class CoopPlayerVisuals : MonoBehaviour
         {
             var cached = GetCachedController(chosenClass);
             if (cached != null)
+            {
                 return cached;
+            }
 
             var allSwitchers = Resources.FindObjectsOfTypeAll<Peglin.PeglinClassAnimationSwitcher>();
             if (allSwitchers != null)
@@ -1285,24 +1492,40 @@ public class CoopPlayerVisuals : MonoBehaviour
                 foreach (var sw in allSwitchers)
                 {
                     if (sw == null)
+                    {
                         continue;
+                    }
+
                     if (_cachedPeglinCtrl == null && sw.peglinAnimationController != null)
+                    {
                         _cachedPeglinCtrl = sw.peglinAnimationController;
+                    }
+
                     if (_cachedBalladinCtrl == null && sw.balladinAnimationController != null)
+                    {
                         _cachedBalladinCtrl = sw.balladinAnimationController;
+                    }
+
                     if (_cachedRoundrelCtrl == null && sw.roundrelAnimationController != null)
+                    {
                         _cachedRoundrelCtrl = sw.roundrelAnimationController;
+                    }
+
                     if (_cachedSpinventorCtrl == null && sw.spinventorAnimationController != null)
+                    {
                         _cachedSpinventorCtrl = sw.spinventorAnimationController;
+                    }
                 }
             }
 
             cached = GetCachedController(chosenClass);
             if (cached != null)
+            {
                 return cached;
+            }
 
             // Fallback: match loaded controllers by name.
-            string needle = ((Peglin.ClassSystem.Class)chosenClass) switch
+            var needle = ((Peglin.ClassSystem.Class)chosenClass) switch
             {
                 Peglin.ClassSystem.Class.Balladin => "balladin",
                 Peglin.ClassSystem.Class.Roundrel => "roundrel",
@@ -1315,21 +1538,32 @@ public class CoopPlayerVisuals : MonoBehaviour
                 foreach (var c in allCtrls)
                 {
                     if (c == null || string.IsNullOrEmpty(c.name))
+                    {
                         continue;
+                    }
+
                     var lname = c.name.ToLowerInvariant();
                     if (!lname.Contains(needle))
+                    {
                         continue;
+                    }
                     // Skip controllers that also match OTHER class names to avoid
                     // cross-contamination (some naming could be ambiguous).
                     if (lname.Contains("peg_") || lname.Contains("bomb") || lname.Contains("slime"))
+                    {
                         continue;
+                    }
+
                     SetCachedController(chosenClass, c);
                     return c;
                 }
             }
 
             if (_loggedMissingClassCtrl.Add(chosenClass))
+            {
                 Log?.LogWarning($"[CoopPlayerVisuals] No animation controller for class {chosenClass} — clone will show static sprite");
+            }
+
             return null;
         }
         catch
@@ -1372,7 +1606,9 @@ public class CoopPlayerVisuals : MonoBehaviour
         {
             var cached = GetCachedSprite(chosenClass);
             if (cached != null)
+            {
                 return cached;
+            }
 
             // Opportunistically populate the cache from every sprite field on every
             // loaded switcher — not just the requested class. The Peglin Player
@@ -1385,21 +1621,37 @@ public class CoopPlayerVisuals : MonoBehaviour
                 foreach (var switcher in all)
                 {
                     if (switcher == null)
+                    {
                         continue;
+                    }
+
                     if (_cachedPeglinSprite == null && switcher.peglinBaseSprite != null)
+                    {
                         _cachedPeglinSprite = switcher.peglinBaseSprite;
+                    }
+
                     if (_cachedBalladinSprite == null && switcher.balladinBaseSprite != null)
+                    {
                         _cachedBalladinSprite = switcher.balladinBaseSprite;
+                    }
+
                     if (_cachedRoundrelSprite == null && switcher.roundrelBaseSprite != null)
+                    {
                         _cachedRoundrelSprite = switcher.roundrelBaseSprite;
+                    }
+
                     if (_cachedSpinventorSprite == null && switcher.spinventorBaseSprite != null)
+                    {
                         _cachedSpinventorSprite = switcher.spinventorBaseSprite;
+                    }
                 }
             }
 
             cached = GetCachedSprite(chosenClass);
             if (cached != null)
+            {
                 return cached;
+            }
 
             // Fallback: ClassInfo.classSprite (main menu character select asset).
             var ci = GetClassBaseSpriteFromClassInfo(chosenClass);
@@ -1428,7 +1680,10 @@ public class CoopPlayerVisuals : MonoBehaviour
             }
 
             if (_loggedMissingClassSprite.Add(chosenClass))
+            {
                 Log?.LogWarning($"[CoopPlayerVisuals] No sprite for class {chosenClass} — switchers={all?.Length ?? 0}, caches: P={(_cachedPeglinSprite != null)} B={(_cachedBalladinSprite != null)} R={(_cachedRoundrelSprite != null)} S={(_cachedSpinventorSprite != null)}");
+            }
+
             return null;
         }
         catch
@@ -1477,14 +1732,20 @@ public class CoopPlayerVisuals : MonoBehaviour
         {
             var all = Resources.FindObjectsOfTypeAll<ClassSystem.ClassInfo>();
             if (all == null)
+            {
                 return null;
+            }
+
             foreach (var info in all)
             {
                 if (info != null && (int)info.characterClass == chosenClass && info.classSprite != null)
+                {
                     return info.classSprite;
+                }
             }
         }
         catch { }
+
         return null;
     }
 
@@ -1499,14 +1760,20 @@ public class CoopPlayerVisuals : MonoBehaviour
         {
             var all = Resources.FindObjectsOfTypeAll<PeglinUI.MainMenu.SelectableCharacter>();
             if (all == null)
+            {
                 return null;
+            }
+
             foreach (var sc in all)
             {
                 if (sc != null && (int)sc.characterClass == chosenClass && sc.idleSprite != null)
+                {
                     return sc.idleSprite;
+                }
             }
         }
         catch { }
+
         return null;
     }
 
@@ -1527,10 +1794,12 @@ public class CoopPlayerVisuals : MonoBehaviour
         try
         {
             if (!_addressableAttempted.Add(chosenClass))
+            {
                 return null;
+            }
 
             // Known addressable sprite paths (from the game's catalog.json).
-            string[] addresses = (Peglin.ClassSystem.Class)chosenClass switch
+            var addresses = (Peglin.ClassSystem.Class)chosenClass switch
             {
                 Peglin.ClassSystem.Class.Roundrel => new[] { "Assets/Art/Peglin/Roundrel/Sprites/roundrel.png" },
                 Peglin.ClassSystem.Class.Spinventor => new[] { "Assets/Art/Peglin/Spinventor/spinventor.png" },
@@ -1577,6 +1846,7 @@ public class CoopPlayerVisuals : MonoBehaviour
         {
             Log?.LogWarning($"[CoopPlayerVisuals] Addressable sprite fallback failed for class {chosenClass}: {ex.Message}");
         }
+
         return null;
     }
 

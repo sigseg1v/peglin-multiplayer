@@ -5,10 +5,10 @@ using Multipeglin.Events.Handlers.Lobby;
 using Multipeglin.Events.Network.Lobby;
 using Multipeglin.Multiplayer;
 using Multipeglin.Network;
-using IMessageSender = Multipeglin.Network.IMessageSender;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using IMessageSender = Multipeglin.Network.IMessageSender;
 
 namespace Multipeglin.UI;
 
@@ -73,8 +73,11 @@ public static class LobbyUI
         foreach (var row in _playerRows)
         {
             if (row.Root != null)
+            {
                 UnityEngine.Object.Destroy(row.Root);
+            }
         }
+
         _playerRows.Clear();
 
         if (_startButton != null)
@@ -112,7 +115,9 @@ public static class LobbyUI
     {
         _latestLobbyState = state;
         if (state != null)
+        {
             _hostCruciballLevel = state.CruciballLevel;
+        }
     }
 
     /// <summary>Called by GameStartClientHandler when host starts the game.</summary>
@@ -162,9 +167,14 @@ public static class LobbyUI
             // Host builds lobby state from PlayerRegistry
             var services = MultiplayerPlugin.Services;
             if (services == null)
+            {
                 return;
+            }
+
             if (!services.TryResolve<PlayerRegistry>(out var registry))
+            {
                 return;
+            }
 
             players = new List<LobbyPlayerEntry>();
             foreach (var slot in registry.GetAllSlots())
@@ -193,20 +203,24 @@ public static class LobbyUI
 
         // Ensure we have the right number of rows
         while (_playerRows.Count < players.Count)
+        {
             AddPlayerRow(lobbyParent, _playerRows.Count, createText, createButton);
+        }
 
         // Hide extra rows
-        for (int i = players.Count; i < _playerRows.Count; i++)
+        for (var i = players.Count; i < _playerRows.Count; i++)
+        {
             _playerRows[i].Root.SetActive(false);
+        }
 
         // Update each row
         var localGameVer = UnityEngine.Application.version ?? "unknown";
         var localModVer = MultiplayerPluginInfo.VERSION;
         var localVersionTag = $"Peglin {localGameVer} (mod {localModVer})";
-        bool hasVersionMismatch = false;
+        var hasVersionMismatch = false;
 
         var localName = MultiplayerUI.LocalPlayerName;
-        for (int i = 0; i < players.Count; i++)
+        for (var i = 0; i < players.Count; i++)
         {
             var entry = players[i];
             var row = _playerRows[i];
@@ -219,11 +233,17 @@ public static class LobbyUI
             // matching name, we still pick IsHost so the host UI works even if the local
             // name is empty for some reason.
             if (isHost)
+            {
                 row.IsLocalPlayer = entry.IsHost;
+            }
             else if (!string.IsNullOrEmpty(localName))
+            {
                 row.IsLocalPlayer = !entry.IsHost && entry.PlayerName == localName;
+            }
             else
+            {
                 row.IsLocalPlayer = !entry.IsHost; // legacy 2-player fallback
+            }
 
             row.NameText.text = entry.PlayerName ?? "???";
             row.NameText.color = row.IsLocalPlayer ? new Color(0.53f, 1f, 0.53f) : new Color(0.53f, 0.67f, 1f);
@@ -259,9 +279,12 @@ public static class LobbyUI
             var gameVer = row.IsLocalPlayer ? localGameVer : (entry.GameVersion ?? "?");
             var modVer = row.IsLocalPlayer ? localModVer : (entry.ModVersion ?? "?");
             var versionTag = $"Peglin {gameVer} (mod {modVer})";
-            bool versionMatch = versionTag == localVersionTag;
+            var versionMatch = versionTag == localVersionTag;
             if (!versionMatch)
+            {
                 hasVersionMismatch = true;
+            }
+
             row.VersionText.text = versionTag;
             row.VersionText.color = versionMatch
                 ? new Color(0.53f, 1f, 0.53f)
@@ -273,6 +296,7 @@ public static class LobbyUI
         {
             CreateCruciballRow(lobbyParent, createText, createButton);
         }
+
         UpdateCruciballRow(isHost);
 
         // Start button (host only) — gap below the cruciball row
@@ -298,8 +322,11 @@ public static class LobbyUI
                 {
                     var allReady = true;
                     foreach (var p in players)
+                    {
                         if (!p.IsHost && !p.IsReady)
                         { allReady = false; break; }
+                    }
+
                     var hasClients = players.Count > 1;
                     _startButton.interactable = allReady && hasClients;
                     _startButtonText.text = "Start Game";
@@ -344,10 +371,11 @@ public static class LobbyUI
         rowRect.anchoredPosition = new Vector2(0, yBase);
         rowRect.sizeDelta = new Vector2(920, 56);
 
-        var row = new PlayerRow { Root = rowObj };
-
-        // Column 1: Player name (left side)
-        row.NameText = createText(rowObj.transform, $"Name_{rowIndex}", "", 30);
+        var row = new PlayerRow
+        {
+            Root = rowObj,         // Column 1: Player name (left side)
+            NameText = createText(rowObj.transform, $"Name_{rowIndex}", "", 30)
+        };
         var nameRect = row.NameText.rectTransform;
         nameRect.anchorMin = new Vector2(0.5f, 0.5f);
         nameRect.anchorMax = new Vector2(0.5f, 0.5f);
@@ -357,7 +385,7 @@ public static class LobbyUI
         row.NameText.alignment = TextAlignmentOptions.Left;
 
         // Column 2: Class selection (center) — [<] ClassName [>]
-        int ri = rowIndex;
+        var ri = rowIndex;
 
         row.LeftArrow = createButton(rowObj.transform, $"Left_{rowIndex}", "<",
             new Color(0.3f, 0.3f, 0.4f, 1f), new Vector2(-100, 0), new Vector2(44, 44));
@@ -455,10 +483,16 @@ public static class LobbyUI
     private static void OffsetArrowLabel(Button btn)
     {
         if (btn == null)
+        {
             return;
+        }
+
         var label = btn.GetComponentInChildren<TextMeshProUGUI>();
         if (label == null)
+        {
             return;
+        }
+
         var r = label.rectTransform;
         r.offsetMin = new Vector2(r.offsetMin.x, r.offsetMin.y - 3f);
         r.offsetMax = new Vector2(r.offsetMax.x, r.offsetMax.y - 3f);
@@ -467,31 +501,47 @@ public static class LobbyUI
     private static void UpdateCruciballRow(bool isHost)
     {
         if (_cruciballValueText == null)
+        {
             return;
+        }
+
         _cruciballValueText.text = _hostCruciballLevel.ToString();
         // Client never sees the arrows — display is read-only.
-        if (_cruciballLeftBtn != null)
-            _cruciballLeftBtn.gameObject.SetActive(isHost);
-        if (_cruciballRightBtn != null)
-            _cruciballRightBtn.gameObject.SetActive(isHost);
+        _cruciballLeftBtn?.gameObject.SetActive(isHost);
+
+        _cruciballRightBtn?.gameObject.SetActive(isHost);
     }
 
     private static void OnCruciballArrow(int direction)
     {
         if (!_isHost)
+        {
             return;
+        }
+
         var next = _hostCruciballLevel + direction;
         if (next < 0)
+        {
             next = 20;
+        }
+
         if (next > 20)
+        {
             next = 0;
+        }
+
         _hostCruciballLevel = next;
 
         var services = MultiplayerPlugin.Services;
         if (services == null)
+        {
             return;
+        }
+
         if (services.TryResolve<PlayerRegistry>(out var registry) && services.TryResolve<IGameEventRegistry>(out var er))
+        {
             LobbyHelper.BroadcastLobbyState(registry, er);
+        }
     }
 
     private static void OnClassArrow(int rowIndex, int direction)
@@ -500,7 +550,9 @@ public static class LobbyUI
 
         var services = MultiplayerPlugin.Services;
         if (services == null)
+        {
             return;
+        }
 
         if (_isHost)
         {
@@ -508,17 +560,21 @@ public static class LobbyUI
             if (services.TryResolve<PlayerRegistry>(out var registry))
             {
                 var hostSlot = registry.GetHostSlot();
-                if (hostSlot != null)
-                    hostSlot.ChosenClass = _localChosenClass;
+                hostSlot?.ChosenClass = _localChosenClass;
             }
+
             if (services.TryResolve<PlayerRegistry>(out var reg2) && services.TryResolve<IGameEventRegistry>(out var er))
+            {
                 LobbyHelper.BroadcastLobbyState(reg2, er);
+            }
         }
         else
         {
             // Client sends ClassSelectEvent to host over the network
             if (services.TryResolve<IMessageSender>(out var sender))
+            {
                 sender.Send(new ClassSelectEvent { ChosenClass = _localChosenClass });
+            }
         }
     }
 
@@ -537,14 +593,24 @@ public static class LobbyUI
     {
         var services = MultiplayerPlugin.Services;
         if (services == null)
+        {
             return;
+        }
+
         if (!services.TryResolve<PlayerRegistry>(out var registry))
+        {
             return;
+        }
+
         if (!services.TryResolve<IGameEventRegistry>(out var eventRegistry))
+        {
             return;
+        }
 
         if (!registry.AllClientsReady)
+        {
             return;
+        }
 
         // Build final player list
         var finalPlayers = new List<LobbyPlayerEntry>();

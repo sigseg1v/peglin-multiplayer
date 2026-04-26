@@ -54,13 +54,11 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
         var healthVar = healthField.GetValue(ctrl) as FloatVariable;
         var maxHealthVar = maxHealthField.GetValue(ctrl) as FloatVariable;
 
-        float prevHealth = healthVar?.Value ?? 0;
+        var prevHealth = healthVar?.Value ?? 0;
 
-        if (maxHealthVar != null)
-            maxHealthVar.Set(snapshot.MaxHealth);
+        maxHealthVar?.Set(snapshot.MaxHealth);
 
-        if (healthVar != null)
-            healthVar.Set(snapshot.CurrentHealth);
+        healthVar?.Set(snapshot.CurrentHealth);
 
         // Force update the health bar UI if health changed
         if (System.Math.Abs(prevHealth - snapshot.CurrentHealth) > 0.1f)
@@ -86,16 +84,20 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
             return;
         }
 
-        int currentGold = currencyManager.GoldAmount;
-        int diff = snapshot.Gold - currentGold;
+        var currentGold = currencyManager.GoldAmount;
+        var diff = snapshot.Gold - currentGold;
 
         Patches.MultiplayerClientPatches.AllowCurrencySync = true;
         try
         {
             if (diff > 0)
+            {
                 currencyManager.AddGold(diff, silent: true);
+            }
             else if (diff < 0)
+            {
                 currencyManager.RemoveGold(-diff, silent: true);
+            }
         }
         finally
         {
@@ -111,7 +113,9 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
         {
             var tsm = TimescaleManager.Instance;
             if (tsm == null)
+            {
                 return;
+            }
 
             if (tsm.isSpedUp != snapshot.IsSpedUp)
             {
@@ -160,9 +164,15 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
                 {
                     var effectType = (Battle.StatusEffects.StatusEffectType)entry.EffectType;
                     if (effectType == Battle.StatusEffects.StatusEffectType.None)
+                    {
                         continue;
+                    }
+
                     if (entry.Intensity <= 0)
+                    {
                         continue;
+                    }
+
                     effects.Add(new Battle.StatusEffects.StatusEffect(effectType, entry.Intensity));
                 }
             }
@@ -203,7 +213,7 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
     {
         try
         {
-            bool allMatch = true;
+            var allMatch = true;
 
             // Verify health
             var ctrl = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
@@ -214,14 +224,15 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
                 var healthVar = healthField?.GetValue(ctrl) as FloatVariable;
                 var maxHealthVar = maxHealthField?.GetValue(ctrl) as FloatVariable;
 
-                float actualHealth = healthVar?.Value ?? -1f;
-                float actualMax = maxHealthVar?.Value ?? -1f;
+                var actualHealth = healthVar?.Value ?? -1f;
+                var actualMax = maxHealthVar?.Value ?? -1f;
 
                 if (Math.Abs(actualHealth - snapshot.CurrentHealth) > 0.1f)
                 {
                     _log.LogWarning($"[Verify] MISMATCH health: actual={actualHealth:F1} expected={snapshot.CurrentHealth:F1}");
                     allMatch = false;
                 }
+
                 if (Math.Abs(actualMax - snapshot.MaxHealth) > 0.1f)
                 {
                     _log.LogWarning($"[Verify] MISMATCH maxHealth: actual={actualMax:F1} expected={snapshot.MaxHealth:F1}");
@@ -233,7 +244,7 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
             var currencyManager = CurrencyManager.Instance;
             if (currencyManager != null)
             {
-                int actualGold = currencyManager.GoldAmount;
+                var actualGold = currencyManager.GoldAmount;
                 if (actualGold != snapshot.Gold)
                 {
                     _log.LogWarning($"[Verify] MISMATCH gold: actual={actualGold} expected={snapshot.Gold}");
@@ -242,7 +253,9 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
             }
 
             if (allMatch)
+            {
                 _log.LogInfo($"[Verify] PlayerState OK: health={snapshot.CurrentHealth:F0}/{snapshot.MaxHealth:F0} gold={snapshot.Gold}");
+            }
         }
         catch (Exception ex)
         {

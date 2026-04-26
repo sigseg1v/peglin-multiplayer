@@ -23,7 +23,9 @@ public class ServiceContainer : IServiceContainer
         var type = typeof(T);
 
         if (_singletons.TryGetValue(type, out var instance))
+        {
             return (T)instance;
+        }
 
         if (_factories.TryGetValue(type, out var factory))
         {

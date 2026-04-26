@@ -25,6 +25,7 @@ public class MainThreadDispatcher : MonoBehaviour
             MultiplayerPlugin.Logger?.LogWarning("[MainThreadDispatcher] Duplicate detected — destroying old instance");
             Destroy(Instance.gameObject);
         }
+
         Instance = this;
         _heartbeatCount = 0;
         MultiplayerPlugin.Logger?.LogInfo("[MainThreadDispatcher] Awake — Instance set, heartbeat will auto-start");
@@ -51,13 +52,16 @@ public class MainThreadDispatcher : MonoBehaviour
         // Check battle state directly — delegate subscriptions get lost when the
         // game reassigns its static delegate fields (they're not C# events).
         var battleState = Battle.BattleController.CurrentBattleState;
-        bool shotActive = battleState == Battle.BattleController.BattleState.AWAITING_SHOT_COMPLETION
+        var shotActive = battleState == Battle.BattleController.BattleState.AWAITING_SHOT_COMPLETION
                        || battleState == Battle.BattleController.BattleState.NAVIGATION;
 
-        float interval = shotActive ? 1f : 2f;
+        var interval = shotActive ? 1f : 2f;
         _heartbeatTimer += Time.unscaledDeltaTime;
         if (_heartbeatTimer < interval)
+        {
             return;
+        }
+
         _heartbeatTimer = 0f;
 
         // Resolve hosting status each tick — no stale references
@@ -65,12 +69,19 @@ public class MainThreadDispatcher : MonoBehaviour
         {
             var services = MultiplayerPlugin.Services;
             if (services == null)
+            {
                 return;
+            }
 
             if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting)
+            {
                 return;
+            }
+
             if (!services.TryResolve<IGameStateSyncService>(out var sync))
+            {
                 return;
+            }
 
             _heartbeatCount++;
             var tag = shotActive ? $"HEARTBEAT#{_heartbeatCount}(shot)" : $"HEARTBEAT#{_heartbeatCount}";

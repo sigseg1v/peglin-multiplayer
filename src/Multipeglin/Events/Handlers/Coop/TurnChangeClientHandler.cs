@@ -1,10 +1,9 @@
-namespace Multipeglin.Events.Handlers.Coop;
 
 using Multipeglin.Events.Network.Coop;
-using Multipeglin.GameState;
 using UnityEngine;
 using BattleCtrl = global::Battle.BattleController;
 
+namespace Multipeglin.Events.Handlers.Coop;
 /// <summary>
 /// On client: store the latest turn state so UI can display whose turn it is.
 /// </summary>
@@ -33,7 +32,7 @@ public sealed class TurnChangeClientHandler : IClientHandler<TurnChangeEvent>
 
         // Determine if it's this client's turn
         var services = MultiplayerPlugin.Services;
-        int mySlot = -1;
+        var mySlot = -1;
 
         if (services != null &&
             services.TryResolve<Multiplayer.PlayerRegistry>(out var registry) &&
@@ -77,8 +76,7 @@ public sealed class TurnChangeClientHandler : IClientHandler<TurnChangeEvent>
         try
         {
             var bc = Object.FindObjectOfType<BattleCtrl>();
-            if (bc != null)
-                bc.NumShotsDiscarded = 0;
+            bc?.NumShotsDiscarded = 0;
 
             var btn = Object.FindObjectOfType<global::UI.OrbDisplay.OrbDiscardButton>();
             if (btn != null)
@@ -129,7 +127,9 @@ public sealed class TurnChangeClientHandler : IClientHandler<TurnChangeEvent>
         {
             var tm = Object.FindObjectOfType<global::Battle.TargetingManager>();
             if (tm == null)
+            {
                 return;
+            }
 
             if (enable)
             {

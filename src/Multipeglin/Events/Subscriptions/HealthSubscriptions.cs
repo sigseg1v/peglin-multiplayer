@@ -47,7 +47,9 @@ public sealed class HealthSubscriptions
     private void OnPlayerDamaged(float amount)
     {
         if (!IsHosting)
+        {
             return;
+        }
 
         // In coop, distribute this damage to every non-active player immediately.
         // Some damage sources (red bomb detonations, delayed effects) fire outside
@@ -66,7 +68,10 @@ public sealed class HealthSubscriptions
     private void OnPlayerHealed(float amount)
     {
         if (!IsHosting)
+        {
             return;
+        }
+
         _registry.Dispatch(new PlayerHealedEvent
         {
             Amount = amount,
@@ -78,28 +83,40 @@ public sealed class HealthSubscriptions
     private void OnArmourHit(float amount)
     {
         if (!IsHosting)
+        {
             return;
+        }
+
         _registry.Dispatch(new ArmourHitEvent { Damage = amount });
     }
 
     private void OnDodge(float info)
     {
         if (!IsHosting)
+        {
             return;
+        }
+
         _registry.Dispatch(new DodgeEvent { DodgeInfo = info });
     }
 
     private void OnHealthDepleted()
     {
         if (!IsHosting)
+        {
             return;
+        }
+
         _registry.Dispatch(new HealthDepletedEvent());
     }
 
     private void OnMaxHealthChanged(float newMax)
     {
         if (!IsHosting)
+        {
             return;
+        }
+
         _registry.Dispatch(new MaxHealthChangedEvent { NewMaxHealth = newMax });
     }
 

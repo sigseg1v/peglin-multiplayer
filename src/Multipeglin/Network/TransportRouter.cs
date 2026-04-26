@@ -35,7 +35,9 @@ public class TransportRouter : INetworkTransport, ISteamTransport
         _lite.OnConnectionRejected += r => OnConnectionRejected?.Invoke(r);
 
         if (steam != null)
+        {
             AttachSteam(steam);
+        }
     }
 
     /// <summary>
@@ -46,7 +48,10 @@ public class TransportRouter : INetworkTransport, ISteamTransport
     public void AttachSteam(SteamTransport steam)
     {
         if (steam == null || _steam != null)
+        {
             return;
+        }
+
         _steam = steam;
         _steam.OnDataReceived += (p, d) => OnDataReceived?.Invoke(p, d);
         _steam.OnClientConnected += p => OnClientConnected?.Invoke(p);
@@ -58,10 +63,14 @@ public class TransportRouter : INetworkTransport, ISteamTransport
     public void UseLite()
     {
         if (_active == _lite)
+        {
             return;
+        }
+
         try
         { _active?.Stop(); }
         catch (Exception ex) { Log?.LogWarning($"[Router] Prev transport stop failed: {ex.Message}"); }
+
         _active = _lite;
         Log?.LogInfo("[Router] Active transport = LiteNet");
     }
@@ -69,10 +78,14 @@ public class TransportRouter : INetworkTransport, ISteamTransport
     public void UseSteam()
     {
         if (_steam == null || _active == _steam)
+        {
             return;
+        }
+
         try
         { _active?.Stop(); }
         catch (Exception ex) { Log?.LogWarning($"[Router] Prev transport stop failed: {ex.Message}"); }
+
         _active = _steam;
         Log?.LogInfo("[Router] Active transport = Steam");
     }
@@ -112,6 +125,7 @@ public class TransportRouter : INetworkTransport, ISteamTransport
             OnConnectionRejected?.Invoke("Steam not available");
             return;
         }
+
         UseSteam();
         _steam.JoinSteamLobby(lobbyId);
     }
@@ -120,7 +134,15 @@ public class TransportRouter : INetworkTransport, ISteamTransport
 
     public event Action<CSteamID> OnIncomingInvite
     {
-        add { if (_steam != null) _steam.OnIncomingInvite += value; }
-        remove { if (_steam != null) _steam.OnIncomingInvite -= value; }
+        add { if (_steam != null)
+            {
+                _steam.OnIncomingInvite += value;
+            }
+        }
+        remove { if (_steam != null)
+            {
+                _steam.OnIncomingInvite -= value;
+            }
+        }
     }
 }

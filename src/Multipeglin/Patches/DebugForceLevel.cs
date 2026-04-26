@@ -27,7 +27,10 @@ public static class DebugForceLevel
     private static void Parse()
     {
         if (_parsed)
+        {
             return;
+        }
+
         _parsed = true;
 
         var val = Environment.GetEnvironmentVariable("PEGLIN_MULTI_DEBUG_FORCE_LEVEL");
@@ -46,17 +49,23 @@ public static class DebugForceLevel
                 };
 
                 if (parts.Length > 1 && int.TryParse(parts[1], out var floor))
+                {
                     _forcedFloorCount = floor;
+                }
 
                 if (_forcedScene != null)
+                {
                     MultiplayerPlugin.Logger?.LogInfo(
                         $"[DebugForceLevel] Forcing start scene to {_forcedScene} (floor={_forcedFloorCount?.ToString() ?? "default"})");
+                }
             }
         }
 
         _forcedSeed = Environment.GetEnvironmentVariable("PEGLIN_SEED");
         if (!string.IsNullOrEmpty(_forcedSeed))
+        {
             MultiplayerPlugin.Logger?.LogInfo($"[DebugForceLevel] Forcing seed to '{_forcedSeed}'");
+        }
     }
 
     /// <summary>
@@ -70,7 +79,9 @@ public static class DebugForceLevel
     {
         Parse();
         if (string.IsNullOrEmpty(_forcedSeed))
+        {
             return;
+        }
 
         StaticGameData.currentSeed = _forcedSeed;
         MultiplayerPlugin.Logger?.LogInfo($"[DebugForceLevel] Set StaticGameData.currentSeed = '{_forcedSeed}'");
@@ -82,11 +93,15 @@ public static class DebugForceLevel
     {
         Parse();
         if (_forcedScene == null || ___LoadData == null)
+        {
             return;
+        }
 
         ___LoadData.SceneToLoad = _forcedScene.Value;
 
         if (_forcedFloorCount.HasValue)
+        {
             StaticGameData.totalFloorCount = _forcedFloorCount.Value;
+        }
     }
 }

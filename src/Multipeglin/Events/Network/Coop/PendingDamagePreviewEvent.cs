@@ -1,7 +1,7 @@
-namespace Multipeglin.Events.Network.Coop;
 
 using System.Collections.Generic;
 
+namespace Multipeglin.Events.Network.Coop;
 /// <summary>
 /// Sent from host to clients on every peg hit during coop battles.
 /// Contains each player's running damage total and target, so the client

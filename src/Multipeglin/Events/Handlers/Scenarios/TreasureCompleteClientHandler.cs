@@ -20,15 +20,23 @@ public sealed class TreasureCompleteClientHandler : IClientHandler<TreasureCompl
         {
             var services = MultiplayerPlugin.Services;
             if (services == null)
+            {
                 return;
+            }
+
             if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting)
+            {
                 return;
+            }
 
             var eventRegistry = services.TryResolve<IGameEventRegistry>(out var reg) ? reg : null;
             var senderPeerId = (eventRegistry as GameEventRegistry)?.CurrentSenderPeerId ?? -1;
 
             if (!services.TryResolve<PlayerRegistry>(out var registry))
+            {
                 return;
+            }
+
             var slot = registry.GetSlotByPeerId(senderPeerId);
             if (slot == null)
             {
@@ -84,7 +92,9 @@ public sealed class TreasureCompleteClientHandler : IClientHandler<TreasureCompl
                 CoopRewardState.TreasurePhaseActive = false;
 
                 if (services.TryResolve<IGameEventRegistry>(out var evtReg))
+                {
                     evtReg.Dispatch(new AllChoicesCompleteEvent { Phase = "treasure" });
+                }
 
                 // Resume host's blocked Skip
                 var pendingChest = CoopRewardState.PendingChestController;

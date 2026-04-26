@@ -17,9 +17,15 @@ internal static class CoopAct4ContinuePatch
         get
         {
             if (MultiplayerPlugin.Services == null)
+            {
                 return false;
+            }
+
             if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode))
+            {
                 return false;
+            }
+
             return mode.IsHosting || mode.IsSpectating;
         }
     }
@@ -32,7 +38,9 @@ internal static class CoopAct4ContinuePatch
     private static void ForceAct4Unlocked(ref bool __result)
     {
         if (IsMultiplayer)
+        {
             __result = true;
+        }
     }
 
     // The vanilla Act 3 boss flow shows a "fake mines win" cinematic and a choice UI
@@ -44,9 +52,14 @@ internal static class CoopAct4ContinuePatch
     private static void AutoContinueToCore(Battle.PostBattleController __instance)
     {
         if (!IsMultiplayer)
+        {
             return;
+        }
+
         if (!__instance.showGoToCoreOption)
+        {
             return;
+        }
 
         try
         {

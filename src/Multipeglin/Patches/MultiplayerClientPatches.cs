@@ -15,10 +15,8 @@ using Multipeglin.Multiplayer;
 using PeglinUI;
 using PixelCrushers.DialogueSystem;
 using RNG.Scenarios;
-using Scenarios;
 using Tutorial;
 using UnityEngine;
-using UnityEngine.EventSystems;
 using Worldmap;
 using Random = UnityEngine.Random;
 
@@ -66,9 +64,15 @@ public static class MultiplayerClientPatches
         get
         {
             if (MultiplayerPlugin.Services == null)
+            {
                 return false;
+            }
+
             if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode))
+            {
                 return false;
+            }
+
             return mode.IsSpectating;
         }
     }
@@ -78,9 +82,15 @@ public static class MultiplayerClientPatches
         get
         {
             if (MultiplayerPlugin.Services == null)
+            {
                 return false;
+            }
+
             if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode))
+            {
                 return false;
+            }
+
             return mode.IsHosting;
         }
     }
@@ -153,11 +163,19 @@ public static class MultiplayerClientPatches
     public static bool TutorialManager_ShouldPopupTutorial_Prefix(ref bool __result)
     {
         if (MultiplayerPlugin.Services == null)
+        {
             return true;
+        }
+
         if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode))
+        {
             return true;
+        }
+
         if (!mode.IsHosting && !mode.IsSpectating)
+        {
             return true;
+        }
 
         __result = false;
         return false;
@@ -178,11 +196,19 @@ public static class MultiplayerClientPatches
     public static bool PlayButton_SwitchToRunConfigCanvas_Prefix(PeglinUI.MainMenu.PlayButton __instance)
     {
         if (MultiplayerPlugin.Services == null)
+        {
             return true;
+        }
+
         if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode))
+        {
             return true;
+        }
+
         if (!mode.IsHosting && !mode.IsSpectating)
+        {
             return true;
+        }
 
         // In multiplayer, skip character select and go straight to game start
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Skipping character select — class chosen in lobby");
@@ -213,6 +239,7 @@ public static class MultiplayerClientPatches
                 MultiplayerPlugin.Logger?.LogWarning("[ClientPatches] RelicManager not found — shop relics may be wrong class");
                 return;
             }
+
             var rm = rms[0];
             rm.PopulateRelicPools(chosenClass);
             // SetupInternalRelicPools fills _availableCommonRelics from CommonRelicPool
@@ -224,6 +251,7 @@ public static class MultiplayerClientPatches
             try
             { rm.SetupInternalRelicPools(); }
             catch (Exception sx) { MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] SetupInternalRelicPools failed: {sx.Message}"); }
+
             MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Called RelicManager.PopulateRelicPools({chosenClass}) + SetupInternalRelicPools");
         }
         catch (Exception ex)
@@ -250,6 +278,7 @@ public static class MultiplayerClientPatches
                 MultiplayerPlugin.Logger?.LogWarning("[ClientPatches] CruciballManager not found — class sprite may be wrong");
                 return;
             }
+
             var cm = cms[0];
             cm.currentClass = chosenClass;
             MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Set CruciballManager.currentClass = {chosenClass}");
@@ -275,6 +304,7 @@ public static class MultiplayerClientPatches
                 MultiplayerPlugin.Logger?.LogWarning("[ClientPatches] CruciballManager not found — cruciball level not applied");
                 return;
             }
+
             var cm = cms[0];
             cm.currentCruciballLevel = level;
             MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Set CruciballManager.currentCruciballLevel = {level}");
@@ -346,7 +376,9 @@ public static class MultiplayerClientPatches
     public static void SpeedupIndicator_Start_Postfix(PeglinUI.SpeedupIndicator __instance)
     {
         if (!ShouldSuppressClientLogic)
+        {
             return;
+        }
 
         // The SpeedupIndicator Image shows the arrow icon — keep it.
         // Find and hide the key prompt child (the "F" label).
@@ -355,10 +387,14 @@ public static class MultiplayerClientPatches
         {
             // Skip the main indicator image (the arrow)
             if (img.gameObject == __instance.gameObject)
+            {
                 continue;
+            }
             // Skip the speed text's parent
             if (img.GetComponentInChildren<TMPro.TextMeshProUGUI>() == __instance.Text)
+            {
                 continue;
+            }
             // Disable other child images (key prompt icon)
             img.gameObject.SetActive(false);
         }
@@ -389,10 +425,12 @@ public static class MultiplayerClientPatches
     public static bool BattleController_Update_Prefix(BattleController __instance)
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
 
-        bool isMyTurn = Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn;
-        bool shotSent = ClientShotSentThisTurn;
+        var isMyTurn = Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn;
+        var shotSent = ClientShotSentThisTurn;
 
         // In co-op: handle aiming input ourselves instead of running BattleController.Update.
         // BattleController.Update in AWAITING_SHOT fires OnStartedAwaitingShot, increments
@@ -457,7 +495,10 @@ public static class MultiplayerClientPatches
         {
             // Not aiming — clean up client ball and trajectory
             if (_clientBallInitialized)
+            {
                 CleanupClientAiming();
+            }
+
             _clientAimSendTimer = 0f;
         }
 
@@ -476,6 +517,7 @@ public static class MultiplayerClientPatches
             {
                 ballState = "destroyed";
             }
+
             MultiplayerPlugin.Logger?.LogInfo(
                 $"[ClientAim/Diag] isMyTurn={isMyTurn} shotSent={shotSent} ballInit={_clientBallInitialized} " +
                 $"ballState={ballState} ballGO={(_clientBallGO != null ? "alive" : "null")} " +
@@ -538,15 +580,20 @@ public static class MultiplayerClientPatches
                 {
                     var field = HarmonyLib.AccessTools.Field(typeof(BattleController), "_activePachinkoBall");
                     if (field?.GetValue(bc) == _clientBallGO)
+                    {
                         field.SetValue(bc, null);
+                    }
                 }
             }
             catch { }
+
             UnityEngine.Object.Destroy(_clientBallGO);
             _clientBallGO = null;
         }
+
         if (_clientTrajectoryGO != null)
         { UnityEngine.Object.Destroy(_clientTrajectoryGO); _clientTrajectoryGO = null; }
+
         _clientTrajectoryLR = null;
         _clientBallInitialized = false;
         _clientBallRetryCount = 0;
@@ -569,7 +616,9 @@ public static class MultiplayerClientPatches
         {
             // Rate-limit retries to avoid log spam
             if (_clientBallRetryCount >= MaxBallRetries)
+            {
                 return;
+            }
 
             CleanupClientAiming();
 
@@ -579,7 +628,9 @@ public static class MultiplayerClientPatches
             {
                 var player = UnityEngine.GameObject.FindGameObjectWithTag("Player");
                 if (player != null)
+                {
                     spawnPos = (UnityEngine.Vector2)player.transform.position;
+                }
             }
 
             try
@@ -591,7 +642,10 @@ public static class MultiplayerClientPatches
                 {
                     _clientBallRetryCount++;
                     if (_clientBallRetryCount == 1 || _clientBallRetryCount == MaxBallRetries)
+                    {
                         MultiplayerPlugin.Logger?.LogWarning($"[ClientAim] No DeckManager (retry {_clientBallRetryCount})");
+                    }
+
                     return;
                 }
 
@@ -599,14 +653,23 @@ public static class MultiplayerClientPatches
                 var shuffled = shuffledField?.GetValue(dm) as System.Collections.Generic.Stack<UnityEngine.GameObject>;
                 UnityEngine.GameObject prefab = null;
                 if (shuffled != null && shuffled.Count > 0)
+                {
                     prefab = shuffled.Peek();
+                }
+
                 if (prefab == null && DeckManager.completeDeck != null && DeckManager.completeDeck.Count > 0)
+                {
                     prefab = DeckManager.completeDeck[0];
+                }
+
                 if (prefab == null)
                 {
                     _clientBallRetryCount++;
                     if (_clientBallRetryCount == 1 || _clientBallRetryCount == MaxBallRetries)
+                    {
                         MultiplayerPlugin.Logger?.LogWarning($"[ClientAim] No orb prefab (shuffled={shuffled?.Count ?? -1}, complete={DeckManager.completeDeck?.Count ?? -1}, retry {_clientBallRetryCount})");
+                    }
+
                     return;
                 }
 
@@ -621,11 +684,12 @@ public static class MultiplayerClientPatches
                 _clientBallMass = rb != null ? rb.mass : 1f;
                 _clientGravityScale = ball != null ? ball.GravityScale : 1.2f;
                 if (_clientGravityScale < 0)
+                {
                     _clientGravityScale = -_clientGravityScale;
+                }
 
                 // Disable physics so ball doesn't fall
-                if (rb != null)
-                    rb.simulated = false;
+                rb?.simulated = false;
 
                 // Set as BattleController._activePachinkoBall so the native prediction
                 // system can find it. Init + Arm set up PredictionManager for the aimer line.
@@ -708,9 +772,14 @@ public static class MultiplayerClientPatches
     {
         var es = UnityEngine.EventSystems.EventSystem.current;
         if (es == null)
+        {
             return false;
+        }
+
         if (!es.IsPointerOverGameObject())
+        {
             return false;
+        }
 
         try
         {
@@ -720,16 +789,22 @@ public static class MultiplayerClientPatches
             };
             _uiRaycastBuf.Clear();
             es.RaycastAll(ped, _uiRaycastBuf);
-            for (int i = 0; i < _uiRaycastBuf.Count; i++)
+            for (var i = 0; i < _uiRaycastBuf.Count; i++)
             {
                 var go = _uiRaycastBuf[i].gameObject;
                 if (go == null)
+                {
                     continue;
+                }
+
                 if (go.GetComponentInParent<UnityEngine.UI.Button>() != null)
+                {
                     return true;
+                }
             }
         }
         catch { }
+
         return false;
     }
 
@@ -745,12 +820,17 @@ public static class MultiplayerClientPatches
         {
             var cam = UnityEngine.Camera.main;
             if (cam == null)
+            {
                 return;
+            }
+
             var ballPos = _clientBallGO.transform.position;
             var worldMouse = cam.ScreenToWorldPoint(UnityEngine.Input.mousePosition);
             var aim = ((UnityEngine.Vector2)(worldMouse - ballPos)).normalized;
             if (aim.sqrMagnitude < 0.0001f)
+            {
                 return;
+            }
 
             string targetGuid = null;
             try
@@ -793,14 +873,21 @@ public static class MultiplayerClientPatches
     private static void SendClientAimUpdate()
     {
         if (_clientBallGO == null)
+        {
             return;
+        }
+
         var ball = _clientBallGO.GetComponent<PachinkoBall>();
         if (ball == null)
+        {
             return;
+        }
 
         var aimVec = ball.aimVector;
         if (aimVec == UnityEngine.Vector2.zero)
+        {
             return;
+        }
 
         var pos = ball.transform.position;
         var services = MultiplayerPlugin.Services;
@@ -833,9 +920,9 @@ public static class MultiplayerClientPatches
         // Original uses Time.deltaTime which varies per frame; we use fixedDeltaTime for stability
         UnityEngine.Vector3 vel = (UnityEngine.Vector3)(aimDir * (_clientFireForce * UnityEngine.Time.fixedDeltaTime) / _clientBallMass);
 
-        for (int i = 1; i < segments; i++)
+        for (var i = 1; i < segments; i++)
         {
-            float dt = vel.sqrMagnitude > 0f ? segmentScale / vel.magnitude : 0f;
+            var dt = vel.sqrMagnitude > 0f ? segmentScale / vel.magnitude : 0f;
             vel += UnityEngine.Physics.gravity * (_clientGravityScale * dt);
             positions[i] = positions[i - 1] + vel * dt;
         }
@@ -854,9 +941,14 @@ public static class MultiplayerClientPatches
     public static void BattleController_Update_Postfix()
     {
         if (!IsHosting)
+        {
             return;
+        }
+
         if (!UI.LobbyUI.GameStartReceived)
+        {
             return;
+        }
 
         // Track fired ball position to diagnose collision issues
         if (_firedBallGO != null && _firedBallLogCount < 5)
@@ -884,7 +976,9 @@ public static class MultiplayerClientPatches
 
         // Only process when BattleController is in AWAITING_SHOT
         if (BattleController.CurrentBattleState != BattleController.BattleState.AWAITING_SHOT)
+        {
             return;
+        }
 
         // Handle pending discard request from client before checking for shots
         if (Events.Handlers.Coop.OrbDiscardRequestClientHandler.PendingDiscard)
@@ -899,9 +993,11 @@ public static class MultiplayerClientPatches
                 // We need to temporarily re-activate the ball so AttemptOrbDiscard sees it as available.
                 var activeBallField = HarmonyLib.AccessTools.Field(typeof(BattleController), "_activePachinkoBall");
                 var ballGO = activeBallField?.GetValue(bc) as UnityEngine.GameObject;
-                bool wasInactive = ballGO != null && !ballGO.activeInHierarchy;
+                var wasInactive = ballGO != null && !ballGO.activeInHierarchy;
                 if (wasInactive)
+                {
                     ballGO.SetActive(true);
+                }
 
                 // Clear populatingDisplayOrb — the previous discard's DrawBall may have
                 // started a DeckInfoManager animation that hasn't finished yet. This flag
@@ -932,7 +1028,7 @@ public static class MultiplayerClientPatches
                 var skipField = HarmonyLib.AccessTools.Field(typeof(BattleController), "_skipPlayerTurnCount");
                 if (skipField != null)
                 {
-                    int skipCount = (int)skipField.GetValue(bc);
+                    var skipCount = (int)skipField.GetValue(bc);
                     if (skipCount > 0)
                     {
                         skipField.SetValue(bc, 0);
@@ -944,12 +1040,15 @@ public static class MultiplayerClientPatches
                 MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Executed pending OrbDiscard for client");
                 // AttemptOrbDiscard calls DrawBall internally, DrawBall_Postfix will hide the new ball
             }
+
             return;
         }
 
         var pending = Events.Handlers.Coop.ShootRequestClientHandler.PeekPendingShot();
         if (pending == null)
+        {
             return;
+        }
 
         // Verify the pending shot is for the currently active player slot.
         // In coop, turns rotate between players — a stale shot from a previous
@@ -973,7 +1072,9 @@ public static class MultiplayerClientPatches
             // for AIMING balls would miss it during the animation.
             var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
             if (bc == null)
+            {
                 return;
+            }
 
             var activeBallField = HarmonyLib.AccessTools.Field(typeof(BattleController), "_activePachinkoBall");
             var activeBallGO = activeBallField?.GetValue(bc) as UnityEngine.GameObject;
@@ -999,7 +1100,7 @@ public static class MultiplayerClientPatches
             {
                 var tweens = DG.Tweening.DOTween.TweensByTarget(activeBallGO.transform);
                 UnityEngine.Vector3 targetScale = activeBallGO.transform.localScale;
-                bool hadTween = false;
+                var hadTween = false;
                 if (tweens != null)
                 {
                     foreach (var t in tweens)
@@ -1012,10 +1113,14 @@ public static class MultiplayerClientPatches
                         }
                     }
                 }
+
                 DG.Tweening.DOTween.Kill(activeBallGO.transform);
                 // If no tween found but scale is tiny (< 0.1), force to reasonable scale
                 if (!hadTween && targetScale.x < 0.1f)
+                {
                     targetScale = new UnityEngine.Vector3(0.32f, 0.32f, 0.32f);
+                }
+
                 activeBallGO.transform.localScale = targetScale;
                 MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Scale snap: ({targetScale.x:F2},{targetScale.y:F2}) hadTween={hadTween} state={activeBall.CurrentState}");
             }
@@ -1139,16 +1244,22 @@ public static class MultiplayerClientPatches
     public static void BattleController_DrawBall_Postfix()
     {
         if (!UI.LobbyUI.GameStartReceived)
+        {
             return;
+        }
 
         var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
         if (bc == null)
+        {
             return;
+        }
 
         var activeBallField = HarmonyLib.AccessTools.Field(typeof(BattleController), "_activePachinkoBall");
         var ballGO = activeBallField?.GetValue(bc) as UnityEngine.GameObject;
         if (ballGO == null)
+        {
             return;
+        }
 
         // On the host during a client's turn, hide the ball so the host
         // can't see the aimer or interact with it.
@@ -1159,7 +1270,10 @@ public static class MultiplayerClientPatches
                 && tm.CurrentPlayerSlot > 0)
             {
                 if (ballGO.activeInHierarchy)
+                {
                     ballGO.SetActive(false);
+                }
+
                 MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] DrawBall postfix: hid ball '{ballGO.name}' (client's turn, slot {tm.CurrentPlayerSlot})");
                 return;
             }
@@ -1190,16 +1304,25 @@ public static class MultiplayerClientPatches
     public static bool BattleController_AttemptOrbDiscard_Prefix()
     {
         if (!UI.LobbyUI.GameStartReceived)
+        {
             return true;
+        }
 
         // Block on client — discards are handled via OrbDiscardRequestEvent to host
         if (ShouldSuppressClientLogic)
+        {
             return false;
+        }
 
         if (!IsHosting)
+        {
             return true;
+        }
+
         if (_executingPendingDiscard)
+        {
             return true; // bypass for programmatic discard
+        }
 
         var services = MultiplayerPlugin.Services;
         if (services?.TryResolve<GameState.TurnManager>(out var tm) == true
@@ -1207,6 +1330,7 @@ public static class MultiplayerClientPatches
         {
             return false; // block manual discard from host player
         }
+
         return true;
     }
 
@@ -1224,7 +1348,10 @@ public static class MultiplayerClientPatches
     {
         // In coop mode (lobby game start), allow GameInit so each player gets their own deck/relics
         if (UI.LobbyUI.GameStartReceived)
+        {
             return true;
+        }
+
         return !ShouldSuppressClientLogic;
     }
 
@@ -1239,11 +1366,15 @@ public static class MultiplayerClientPatches
     {
         // Only run when hosting or in coop mode
         if (!UI.LobbyUI.GameStartReceived)
+        {
             return;
+        }
 
         var services = MultiplayerPlugin.Services;
         if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true)
+        {
             return;
+        }
 
         // Clear stale reward/relic-selection state from any previous run. Without this,
         // flags like HostHasChosenRelic and the various *PhaseActive bools persist from
@@ -1256,7 +1387,7 @@ public static class MultiplayerClientPatches
             // Initialize players only on the first run. On subsequent GameInit.Start()
             // calls (new runs), re-initialize to reset accumulated state.
             // Check if players already exist and match the expected count.
-            bool needsInit = coopState.TotalPlayerCount != gameStartEvent.FinalPlayers.Count;
+            var needsInit = coopState.TotalPlayerCount != gameStartEvent.FinalPlayers.Count;
             if (!needsInit)
             {
                 foreach (var player in gameStartEvent.FinalPlayers)
@@ -1293,8 +1424,8 @@ public static class MultiplayerClientPatches
             {
                 try
                 {
-                    float hp = __instance.playerHealth?.Value ?? 0;
-                    float maxHp = __instance.maxPlayerHealth?.Value ?? 0;
+                    var hp = __instance.playerHealth?.Value ?? 0;
+                    var maxHp = __instance.maxPlayerHealth?.Value ?? 0;
                     if (maxHp > 0)
                     {
                         hostState.CurrentHealth = hp;
@@ -1320,11 +1451,15 @@ public static class MultiplayerClientPatches
             foreach (var player in gameStartEvent.FinalPlayers)
             {
                 if (player.IsHost)
+                {
                     continue;
+                }
 
                 var playerState = coopState.GetPlayerState(player.SlotIndex);
                 if (playerState == null)
+                {
                     continue;
+                }
 
                 // Skip if player already has initialized state (re-capture, not re-init)
                 if (playerState.IsInitialized && playerState.CompleteDeck.Count > 0)
@@ -1334,7 +1469,7 @@ public static class MultiplayerClientPatches
                 }
 
                 // All players start with the same max HP as the host
-                float maxHp = hostState?.MaxHealth ?? (__instance.maxPlayerHealth?.Value ?? 0);
+                var maxHp = hostState?.MaxHealth ?? (__instance.maxPlayerHealth?.Value ?? 0);
                 playerState.CurrentHealth = maxHp; // Full health at start
                 playerState.MaxHealth = maxHp;
 
@@ -1363,13 +1498,17 @@ public static class MultiplayerClientPatches
                     foreach (var orb in loadout.StartingOrbs)
                     {
                         if (orb == null)
+                        {
                             continue;
+                        }
+
                         playerState.CompleteDeck.Add(new GameState.SerializedOrb
                         {
                             PrefabName = orb.name,
                             Level = 0,
                         });
                     }
+
                     var deckNames = string.Join(", ", playerState.CompleteDeck.Select(o => o.PrefabName));
                     MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Slot {player.SlotIndex}: built deck from {targetClass} ClassLoadoutData: [{deckNames}]");
                 }
@@ -1384,7 +1523,10 @@ public static class MultiplayerClientPatches
                     foreach (var relic in loadout.StartingRelics)
                     {
                         if (relic == null)
+                        {
                             continue;
+                        }
+
                         playerState.OwnedRelics.Add(new GameState.SerializedRelic
                         {
                             Effect = (int)relic.effect,
@@ -1407,11 +1549,11 @@ public static class MultiplayerClientPatches
                     var cm = (cms != null && cms.Length > 0) ? cms[0] : null;
                     if (cm != null)
                     {
-                        int extraStones = cm.AdditionalStarterStones();
+                        var extraStones = cm.AdditionalStarterStones();
                         if (extraStones > 0 && cm.stonePrefab != null)
                         {
                             var stoneName = cm.stonePrefab.gameObject.name;
-                            for (int s = 0; s < extraStones; s++)
+                            for (var s = 0; s < extraStones; s++)
                             {
                                 playerState.CompleteDeck.Add(new GameState.SerializedOrb
                                 {
@@ -1419,6 +1561,7 @@ public static class MultiplayerClientPatches
                                     Level = 0,
                                 });
                             }
+
                             MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Slot {player.SlotIndex}: cruciball added {extraStones}x {stoneName}");
                         }
 
@@ -1457,13 +1600,14 @@ public static class MultiplayerClientPatches
                 // Peglintuition simultaneously. That also leaks reward-orb-count effects
                 // (e.g. ADDITIONAL_PEGLIN_CHOICES, Eye of Turtle) to clients who don't
                 // own them, since BattleUpgradeCanvas reads from the local RelicManager.
-                bool isMyOwnSlot = false;
+                var isMyOwnSlot = false;
                 if (!IsHosting && services.TryResolve<Multiplayer.PlayerRegistry>(out var localRegistry)
                     && localRegistry.LocalSlot != null
                     && localRegistry.LocalSlot.SlotIndex == player.SlotIndex)
                 {
                     isMyOwnSlot = true;
                 }
+
                 if (isMyOwnSlot && loadout?.StartingRelics != null)
                 {
                     try
@@ -1474,7 +1618,10 @@ public static class MultiplayerClientPatches
                             foreach (var relic in loadout.StartingRelics)
                             {
                                 if (relic == null)
+                                {
                                     continue;
+                                }
+
                                 try
                                 {
                                     AllowRelicSync = true;
@@ -1497,13 +1644,18 @@ public static class MultiplayerClientPatches
         if (IsHosting)
         {
             // Initialize relic selection tracking state
-            int nonHostCount = 0;
+            var nonHostCount = 0;
             if (gameStartEvent?.FinalPlayers != null)
             {
                 foreach (var p in gameStartEvent.FinalPlayers)
+                {
                     if (!p.IsHost)
+                    {
                         nonHostCount++;
+                    }
+                }
             }
+
             Events.Handlers.Coop.CoopRewardState.HostRelicSelectionActive = true;
             Events.Handlers.Coop.CoopRewardState.HostHasChosenRelic = false;
             Events.Handlers.Coop.CoopRewardState.TotalClientsExpected = nonHostCount;
@@ -1522,7 +1674,9 @@ public static class MultiplayerClientPatches
                     foreach (var player in gameStartEvent.FinalPlayers)
                     {
                         if (player.IsHost)
+                        {
                             continue;
+                        }
 
                         var choices = new System.Collections.Generic.List<GameState.Snapshots.RelicEntry>();
                         try
@@ -1530,21 +1684,25 @@ public static class MultiplayerClientPatches
                             var relics = rm.GetMultipleRelicsOffOfQueue(3, Relics.RelicRarity.COMMON);
                             foreach (var relic in relics)
                             {
-                                string displayName = "";
+                                var displayName = "";
                                 try
                                 {
                                     displayName = LocalizationManager.GetTranslation(relic.nameKey);
                                     if (string.IsNullOrEmpty(displayName))
+                                    {
                                         displayName = relic.englishDisplayName ?? relic.locKey ?? "Unknown";
+                                    }
                                 }
                                 catch { displayName = relic.englishDisplayName ?? relic.locKey ?? "Unknown"; }
 
-                                string description = "";
+                                var description = "";
                                 try
                                 {
                                     description = LocalizationManager.GetTranslation(relic.descKey);
                                     if (string.IsNullOrEmpty(description))
+                                    {
                                         description = relic.locKey ?? "";
+                                    }
                                 }
                                 catch { description = relic.locKey ?? ""; }
 
@@ -1581,21 +1739,25 @@ public static class MultiplayerClientPatches
                         var relics2 = rm.GetMultipleRelicsOffOfQueue(3, Relics.RelicRarity.COMMON);
                         foreach (var relic in relics2)
                         {
-                            string displayName2 = "";
+                            var displayName2 = "";
                             try
                             {
                                 displayName2 = LocalizationManager.GetTranslation(relic.nameKey);
                                 if (string.IsNullOrEmpty(displayName2))
+                                {
                                     displayName2 = relic.englishDisplayName ?? relic.locKey ?? "Unknown";
+                                }
                             }
                             catch { displayName2 = relic.englishDisplayName ?? relic.locKey ?? "Unknown"; }
 
-                            string description2 = "";
+                            var description2 = "";
                             try
                             {
                                 description2 = LocalizationManager.GetTranslation(relic.descKey);
                                 if (string.IsNullOrEmpty(description2))
+                                {
                                     description2 = relic.locKey ?? "";
+                                }
                             }
                             catch { description2 = relic.locKey ?? ""; }
 
@@ -1608,6 +1770,7 @@ public static class MultiplayerClientPatches
                                 IsEnabled = true,
                             });
                         }
+
                         Events.Handlers.Coop.CoopRewardState.PendingRelicChoices = new Events.Network.Coop.RelicChoicesEvent
                         {
                             TargetSlotIndex = 0,
@@ -1675,9 +1838,14 @@ public static class MultiplayerClientPatches
     {
         // Only intercept during coop relic selection
         if (!Events.Handlers.Coop.CoopRewardState.HostRelicSelectionActive)
+        {
             return true;
+        }
+
         if (!IsHosting)
+        {
             return true;
+        }
 
         // Host has chosen their relic -- mark it
         Events.Handlers.Coop.CoopRewardState.HostHasChosenRelic = true;
@@ -1697,6 +1865,7 @@ public static class MultiplayerClientPatches
             {
                 registry.Dispatch(new Events.Network.Coop.AllChoicesCompleteEvent { Phase = "starting_relic" });
             }
+
             return true; // Allow LoadMapScene
         }
 
@@ -1723,7 +1892,9 @@ public static class MultiplayerClientPatches
     public static bool PeglinSceneLoader_LoadScene_Prefix(PeglinSceneLoader.Scene scene)
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
 
         if (AllowNextSceneLoad)
         {
@@ -1753,7 +1924,9 @@ public static class MultiplayerClientPatches
     public static void BattleController_Awake_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return;
+        }
 
         // 1. Destroy pre-instanced pegs
         var preData = StaticGameData.preInstancedPegboardData;
@@ -1762,7 +1935,10 @@ public static class MultiplayerClientPatches
             MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Destroying preInstancedPegboardData on client " +
                 $"(pegboard={preData.pegboardData?.name}, root={preData.rootGameObject?.name})");
             if (preData.rootGameObject != null)
+            {
                 UnityEngine.Object.DestroyImmediate(preData.rootGameObject);
+            }
+
             StaticGameData.preInstancedPegboardData = null;
         }
 
@@ -1798,6 +1974,7 @@ public static class MultiplayerClientPatches
                 Random.state = restored.Value;
                 MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Restored host RNG state for pegboard generation");
             }
+
             PendingBattleRngState = null;
         }
     }
@@ -1812,9 +1989,14 @@ public static class MultiplayerClientPatches
     public static Exception BattleController_Awake_Finalizer(Exception __exception)
     {
         if (__exception == null)
+        {
             return null;
+        }
+
         if (!ShouldSuppressClientLogic)
+        {
             return __exception;
+        }
 
         MultiplayerPlugin.Logger?.LogError($"[ClientPatches] BattleController.Awake CRASHED on client (swallowed):\n" +
             $"  {__exception.GetType().Name}: {__exception.Message}\n{__exception.StackTrace}");
@@ -1830,13 +2012,16 @@ public static class MultiplayerClientPatches
                 var cache = Loading.AssetLoading.Instance?.EnemyPrefabs;
                 if (cache != null)
                 {
-                    int loaded = 0;
+                    var loaded = 0;
                     foreach (var spawn in battle.starterSpawns)
                     {
                         try
                         {
                             if (spawn?.spawnData?.enemyAssetReference == null)
+                            {
                                 continue;
+                            }
+
                             var key = spawn.spawnData.enemyAssetReference.RuntimeKey.ToString();
                             if (!cache.ContainsKey(key))
                             {
@@ -1847,6 +2032,7 @@ public static class MultiplayerClientPatches
                         }
                         catch { }
                     }
+
                     MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Recovery: loaded {loaded} enemy prefabs (cache={cache.Count})");
                 }
             }
@@ -1880,7 +2066,10 @@ public static class MultiplayerClientPatches
     public static void MapController_CreateMapDataLists_Postfix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return;
+        }
+
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] CreateMapDataLists ran on client (lists unused, prevents NRE)");
     }
 
@@ -1890,7 +2079,10 @@ public static class MultiplayerClientPatches
     public static bool MapController_PostProcessMap_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         return false;
     }
 
@@ -1900,7 +2092,10 @@ public static class MultiplayerClientPatches
     public static bool MapController_SeedMapContents_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         return false;
     }
 
@@ -1921,17 +2116,17 @@ public static class MultiplayerClientPatches
     public static bool MapController_LoadSceneFromMapData_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked LoadSceneFromMapData — host will send transitions");
 
         // Clear fade curtain — the game started a fade-to-black before we blocked the load
         try
         {
             var curtain = UnityEngine.Object.FindObjectOfType<PeglinUI.FadeCurtain>();
-            if (curtain != null)
-            {
-                curtain.FadeOut();
-            }
+            curtain?.FadeOut();
         }
         catch { }
 
@@ -1954,7 +2149,10 @@ public static class MultiplayerClientPatches
     public static bool MapController_ResolveNode_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked MapController.ResolveNode (client — scene handled by NodeActivatedClientHandler)");
         return false;
     }
@@ -1974,7 +2172,10 @@ public static class MultiplayerClientPatches
     public static bool EnemyManager_AddStarterEnemies_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked AddStarterEnemies — host will send enemies");
         return false;
     }
@@ -1988,7 +2189,10 @@ public static class MultiplayerClientPatches
     public static bool EnemyInfoManager_Initialize_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked EnemyInfoManager.Initialize — host will send upcoming enemies");
         return false;
     }
@@ -2006,7 +2210,10 @@ public static class MultiplayerClientPatches
     public static bool Enemy_ApplyStatusEffect_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         return AllowStatusEffectSync; // only allow when the applier is syncing
     }
 
@@ -2027,9 +2234,13 @@ public static class MultiplayerClientPatches
             MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked ShuffleSpecialPegs — host will send peg types");
             return false;
         }
+
         if (IsHosting)
+        {
             MultiplayerPlugin.Logger?.LogInfo(
                 $"[PegShuffleHost] ShuffleSpecialPegs(forceRefresh={forceRefresh}) caller={DescribeShuffleCaller()}");
+        }
+
         return true;
     }
 
@@ -2042,7 +2253,10 @@ public static class MultiplayerClientPatches
     public static bool PegManager_CreateSpecialPegs_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         return false;
     }
 
@@ -2054,10 +2268,16 @@ public static class MultiplayerClientPatches
     public static bool PegManager_ShuffleCritPegs_Prefix()
     {
         if (ShouldSuppressClientLogic)
+        {
             return false;
+        }
+
         if (IsHosting)
+        {
             MultiplayerPlugin.Logger?.LogInfo(
                 $"[PegShuffleHost] ShuffleCritPegs caller={DescribeShuffleCaller()}");
+        }
+
         return true;
     }
 
@@ -2072,18 +2292,25 @@ public static class MultiplayerClientPatches
         {
             var trace = new System.Diagnostics.StackTrace(2, false);
             var picked = new System.Collections.Generic.List<string>();
-            for (int i = 0; i < trace.FrameCount && picked.Count < 3; i++)
+            for (var i = 0; i < trace.FrameCount && picked.Count < 3; i++)
             {
                 var m = trace.GetFrame(i)?.GetMethod();
                 if (m == null)
+                {
                     continue;
+                }
+
                 var t = m.DeclaringType?.FullName ?? "?";
                 // Skip Harmony-generated wrappers and this patch class
                 if (t.StartsWith("HarmonyLib") || t.StartsWith("System.") ||
                     t.Contains("DMD<") || t.Contains("MultiplayerClientPatches"))
+                {
                     continue;
+                }
+
                 picked.Add($"{m.DeclaringType?.Name ?? "?"}.{m.Name}");
             }
+
             return picked.Count == 0 ? "<unknown>" : string.Join(" > ", picked);
         }
         catch { return "<stacktrace-failed>"; }
@@ -2095,7 +2322,10 @@ public static class MultiplayerClientPatches
     public static bool PegManager_CreateRefreshPegs_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         return false;
     }
 
@@ -2111,15 +2341,23 @@ public static class MultiplayerClientPatches
     public static void LongPeg_SetActiveStatus_Postfix(LongPeg __instance, bool active)
     {
         if (active)
+        {
             return;
+        }
+
         if (!IsHosting)
+        {
             return;
+        }
+
         try
         {
             var clearedField = HarmonyLib.AccessTools.Field(typeof(global::Peg), "_cleared");
-            bool isCleared = (bool)(clearedField?.GetValue(__instance) ?? false);
+            var isCleared = (bool)(clearedField?.GetValue(__instance) ?? false);
             if (isCleared)
+            {
                 __instance.RemoveIfCleared();
+            }
         }
         catch { }
     }
@@ -2137,7 +2375,10 @@ public static class MultiplayerClientPatches
     public static bool PegManager_FailSafeCreateRefreshPegs_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         return false;
     }
 
@@ -2147,7 +2388,10 @@ public static class MultiplayerClientPatches
     public static bool PegManager_ResetPegs_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         return false;
     }
 
@@ -2157,7 +2401,10 @@ public static class MultiplayerClientPatches
     public static bool PegManager_ApplyShieldToRegularPegs_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         return false;
     }
 
@@ -2172,7 +2419,10 @@ public static class MultiplayerClientPatches
     public static bool RandomPegField_TurnComplete_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         return false;
     }
 
@@ -2187,10 +2437,15 @@ public static class MultiplayerClientPatches
     public static bool DeckManager_DrawBall_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
         // In coop, allow deck operations during client's turn
         if (UI.LobbyUI.GameStartReceived && Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn)
+        {
             return true;
+        }
+
         return false;
     }
 
@@ -2205,10 +2460,15 @@ public static class MultiplayerClientPatches
     public static bool DeckManager_ShuffleBattleDeck_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
         // In coop, allow deck operations during client's turn
         if (UI.LobbyUI.GameStartReceived && Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn)
+        {
             return true;
+        }
+
         return false;
     }
 
@@ -2219,10 +2479,15 @@ public static class MultiplayerClientPatches
     public static bool BattleController_ResetField_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
         // In coop, allow field reset during client's turn
         if (UI.LobbyUI.GameStartReceived && Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn)
+        {
             return true;
+        }
+
         return false;
     }
 
@@ -2259,6 +2524,7 @@ public static class MultiplayerClientPatches
                     MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] Recovery IntroCameraPan failed: {recoverEx.Message}");
                 }
             }
+
             try
             {
                 if (MultiplayerPlugin.Services?.TryResolve<GameState.IGameStateSyncService>(out var sync) == true)
@@ -2273,18 +2539,24 @@ public static class MultiplayerClientPatches
         }
 
         if (!ShouldSuppressClientLogic)
+        {
             return __exception;
+        }
 
         // CLIENT: re-apply host node types (Start set them to NONE via blocked GenerateRoomType)
         MapControllerStartCompleted = true;
 
         if (__exception != null)
+        {
             MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] MapController.Start threw on client (swallowed): {__exception.Message}");
+        }
 
         try
         {
             if (MultiplayerPlugin.Services?.TryResolve<GameState.GameStateApplyService>(out var applySvc) == true)
+            {
                 applySvc.ReapplyLastMapState();
+            }
         }
         catch { }
 
@@ -2314,7 +2586,10 @@ public static class MultiplayerClientPatches
     public static bool MapController_IntroFade_Prefix(Map.MapController __instance)
     {
         if (!IsHosting)
+        {
             return true;
+        }
+
         try
         {
             var curtainGO = GameObject.FindGameObjectWithTag("Curtain");
@@ -2329,7 +2604,9 @@ public static class MultiplayerClientPatches
                     var prevNode = AccessTools.Field(typeof(Map.MapController), "_previousNode")?.GetValue(__instance) as MapNode;
                     var player = AccessTools.Field(typeof(Map.MapController), "_player")?.GetValue(__instance) as GameObject;
                     if (prevNode != null && player != null)
+                    {
                         player.transform.position = prevNode.transform.position;
+                    }
                 }
                 catch { }
 
@@ -2341,6 +2618,7 @@ public static class MultiplayerClientPatches
         {
             MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] IntroFade prefix check failed: {ex.Message}");
         }
+
         return true;
     }
 
@@ -2349,7 +2627,9 @@ public static class MultiplayerClientPatches
     public static void MapController_IntroFade_Postfix()
     {
         if (IsHosting)
+        {
             MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Intro: IntroFade entered");
+        }
     }
 
     [HarmonyPatch(typeof(Map.MapController), "IntroCameraPan")]
@@ -2357,7 +2637,9 @@ public static class MultiplayerClientPatches
     public static void MapController_IntroCameraPan_Postfix()
     {
         if (IsHosting)
+        {
             MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Intro: IntroCameraPan entered");
+        }
     }
 
     [HarmonyPatch(typeof(Map.MapController), "PostFadeInit")]
@@ -2365,7 +2647,9 @@ public static class MultiplayerClientPatches
     public static void MapController_PostFadeInit_Postfix()
     {
         if (IsHosting)
+        {
             MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Intro: PostFadeInit entered");
+        }
     }
 
     // =========================================================================
@@ -2382,7 +2666,10 @@ public static class MultiplayerClientPatches
     public static bool MapNode_GenerateRoomType_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         return false;
     }
 
@@ -2396,7 +2683,10 @@ public static class MultiplayerClientPatches
     public static bool MapNode_GenerateIcon_Prefix(MapNode __instance)
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         return __instance.RoomType != RoomType.NONE;
     }
 
@@ -2410,7 +2700,10 @@ public static class MultiplayerClientPatches
     public static bool DeckInfoManager_StartShuffleAnimation_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked StartShuffleAnimation on client — host controls deck visuals");
         return false;
     }
@@ -2425,7 +2718,10 @@ public static class MultiplayerClientPatches
     public static bool BattleController_AddInitialCoinsToBoard_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked AddInitialCoinsToBoard — host will send gold state");
         return false;
     }
@@ -2439,11 +2735,19 @@ public static class MultiplayerClientPatches
     public static void DamageCountDisplay_CreateText_Postfix(string textOrLocKey, UnityEngine.Vector2 position, UnityEngine.Color color)
     {
         if (!IsHosting)
+        {
             return;
+        }
+
         if (MultiplayerPlugin.Services == null)
+        {
             return;
+        }
+
         if (!MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out var registry))
+        {
             return;
+        }
 
         registry.Dispatch(new Multipeglin.Events.Network.Battle.DamageTextEvent
         {
@@ -2465,7 +2769,10 @@ public static class MultiplayerClientPatches
     public static bool DamageCountDisplay_DisplayDamage_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         return false;
     }
 
@@ -2487,25 +2794,40 @@ public static class MultiplayerClientPatches
         float damageMod)
     {
         if (!IsHosting)
+        {
             return;
+        }
+
         if (MultiplayerPlugin.Services == null)
+        {
             return;
+        }
+
         if (!MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out var registry))
+        {
             return;
+        }
 
         var exampleField = typeof(global::Battle.Enemies.Enemy).GetField(
             "_exampleFloatingText",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         var example = exampleField?.GetValue(__instance) as FloatingText;
         if (example == null)
+        {
             return;
+        }
+
         var pos = example.transform.position;
 
         var text = DamageCountDisplay.FormatDamageNumberAsString(damage);
         if (damageMod > 1f)
+        {
             text = "<style=enemyBonusDmg>" + text + "x" + damageMod + "</style>";
+        }
         else if (damageMod < 1f)
+        {
             text = "<style=enemyNegDmg>" + text + "x" + damageMod + "</style>";
+        }
 
         registry.Dispatch(new Multipeglin.Events.Network.Battle.DamageTextEvent
         {
@@ -2532,11 +2854,19 @@ public static class MultiplayerClientPatches
     {
         __state = null;
         if (type != Peg.PegType.BOMB)
+        {
             return;
+        }
+
         if (MultiplayerPlugin.Services == null)
+        {
             return;
+        }
+
         if (!MultiplayerPlugin.Services.TryResolve<Multipeglin.Utility.PegIdentifier>(out var pegId))
+        {
             return;
+        }
 
         // Use GetOrAssignGuid so that even if this peg was never captured (e.g. dynamically
         // spawned by a relic/orb behaviour) we still have a stable GUID to hand to the bomb.
@@ -2548,13 +2878,24 @@ public static class MultiplayerClientPatches
     public static void RegularPeg_ConvertPegToType_Postfix(RegularPeg __instance, Peg.PegType type, GameObject __result, string __state)
     {
         if (type != Peg.PegType.BOMB || __result == null || __result == __instance.gameObject)
+        {
             return;
+        }
+
         if (string.IsNullOrEmpty(__state))
+        {
             return;
+        }
+
         if (MultiplayerPlugin.Services == null)
+        {
             return;
+        }
+
         if (!MultiplayerPlugin.Services.TryResolve<Multipeglin.Utility.PegIdentifier>(out var pegId))
+        {
             return;
+        }
 
         var newBomb = __result.GetComponent<Peg>();
         if (newBomb == null)
@@ -2587,6 +2928,7 @@ public static class MultiplayerClientPatches
             MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked PegManager.ConvertPegsToBombs — host drives bomb placement");
             return false;
         }
+
         return true;
     }
 
@@ -2606,6 +2948,7 @@ public static class MultiplayerClientPatches
             __result = EmptyEnumerator();
             return false;
         }
+
         return true;
     }
 
@@ -2621,20 +2964,35 @@ public static class MultiplayerClientPatches
         Battle.PegBehaviour.PegCoinOverlay __instance)
     {
         if (!IsHosting)
+        {
             return;
+        }
+
         try
         {
             if (BattleController.CurrentBattleState != BattleController.BattleState.AWAITING_SHOT_COMPLETION)
+            {
                 return;
+            }
+
             var pegField = AccessTools.Field(typeof(Battle.PegBehaviour.PegCoinOverlay), "_peg");
             var peg = pegField?.GetValue(__instance) as Peg;
             if (peg == null)
+            {
                 return;
+            }
+
             if (peg.relicManager == null)
+            {
                 return;
+            }
+
             if (!peg.relicManager.RelicEffectActive(Relics.RelicEffect.GOLD_ADDS_TO_DAMAGE))
+            {
                 return;
-            string pegName = peg.gameObject != null ? peg.gameObject.name : "?";
+            }
+
+            var pegName = peg.gameObject != null ? peg.gameObject.name : "?";
             MultiplayerPlugin.Logger?.LogInfo(
                 $"[Relic] GOLD_ADDS_TO_DAMAGE triggered on peg '{pegName}' (+1 peg tally)");
         }
@@ -2655,23 +3013,39 @@ public static class MultiplayerClientPatches
     public static void BattleController_HandlePegActivated_Postfix(BattleController __instance)
     {
         if (!IsHosting)
+        {
             return;
+        }
+
         if (!UI.LobbyUI.GameStartReceived)
+        {
             return;
+        }
 
         try
         {
             var services = MultiplayerPlugin.Services;
             if (services == null)
+            {
                 return;
-            if (!services.TryResolve<GameState.CoopStateManager>(out var coopState))
-                return;
-            if (coopState.TotalPlayerCount < 2)
-                return;
-            if (!services.TryResolve<IGameEventRegistry>(out var registry))
-                return;
+            }
 
-            int activeSlot = coopState.ActivePlayerSlot;
+            if (!services.TryResolve<GameState.CoopStateManager>(out var coopState))
+            {
+                return;
+            }
+
+            if (coopState.TotalPlayerCount < 2)
+            {
+                return;
+            }
+
+            if (!services.TryResolve<IGameEventRegistry>(out var registry))
+            {
+                return;
+            }
+
+            var activeSlot = coopState.ActivePlayerSlot;
 
             // Read BattleController's running tallies
             var pegTallyField = AccessTools.Field(typeof(BattleController), "_pegMultiplierDamageTally");
@@ -2679,45 +3053,55 @@ public static class MultiplayerClientPatches
             var dmgMultField = AccessTools.Field(typeof(BattleController), "_damageMultiplier");
             var dmgBonusField = AccessTools.Field(typeof(BattleController), "_damageBonus");
 
-            int pegTally = pegTallyField != null ? (int)pegTallyField.GetValue(__instance) : 0;
-            int critCount = critField != null ? (int)critField.GetValue(null) : 0; // static
-            float dmgMult = dmgMultField != null ? (float)dmgMultField.GetValue(__instance) : 1f;
+            var pegTally = pegTallyField != null ? (int)pegTallyField.GetValue(__instance) : 0;
+            var critCount = critField != null ? (int)critField.GetValue(null) : 0; // static
+            var dmgMult = dmgMultField != null ? (float)dmgMultField.GetValue(__instance) : 1f;
             long dmgBonus = dmgBonusField != null ? (int)dmgBonusField.GetValue(__instance) : 0;
 
             // Compute running damage via AttackManager
             var amField = AccessTools.Field(typeof(BattleController), "_attackManager");
             var am = amField?.GetValue(__instance) as Battle.Attacks.AttackManager;
             if (am == null)
+            {
                 return;
+            }
 
-            long currentDamage = am.GetCurrentDamage(pegTally, dmgMult, dmgBonus, critCount);
+            var currentDamage = am.GetCurrentDamage(pegTally, dmgMult, dmgBonus, critCount);
             if (currentDamage <= 0 && am.isHeal)
+            {
                 return; // heal orbs — no damage preview
+            }
 
             // Get target and AoE status
-            bool isAoE = false;
+            var isAoE = false;
             var attackField = AccessTools.Field(typeof(Battle.Attacks.AttackManager), "_attack");
             var attack = attackField?.GetValue(am) as Battle.Attacks.Attack;
             if (attack is Battle.Attacks.SimpleAttack)
+            {
                 isAoE = true;
+            }
 
             string targetGuid = null;
             var tmgr = UnityEngine.Object.FindObjectOfType<Battle.TargetingManager>();
             if (tmgr?.currentTarget != null && services.TryResolve<Utility.EnemyIdentifier>(out var eid))
+            {
                 targetGuid = eid.GetGuid(tmgr.currentTarget);
+            }
 
             // Player name
-            string playerName = $"Slot {activeSlot}";
+            var playerName = $"Slot {activeSlot}";
             if (coopState.PlayerStates.TryGetValue(activeSlot, out var pState))
+            {
                 playerName = pState.PlayerName ?? playerName;
+            }
 
             // Build event: previous players' finalized data + current player's live total
             var entries = CoopSubscriptions.GetAccumulatedDamageEntries()
                 ?? new System.Collections.Generic.List<Events.Network.Coop.PendingDamagePreviewEvent.DamageEntry>();
 
             // Replace or add current player's live entry
-            bool replaced = false;
-            for (int i = 0; i < entries.Count; i++)
+            var replaced = false;
+            for (var i = 0; i < entries.Count; i++)
             {
                 if (entries[i].SlotIndex == activeSlot)
                 {
@@ -2733,6 +3117,7 @@ public static class MultiplayerClientPatches
                     break;
                 }
             }
+
             if (!replaced)
             {
                 entries.Add(new Events.Network.Coop.PendingDamagePreviewEvent.DamageEntry
@@ -2779,16 +3164,23 @@ public static class MultiplayerClientPatches
     public static bool BattleController_DoAttack_Prefix(BattleController __instance)
     {
         if (!IsHosting)
+        {
             return true;
+        }
+
         if (!UI.LobbyUI.GameStartReceived)
+        {
             return true;
+        }
 
         // Clear the pending damage overlay — the attack is now resolving
         try
         {
             UI.PendingDamageOverlay.ClearAll();
             if (MultiplayerPlugin.Services?.TryResolve<IGameEventRegistry>(out var clearReg) == true)
+            {
                 clearReg.Dispatch(new Events.Network.Coop.PendingDamagePreviewEvent());
+            }
         }
         catch { }
 
@@ -2801,15 +3193,21 @@ public static class MultiplayerClientPatches
             // AttackStartedEvent per shot and mirror the visual via ClientAttackProjectile.
             var allShots = Events.Subscriptions.CoopSubscriptions.ConsumeNonHostShotData();
             if (allShots == null || allShots.Count == 0)
+            {
                 return true;
+            }
 
             var services = MultiplayerPlugin.Services;
             if (services?.TryResolve<Utility.EnemyIdentifier>(out var enemyId) != true)
+            {
                 return true;
+            }
 
             var em = UnityEngine.Object.FindObjectOfType<EnemyManager>();
             if (em == null)
+            {
                 return true;
+            }
 
             // Hold the ATTACKING state while the sequence plays. AttackManager.IsAttacking()
             // is polled by BattleController.Update; without this the state machine would
@@ -2867,7 +3265,9 @@ public static class MultiplayerClientPatches
         foreach (var shot in shots)
         {
             if (shot.IsHeal || shot.Damage <= 0)
+            {
                 continue;
+            }
 
             // Resolve targets (reuse existing targeting/pierce/raycast logic).
             Battle.Enemies.Enemy primaryTarget = null;
@@ -2876,25 +3276,43 @@ public static class MultiplayerClientPatches
             if (shot.IsAoE)
             {
                 foreach (var e in em.Enemies)
+                {
                     if (e != null && e.CurrentHealth > 0f)
+                    {
                         targets.Add(e);
+                    }
+                }
+
                 if (targets.Count == 0)
+                {
                     continue;
+                }
+
                 primaryTarget = targets[0];
             }
             else
             {
                 if (!string.IsNullOrEmpty(shot.TargetEnemyGuid))
+                {
                     primaryTarget = enemyId.Find(shot.TargetEnemyGuid);
-                if (primaryTarget == null || primaryTarget.CurrentHealth <= 0f)
-                    primaryTarget = em.GetFarthestEnemyFromPlayer();
-                if (primaryTarget == null)
-                    continue;
+                }
 
-                int pierceCount = GetOrbPierceCount(shot.OrbPrefabName);
+                if (primaryTarget == null || primaryTarget.CurrentHealth <= 0f)
+                {
+                    primaryTarget = em.GetFarthestEnemyFromPlayer();
+                }
+
+                if (primaryTarget == null)
+                {
+                    continue;
+                }
+
+                var pierceCount = GetOrbPierceCount(shot.OrbPrefabName);
                 targets.Add(primaryTarget);
                 if (pierceCount > 0)
+                {
                     targets.AddRange(GetEnemiesBehindTarget(em, primaryTarget, pierceCount));
+                }
 
                 try
                 {
@@ -2926,9 +3344,11 @@ public static class MultiplayerClientPatches
 
             // Resolve a GUID for the primary target so clients can find the same
             // enemy even if the shot was AoE (TargetEnemyGuid may be empty in that case).
-            string primaryGuid = shot.TargetEnemyGuid;
+            var primaryGuid = shot.TargetEnemyGuid;
             if (string.IsNullOrEmpty(primaryGuid) && primaryTarget != null)
+            {
                 primaryGuid = enemyId?.GetGuid(primaryTarget);
+            }
 
             // Tell clients to play this shot's visual.
             try
@@ -2956,10 +3376,12 @@ public static class MultiplayerClientPatches
             // Arm ClientAttackProjectile on host to fly the sprite when OnFirePoint fires.
             var cap = Multipeglin.GameState.ClientAttackProjectile.Instance;
             if (cap != null && !string.IsNullOrEmpty(primaryGuid))
+            {
                 cap.SetupAttack(primaryGuid, shot.NumPegsHit, shot.CriticalHitCount > 0, shot.OrbPrefabName);
+            }
 
             // Wait until the projectile has flown and landed (or the watchdog fires).
-            float waited = 0f;
+            var waited = 0f;
             while (cap != null && cap.IsAttacking && waited < 2.0f)
             {
                 waited += UnityEngine.Time.deltaTime;
@@ -2975,7 +3397,10 @@ public static class MultiplayerClientPatches
                 foreach (var t in targets)
                 {
                     if (t == null || t.CurrentHealth <= 0f)
+                    {
                         continue;
+                    }
+
                     var src = shot.IsAoE
                         ? Battle.Enemies.Enemy.EnemyDamageSource.AOE
                         : Battle.Enemies.Enemy.EnemyDamageSource.TargetedAttack;
@@ -3002,7 +3427,7 @@ public static class MultiplayerClientPatches
                 var reverseTarget = em.GetFarthestEnemyFromPlayer();
                 if (reverseTarget != null && reverseTarget.CurrentHealth > 0f)
                 {
-                    string reverseGuid = enemyId?.GetGuid(reverseTarget);
+                    var reverseGuid = enemyId?.GetGuid(reverseTarget);
 
                     try
                     {
@@ -3023,9 +3448,11 @@ public static class MultiplayerClientPatches
                     catch { }
 
                     if (cap != null && !string.IsNullOrEmpty(reverseGuid))
+                    {
                         cap.SetupAttack(reverseGuid, shot.NumPegsHit, shot.CriticalHitCount > 0, shot.OrbPrefabName);
+                    }
 
-                    float reverseWaited = 0f;
+                    var reverseWaited = 0f;
                     while (cap != null && cap.IsAttacking && reverseWaited < 2.0f)
                     {
                         reverseWaited += UnityEngine.Time.deltaTime;
@@ -3041,7 +3468,10 @@ public static class MultiplayerClientPatches
                         foreach (var rt in reverseTargets)
                         {
                             if (rt == null || rt.CurrentHealth <= 0f)
+                            {
                                 continue;
+                            }
+
                             rt.Damage(shot.Damage, screenshake: false, 0.25f, 1f,
                                 unblockable: false, Battle.Enemies.Enemy.EnemyDamageSource.TargetedAttack);
                         }
@@ -3108,14 +3538,22 @@ public static class MultiplayerClientPatches
         System.Collections.Generic.List<(Battle.StatusEffects.StatusEffectType Type, int Intensity)> effects)
     {
         if (effects == null || effects.Count == 0)
+        {
             return;
+        }
+
         if (enemy == null || enemy.CurrentHealth <= 0f)
+        {
             return;
+        }
 
         foreach (var (type, intensity) in effects)
         {
             if (type == Battle.StatusEffects.StatusEffectType.None)
+            {
                 continue;
+            }
+
             try
             {
                 enemy.ApplyStatusEffect(
@@ -3146,11 +3584,19 @@ public static class MultiplayerClientPatches
         System.Collections.Generic.List<Battle.Enemies.Enemy> targets)
     {
         if (em == null || shot == null || primaryTarget == null)
+        {
             return;
+        }
+
         if (shot.IsAoE)
+        {
             return;
+        }
+
         if (!shot.HasTargetedSplash && !shot.HasTargetedHitAll)
+        {
             return;
+        }
 
         try
         {
@@ -3159,25 +3605,39 @@ public static class MultiplayerClientPatches
                 foreach (var e in em.Enemies)
                 {
                     if (e == null || e.CurrentHealth <= 0f)
+                    {
                         continue;
+                    }
+
                     if (!targets.Contains(e))
+                    {
                         targets.Add(e);
+                    }
                 }
+
                 return;
             }
 
             bool isStationary;
-            int slotIdx = em.GetSlotIndexForEnemy(primaryTarget, out isStationary);
+            var slotIdx = em.GetSlotIndexForEnemy(primaryTarget, out isStationary);
             var slotType = em.GetSlotForEnemy(primaryTarget);
             var splash = em.GetSplashRangeEnemies(slotIdx, slotType, 1, Battle.Attacks.AoeAttack.AoeType.SIDE);
             if (splash == null)
+            {
                 return;
+            }
+
             foreach (var e in splash)
             {
                 if (e == null || e.CurrentHealth <= 0f)
+                {
                     continue;
+                }
+
                 if (!targets.Contains(e))
+                {
                     targets.Add(e);
+                }
             }
         }
         catch (System.Exception ex)
@@ -3194,11 +3654,16 @@ public static class MultiplayerClientPatches
     private static int GetOrbPierceCount(string orbPrefabName)
     {
         if (string.IsNullOrEmpty(orbPrefabName))
+        {
             return 0;
-        if (_orbPierceCache.TryGetValue(orbPrefabName, out int cached))
-            return cached;
+        }
 
-        int result = 0;
+        if (_orbPierceCache.TryGetValue(orbPrefabName, out var cached))
+        {
+            return cached;
+        }
+
+        var result = 0;
         try
         {
             var orbPrefab = Loading.AssetLoading.Instance?.GetOrbPrefab(orbPrefabName);
@@ -3217,9 +3682,11 @@ public static class MultiplayerClientPatches
                             var typeField = AccessTools.Field(typeof(Battle.Attacks.ShotBehavior), "_shotType");
                             var countField = AccessTools.Field(typeof(Battle.Attacks.ShotBehavior), "_enemiesToPierce");
                             var shotType = (Battle.Attacks.ShotBehavior.ShotType)(typeField?.GetValue(sb) ?? 0);
-                            int enemiesToPierce = (int)(countField?.GetValue(sb) ?? 0);
+                            var enemiesToPierce = (int)(countField?.GetValue(sb) ?? 0);
                             if (shotType == Battle.Attacks.ShotBehavior.ShotType.PIERCE)
+                            {
                                 result = enemiesToPierce;
+                            }
                         }
                     }
                 }
@@ -3244,29 +3711,41 @@ public static class MultiplayerClientPatches
     {
         var result = new System.Collections.Generic.List<Battle.Enemies.Enemy>();
         if (em == null || target == null || count <= 0)
+        {
             return result;
+        }
 
         float targetSlot;
         try
-        { targetSlot = em.GetSlotIndexForEnemy(target, out bool _); }
+        { targetSlot = em.GetSlotIndexForEnemy(target, out var _); }
         catch { return result; }
 
         var candidates = new System.Collections.Generic.List<(Battle.Enemies.Enemy e, float slot)>();
         foreach (var e in em.Enemies)
         {
             if (e == null || e == target || e.CurrentHealth <= 0f)
+            {
                 continue;
+            }
+
             float slot;
             try
-            { slot = em.GetSlotIndexForEnemy(e, out bool _); }
+            { slot = em.GetSlotIndexForEnemy(e, out var _); }
             catch { continue; }
+
             if (slot > targetSlot)
+            {
                 candidates.Add((e, slot));
+            }
         }
+
         candidates.Sort((a, b) => a.slot.CompareTo(b.slot));
 
-        for (int i = 0; i < candidates.Count && result.Count < count; i++)
+        for (var i = 0; i < candidates.Count && result.Count < count; i++)
+        {
             result.Add(candidates[i].e);
+        }
+
         return result;
     }
 
@@ -3284,9 +3763,14 @@ public static class MultiplayerClientPatches
     private static OrbShotInfo GetOrbShotInfo(string orbPrefabName)
     {
         if (string.IsNullOrEmpty(orbPrefabName))
+        {
             return default;
+        }
+
         if (_orbShotInfoCache.TryGetValue(orbPrefabName, out var cached))
+        {
             return cached;
+        }
 
         var info = default(OrbShotInfo);
         try
@@ -3328,16 +3812,22 @@ public static class MultiplayerClientPatches
         string orbPrefabName, int pierceCount)
     {
         if (bc == null || em == null || declaredTarget == null)
+        {
             return null;
+        }
 
         var info = GetOrbShotInfo(orbPrefabName);
         if (info.Valid && info.ShotType == Battle.Attacks.ShotBehavior.ShotType.PINPOINT)
+        {
             return null;
+        }
 
         var playerField = AccessTools.Field(typeof(BattleController), "_playerTransform");
         var playerTransform = playerField?.GetValue(bc) as UnityEngine.Transform;
         if (playerTransform == null)
+        {
             return null;
+        }
 
         var offsetField = AccessTools.Field(typeof(BattleController), "_playerTransformOffset");
         var offset = (UnityEngine.Vector3)(offsetField?.GetValue(bc) ?? new UnityEngine.Vector3(1f, 0.5f, 0f));
@@ -3345,7 +3835,9 @@ public static class MultiplayerClientPatches
 
         UnityEngine.Vector2 aim = ((UnityEngine.Vector2)declaredTarget.transform.position - origin).normalized;
         if (aim.sqrMagnitude < 0.0001f)
+        {
             return null;
+        }
 
         UnityEngine.Vector2 perp = UnityEngine.Vector3.Cross(aim, UnityEngine.Vector3.back).normalized;
         const float lateralOffset = 0.08f;
@@ -3354,37 +3846,56 @@ public static class MultiplayerClientPatches
         hits.AddRange(UnityEngine.Physics2D.RaycastAll(origin + perp * lateralOffset, aim, 50f));
         hits.AddRange(UnityEngine.Physics2D.RaycastAll(origin - perp * lateralOffset, aim, 50f));
 
-        bool canAimUp = !info.Valid || info.CanAimUp;
+        var canAimUp = !info.Valid || info.CanAimUp;
         var byEnemy = new System.Collections.Generic.Dictionary<Battle.Enemies.Enemy, float>();
         foreach (var h in hits)
         {
             if (h.collider == null)
+            {
                 continue;
+            }
+
             if (!h.collider.TryGetComponent<Battle.Enemies.Enemy>(out var e))
+            {
                 continue;
+            }
+
             if (e == null || e.CurrentHealth <= 0f)
+            {
                 continue;
+            }
+
             if (byEnemy.ContainsKey(e))
+            {
                 continue;
+            }
             // Mirror ShotBehavior filter: when canAimUp match flying==flying;
             // when !canAimUp (ground-only aim) skip flying enemies entirely.
-            bool flyingOk = canAimUp
+            var flyingOk = canAimUp
                 ? declaredTarget.IsFlying == e.IsFlying
                 : !e.IsFlying;
             if (!flyingOk)
+            {
                 continue;
+            }
+
             byEnemy[e] = h.distance;
         }
 
         if (byEnemy.Count == 0)
+        {
             return null;
+        }
 
         var ordered = new System.Collections.Generic.List<Battle.Enemies.Enemy>(byEnemy.Keys);
         ordered.Sort((a, b) => byEnemy[a].CompareTo(byEnemy[b]));
 
-        int keep = System.Math.Max(1, pierceCount + 1);
+        var keep = System.Math.Max(1, pierceCount + 1);
         if (ordered.Count > keep)
+        {
             ordered.RemoveRange(keep, ordered.Count - keep);
+        }
+
         return ordered;
     }
 
@@ -3414,7 +3925,10 @@ public static class MultiplayerClientPatches
         int numPegsHitThisShot, int criticalHitCount)
     {
         if (!IsHosting)
+        {
             return;
+        }
+
         try
         {
             var attackField = HarmonyLib.AccessTools.Field(typeof(Battle.Attacks.AttackManager), "_attack");
@@ -3446,25 +3960,42 @@ public static class MultiplayerClientPatches
     public static void Animator_SetTrigger_Postfix(UnityEngine.Animator __instance, string name)
     {
         if (!IsHosting)
+        {
             return;
+        }
+
         if (__instance == null)
+        {
             return;
+        }
 
         // Only sync enemy animators (check if this animator belongs to an Enemy)
         var enemy = __instance.GetComponentInParent<Battle.Enemies.Enemy>();
         if (enemy == null)
+        {
             return;
+        }
 
         if (MultiplayerPlugin.Services == null)
+        {
             return;
+        }
+
         if (!MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out var registry))
+        {
             return;
+        }
+
         if (!MultiplayerPlugin.Services.TryResolve<Multipeglin.Utility.EnemyIdentifier>(out var enemyId))
+        {
             return;
+        }
 
         var guid = enemyId.GetGuid(enemy);
         if (string.IsNullOrEmpty(guid))
+        {
             return;
+        }
 
         registry.Dispatch(new Multipeglin.Events.Network.Battle.AnimationSyncEvent
         {
@@ -3482,24 +4013,41 @@ public static class MultiplayerClientPatches
     public static void Animator_SetBool_Postfix(UnityEngine.Animator __instance, string name, bool value)
     {
         if (!IsHosting)
+        {
             return;
+        }
+
         if (__instance == null)
+        {
             return;
+        }
 
         var enemy = __instance.GetComponentInParent<Battle.Enemies.Enemy>();
         if (enemy == null)
+        {
             return;
+        }
 
         if (MultiplayerPlugin.Services == null)
+        {
             return;
+        }
+
         if (!MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out var registry))
+        {
             return;
+        }
+
         if (!MultiplayerPlugin.Services.TryResolve<Multipeglin.Utility.EnemyIdentifier>(out var enemyId))
+        {
             return;
+        }
 
         var guid = enemyId.GetGuid(enemy);
         if (string.IsNullOrEmpty(guid))
+        {
             return;
+        }
 
         registry.Dispatch(new Multipeglin.Events.Network.Battle.AnimationSyncEvent
         {
@@ -3540,12 +4088,12 @@ public static class MultiplayerClientPatches
             try
             {
                 var stale = MapController.instance;
-                bool sameAct = stale.Act == __instance.Act
+                var sameAct = stale.Act == __instance.Act
                     && string.Equals(stale.mapNameLocKey, __instance.mapNameLocKey, StringComparison.Ordinal);
                 if (!sameAct)
                 {
-                    string staleScene = stale.gameObject.scene.name;
-                    string newScene = __instance.gameObject.scene.name;
+                    var staleScene = stale.gameObject.scene.name;
+                    var newScene = __instance.gameObject.scene.name;
                     MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Client: destroying stale MapController (act {stale.Act} '{stale.mapNameLocKey}' from '{staleScene}') so new MC (act {__instance.Act} '{__instance.mapNameLocKey}' from '{newScene}') can take over");
                     MapController.instance = null;
                     UnityEngine.Object.Destroy(stale.gameObject);
@@ -3570,6 +4118,7 @@ public static class MultiplayerClientPatches
                 Random.state = restored.Value;
                 MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Restored host RNG state before map generation");
             }
+
             PendingRngStateToRestore = null;
         }
     }
@@ -3587,16 +4136,26 @@ public static class MultiplayerClientPatches
     public static void MapController_Awake_Postfix(MapController __instance)
     {
         if (IsHosting)
+        {
             return;
+        }
+
         if (!ShouldSuppressClientLogic)
+        {
             return;
+        }
+
         if (__instance == null)
+        {
             return;
+        }
         // Only the surviving instance (the new scene's MC) should apply cached state —
         // the self-destruct path in the original Awake leaves the stale GO pending
         // destruction; skip it to avoid mutating doomed nodes.
         if (MapController.instance != __instance)
+        {
             return;
+        }
 
         GameState.Appliers.MapStateApplier.ApplyCachedOnAwake(__instance, MultiplayerPlugin.Logger);
     }
@@ -3633,7 +4192,9 @@ public static class MultiplayerClientPatches
         if (ShouldSuppressClientLogic)
         {
             if (AllowPegMinigameLogic)
+            {
                 return true; // Let the client fire normally in PegMinigame
+            }
 
             if (UI.LobbyUI.GameStartReceived
                 && Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn
@@ -3676,6 +4237,7 @@ public static class MultiplayerClientPatches
                         $"[ClientPatches] Fire intercepted → ShootRequest: aim=({aimVec.x:F2},{aimVec.y:F2}), target={targetGuid ?? "auto"}");
                 }
             }
+
             return false;
         }
 
@@ -3692,9 +4254,15 @@ public static class MultiplayerClientPatches
     public static void PachinkoBall_Fire_Postfix(PachinkoBall __instance)
     {
         if (!IsHosting)
+        {
             return;
+        }
+
         if (__instance == null || __instance.IsDummy)
+        {
             return;
+        }
+
         _firedBallGO = __instance.gameObject;
         _firedBallTimer = 0f;
         _firedBallLogCount = 0;
@@ -3709,15 +4277,23 @@ public static class MultiplayerClientPatches
     public static void MapNode_ActivateNode_Postfix(MapNode __instance)
     {
         if (!IsHosting)
+        {
             return;
+        }
+
         if (MultiplayerPlugin.Services == null)
+        {
             return;
+        }
+
         if (!MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out var registry))
+        {
             return;
+        }
 
         var pos = __instance.transform.position;
-        string battleName = (__instance.MapData as MapDataBattle)?.name;
-        string mapDataName = string.IsNullOrEmpty(battleName) ? __instance.MapData?.name : null;
+        var battleName = (__instance.MapData as MapDataBattle)?.name;
+        var mapDataName = string.IsNullOrEmpty(battleName) ? __instance.MapData?.name : null;
         registry.Dispatch(new NodeActivatedEvent
         {
             PosX = pos.x,
@@ -3748,32 +4324,45 @@ public static class MultiplayerClientPatches
         Peglin.PegMinigame.MapDataPegMinigameRelics __instance)
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         if (!AllowPegMinigameLogic)
+        {
             return true;
+        }
 
         try
         {
-            int mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
+            var mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
             if (mySlot < 0)
+            {
                 return true;
+            }
 
             var relicMgr = __instance.relicManager;
-            int count = System.Math.Max(1, __instance.numberOfRewards);
+            var count = System.Math.Max(1, __instance.numberOfRewards);
             var picks = PickMultipleLocalRelics(__instance.rarity, count, relicMgr, mySlot);
             if (picks.Count == 0)
+            {
                 return true; // fall through to native rather than show empty
+            }
 
             var rewards = new System.Collections.Generic.List<Peglin.PegMinigame.Reward>();
             foreach (var r in picks)
             {
                 rewards.Add(new Peglin.PegMinigame.RelicReward(r, relicMgr, __instance.relicInfoWidget));
             }
+
             __instance.Rewards = rewards;
 
             var names = new System.Collections.Generic.List<string>();
             foreach (var r in picks)
+            {
                 names.Add(r?.name ?? "<null>");
+            }
+
             MultiplayerPlugin.Logger?.LogInfo(
                 $"[ClientPatch] PegMinigame relic rewards (slot {mySlot}, rarity {__instance.rarity}) = [{string.Join(",", names)}]");
             return false;
@@ -3791,30 +4380,42 @@ public static class MultiplayerClientPatches
         Peglin.PegMinigame.MapDataPegMinigameOrbs __instance)
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         if (!AllowPegMinigameLogic)
+        {
             return true;
+        }
 
         try
         {
-            int mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
+            var mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
             if (mySlot < 0)
+            {
                 return true;
+            }
 
             var deckMgr = __instance.deckManager;
             if (deckMgr == null)
+            {
                 return true;
+            }
+
             var pool = deckMgr.GetRandomOrbPool();
             if (pool == null || pool.Count == 0)
+            {
                 return true;
+            }
 
             // Stable order so the slot-keyed RNG produces consistent picks.
             var sorted = new System.Collections.Generic.List<UnityEngine.GameObject>(pool);
             sorted.Sort((a, b) => string.CompareOrdinal(a?.name, b?.name));
 
-            int count = System.Math.Max(1, __instance.numberOfRewards);
-            int take = System.Math.Min(count, sorted.Count);
-            int seed = unchecked(((StaticGameData.currentSeed ?? "").GetHashCode()
+            var count = System.Math.Max(1, __instance.numberOfRewards);
+            var take = System.Math.Min(count, sorted.Count);
+            var seed = unchecked(((StaticGameData.currentSeed ?? "").GetHashCode()
                 ^ (mySlot * 7919)
                 ^ (StaticGameData.totalFloorCount * 104729)
                 ^ 0x4F2BD17));
@@ -3822,15 +4423,17 @@ public static class MultiplayerClientPatches
 
             var rewards = new System.Collections.Generic.List<Peglin.PegMinigame.Reward>();
             var picked = new System.Collections.Generic.List<string>();
-            for (int i = 0; i < take; i++)
+            for (var i = 0; i < take; i++)
             {
-                int j = i + rng.Next(0, sorted.Count - i);
+                var j = i + rng.Next(0, sorted.Count - i);
                 var tmp = sorted[i];
                 sorted[i] = sorted[j];
                 sorted[j] = tmp;
                 var orb = sorted[i];
                 if (orb == null)
+                {
                     continue;
+                }
 
                 // Replicate native Act-based upgrade logic.
                 var chosen = orb;
@@ -3839,11 +4442,15 @@ public static class MultiplayerClientPatches
                 {
                     chosen = c1.NextLevelPrefab;
                     if (act > 2 && chosen.TryGetComponent<Battle.Attacks.Attack>(out var c2) && c2.NextLevelPrefab != null)
+                    {
                         chosen = c2.NextLevelPrefab;
+                    }
                 }
+
                 rewards.Add(new Peglin.PegMinigame.OrbReward(chosen, deckMgr));
                 picked.Add(chosen.name);
             }
+
             __instance.Rewards = rewards;
 
             MultiplayerPlugin.Logger?.LogInfo(
@@ -3866,9 +4473,15 @@ public static class MultiplayerClientPatches
     public static bool PegMinigameManager_CreateOrb_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         if (AllowPegMinigameLogic)
+        {
             return true;
+        }
+
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked PegMinigameManager.CreateOrb (spectating)");
         return false;
     }
@@ -3878,9 +4491,15 @@ public static class MultiplayerClientPatches
     public static bool PegMinigameManager_PrepareNavigationOrbForFiring_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         if (AllowPegMinigameLogic)
+        {
             return true;
+        }
+
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked PegMinigameManager.PrepareNavigationOrbForFiring (spectating)");
         return false;
     }
@@ -3890,9 +4509,15 @@ public static class MultiplayerClientPatches
     public static bool PegMinigameManager_HandleRewardSlotTriggerActivated_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         if (AllowPegMinigameLogic)
+        {
             return true;
+        }
+
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked PegMinigameManager.HandleRewardSlotTriggerActivated (spectating)");
         return false;
     }
@@ -3903,7 +4528,10 @@ public static class MultiplayerClientPatches
     public static bool PegMinigameManager_HandleNavigationSlotTriggerActivated_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         return false;
     }
 
@@ -3932,6 +4560,7 @@ public static class MultiplayerClientPatches
                     $"({Events.Handlers.Coop.CoopRewardState.ClientPegMinigameChoicesReceived.Count}/{Events.Handlers.Coop.CoopRewardState.TotalPegMinigameClientsExpected})");
                 return false;
             }
+
             MultiplayerPlugin.Logger?.LogInfo("[CoopReward] PegMinigame: all clients done, host proceeding with navigation");
         }
 
@@ -3978,13 +4607,20 @@ public static class MultiplayerClientPatches
         int __state)
     {
         if (__state < 0)
+        {
             return; // no reward was selected
+        }
+
         if (type == PeglinUI.PostBattle.UpgradeOption.UpgradeType.INSPECT_ORB_FOR_UPGRADE)
+        {
             return;
+        }
 
         var services = MultiplayerPlugin.Services;
         if (services == null)
+        {
             return;
+        }
 
         // CLIENT: send completion event to host
         if (ShouldSuppressClientLogic && AllowPegMinigameLogic)
@@ -4017,7 +4653,9 @@ public static class MultiplayerClientPatches
                 }
 
                 if (services.TryResolve<Network.IMessageSender>(out var sender))
+                {
                     sender.Send(evt);
+                }
 
                 // Disable PegMinigame logic so subsequent CreateOrb/nav calls are blocked
                 AllowPegMinigameLogic = false;
@@ -4032,6 +4670,7 @@ public static class MultiplayerClientPatches
             {
                 MultiplayerPlugin.Logger?.LogWarning($"[CoopReward] PegMinigame client completion failed: {ex.Message}");
             }
+
             return;
         }
 
@@ -4041,7 +4680,9 @@ public static class MultiplayerClientPatches
             try
             {
                 if (services.TryResolve<GameState.CoopStateManager>(out var coopState))
+                {
                     coopState.SaveActivePlayerState();
+                }
             }
             catch (Exception ex)
             {
@@ -4063,20 +4704,35 @@ public static class MultiplayerClientPatches
     public static void DeckManager_UpgradeSpecificOrb_SharePostfix(GameObject toUpgrade, GameObject __result)
     {
         if (!IsHosting)
+        {
             return;
+        }
+
         if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != "TextScenario")
+        {
             return;
+        }
+
         if (__result == null)
+        {
             return;
+        }
         // When TextScenarioPhaseActive, clients handle their own dialogue — don't double-apply
         if (Events.Handlers.Coop.CoopRewardState.TextScenarioPhaseActive)
+        {
             return;
+        }
 
         var services = MultiplayerPlugin.Services;
         if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true)
+        {
             return;
+        }
+
         if (coopState.TotalPlayerCount < 2)
+        {
             return;
+        }
 
         try
         {
@@ -4086,11 +4742,13 @@ public static class MultiplayerClientPatches
             foreach (var kvp in coopState.PlayerStates)
             {
                 if (kvp.Key == coopState.ActivePlayerSlot)
+                {
                     continue;
+                }
 
                 // Find upgradeable orbs in this player's deck
                 var upgradeableIndices = new System.Collections.Generic.List<int>();
-                for (int i = 0; i < kvp.Value.CompleteDeck.Count; i++)
+                for (var i = 0; i < kvp.Value.CompleteDeck.Count; i++)
                 {
                     var orb = kvp.Value.CompleteDeck[i];
                     try
@@ -4100,7 +4758,9 @@ public static class MultiplayerClientPatches
                         {
                             var attack = prefab.GetComponent<Battle.Attacks.Attack>();
                             if (attack?.NextLevelPrefab != null)
+                            {
                                 upgradeableIndices.Add(i);
+                            }
                         }
                     }
                     catch { }
@@ -4113,7 +4773,7 @@ public static class MultiplayerClientPatches
                     continue;
                 }
 
-                int idx = upgradeableIndices[UnityEngine.Random.Range(0, upgradeableIndices.Count)];
+                var idx = upgradeableIndices[UnityEngine.Random.Range(0, upgradeableIndices.Count)];
                 var orbToUpgrade = kvp.Value.CompleteDeck[idx];
                 try
                 {
@@ -4121,8 +4781,8 @@ public static class MultiplayerClientPatches
                     var nextLevel = orbPrefab?.GetComponent<Battle.Attacks.Attack>()?.NextLevelPrefab;
                     if (nextLevel != null)
                     {
-                        string newName = nextLevel.name.Replace("(Clone)", "").Trim();
-                        int newLevel = nextLevel.GetComponent<Battle.Attacks.Attack>()?.Level ?? (orbToUpgrade.Level + 1);
+                        var newName = nextLevel.name.Replace("(Clone)", "").Trim();
+                        var newLevel = nextLevel.GetComponent<Battle.Attacks.Attack>()?.Level ?? (orbToUpgrade.Level + 1);
                         kvp.Value.CompleteDeck[idx] = new GameState.SerializedOrb
                         {
                             PrefabName = newName,
@@ -4155,20 +4815,35 @@ public static class MultiplayerClientPatches
     public static void RelicManager_AddRelic_SharePostfix(Relics.Relic relic)
     {
         if (!IsHosting)
+        {
             return;
+        }
+
         if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != "TextScenario")
+        {
             return;
+        }
+
         if (relic == null)
+        {
             return;
+        }
         // When TextScenarioPhaseActive, clients handle their own dialogue — don't double-apply
         if (Events.Handlers.Coop.CoopRewardState.TextScenarioPhaseActive)
+        {
             return;
+        }
 
         var services = MultiplayerPlugin.Services;
         if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true)
+        {
             return;
+        }
+
         if (coopState.TotalPlayerCount < 2)
+        {
             return;
+        }
 
         try
         {
@@ -4178,17 +4853,22 @@ public static class MultiplayerClientPatches
             foreach (var kvp in coopState.PlayerStates)
             {
                 if (kvp.Key == coopState.ActivePlayerSlot)
+                {
                     continue;
+                }
 
                 // Check if player already has this relic
-                bool alreadyOwns = false;
+                var alreadyOwns = false;
                 foreach (var r in kvp.Value.OwnedRelics)
                 {
                     if (r.Effect == (int)relic.effect)
                     { alreadyOwns = true; break; }
                 }
+
                 if (alreadyOwns)
+                {
                     continue;
+                }
 
                 kvp.Value.OwnedRelics.Add(new GameState.SerializedRelic
                 {
@@ -4217,10 +4897,10 @@ public static class MultiplayerClientPatches
             var t = typeof(Random.State);
             var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
             object boxed = state;
-            int s0 = (int)t.GetField("s0", flags).GetValue(boxed);
-            int s1 = (int)t.GetField("s1", flags).GetValue(boxed);
-            int s2 = (int)t.GetField("s2", flags).GetValue(boxed);
-            int s3 = (int)t.GetField("s3", flags).GetValue(boxed);
+            var s0 = (int)t.GetField("s0", flags).GetValue(boxed);
+            var s1 = (int)t.GetField("s1", flags).GetValue(boxed);
+            var s2 = (int)t.GetField("s2", flags).GetValue(boxed);
+            var s3 = (int)t.GetField("s3", flags).GetValue(boxed);
             return $"{s0},{s1},{s2},{s3}";
         }
         catch { return null; }
@@ -4231,10 +4911,16 @@ public static class MultiplayerClientPatches
         try
         {
             if (string.IsNullOrEmpty(s))
+            {
                 return null;
+            }
+
             var parts = s.Split(',');
             if (parts.Length != 4)
+            {
                 return null;
+            }
+
             Random.InitState(0);
             var state = Random.state;
             var t = typeof(Random.State);
@@ -4264,9 +4950,14 @@ public static class MultiplayerClientPatches
     public static void BattleController_Awake_Postfix()
     {
         if (!IsHosting)
+        {
             return;
+        }
+
         if (!UI.LobbyUI.GameStartReceived)
+        {
             return;
+        }
 
         var coopSubs = CoopSubscriptions.Instance;
         if (coopSubs == null)
@@ -4303,9 +4994,15 @@ public static class MultiplayerClientPatches
     public static bool ChestScenarioController_OpenChest_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         if (AllowTreasureLogic)
+        {
             return true;
+        }
+
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked ChestScenarioController.OpenChest on client");
         return false;
     }
@@ -4315,19 +5012,40 @@ public static class MultiplayerClientPatches
     public static bool RelicManager_AddRelic_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         if (AllowRelicSync)
+        {
             return true;
+        }
+
         if (AllowNativeRewardLogic)
+        {
             return true;
+        }
+
         if (AllowShopLogic)
+        {
             return true;
+        }
+
         if (AllowTreasureLogic)
+        {
             return true;
+        }
+
         if (AllowPegMinigameLogic)
+        {
             return true;
+        }
+
         if (AllowTextScenarioLogic)
+        {
             return true;
+        }
+
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked RelicManager.AddRelic on client");
         return false;
     }
@@ -4337,9 +5055,15 @@ public static class MultiplayerClientPatches
     public static bool RelicManager_RemoveRelic_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         if (AllowRelicSync)
+        {
             return true;
+        }
+
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked RelicManager.RemoveRelic on client");
         return false;
     }
@@ -4349,9 +5073,15 @@ public static class MultiplayerClientPatches
     public static bool RelicManager_RemoveRelicByEffect_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         if (AllowRelicSync)
+        {
             return true;
+        }
+
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked RelicManager.RemoveRelic(RelicEffect) on client");
         return false;
     }
@@ -4361,7 +5091,10 @@ public static class MultiplayerClientPatches
     public static bool Enemy_Damage_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         return false;
     }
 
@@ -4370,7 +5103,10 @@ public static class MultiplayerClientPatches
     public static bool AttackManager_Attack_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked AttackManager.Attack on client");
         return false;
     }
@@ -4380,16 +5116,24 @@ public static class MultiplayerClientPatches
     public static bool DeckManager_ShuffleCompleteDeck_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         if (UI.LobbyUI.GameStartReceived && Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn)
+        {
             return true;
+        }
         // TextScenario dialogues (Mirror Duplicate, Helpful Spirits, etc.) call
         // DeckManager.DialoguePopulate* helpers that internally call ShuffleCompleteDeck
         // to pick which orbs to offer. Blocking it here leaves shuffledDeck empty,
         // the dialogue's randomOrbN variables never populate, and the UI softlocks
         // because no orb-choice buttons appear.
         if (AllowTextScenarioLogic)
+        {
             return true;
+        }
+
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DeckManager.ShuffleCompleteDeck on client");
         return false;
     }
@@ -4399,13 +5143,25 @@ public static class MultiplayerClientPatches
     public static bool PlayerHealthController_Damage_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         if (AllowNativeRewardLogic)
+        {
             return true;
+        }
+
         if (AllowShopLogic)
+        {
             return true;
+        }
+
         if (AllowTextScenarioLogic)
+        {
             return true;
+        }
+
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked PlayerHealthController.Damage on client");
         return false;
     }
@@ -4419,27 +5175,41 @@ public static class MultiplayerClientPatches
     public static bool PlayerHealthController_CheckForDeathAndUpdateBar_Prefix(PlayerHealthController __instance)
     {
         if (!IsHosting || !UI.LobbyUI.GameStartReceived)
+        {
             return true;
+        }
 
         var services = MultiplayerPlugin.Services;
         if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true)
+        {
             return true;
+        }
+
         if (coopState.TotalPlayerCount < 2)
+        {
             return true;
+        }
 
         // If health is still above 0, let the normal update run (just updates the bar)
         var healthField = HarmonyLib.AccessTools.Field(typeof(PlayerHealthController), "_playerHealth");
         var healthVar = healthField?.GetValue(__instance);
         if (healthVar == null)
+        {
             return true;
+        }
 
         var valueProp = healthVar.GetType().GetProperty("Value");
         if (valueProp == null)
+        {
             return true;
-        float hp = (float)valueProp.GetValue(healthVar);
+        }
+
+        var hp = (float)valueProp.GetValue(healthVar);
 
         if (hp > 0f)
+        {
             return true; // not dead, let normal flow update the bar
+        }
 
         // Active player is dead. Only allow game over if ALL players are dead.
         if (!coopState.AllPlayersDead)
@@ -4452,7 +5222,9 @@ public static class MultiplayerClientPatches
             {
                 var setMethod = healthVar.GetType().GetMethod("Set", new[] { typeof(float) });
                 if (setMethod != null && hp < 0f)
+                {
                     setMethod.Invoke(healthVar, new object[] { 0f });
+                }
             }
             catch { }
 
@@ -4460,7 +5232,9 @@ public static class MultiplayerClientPatches
             // reads exactly 0 (not a negative) when deciding to skip this slot.
             var activeState = coopState.GetPlayerState(coopState.ActivePlayerSlot);
             if (activeState != null && activeState.CurrentHealth < 0f)
+            {
                 activeState.CurrentHealth = 0f;
+            }
 
             MultiplayerPlugin.Logger?.LogInfo(
                 $"[ClientPatches] Active player (slot {coopState.ActivePlayerSlot}) died but other players alive — suppressing game over, clamped hp to 0");
@@ -4490,15 +5264,25 @@ public static class MultiplayerClientPatches
     {
         __state = null;
         if (!IsHosting)
+        {
             return;
+        }
 
         var services = MultiplayerPlugin.Services;
         if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true)
+        {
             return;
+        }
+
         if (coopState.TotalPlayerCount < 2)
+        {
             return;
+        }
+
         if (coopState.ActivePlayerSlot == 0)
+        {
             return; // heal is for the host itself — let VFX play
+        }
 
         try
         {
@@ -4528,7 +5312,10 @@ public static class MultiplayerClientPatches
     public static void PlayerHealthController_Heal_Postfix(PlayerHealthController __instance, object[] __state)
     {
         if (__state == null)
+        {
             return;
+        }
+
         try
         {
             var floatingTextField = __state[0] as System.Reflection.FieldInfo;
@@ -4564,17 +5351,26 @@ public static class MultiplayerClientPatches
     public static bool BattleController_TriggerVictory_Prefix()
     {
         if (!IsHosting)
+        {
             return true;
+        }
 
         var services = MultiplayerPlugin.Services;
         if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true)
+        {
             return true;
+        }
+
         if (coopState.TotalPlayerCount < 2)
+        {
             return true;
+        }
 
         var phc = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
         if (phc == null)
+        {
             return true;
+        }
 
         // Case A: everyone is dead — drive the defeat flow and skip native victory.
         // The PHC.CheckForDeathAndUpdateBar prefix lets it through when AllPlayersDead.
@@ -4591,6 +5387,7 @@ public static class MultiplayerClientPatches
                 MultiplayerPlugin.Logger?.LogWarning(
                     $"[ClientPatches] TriggerVictory defeat route failed: {ex.Message}");
             }
+
             return false;
         }
 
@@ -4609,8 +5406,7 @@ public static class MultiplayerClientPatches
                 }
 
                 var hostState = coopState.GetPlayerState(0);
-                if (hostState != null)
-                    hostState.CurrentHealth = 1;
+                hostState?.CurrentHealth = 1;
 
                 MultiplayerPlugin.Logger?.LogInfo(
                     "[ClientPatches] TriggerVictory: host was dead but others alive — revived host PHC to 1 HP so victory fires");
@@ -4637,19 +5433,31 @@ public static class MultiplayerClientPatches
         try
         {
             if (MultiplayerPlugin.Services == null)
+            {
                 return;
+            }
+
             if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode))
+            {
                 return;
+            }
+
             if (!mode.IsHosting && !mode.IsSpectating)
+            {
                 return;
+            }
 
             var healthTextField = HarmonyLib.AccessTools.Field(typeof(PlayerHealthController), "_healthText");
             if (healthTextField?.GetValue(__instance) is UnityEngine.Component healthText && healthText != null)
+            {
                 healthText.gameObject.SetActive(false);
+            }
 
             var barField = HarmonyLib.AccessTools.Field(typeof(PlayerHealthController), "_barScript");
             if (barField?.GetValue(__instance) is UnityEngine.Component barScript && barScript != null)
+            {
                 barScript.gameObject.SetActive(false);
+            }
         }
         catch (System.Exception ex)
         {
@@ -4667,17 +5475,35 @@ public static class MultiplayerClientPatches
     public static bool CurrencyManager_AddGold_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         if (AllowCurrencySync)
+        {
             return true;
+        }
+
         if (AllowNativeRewardLogic)
+        {
             return true;
+        }
+
         if (AllowShopLogic)
+        {
             return true;
+        }
+
         if (AllowTreasureLogic)
+        {
             return true;
+        }
+
         if (AllowTextScenarioLogic)
+        {
             return true;
+        }
+
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked CurrencyManager.AddGold on client");
         return false;
     }
@@ -4687,15 +5513,30 @@ public static class MultiplayerClientPatches
     public static bool CurrencyManager_RemoveGold_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         if (AllowCurrencySync)
+        {
             return true;
+        }
+
         if (AllowNativeRewardLogic)
+        {
             return true;
+        }
+
         if (AllowShopLogic)
+        {
             return true;
+        }
+
         if (AllowTextScenarioLogic)
+        {
             return true;
+        }
+
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked CurrencyManager.RemoveGold on client");
         return false;
     }
@@ -4711,13 +5552,25 @@ public static class MultiplayerClientPatches
     public static void CurrencyManager_RemoveGold_Postfix(int amount)
     {
         if (!ShouldSuppressClientLogic)
+        {
             return;
+        }
+
         if (!AllowNativeRewardLogic)
+        {
             return;
+        }
+
         if (AllowCurrencySync)
+        {
             return;
+        }
+
         if (amount <= 0)
+        {
             return;
+        }
+
         try
         {
             var services = MultiplayerPlugin.Services;
@@ -4767,15 +5620,30 @@ public static class MultiplayerClientPatches
     public static bool DeckManager_AddOrbToDeck_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         if (AllowNativeRewardLogic)
+        {
             return true;
+        }
+
         if (AllowShopLogic)
+        {
             return true;
+        }
+
         if (AllowPegMinigameLogic)
+        {
             return true;
+        }
+
         if (AllowTextScenarioLogic)
+        {
             return true;
+        }
+
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DeckManager.AddOrbToDeck on client");
         return false;
     }
@@ -4785,7 +5653,10 @@ public static class MultiplayerClientPatches
     public static bool DeckManager_RemoveOrbFromBattleDeck_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DeckManager.RemoveOrbFromBattleDeck on client");
         return false;
     }
@@ -4804,20 +5675,28 @@ public static class MultiplayerClientPatches
     public static bool PostBattleController_StartNavigation_Prefix(Battle.PostBattleController __instance)
     {
         if (!UI.LobbyUI.GameStartReceived)
+        {
             return true; // not coop
+        }
 
         var services = MultiplayerPlugin.Services;
         if (services == null)
+        {
             return true;
+        }
 
         if (IsHosting)
         {
             if (!Events.Handlers.Coop.CoopRewardState.HostRewardPhaseActive)
+            {
                 return true; // not in coop reward phase — normal flow
+            }
 
             // Save host's updated state after rewards
             if (services.TryResolve<GameState.CoopStateManager>(out var coopState))
+            {
                 coopState.SaveActivePlayerState();
+            }
 
             Events.Handlers.Coop.CoopRewardState.HostRewardsDone = true;
             Events.Handlers.Coop.CoopRewardState.PendingPostBattleController = __instance;
@@ -4832,7 +5711,9 @@ public static class MultiplayerClientPatches
                 AllowNativeRewardLogic = false;
 
                 if (services.TryResolve<IGameEventRegistry>(out var reg))
+                {
                     reg.Dispatch(new Events.Network.Coop.AllChoicesCompleteEvent { Phase = "post_battle" });
+                }
 
                 return true; // let StartNavigation run
             }
@@ -4854,7 +5735,9 @@ public static class MultiplayerClientPatches
             {
                 var completeEvent = CaptureClientPostBattleState();
                 if (services.TryResolve<Network.IMessageSender>(out var sender))
+                {
                     sender.Send(completeEvent);
+                }
             }
             catch (System.Exception ex)
             {
@@ -4899,7 +5782,9 @@ public static class MultiplayerClientPatches
         // Gold
         var currency = Currency.CurrencyManager.Instance;
         if (currency != null)
+        {
             evt.Gold = currency.GoldAmount;
+        }
 
         // Deck
         var completeDeck = DeckManager.completeDeck;
@@ -4908,7 +5793,10 @@ public static class MultiplayerClientPatches
             foreach (var orbGO in completeDeck)
             {
                 if (orbGO == null)
+                {
                     continue;
+                }
+
                 var attack = orbGO.GetComponent<Battle.Attacks.Attack>();
                 evt.CompleteDeck.Add(new Events.Network.Coop.PostBattleOrbEntry
                 {
@@ -4948,11 +5836,19 @@ public static class MultiplayerClientPatches
         int ____inhaleSlot)
     {
         if (!IsHosting)
+        {
             return true;
+        }
+
         if (!UI.LobbyUI.GameStartReceived)
+        {
             return true;
+        }
+
         if (Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn)
+        {
             return true;
+        }
 
         // Client's turn — skip multiplier + fire pit damage from host's Weighted Chip.
         // Still handle inhale zone (separate relic) if applicable.
@@ -4980,11 +5876,19 @@ public static class MultiplayerClientPatches
     public static bool PredictionManager_Predict_Prefix()
     {
         if (!IsHosting)
+        {
             return true;
+        }
+
         if (!UI.LobbyUI.GameStartReceived)
+        {
             return true;
+        }
+
         if (Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn)
+        {
             return true;
+        }
         // Allow prediction during non-battle phases (navigation, post-battle, map).
         // The turn system only tracks battle turns — outside active combat the host
         // should always see the aimer (e.g. navigation orb after victory).
@@ -4992,7 +5896,10 @@ public static class MultiplayerClientPatches
         if (state == BattleController.BattleState.NAVIGATION
             || state == BattleController.BattleState.AWAITING_POST_BATTLE_CONTROLLER
             || state == BattleController.BattleState.NAVIGATION_COMPLETE)
+        {
             return true;
+        }
+
         return false; // Not host's turn — suppress prediction
     }
 
@@ -5001,18 +5908,33 @@ public static class MultiplayerClientPatches
     public static bool PredictionManager_SetLineRendererStatus_Prefix(bool status)
     {
         if (!status)
+        {
             return true; // Always allow disabling
+        }
+
         if (!IsHosting)
+        {
             return true;
+        }
+
         if (!UI.LobbyUI.GameStartReceived)
+        {
             return true;
+        }
+
         if (Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn)
+        {
             return true;
+        }
+
         var state = BattleController.CurrentBattleState;
         if (state == BattleController.BattleState.NAVIGATION
             || state == BattleController.BattleState.AWAITING_POST_BATTLE_CONTROLLER
             || state == BattleController.BattleState.NAVIGATION_COMPLETE)
+        {
             return true;
+        }
+
         return false; // Not host's turn — don't re-enable prediction line
     }
 
@@ -5029,11 +5951,19 @@ public static class MultiplayerClientPatches
     public static void TargetingManager_SetEnemyAsTarget_Postfix(Battle.Enemies.Enemy enemy)
     {
         if (!ShouldSuppressClientLogic)
+        {
             return;
+        }
+
         if (!UI.LobbyUI.GameStartReceived)
+        {
             return;
+        }
+
         if (!Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn)
+        {
             return;
+        }
 
         try
         {
@@ -5042,7 +5972,9 @@ public static class MultiplayerClientPatches
             {
                 var services = MultiplayerPlugin.Services;
                 if (services?.TryResolve<Utility.EnemyIdentifier>(out var eid) == true)
+                {
                     guid = eid.GetGuid(enemy);
+                }
             }
 
             var services2 = MultiplayerPlugin.Services;
@@ -5079,7 +6011,10 @@ public static class MultiplayerClientPatches
         // StartConversation (called inside DisableFadeCurtain) is also allowed
         // so the native dialogue UI renders. Response clicks are blocked separately.
         if (ShouldSuppressClientLogic)
+        {
             MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] ALLOWING DisableFadeCurtain on client (native dialogue UI)");
+        }
+
         return true;
     }
 
@@ -5093,7 +6028,10 @@ public static class MultiplayerClientPatches
     public static bool DialogueManager_StartConversation_Prefix()
     {
         if (ShouldSuppressClientLogic)
+        {
             MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] ALLOWING StartConversation on client (native dialogue UI)");
+        }
+
         return true;
     }
 
@@ -5107,7 +6045,9 @@ public static class MultiplayerClientPatches
     public static bool DialogueSystemScenario_ConversationEnded_Prefix(DialogueSystemScenario __instance)
     {
         if (!UI.LobbyUI.GameStartReceived)
+        {
             return true; // Not in coop
+        }
 
         if (ShouldSuppressClientLogic)
         {
@@ -5119,6 +6059,7 @@ public static class MultiplayerClientPatches
                 CaptureAndSendTextScenarioState();
                 return false;
             }
+
             MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DialogueSystemScenario.ConversationEnded (spectating)");
             return false;
         }
@@ -5128,7 +6069,9 @@ public static class MultiplayerClientPatches
             // HOST: save own state first
             var services = MultiplayerPlugin.Services;
             if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) == true)
+            {
                 coopState.SaveActivePlayerState();
+            }
 
             Events.Handlers.Coop.CoopRewardState.HostTextScenarioDone = true;
 
@@ -5138,7 +6081,10 @@ public static class MultiplayerClientPatches
                 Events.Handlers.Coop.CoopRewardState.TextScenarioPhaseActive = false;
                 Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = false;
                 if (services?.TryResolve<Events.IGameEventRegistry>(out var reg) == true)
+                {
                     reg.Dispatch(new Events.Network.Coop.AllChoicesCompleteEvent { Phase = "text_scenario" });
+                }
+
                 return true; // Let ConversationEnded run normally (calls StartNavigation)
             }
             else
@@ -5161,7 +6107,9 @@ public static class MultiplayerClientPatches
     private static void CaptureAndSendTextScenarioState()
     {
         if (Events.Handlers.Coop.CoopRewardState.ClientTextScenarioChoiceSent)
+        {
             return;
+        }
 
         try
         {
@@ -5178,10 +6126,13 @@ public static class MultiplayerClientPatches
                 foreach (var orbGo in DeckManager.completeDeck)
                 {
                     if (orbGo == null)
+                    {
                         continue;
+                    }
+
                     var attack = orbGo.GetComponent<Battle.Attacks.Attack>();
                     var prefabName = orbGo.name.Replace("(Clone)", "").Trim();
-                    string guid = orbId?.GetGuid(orbGo);
+                    var guid = orbId?.GetGuid(orbGo);
                     evt.CompleteDeck.Add(new GameState.SerializedOrb
                     {
                         PrefabName = prefabName,
@@ -5212,16 +6163,25 @@ public static class MultiplayerClientPatches
             foreach (var rm in relicManagers)
             {
                 if (rm == null)
+                {
                     continue;
+                }
+
                 var ownedDict = ownedRelicsField?.GetValue(rm)
                     as System.Collections.Generic.Dictionary<Relics.RelicEffect, Relics.Relic>;
                 if (ownedDict == null)
+                {
                     continue;
+                }
+
                 foreach (var kvp in ownedDict)
                 {
                     var relic = kvp.Value;
                     if (relic == null)
+                    {
                         continue;
+                    }
+
                     evt.Relics.Add(new GameState.SerializedRelic
                     {
                         Effect = (int)relic.effect,
@@ -5229,6 +6189,7 @@ public static class MultiplayerClientPatches
                         Rarity = (int)relic.globalRarity,
                     });
                 }
+
                 break;
             }
 
@@ -5261,9 +6222,15 @@ public static class MultiplayerClientPatches
     public static bool StandardUIResponseButton_OnClick_Prefix()
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         if (AllowTextScenarioLogic)
+        {
             return true;
+        }
+
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked StandardUIResponseButton.OnClick (spectating)");
         return false;
     }
@@ -5296,6 +6263,7 @@ public static class MultiplayerClientPatches
             MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DialogueSystemScenario.StartNavigation (spectating)");
             return false;
         }
+
         return true;
     }
 
@@ -5314,20 +6282,26 @@ public static class MultiplayerClientPatches
     public static void StandardUIResponseButton_OnSelect_Postfix(StandardUIResponseButton __instance)
     {
         if (!IsHosting)
+        {
             return;
+        }
 
         try
         {
             // Find this button's index in its parent menu panel
             var dialogueUI = UnityEngine.Object.FindObjectOfType<StandardDialogueUI>();
             if (dialogueUI == null)
+            {
                 return;
+            }
 
             var menuPanel = dialogueUI.conversationUIElements?.defaultMenuPanel;
             if (menuPanel?.buttons == null)
+            {
                 return;
+            }
 
-            for (int i = 0; i < menuPanel.buttons.Length; i++)
+            for (var i = 0; i < menuPanel.buttons.Length; i++)
             {
                 if (menuPanel.buttons[i] == __instance)
                 {
@@ -5354,7 +6328,10 @@ public static class MultiplayerClientPatches
     public static bool ShopManager_SetUpRelicOffer_Prefix(Scenarios.Shop.ShopManager __instance)
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         try
         {
             ShopRelicSyncState.CurrentShopManager = __instance;
@@ -5364,6 +6341,7 @@ public static class MultiplayerClientPatches
         {
             MultiplayerPlugin.Logger?.LogWarning($"[ShopRelicSync] Prefix failed: {ex.Message}");
         }
+
         return false;
     }
 
@@ -5397,9 +6375,14 @@ public static class MultiplayerClientPatches
     public static void ShopManager_PurchaseItem_Postfix(Scenarios.Shop.IPurchasableItem item)
     {
         if (!ShouldSuppressClientLogic)
+        {
             return;
+        }
+
         if (!AllowShopLogic)
+        {
             return;
+        }
 
         try
         {
@@ -5465,7 +6448,9 @@ public static class MultiplayerClientPatches
     public static bool ShopManager_CloseStore_Prefix(Scenarios.Shop.ShopManager __instance)
     {
         if (!UI.LobbyUI.GameStartReceived)
+        {
             return true; // Not in coop
+        }
 
         if (ShouldSuppressClientLogic)
         {
@@ -5474,14 +6459,16 @@ public static class MultiplayerClientPatches
             // the screen, but the EventSystem can still route clicks to the
             // button if the overlay canvas somehow doesn't block them.
             if (Events.Handlers.Coop.CoopRewardState.ClientShopChoiceSent)
+            {
                 return false;
+            }
 
             try
             {
                 AllowShopLogic = false;
 
-                int remainingGold = Currency.CurrencyManager.Instance?.GoldAmount ?? 0;
-                int goldSpent = ClientShopStartGold - remainingGold;
+                var remainingGold = Currency.CurrencyManager.Instance?.GoldAmount ?? 0;
+                var goldSpent = ClientShopStartGold - remainingGold;
 
                 var evt = new Events.Network.Scenarios.ShopCompleteEvent
                 {
@@ -5538,7 +6525,10 @@ public static class MultiplayerClientPatches
                 // "Waiting for host to pick next stage..." overlay.
                 var services = MultiplayerPlugin.Services;
                 if (services?.TryResolve<Events.IGameEventRegistry>(out var reg) == true)
+                {
                     reg.Dispatch(new Events.Network.Coop.AllChoicesCompleteEvent { Phase = "shop" });
+                }
+
                 return true; // Let CloseStore run normally
             }
             else
@@ -5564,7 +6554,9 @@ public static class MultiplayerClientPatches
     public static bool ChestScenarioController_Skip_Prefix(Scenarios.ChestScenarioController __instance)
     {
         if (!UI.LobbyUI.GameStartReceived)
+        {
             return true; // Not in coop
+        }
 
         if (ShouldSuppressClientLogic)
         {
@@ -5584,6 +6576,7 @@ public static class MultiplayerClientPatches
                         });
                         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Client skipped treasure relic — sent TreasureCompleteEvent");
                     }
+
                     Events.Handlers.Coop.CoopRewardState.ClientTreasureChoiceSent = true;
                 }
                 catch (System.Exception ex)
@@ -5611,7 +6604,10 @@ public static class MultiplayerClientPatches
                 Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = false;
                 var services = MultiplayerPlugin.Services;
                 if (services?.TryResolve<Events.IGameEventRegistry>(out var reg) == true)
+                {
                     reg.Dispatch(new Events.Network.Coop.AllChoicesCompleteEvent { Phase = "treasure" });
+                }
+
                 return true; // Let Skip run normally
             }
             else
@@ -5635,7 +6631,9 @@ public static class MultiplayerClientPatches
     public static void BattleUpgradeCanvas_AcceptRelic_Postfix(Relics.Relic relic)
     {
         if (!ShouldSuppressClientLogic)
+        {
             return;
+        }
 
         // Track boss/rare relic choice during post-battle native reward phase
         if (AllowNativeRewardLogic)
@@ -5648,9 +6646,14 @@ public static class MultiplayerClientPatches
 
         // Treasure-specific flow
         if (!AllowTreasureLogic)
+        {
             return;
+        }
+
         if (Events.Handlers.Coop.CoopRewardState.ClientTreasureChoiceSent)
+        {
             return;
+        }
 
         try
         {
@@ -5664,6 +6667,7 @@ public static class MultiplayerClientPatches
                 });
                 MultiplayerPlugin.Logger?.LogInfo($"[ClientPatch] Client accepted treasure relic '{relic.locKey}' — sent TreasureCompleteEvent");
             }
+
             Events.Handlers.Coop.CoopRewardState.ClientTreasureChoiceSent = true;
             // Show the waiting overlay once this player is done. AcceptRelic only
             // closes the in-scene relic panel; the chest scene stays until every
@@ -5703,7 +6707,10 @@ public static class MultiplayerClientPatches
     public static bool StatusEffectIconManager_UpdateStatusEffects_Prefix()
     {
         if (!GameState.CoopStateManager.SuppressStatusEffectUI)
+        {
             return true;
+        }
+
         return false; // Skip the UI update — effects are still in the list for gameplay
     }
 
@@ -5729,7 +6736,9 @@ public static class MultiplayerClientPatches
         BattleController __instance, ref IEnumerator __result)
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
 
         _bombsRegularField?.SetValue(__instance, 0);
         _bombsRiggedField?.SetValue(__instance, 0);
@@ -5762,7 +6771,10 @@ public static class MultiplayerClientPatches
     {
         var owned = new System.Collections.Generic.HashSet<int>();
         if (rm == null)
+        {
             return owned;
+        }
+
         try
         {
             var ownedField = AccessTools.Field(typeof(Relics.RelicManager), "_ownedRelics");
@@ -5771,10 +6783,13 @@ public static class MultiplayerClientPatches
             if (dict != null)
             {
                 foreach (var k in dict.Keys)
+                {
                     owned.Add((int)k);
+                }
             }
         }
         catch { }
+
         return owned;
     }
 
@@ -5794,39 +6809,59 @@ public static class MultiplayerClientPatches
             foreach (var r in all)
             {
                 if (r == null)
+                {
                     continue;
+                }
+
                 if (r.globalRarity != rarity)
+                {
                     continue;
+                }
+
                 if (owned.Contains((int)r.effect))
+                {
                     continue;
+                }
+
                 candidates.Add(r);
             }
+
             if (candidates.Count == 0)
             {
                 // Fallback: allow any rarity if pool empty
                 foreach (var r in all)
                 {
                     if (r == null)
+                    {
                         continue;
+                    }
+
                     if (owned.Contains((int)r.effect))
+                    {
                         continue;
+                    }
+
                     candidates.Add(r);
                 }
             }
+
             if (candidates.Count == 0)
+            {
                 return null;
+            }
             // Stable order so the slot-keyed RNG produces consistent results across runs.
             candidates.Sort((a, b) => string.CompareOrdinal(a?.name, b?.name));
             int pick;
             if (slotIndex >= 0)
             {
-                int seed = unchecked(((StaticGameData.currentSeed ?? "").GetHashCode() ^ (slotIndex * 7919) ^ ((int)rarity * 31) ^ (StaticGameData.totalFloorCount * 104729)));
+                var seed = unchecked(((StaticGameData.currentSeed ?? "").GetHashCode() ^ (slotIndex * 7919) ^ ((int)rarity * 31) ^ (StaticGameData.totalFloorCount * 104729)));
                 pick = new System.Random(seed).Next(0, candidates.Count);
             }
             else
             {
                 pick = UnityEngine.Random.Range(0, candidates.Count);
             }
+
             return candidates[pick];
         }
         catch (System.Exception ex)
@@ -5847,45 +6882,68 @@ public static class MultiplayerClientPatches
         try
         {
             if (count <= 0)
+            {
                 return picked;
+            }
+
             var owned = GetOwnedEffects(rm);
             var all = UnityEngine.Resources.FindObjectsOfTypeAll<Relics.Relic>();
             var candidates = new System.Collections.Generic.List<Relics.Relic>();
             foreach (var r in all)
             {
                 if (r == null)
+                {
                     continue;
+                }
+
                 if (r.globalRarity != rarity)
+                {
                     continue;
+                }
+
                 if (owned.Contains((int)r.effect))
+                {
                     continue;
+                }
+
                 candidates.Add(r);
             }
+
             if (candidates.Count == 0)
             {
                 foreach (var r in all)
                 {
                     if (r == null)
+                    {
                         continue;
+                    }
+
                     if (owned.Contains((int)r.effect))
+                    {
                         continue;
+                    }
+
                     candidates.Add(r);
                 }
             }
+
             if (candidates.Count == 0)
+            {
                 return picked;
+            }
+
             candidates.Sort((a, b) => string.CompareOrdinal(a?.name, b?.name));
 
-            int seed = unchecked(((StaticGameData.currentSeed ?? "").GetHashCode()
+            var seed = unchecked(((StaticGameData.currentSeed ?? "").GetHashCode()
                 ^ (slotIndex * 7919)
                 ^ ((int)rarity * 31)
                 ^ (StaticGameData.totalFloorCount * 104729)));
             var rng = new System.Random(seed);
             // Fisher-Yates partial shuffle for the first `count` slots.
-            int take = System.Math.Min(count, candidates.Count);
-            for (int i = 0; i < take; i++)
+            var take = System.Math.Min(count, candidates.Count);
+            for (var i = 0; i < take; i++)
             {
-                int j = i + rng.Next(0, candidates.Count - i);
+                var j = i + rng.Next(0, candidates.Count - i);
                 var tmp = candidates[i];
                 candidates[i] = candidates[j];
                 candidates[j] = tmp;
@@ -5896,6 +6954,7 @@ public static class MultiplayerClientPatches
         {
             MultiplayerPlugin.Logger?.LogWarning($"[ClientPatch] PickMultipleLocalRelics failed: {ex.Message}");
         }
+
         return picked;
     }
 
@@ -5903,13 +6962,19 @@ public static class MultiplayerClientPatches
     private static Relics.Relic FindRelicByName(string name)
     {
         if (string.IsNullOrEmpty(name))
+        {
             return null;
+        }
+
         var all = UnityEngine.Resources.FindObjectsOfTypeAll<Relics.Relic>();
         foreach (var r in all)
         {
             if (r != null && r.name == name)
+            {
                 return r;
+            }
         }
+
         return null;
     }
 
@@ -5934,9 +6999,14 @@ public static class MultiplayerClientPatches
         //      which produces identical first-N relics on every client because the seeded
         //      queue never advances on clients (host runs all battles).
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         if (!AllowTreasureLogic && !AllowNativeRewardLogic)
+        {
             return true;
+        }
 
         try
         {
@@ -5951,7 +7021,9 @@ public static class MultiplayerClientPatches
             var relicPanel = relicPanelField?.GetValue(__instance) as GameObject;
             var relicManager = relicManagerField?.GetValue(__instance) as Relics.RelicManager;
             if (relicPanel == null)
+            {
                 return true; // fall through
+            }
 
             mainOptions?.SetActive(false);
             relicPanel.SetActive(true);
@@ -5962,9 +7034,10 @@ public static class MultiplayerClientPatches
                 { stateField.SetValue(__instance, System.Enum.Parse(stateField.FieldType, "RELIC")); }
                 catch { }
             }
+
             rarityField?.SetValue(__instance, rarity);
 
-            int mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
+            var mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
             var icons = relicPanel.GetComponentsInChildren<RelicIcon>(true);
 
             if (isTreasure)
@@ -5973,21 +7046,27 @@ public static class MultiplayerClientPatches
                 // host-authoritative pick. Fall back to slot-keyed local roll if the
                 // event hasn't arrived yet (race when client clicks chest before broadcast).
                 Relics.Relic relic = null;
-                string source = "host";
+                var source = "host";
                 if (mySlot >= 0
                     && Events.Handlers.Coop.CoopRewardState.PerSlotTreasureRelics.TryGetValue(mySlot, out var hostRelicName))
                 {
                     relic = FindRelicByName(hostRelicName);
                     if (relic == null)
+                    {
                         source = "host(missing prefab, fallback)";
+                    }
                 }
+
                 if (relic == null)
                 {
                     relic = PickRandomLocalRelic(rarity, relicManager, mySlot);
                     if (source == "host")
+                    {
                         source = "local-slot-keyed";
+                    }
                 }
-                for (int i = 0; i < icons.Length; i++)
+
+                for (var i = 0; i < icons.Length; i++)
                 {
                     if (i == 0 && relic != null)
                     {
@@ -6000,6 +7079,7 @@ public static class MultiplayerClientPatches
                         icons[i].transform.parent.gameObject.SetActive(false);
                     }
                 }
+
                 MultiplayerPlugin.Logger?.LogInfo(
                     $"[ClientPatch] Treasure relic grant ({source}) slot={mySlot} relic=" +
                     $"'{relic?.name ?? "<none>"}' rarity={rarity}");
@@ -6008,11 +7088,15 @@ public static class MultiplayerClientPatches
 
             // Non-treasure (post-battle) path: replicate native count logic and do a
             // slot-keyed multi-pick.
-            int num = 1;
+            var num = 1;
             if (rarity == Relics.RelicRarity.BOSS)
+            {
                 num = 3;
+            }
             else if (rarity == Relics.RelicRarity.RARE)
+            {
                 num = 2;
+            }
 
             if (rarity == Relics.RelicRarity.BOSS)
             {
@@ -6022,16 +7106,23 @@ public static class MultiplayerClientPatches
 
             var mapDataBattle = StaticGameData.dataToLoad as MapDataBattle;
             if (mapDataBattle != null && mapDataBattle.name == "MimicMinibossMapData")
+            {
                 num++;
+            }
             // Side-effect-bearing relic checks must run so usage counters tick correctly.
             if (relicManager != null && relicManager.AttemptUseRelic(Relics.RelicEffect.ADDITIONAL_ORB_RELIC_OPTIONS))
+            {
                 num++;
-            if (relicManager != null && relicManager.AttemptUseRelic(Relics.RelicEffect.ADDITIONAL_PEGLIN_CHOICES))
-                num++;
+            }
 
-            int slotForRng = mySlot >= 0 ? mySlot : 0;
+            if (relicManager != null && relicManager.AttemptUseRelic(Relics.RelicEffect.ADDITIONAL_PEGLIN_CHOICES))
+            {
+                num++;
+            }
+
+            var slotForRng = mySlot >= 0 ? mySlot : 0;
             var picks = PickMultipleLocalRelics(rarity, num, relicManager, slotForRng);
-            for (int i = 0; i < icons.Length; i++)
+            for (var i = 0; i < icons.Length; i++)
             {
                 if (i < picks.Count && picks[i] != null)
                 {
@@ -6047,7 +7138,10 @@ public static class MultiplayerClientPatches
 
             var pickNames = new System.Collections.Generic.List<string>();
             foreach (var p in picks)
+            {
                 pickNames.Add(p?.name ?? "<null>");
+            }
+
             MultiplayerPlugin.Logger?.LogInfo(
                 $"[ClientPatch] Post-battle relic grant slot={mySlot} rarity={rarity} count={picks.Count} relics=[{string.Join(",", pickNames)}]");
             return false;
@@ -6080,15 +7174,21 @@ public static class MultiplayerClientPatches
         {
             var services = MultiplayerPlugin.Services;
             if (services == null)
+            {
                 return true;
+            }
 
-            int mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(services);
+            var mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(services);
             if (mySlot < 0)
+            {
                 return true;
+            }
 
             if (!Events.Handlers.Coop.CoopRewardState.PerSlotOrbChoices.TryGetValue(mySlot, out var nameList)
                 || nameList == null || nameList.Count == 0)
+            {
                 return true;
+            }
 
             var addOrbButtons = AccessTools.Field(typeof(PopulateSuggestionOrbs), "addOrbButtons")
                 ?.GetValue(__instance) as PeglinUI.PostBattle.UpgradeOption[];
@@ -6100,7 +7200,9 @@ public static class MultiplayerClientPatches
             var relicMgr = __instance.relicManager;
             var cruciballMgr = __instance.cruciballManager;
             if (addOrbButtons == null || addOrbButtons.Length == 0 || deckMgr == null)
+            {
                 return true;
+            }
 
             var prefabs = ResolveOrbPrefabsByName(nameList, deckMgr);
             if (prefabs.Count == 0)
@@ -6110,7 +7212,7 @@ public static class MultiplayerClientPatches
                 return true;
             }
 
-            int num = System.Math.Min(prefabs.Count, addOrbButtons.Length);
+            var num = System.Math.Min(prefabs.Count, addOrbButtons.Length);
 
             // Replicate the native button visibility + navigation wiring.
             UnityEngine.UI.Button selectOnDown = null;
@@ -6122,31 +7224,44 @@ public static class MultiplayerClientPatches
                     { selectOnDown = b; break; }
                 }
             }
-            for (int j = 0; j < addOrbButtons.Length; j++)
+
+            for (var j = 0; j < addOrbButtons.Length; j++)
             {
-                bool active = j < num;
+                var active = j < num;
                 addOrbButtons[j].gameObject.SetActive(active);
                 if (!active)
+                {
                     continue;
+                }
+
                 var btn = addOrbButtons[j].GetComponent<UnityEngine.UI.Button>();
                 if (btn == null)
+                {
                     continue;
+                }
+
                 var nav = btn.navigation;
                 if (j > 0)
+                {
                     nav.selectOnLeft = addOrbButtons[j - 1].GetComponent<UnityEngine.UI.Button>();
+                }
+
                 if (j + 1 < num && j < addOrbButtons.Length - 1)
+                {
                     nav.selectOnRight = addOrbButtons[j + 1].GetComponent<UnityEngine.UI.Button>();
+                }
+
                 nav.selectOnDown = selectOnDown;
                 nav.selectOnUp = continueButton;
                 btn.navigation = nav;
             }
 
-            for (int m = 0; m < num; m++)
+            for (var m = 0; m < num; m++)
             {
                 var prefab = prefabs[m];
                 var attack = prefab.GetComponent<Battle.Attacks.Attack>();
-                if (attack != null)
-                    attack.SoftInit(deckMgr, relicMgr, cruciballMgr);
+                attack?.SoftInit(deckMgr, relicMgr, cruciballMgr);
+
                 var opt = addOrbButtons[m];
                 opt.SpecifiedOrb = prefab;
                 opt.upgradeType = PeglinUI.PostBattle.UpgradeOption.UpgradeType.INSPECT_NEW_ORB;
@@ -6161,10 +7276,7 @@ public static class MultiplayerClientPatches
                 {
                     var hookup = (res as UnityEngine.MonoBehaviour)
                         ?.GetComponent<PeglinUI.ControllerSupport.ControllerMenuHookup>();
-                    if (hookup != null)
-                    {
-                        hookup.LastSelected = addOrbButtons[0].gameObject;
-                    }
+                    hookup?.LastSelected = addOrbButtons[0].gameObject;
                 }
             }
             catch { /* selection focus is non-critical */ }
@@ -6192,29 +7304,43 @@ public static class MultiplayerClientPatches
             foreach (var pool in allPools)
             {
                 if (pool == null)
+                {
                     continue;
+                }
+
                 foreach (var go in pool)
                 {
                     if (go != null && go.name == name)
                     { found = go; break; }
                 }
+
                 if (found != null)
+                {
                     break;
+                }
             }
+
             if (found == null)
             {
                 // Fall back: scan all loaded Attack prefabs for a name match.
                 foreach (var attack in Resources.FindObjectsOfTypeAll<Battle.Attacks.Attack>())
                 {
                     if (attack == null || attack.gameObject == null)
+                    {
                         continue;
+                    }
+
                     if (attack.gameObject.name == name)
                     { found = attack.gameObject; break; }
                 }
             }
+
             if (found != null)
+            {
                 result.Add(found);
+            }
         }
+
         return result;
     }
 
@@ -6230,9 +7356,14 @@ public static class MultiplayerClientPatches
         Relics.RelicRarity rarity)
     {
         if (!ShouldSuppressClientLogic)
+        {
             return true;
+        }
+
         if (!AllowTextScenarioLogic)
+        {
             return true;
+        }
 
         try
         {
@@ -6244,16 +7375,18 @@ public static class MultiplayerClientPatches
             var skipButton = skipButtonField?.GetValue(__instance) as UnityEngine.UI.Button;
             var relicManager = rmField?.GetValue(__instance) as Relics.RelicManager;
             if (relicPanel == null)
+            {
                 return true;
+            }
 
             relicPanel.SetActive(true);
 
             // Slot-keyed RNG so each player picks a different relic. UnityEngine.Random
             // shares seed across all clients, which would otherwise pick the same relic.
-            int mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
+            var mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
             var relic = PickRandomLocalRelic(rarity, relicManager, mySlot);
             var icons = relicPanel.GetComponentsInChildren<RelicIcon>(true);
-            for (int i = 0; i < icons.Length; i++)
+            for (var i = 0; i < icons.Length; i++)
             {
                 if (i == 0 && relic != null)
                 {
@@ -6265,6 +7398,7 @@ public static class MultiplayerClientPatches
                     icons[i].transform.parent.gameObject.SetActive(false);
                 }
             }
+
             skipButton?.gameObject.SetActive(true);
 
             MultiplayerPlugin.Logger?.LogInfo(
@@ -6300,7 +7434,9 @@ public static class MultiplayerClientPatches
     public static bool SteamManager_Awake_Prefix(SteamManager __instance)
     {
         if (System.Environment.GetEnvironmentVariable("SKIP_STEAM_INIT") != "1")
+        {
             return true;
+        }
 
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] SKIP_STEAM_INIT set, skipping SteamManager.Awake");
 
@@ -6337,9 +7473,15 @@ public static class MultiplayerClientPatches
     public static void Act4BossPegBoardFrameManager_RegisterCallbacks_Postfix()
     {
         if (!IsHosting)
+        {
             return;
+        }
+
         if (_spiritRadiaHostSubscribed)
+        {
             return;
+        }
+
         _spiritRadiaHostSubscribed = true;
 
         global::Battle.Enemies.SpiritOfRadiaBoss.PreTransitionStarted += DispatchPreTransition;
@@ -6352,9 +7494,15 @@ public static class MultiplayerClientPatches
         try
         {
             if (MultiplayerPlugin.Services == null)
+            {
                 return;
+            }
+
             if (!MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out var registry))
+            {
                 return;
+            }
+
             MultiplayerPlugin.Logger?.LogInfo("[SpiritOfRadia] Host: dispatching Step=1 (pre-transition)");
             registry.Dispatch(new Multipeglin.Events.Network.Battle.SpiritOfRadiaPhaseTransitionEvent { Step = 1 });
         }
@@ -6369,9 +7517,15 @@ public static class MultiplayerClientPatches
         try
         {
             if (MultiplayerPlugin.Services == null)
+            {
                 return;
+            }
+
             if (!MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out var registry))
+            {
                 return;
+            }
+
             MultiplayerPlugin.Logger?.LogInfo("[SpiritOfRadia] Host: dispatching Step=2 (main transition)");
             registry.Dispatch(new Multipeglin.Events.Network.Battle.SpiritOfRadiaPhaseTransitionEvent { Step = 2 });
         }
@@ -6399,6 +7553,7 @@ public static class MultiplayerClientPatches
             __result = EmptyEnumerator();
             return false;
         }
+
         return true;
     }
 
@@ -6416,6 +7571,7 @@ public static class MultiplayerClientPatches
             __result = EmptyEnumerator();
             return false;
         }
+
         return true;
     }
 }

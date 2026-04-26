@@ -6,11 +6,8 @@ using Data;
 using HarmonyLib;
 using Loading;
 using Map;
-using Peglin.ClassSystem;
 using Multipeglin.GameState.Snapshots;
-using Multipeglin.Multiplayer;
 using Multipeglin.Patches;
-using PeglinUtils;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using Worldmap;
@@ -69,7 +66,10 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
     public static MapDataBattle TryGetCachedBattle(string name)
     {
         if (string.IsNullOrEmpty(name))
+        {
             return null;
+        }
+
         _battleCache.TryGetValue(name, out var b);
         return b;
     }
@@ -128,7 +128,7 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                         var floorField = AccessTools.Field(typeof(MapController), "floorCount");
                         if (floorField != null)
                         {
-                            int clientFloor = (int)floorField.GetValue(mc);
+                            var clientFloor = (int)floorField.GetValue(mc);
                             if (clientFloor != snapshot.MapFloorCount)
                             {
                                 floorField.SetValue(mc, snapshot.MapFloorCount);
@@ -142,7 +142,9 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
 
             // Store the host's pre-map-generation RNG state for later restoration
             if (!string.IsNullOrEmpty(snapshot.RandomStateJson))
+            {
                 MultiplayerClientPatches.PendingRngStateToRestore = snapshot.RandomStateJson;
+            }
 
             // Sync seededNodeData so TextScenario/Treasure RNG rolls match.
             ApplySeededNodeData(snapshot);
@@ -308,6 +310,7 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                     node = new SeededTextScenarioNodeData();
                     StaticGameData.seededNodeData = node;
                 }
+
                 if (snapshot.SeededNodeInitSeed.HasValue && snapshot.SeededNodeTimesUsed.HasValue)
                 {
                     // Only rebuild if seed/timesUsed changed — avoid re-iterating the
@@ -332,10 +335,16 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                     node = new SeededTreasureNodeData();
                     StaticGameData.seededNodeData = node;
                 }
+
                 if (snapshot.SeededTreasureRareRelicRoll.HasValue)
+                {
                     node.rareRelicChanceRoll = snapshot.SeededTreasureRareRelicRoll.Value;
+                }
+
                 if (snapshot.SeededTreasureMimicRoll.HasValue)
+                {
                     node.mimicChallengeChanceRoll = snapshot.SeededTreasureMimicRoll.Value;
+                }
             }
             else if (snapshot.SeededNodeKind == "shop")
             {
@@ -345,10 +354,16 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                     node = new SeededShopNodeData();
                     StaticGameData.seededNodeData = node;
                 }
+
                 if (snapshot.SeededShopRareRelicRoll.HasValue)
+                {
                     node.rareRelicChanceRoll = snapshot.SeededShopRareRelicRoll.Value;
+                }
+
                 if (snapshot.SeededShopRelicRoll.HasValue)
+                {
                     node.shopRelicChanceRoll = snapshot.SeededShopRelicRoll.Value;
+                }
 
                 if (snapshot.SeededShopOrbNames != null && snapshot.SeededShopOrbRarities != null
                     && snapshot.SeededShopOrbNames.Count == snapshot.SeededShopOrbRarities.Count)
@@ -358,12 +373,13 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                     if (dm != null)
                     {
                         var orbs = new SeededOrbAndRarity[snapshot.SeededShopOrbNames.Count];
-                        for (int i = 0; i < orbs.Length; i++)
+                        for (var i = 0; i < orbs.Length; i++)
                         {
                             var prefab = dm.GetOrbPrefabFromName(snapshot.SeededShopOrbNames[i]);
                             orbs[i] = new SeededOrbAndRarity(
                                 prefab, (PachinkoBall.OrbRarity)snapshot.SeededShopOrbRarities[i]);
                         }
+
                         node.shopOrbs = orbs;
                         _log.LogInfo(
                             $"[MapApplier] Synced SeededShopNodeData: rareRoll={node.rareRelicChanceRoll:F3}, " +
@@ -382,13 +398,16 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 {
                     var prev = Multipeglin.Patches.ShopRelicSyncState.LatestRelicEffects;
                     Multipeglin.Patches.ShopRelicSyncState.LatestRelicEffects = snapshot.SeededShopRelicEffects;
-                    bool changed = prev == null || prev.Count != snapshot.SeededShopRelicEffects.Count;
+                    var changed = prev == null || prev.Count != snapshot.SeededShopRelicEffects.Count;
                     if (!changed && prev != null)
                     {
-                        for (int i = 0; i < prev.Count; i++)
+                        for (var i = 0; i < prev.Count; i++)
+                        {
                             if (prev[i] != snapshot.SeededShopRelicEffects[i])
                             { changed = true; break; }
+                        }
                     }
+
                     if (changed)
                     {
                         _log.LogInfo($"[MapApplier] Shop relic effects updated: [{string.Join(",", snapshot.SeededShopRelicEffects)}]");
@@ -461,9 +480,14 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
 
                     // Last-resort: copy from current dataToLoad if still missing
                     if (match.background == null && current != null)
+                    {
                         match.background = current.background;
+                    }
+
                     if (match.pegboardFrame == null && current != null)
+                    {
                         match.pegboardFrame = current.pegboardFrame;
+                    }
 
                     StaticGameData.dataToLoad = match;
                     _log.LogInfo($"[MapApplier] Set dataToLoad to '{match.name}' (pegLayout={match.pegLayout?.name}, pegboardFrame={match.pegboardFrame?.name ?? "NULL"}, background={match.background?.name ?? "NULL"})");
@@ -491,25 +515,35 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         {
             var mc = UnityEngine.Object.FindObjectOfType<MapController>();
             if (mc == null)
+            {
                 return;
+            }
 
             void Add(System.Collections.IList list)
             {
                 if (list == null)
+                {
                     return;
+                }
+
                 foreach (var obj in list)
                 {
                     if (obj is MapDataBattle b && !string.IsNullOrEmpty(b.name))
+                    {
                         _battleCache[b.name] = b;
+                    }
                 }
             }
+
             Add(AccessTools.Field(typeof(MapController), "_potentialEasyBattles")?.GetValue(mc) as System.Collections.IList);
             Add(AccessTools.Field(typeof(MapController), "_potentialRandomBattles")?.GetValue(mc) as System.Collections.IList);
             Add(AccessTools.Field(typeof(MapController), "_potentialEliteBattles")?.GetValue(mc) as System.Collections.IList);
 
             var mimic = AccessTools.Field(typeof(MapController), "_mimicBatteData")?.GetValue(mc) as MapDataBattle;
             if (mimic != null && !string.IsNullOrEmpty(mimic.name))
+            {
                 _battleCache[mimic.name] = mimic;
+            }
         }
         catch (Exception ex)
         {
@@ -548,6 +582,7 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                         }
                     }
                 }
+
                 _log.LogInfo($"[MapApplier] Addressables: searched {locations.Count} locations, no match for '{battleName}'");
             }
 
@@ -569,6 +604,7 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         {
             _log.LogWarning($"[MapApplier] Addressables lookup failed for '{battleName}': {ex.Message}");
         }
+
         return null;
     }
 
@@ -580,6 +616,7 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             _log.LogInfo($"[MapApplier] Debounced duplicate load: {targetSceneName}");
             return;
         }
+
         _lastRequestedScene = targetSceneName;
         _lastRequestTime = Time.time;
 
@@ -641,46 +678,65 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         try
         {
             if (mc == null)
+            {
                 return;
+            }
+
             var sceneName = mc.gameObject.scene.name;
             if (!_mapStateCache.TryGetValue(sceneName, out var cached) || cached == null)
+            {
                 return;
+            }
 
             var nodesField = AccessTools.Field(typeof(MapController), "_nodes");
             var clientNodes = nodesField?.GetValue(mc) as MapNode[];
             if (clientNodes == null || clientNodes.Length == 0)
+            {
                 return;
+            }
 
             var roomStatusField = AccessTools.Field(typeof(MapNode), "_roomStatus");
             var bossIndexField = AccessTools.Field(typeof(MapNode), "_selectedBossIndex");
 
             // Pre-position node types and states so the first rendered frame is correct.
-            int nodesApplied = 0;
+            var nodesApplied = 0;
             foreach (var entry in cached.Nodes)
             {
                 if (entry.Index < 0 || entry.Index >= clientNodes.Length)
+                {
                     continue;
+                }
+
                 var node = clientNodes[entry.Index];
                 if (node == null)
+                {
                     continue;
+                }
 
                 var type = (RoomType)entry.RoomType;
                 var state = entry.RoomState >= 0 ? (RoomState)entry.RoomState : RoomState.UPCOMING;
                 var currentState = (RoomState)(roomStatusField?.GetValue(node) ?? RoomState.UPCOMING);
                 if (node.RoomType == type && currentState == state)
+                {
                     continue;
+                }
 
                 node.RoomType = type;
                 if (entry.SelectedBossIndex >= 0 && bossIndexField != null)
+                {
                     bossIndexField.SetValue(node, entry.SelectedBossIndex);
+                }
 
                 try
                 {
                     node.SetActiveState(state, recursive: false, setIcon: true);
                     if (node.RoomType != RoomType.NONE)
+                    {
                         node.GenerateIcon();
+                    }
                 }
                 catch { }
+
                 nodesApplied++;
             }
 
@@ -704,17 +760,23 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
 
                     var prevNodeField = AccessTools.Field(typeof(MapController), "_previousNode");
                     MapNode closest = null;
-                    float closestDist = float.MaxValue;
+                    var closestDist = float.MaxValue;
                     foreach (var node in clientNodes)
                     {
                         if (node == null)
+                        {
                             continue;
-                        float d = Vector3.SqrMagnitude(node.transform.position - target);
+                        }
+
+                        var d = Vector3.SqrMagnitude(node.transform.position - target);
                         if (d < closestDist)
                         { closestDist = d; closest = node; }
                     }
+
                     if (closest != null)
+                    {
                         prevNodeField?.SetValue(mc, closest);
+                    }
                 }
             }
 
@@ -734,14 +796,21 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
     public void ApplyNavigationSlots(List<int> childNodeTypes)
     {
         if (childNodeTypes == null || childNodeTypes.Count == 0)
+        {
             return;
+        }
 
         // Compute a hash so we only configure once per set of child types
-        int hash = childNodeTypes.Count;
+        var hash = childNodeTypes.Count;
         foreach (var t in childNodeTypes)
+        {
             hash = hash * 31 + t;
+        }
+
         if (_navigationSlotsConfigured && hash == _lastNavigationHash)
+        {
             return;
+        }
 
         try
         {
@@ -784,15 +853,18 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                         {
                             var icon = node.activeIcon;
                             if (icon != null)
+                            {
                                 return icon;
+                            }
                         }
                     }
                 }
                 catch { }
+
                 return null;
             }
 
-            int numChildren = childNodeTypes.Count;
+            var numChildren = childNodeTypes.Count;
 
             if (numChildren == 1)
             {
@@ -808,9 +880,13 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
 
                 centerSlot.gameObject.SetActive(true);
                 if (icon != null)
+                {
                     centerSlot.ConfigureForNavigation(icon, color, 0.2f, 0.8f);
+                }
                 else
+                {
                     centerSlot.ConfigureHalfNavigation(color, 0.2f, 0.8f);
+                }
             }
             else
             {
@@ -821,9 +897,13 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
 
                 leftSlot.gameObject.SetActive(true);
                 if (leftIcon != null)
+                {
                     leftSlot.ConfigureForNavigation(leftIcon, leftColor, 0.2f, 0.8f);
+                }
                 else
+                {
                     leftSlot.ConfigureHalfNavigation(leftColor, 0.2f, 0.8f);
+                }
 
                 // Right slot = last child
                 var rightType = (RoomType)childNodeTypes[numChildren - 1];
@@ -832,9 +912,13 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
 
                 rightSlot.gameObject.SetActive(true);
                 if (rightIcon != null)
+                {
                     rightSlot.ConfigureForNavigation(rightIcon, rightColor, 0.2f, 0.8f);
+                }
                 else
+                {
                     rightSlot.ConfigureHalfNavigation(rightColor, 0.2f, 0.8f);
+                }
 
                 // Center slot = middle child (if 3 nodes) or dud
                 centerSlot.gameObject.SetActive(true);
@@ -845,9 +929,13 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                     var centerIcon = GetIconForRoomType(centerType);
 
                     if (centerIcon != null)
+                    {
                         centerSlot.ConfigureForNavigation(centerIcon, centerColor, 0.2f, 0.8f);
+                    }
                     else
+                    {
                         centerSlot.ConfigureHalfNavigation(centerColor, 0.2f, 0.8f);
+                    }
                 }
                 else
                 {
@@ -920,7 +1008,7 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 // every 2s, which re-toggled icon SpriteRenderer state and could produce
                 // subtle visible jitter during scene-load fade-in.
                 RoomState currentState = (RoomState)(roomStatusField?.GetValue(clientNode) ?? RoomState.UPCOMING);
-                bool bossIndexOk = hostNode.SelectedBossIndex < 0
+                var bossIndexOk = hostNode.SelectedBossIndex < 0
                     || bossIndexField == null
                     || (int)bossIndexField.GetValue(clientNode) == hostNode.SelectedBossIndex;
                 if (clientNode.RoomType == hostRoomType && currentState == hostState && bossIndexOk)
@@ -933,13 +1021,17 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 clientNode.RoomType = hostRoomType;
 
                 if (hostNode.SelectedBossIndex >= 0 && bossIndexField != null)
+                {
                     bossIndexField.SetValue(clientNode, hostNode.SelectedBossIndex);
+                }
 
                 try
                 {
                     clientNode.SetActiveState(hostState, recursive: false, setIcon: true);
                     if (clientNode.RoomType != RoomType.NONE)
+                    {
                         clientNode.GenerateIcon();
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -997,7 +1089,9 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             var playerField = AccessTools.Field(typeof(MapController), "_player");
             var player = playerField?.GetValue(mc) as GameObject;
             if (player == null)
+            {
                 return;
+            }
 
             Vector3 targetPos;
 
@@ -1018,8 +1112,12 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                         break;
                     }
                 }
+
                 if (targetNode == null)
+                {
                     return;
+                }
+
                 targetPos = targetNode.transform.position;
             }
 
@@ -1032,17 +1130,23 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             // Update _previousNode to the closest node so game logic references it
             var prevNodeField = AccessTools.Field(typeof(MapController), "_previousNode");
             MapNode closest = null;
-            float closestDist = float.MaxValue;
+            var closestDist = float.MaxValue;
             foreach (var node in clientNodes)
             {
                 if (node == null)
+                {
                     continue;
-                float d = Vector3.SqrMagnitude(node.transform.position - targetPos);
+                }
+
+                var d = Vector3.SqrMagnitude(node.transform.position - targetPos);
                 if (d < closestDist)
                 { closestDist = d; closest = node; }
             }
+
             if (closest != null)
+            {
                 prevNodeField?.SetValue(mc, closest);
+            }
         }
         catch (Exception ex)
         {

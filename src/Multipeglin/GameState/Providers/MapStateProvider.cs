@@ -39,6 +39,7 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
                 _cachedShopRelicEffects = null;
                 _inShopScenario = false;
             }
+
             var snapshot = new MapStateSnapshot
             {
                 CurrentSeed = StaticGameData.currentSeed ?? "",
@@ -70,7 +71,9 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
                     {
                         var floorField = AccessTools.Field(typeof(Map.MapController), "floorCount");
                         if (floorField != null)
+                        {
                             snapshot.MapFloorCount = (int)floorField.GetValue(mc);
+                        }
 
                         // Capture player's absolute position on the map
                         var playerField = AccessTools.Field(typeof(Map.MapController), "_player");
@@ -87,7 +90,9 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
 
             // Capture post-battle navigation state (child node choices)
             if (currentScene == "Battle")
+            {
                 CaptureNavigationState(snapshot);
+            }
 
             return snapshot;
         }
@@ -104,7 +109,9 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
         {
             var seeded = StaticGameData.seededNodeData;
             if (seeded == null)
+            {
                 return;
+            }
 
             if (seeded is Map.SeededTextScenarioNodeData textNode)
             {
@@ -136,6 +143,7 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
                         names.Add(entry.orb != null ? entry.orb.name : "");
                         rarities.Add((int)entry.orbRarity);
                     }
+
                     snapshot.SeededShopOrbNames = names;
                     snapshot.SeededShopOrbRarities = rarities;
                 }
@@ -166,33 +174,46 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
 
             var sm = UnityEngine.Object.FindObjectOfType<Scenarios.Shop.ShopManager>();
             if (sm == null)
+            {
                 return;
+            }
 
             var purchasableField = AccessTools.Field(typeof(Scenarios.Shop.ShopManager), "_purchasableRelics");
             var arr = purchasableField?.GetValue(sm) as System.Array;
             if (arr == null)
+            {
                 return;
+            }
 
             var relicField = AccessTools.Field(typeof(Scenarios.Shop.PurchasableRelic), "_relic");
             if (relicField == null)
+            {
                 return;
+            }
 
             var effects = new List<int>();
-            bool anyNull = false;
-            for (int i = 0; i < arr.Length; i++)
+            var anyNull = false;
+            for (var i = 0; i < arr.Length; i++)
             {
                 var entry = arr.GetValue(i);
                 if (entry is Scenarios.Shop.PurchasableRelic pr)
                 {
                     var relic = relicField.GetValue(pr) as Relics.Relic;
                     if (relic != null)
+                    {
                         effects.Add((int)relic.effect);
+                    }
                     else
+                    {
                         anyNull = true;
+                    }
                 }
                 else
+                {
                     anyNull = true;
+                }
             }
+
             if (effects.Count > 0)
             {
                 snapshot.SeededShopRelicEffects = effects;
@@ -231,10 +252,12 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
             var stateField = AccessTools.Field(typeof(Battle.BattleController), "_battleState");
             var bc = UnityEngine.Object.FindObjectOfType<Battle.BattleController>();
             if (bc == null || stateField == null)
+            {
                 return;
+            }
 
             var state = (Battle.BattleController.BattleState)stateField.GetValue(bc);
-            bool isNav = state == Battle.BattleController.BattleState.AWAITING_POST_BATTLE_CONTROLLER
+            var isNav = state == Battle.BattleController.BattleState.AWAITING_POST_BATTLE_CONTROLLER
                       || state == Battle.BattleController.BattleState.NAVIGATION;
 
             if (!isNav)
@@ -245,6 +268,7 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
                     _cachedNavChildTypes = null;
                     _wasNavigating = false;
                 }
+
                 return;
             }
 
@@ -256,7 +280,10 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
                 {
                     _cachedNavChildTypes = new List<int>();
                     foreach (var child in children)
+                    {
                         _cachedNavChildTypes.Add(child != null ? (int)child.RoomType : 0);
+                    }
+
                     _log.LogInfo($"[MapProvider] Cached {_cachedNavChildTypes.Count} nav child types");
                 }
             }
@@ -279,22 +306,30 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
         {
             var mc = UnityEngine.Object.FindObjectOfType<Map.MapController>();
             if (mc == null)
+            {
                 return nodes;
+            }
 
             // Access _nodes field via reflection
             var nodesField = AccessTools.Field(typeof(Map.MapController), "_nodes");
             if (nodesField == null)
+            {
                 return nodes;
+            }
 
             var mapNodes = nodesField.GetValue(mc) as MapNode[];
             if (mapNodes == null)
+            {
                 return nodes;
+            }
 
-            for (int i = 0; i < mapNodes.Length; i++)
+            for (var i = 0; i < mapNodes.Length; i++)
             {
                 var node = mapNodes[i];
                 if (node == null)
+                {
                     continue;
+                }
 
                 var roomStatusField = AccessTools.Field(typeof(MapNode), "_roomStatus");
                 var roomState = roomStatusField?.GetValue(node);
@@ -321,6 +356,7 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
         {
             _log.LogWarning($"[MapProvider] CaptureMapNodes failed: {ex.Message}");
         }
+
         return nodes;
     }
 }

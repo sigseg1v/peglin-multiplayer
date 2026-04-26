@@ -1,9 +1,6 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using Battle.Attacks;
 using Multipeglin.Events.Network.Scenarios;
-using Multipeglin.Multiplayer;
 using Multipeglin.Network;
 using Multipeglin.Utility;
 using TMPro;
@@ -29,7 +26,10 @@ public static class MirrorEventUI
     public static void Show()
     {
         if (_isActive)
+        {
             return;
+        }
+
         _isActive = true;
         CreateChoiceUI();
     }
@@ -42,6 +42,7 @@ public static class MirrorEventUI
             UnityEngine.Object.Destroy(_canvasObj);
             _canvasObj = null;
         }
+
         _choicePanel = null;
         _orbGridPanel = null;
     }
@@ -49,7 +50,9 @@ public static class MirrorEventUI
     private static void CreateChoiceUI()
     {
         if (_canvasObj != null)
+        {
             UnityEngine.Object.Destroy(_canvasObj);
+        }
 
         _canvasObj = new GameObject("MirrorEventCanvas");
         UnityEngine.Object.DontDestroyOnLoad(_canvasObj);
@@ -113,8 +116,8 @@ public static class MirrorEventUI
     private static void OnRemoveOneClicked()
     {
         MultiplayerPlugin.Logger?.LogInfo("[MirrorEventUI] Remove One clicked — showing orb grid");
-        if (_choicePanel != null)
-            _choicePanel.SetActive(false);
+        _choicePanel?.SetActive(false);
+
         ShowOrbGrid();
     }
 
@@ -144,7 +147,9 @@ public static class MirrorEventUI
     private static void ShowOrbGrid()
     {
         if (_orbGridPanel != null)
+        {
             UnityEngine.Object.Destroy(_orbGridPanel);
+        }
 
         _orbGridPanel = new GameObject("OrbGridPanel");
         _orbGridPanel.transform.SetParent(_canvasObj.transform, false);
@@ -200,15 +205,19 @@ public static class MirrorEventUI
             OrbIdentifier orbId = null;
             MultiplayerPlugin.Services?.TryResolve(out orbId);
 
-            for (int i = 0; i < deck.Count; i++)
+            for (var i = 0; i < deck.Count; i++)
             {
                 var orbGo = deck[i];
                 if (orbGo == null)
+                {
                     continue;
+                }
 
                 // Skip CannotBeRemoved orbs
                 if (orbGo.GetComponent<CannotBeRemoved>() != null)
+                {
                     continue;
+                }
 
                 var attack = orbGo.GetComponent<Attack>();
                 var orbName = attack != null ? attack.GetNameWithLevel() : orbGo.name;

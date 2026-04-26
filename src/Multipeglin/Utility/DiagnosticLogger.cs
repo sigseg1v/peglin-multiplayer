@@ -5,7 +5,6 @@ using Battle;
 using Battle.Enemies;
 using BepInEx.Logging;
 using HarmonyLib;
-using UnityEngine;
 using UnityEngine.SceneManagement;
 
 namespace Multipeglin.Utility;
@@ -85,11 +84,12 @@ public static class DiagnosticLogger
                 Log?.LogInfo($"  Enemies ({enemies?.Count ?? 0}):");
                 if (enemies != null)
                 {
-                    for (int i = 0; i < enemies.Count; i++)
+                    for (var i = 0; i < enemies.Count; i++)
                     {
                         var e = enemies[i];
                         if (e == null)
                         { Log?.LogInfo($"    [{i}] NULL"); continue; }
+
                         Log?.LogInfo($"    [{i}] {e.locKey} name={e.gameObject.name} hp={e.CurrentHealth}/{GetMaxHp(e):F0} " +
                             $"pos=({e.transform.position.x:F2},{e.transform.position.y:F2}) flying={e.IsFlying}");
                     }
@@ -110,19 +110,27 @@ public static class DiagnosticLogger
 
                 var allPegObjects = new List<Peg>(pm.allPegs);
                 if (bombs != null)
+                {
                     foreach (var b in bombs)
+                    {
                         allPegObjects.Add(b);
+                    }
+                }
 
                 var activePegs = allPegObjects.Where(p => p != null && p.gameObject.activeSelf).ToArray();
                 var pegTypes = activePegs.GroupBy(p => p.pegType).OrderByDescending(g => g.Count());
                 Log?.LogInfo($"  Pegs: {activePegs.Length} active / {allPegObjects.Count} total (allPegs={pm.allPegs.Count}, bombs={bombs?.Count ?? 0})");
                 foreach (var g in pegTypes)
+                {
                     Log?.LogInfo($"    {g.Key}: {g.Count()}");
+                }
 
                 var sorted = activePegs.OrderBy(p => p.transform.position.y).ThenBy(p => p.transform.position.x).Take(10);
                 Log?.LogInfo($"  First 10 pegs by pos:");
                 foreach (var p in sorted)
+                {
                     Log?.LogInfo($"    ({p.transform.position.x:F3},{p.transform.position.y:F3}) type={p.pegType}");
+                }
             }
             else
             {

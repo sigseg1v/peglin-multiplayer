@@ -24,15 +24,21 @@ public class LpmBombFollower : MonoBehaviour
     private void LateUpdate()
     {
         if (LpmParent == null)
+        {
             return;
+        }
+
         var target = LpmParent.position + LocalOffset;
         target.z = transform.position.z;
         if (_rb != null)
         {
             _rb.position = new Vector2(target.x, target.y);
             if (_rb.bodyType != RigidbodyType2D.Static)
+            {
                 _rb.velocity = Vector2.zero;
+            }
         }
+
         transform.position = target;
     }
 }

@@ -16,6 +16,7 @@ public sealed class AimUpdateServerHandler : IServerHandler<AimUpdateEvent>
         {
             ClientAimRenderer.Instance?.UpdateAim(e.AimX, e.AimY, e.SpawnX, e.SpawnY);
         }
+
         return e;
     }
 }

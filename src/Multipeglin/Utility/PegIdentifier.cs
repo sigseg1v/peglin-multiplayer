@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using BepInEx.Logging;
-using UnityEngine;
 
 namespace Multipeglin.Utility;
 
@@ -25,10 +24,14 @@ public class PegIdentifier
     public string GetOrAssignGuid(Peg peg)
     {
         if (peg == null)
+        {
             return "null";
+        }
 
         if (_pegToGuid.TryGetValue(peg, out var existing))
+        {
             return existing;
+        }
 
         var guid = Guid.NewGuid().ToString("N")[..12];
         _guidToPeg[guid] = peg;
@@ -43,13 +46,19 @@ public class PegIdentifier
     public void Register(Peg peg, string guid)
     {
         if (peg == null || string.IsNullOrEmpty(guid))
+        {
             return;
+        }
 
         if (_guidToPeg.TryGetValue(guid, out var oldPeg) && oldPeg != peg)
+        {
             _pegToGuid.Remove(oldPeg);
+        }
 
         if (_pegToGuid.TryGetValue(peg, out var oldGuid) && oldGuid != guid)
+        {
             _guidToPeg.Remove(oldGuid);
+        }
 
         _guidToPeg[guid] = peg;
         _pegToGuid[peg] = guid;
@@ -61,13 +70,19 @@ public class PegIdentifier
     public Peg Find(string guid)
     {
         if (string.IsNullOrEmpty(guid))
+        {
             return null;
+        }
 
         if (_guidToPeg.TryGetValue(guid, out var peg) && peg != null)
+        {
             return peg;
+        }
 
         if (peg == null && _guidToPeg.ContainsKey(guid))
+        {
             _guidToPeg.Remove(guid);
+        }
 
         return null;
     }
@@ -76,7 +91,10 @@ public class PegIdentifier
     public string GetGuid(Peg peg)
     {
         if (peg == null)
+        {
             return null;
+        }
+
         return _pegToGuid.TryGetValue(peg, out var guid) ? guid : null;
     }
 
@@ -86,7 +104,9 @@ public class PegIdentifier
         _guidToPeg.Clear();
         _pegToGuid.Clear();
         if (count > 0)
+        {
             Log?.LogInfo($"[PegGUID] Cleared {count} entries");
+        }
     }
 
     public int Count => _guidToPeg.Count;
@@ -94,14 +114,18 @@ public class PegIdentifier
     public void DumpState(string trigger)
     {
         Log?.LogInfo($"[PegGUID] === DUMP ({trigger}) {_guidToPeg.Count} entries ===");
-        int shown = 0;
+        var shown = 0;
         foreach (var kvp in _guidToPeg)
         {
             var p = kvp.Value;
             if (p != null)
+            {
                 Log?.LogInfo($"[PegGUID]   {kvp.Key} → type={p.pegType} pos=({p.transform.position.x:F2},{p.transform.position.y:F2}) active={p.gameObject.activeSelf}");
+            }
             else
+            {
                 Log?.LogInfo($"[PegGUID]   {kvp.Key} → DESTROYED");
+            }
 
             if (++shown >= 20)
             {

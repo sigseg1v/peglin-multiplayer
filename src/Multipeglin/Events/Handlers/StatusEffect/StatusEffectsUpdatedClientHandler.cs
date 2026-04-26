@@ -1,9 +1,9 @@
-namespace Multipeglin.Events.Handlers.StatusEffect;
 
 using System;
 using global::Battle.StatusEffects;
 using Multipeglin.Events.Network.StatusEffect;
 
+namespace Multipeglin.Events.Handlers.StatusEffect;
 public sealed class StatusEffectsUpdatedClientHandler : IClientHandler<StatusEffectsUpdatedEvent>
 {
     public void Handle(StatusEffectsUpdatedEvent networkEvent)

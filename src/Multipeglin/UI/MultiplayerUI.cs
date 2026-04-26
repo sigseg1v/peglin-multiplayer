@@ -3,11 +3,9 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using BepInEx.Logging;
-using Multipeglin.DI;
-using Multipeglin.Events.Handlers;
-using Multipeglin.Network;
-using Multipeglin.Multiplayer;
 using Multipeglin.GameState.Appliers;
+using Multipeglin.Multiplayer;
+using Multipeglin.Network;
 using Steamworks;
 using TMPro;
 using UnityEngine;
@@ -130,12 +128,14 @@ public class MultiplayerUI : MonoBehaviour
                     Log?.LogWarning($"[Steam] Attach failed: {ex.Message}");
                 }
             }
+
             _steamTransport = (_router != null && _router.HasSteam) ? _router : null;
             if (_steamTransport != null)
             {
                 try
                 { _currentAppId = SteamUtils.GetAppID(); }
                 catch { }
+
                 Log?.LogInfo($"[Steam] Friend filter using appId={_currentAppId.m_AppId}");
             }
 
@@ -144,7 +144,9 @@ public class MultiplayerUI : MonoBehaviour
             _transport.OnConnectionRejected += reason => OnConnectionRejected(reason);
 
             if (_steamTransport != null)
+            {
                 _steamTransport.OnIncomingInvite += OnSteamInviteReceived;
+            }
 
             // Auto-detect player name: env var > Steam display name > fallback
             var envName = Environment.GetEnvironmentVariable("MULTIPEGLIN_PLAYER_NAME");
@@ -157,12 +159,18 @@ public class MultiplayerUI : MonoBehaviour
                 try
                 {
                     if (SteamManager.Initialized)
+                    {
                         LocalPlayerName = SteamFriends.GetPersonaName();
+                    }
                 }
                 catch { }
             }
+
             if (string.IsNullOrEmpty(LocalPlayerName))
+            {
                 LocalPlayerName = "Player";
+            }
+
             Log?.LogInfo($"Player name: {LocalPlayerName}");
 
             CreateCanvas();
@@ -193,7 +201,9 @@ public class MultiplayerUI : MonoBehaviour
     {
         // Refresh lobby display when visible (handshake arrives asynchronously)
         if (_lobbyPanel != null && _lobbyPanel.activeSelf)
+        {
             UpdateLobbyPanel();
+        }
 
         // Refresh multiplayer feed when visible in diagnostics mode and new events arrived
         if (_multiplayerPanel != null && _multiplayerPanel.activeSelf
@@ -212,10 +222,10 @@ public class MultiplayerUI : MonoBehaviour
         {
             var currentScene = SceneManager.GetActiveScene().name;
             var waitMsg = MapStateApplier.ClientWaitingMessage;
-            bool suppressForBattle = currentScene == "Battle"
+            var suppressForBattle = currentScene == "Battle"
                 && _turnIndicatorPanel != null && _turnIndicatorPanel.activeSelf;
 
-            bool isSpectatingScene = currentScene == "PegMinigame" || currentScene == "TextScenario";
+            var isSpectatingScene = currentScene == "PegMinigame" || currentScene == "TextScenario";
 
             if (!string.IsNullOrEmpty(waitMsg) && !suppressForBattle)
             {
@@ -223,37 +233,39 @@ public class MultiplayerUI : MonoBehaviour
                 {
                     // Transparent top banner — game board visible behind it
                     if (_spectatorBanner == null)
+                    {
                         CreateSpectatorBanner();
+                    }
+
                     _spectatorBanner.SetActive(true);
                     _spectatorBannerText.text = waitMsg;
-                    if (_waitingPanel != null)
-                        _waitingPanel.SetActive(false);
+                    _waitingPanel?.SetActive(false);
                 }
                 else
                 {
                     // Dark fullscreen overlay for non-spectatable scenes
                     if (_waitingPanel == null)
+                    {
                         CreateWaitingPanel();
+                    }
+
                     _waitingPanel.SetActive(true);
                     _waitingText.text = waitMsg;
-                    if (_spectatorBanner != null)
-                        _spectatorBanner.SetActive(false);
+                    _spectatorBanner?.SetActive(false);
                 }
             }
             else
             {
-                if (_waitingPanel != null)
-                    _waitingPanel.SetActive(false);
-                if (_spectatorBanner != null)
-                    _spectatorBanner.SetActive(false);
+                _waitingPanel?.SetActive(false);
+
+                _spectatorBanner?.SetActive(false);
             }
         }
         else
         {
-            if (_waitingPanel != null)
-                _waitingPanel.SetActive(false);
-            if (_spectatorBanner != null)
-                _spectatorBanner.SetActive(false);
+            _waitingPanel?.SetActive(false);
+
+            _spectatorBanner?.SetActive(false);
         }
 
         // Coop turn indicator — shown during Battle for both host and client
@@ -266,7 +278,9 @@ public class MultiplayerUI : MonoBehaviour
         // Lambda subscriptions can't be directly unsubscribed, but the transport
         // is shared and lives for the plugin lifetime alongside this UI.
         if (_canvasObj != null)
+        {
             Destroy(_canvasObj);
+        }
     }
 
     // --- Canvas ---
@@ -329,7 +343,7 @@ public class MultiplayerUI : MonoBehaviour
         var mainRect = _mainPanel.GetComponent<RectTransform>() ?? _mainPanel.AddComponent<RectTransform>();
         StretchFill(mainRect);
 
-        bool steamAvailable = _steamTransport != null;
+        var steamAvailable = _steamTransport != null;
 
         if (steamAvailable)
         {
@@ -411,13 +425,12 @@ public class MultiplayerUI : MonoBehaviour
     private void OnAdvancedToggleClicked()
     {
         _advancedIpVisible = !_advancedIpVisible;
-        if (_advancedIpContainer != null)
-            _advancedIpContainer.SetActive(_advancedIpVisible);
+        _advancedIpContainer?.SetActive(_advancedIpVisible);
+
         if (_advancedToggleButton != null)
         {
             var label = _advancedToggleButton.GetComponentInChildren<TextMeshProUGUI>();
-            if (label != null)
-                label.text = "Advanced: Direct IP";
+            label?.text = "Advanced: Direct IP";
         }
     }
 
@@ -545,6 +558,7 @@ public class MultiplayerUI : MonoBehaviour
             Log?.LogWarning("[Invite] No Steam transport");
             return;
         }
+
         var lobbyId = _steamTransport.HostedLobbyId;
         if (!lobbyId.IsValid())
         {
@@ -556,12 +570,14 @@ public class MultiplayerUI : MonoBehaviour
         try
         { appId = SteamUtils.GetAppID().m_AppId; }
         catch { }
-        string joinUrl = $"steam://joinlobby/{appId}/{lobbyId.m_SteamID}/{SteamUser.GetSteamID().m_SteamID}";
 
-        bool overlayEnabled = false;
+        var joinUrl = $"steam://joinlobby/{appId}/{lobbyId.m_SteamID}/{SteamUser.GetSteamID().m_SteamID}";
+
+        var overlayEnabled = false;
         try
         { overlayEnabled = SteamUtils.IsOverlayEnabled(); }
         catch (Exception ex) { Log?.LogWarning($"[Invite] IsOverlayEnabled threw: {ex.Message}"); }
+
         Log?.LogInfo($"[Invite] appId={appId} lobby={lobbyId.m_SteamID} overlayEnabled={overlayEnabled} joinUrl={joinUrl}");
 
         if (overlayEnabled)
@@ -575,6 +591,7 @@ public class MultiplayerUI : MonoBehaviour
             {
                 Log?.LogError($"[Invite] ActivateGameOverlayInviteDialog failed: {ex}");
             }
+
             return;
         }
 
@@ -584,6 +601,7 @@ public class MultiplayerUI : MonoBehaviour
         try
         { GUIUtility.systemCopyBuffer = joinUrl; }
         catch (Exception ex) { Log?.LogWarning($"[Invite] Clipboard copy failed: {ex.Message}"); }
+
         _inviteCopiedFlashUntil = Time.unscaledTime + 3f;
     }
 
@@ -661,6 +679,7 @@ public class MultiplayerUI : MonoBehaviour
             var parent = _mainPanel.transform.parent;
             CreateFriendListPanel(parent);
         }
+
         _friendListPanel.SetActive(true);
         PopulateFriendList();
     }
@@ -668,25 +687,37 @@ public class MultiplayerUI : MonoBehaviour
     private void PopulateFriendList()
     {
         if (_friendListContent == null)
+        {
             return;
+        }
 
         // Clear existing rows
-        for (int i = _friendListContent.transform.childCount - 1; i >= 0; i--)
+        for (var i = _friendListContent.transform.childCount - 1; i >= 0; i--)
+        {
             Destroy(_friendListContent.transform.GetChild(i).gameObject);
+        }
 
-        int found = 0;
+        var found = 0;
         try
         {
-            int total = SteamFriends.GetFriendCount(EFriendFlags.k_EFriendFlagImmediate);
-            for (int i = 0; i < total; i++)
+            var total = SteamFriends.GetFriendCount(EFriendFlags.k_EFriendFlagImmediate);
+            for (var i = 0; i < total; i++)
             {
                 var fid = SteamFriends.GetFriendByIndex(i, EFriendFlags.k_EFriendFlagImmediate);
                 if (!SteamFriends.GetFriendGamePlayed(fid, out FriendGameInfo_t info))
+                {
                     continue;
+                }
+
                 if (info.m_gameID.AppID() != _currentAppId)
+                {
                     continue;
+                }
+
                 if (!info.m_steamIDLobby.IsValid())
+                {
                     continue;
+                }
 
                 var name = SteamFriends.GetFriendPersonaName(fid);
                 AddFriendRow(found, name, info.m_steamIDLobby);
@@ -741,14 +772,20 @@ public class MultiplayerUI : MonoBehaviour
     private void OnJoinLobbyClicked(CSteamID lobbyId)
     {
         if (_steamTransport == null)
+        {
             return;
+        }
+
         try
         {
             _router?.UseSteam();
             _multiplayerMode.EnableSpectating();
             Utility.FileLogger.RoleTag = "CLIENT";
             if (_multiplayerMode is MultiplayerMode mode)
+            {
                 mode.ClientMode = ClientMode.Mirror;
+            }
+
             _steamTransport.JoinSteamLobby(lobbyId);
             _friendListStatusText.text = "Joining...";
             Log.LogInfo($"Joining Steam lobby {lobbyId.m_SteamID}");
@@ -763,10 +800,12 @@ public class MultiplayerUI : MonoBehaviour
     private void UpdateLobbyPanel()
     {
         if (_lobbyStatusText == null)
+        {
             return;
+        }
 
-        bool steamActive = _router != null && _router.ActiveIsSteam;
-        bool flashActive = Time.unscaledTime < _inviteCopiedFlashUntil;
+        var steamActive = _router != null && _router.ActiveIsSteam;
+        var flashActive = Time.unscaledTime < _inviteCopiedFlashUntil;
         if (flashActive)
         {
             _lobbyStatusText.text = "Join link copied to clipboard — paste to a friend in Steam chat";
@@ -778,38 +817,44 @@ public class MultiplayerUI : MonoBehaviour
                 : $"Hosting on port {NetworkConfig.DefaultPort}";
         }
         else if (_transport.IsConnected)
+        {
             _lobbyStatusText.text = "Connected";
+        }
         else
+        {
             _lobbyStatusText.text = "Connecting...";
+        }
 
         // Invite Friend button: only while hosting via Steam
-        if (_inviteFriendButton != null)
-            _inviteFriendButton.gameObject.SetActive(_multiplayerMode.IsHosting && steamActive);
+        _inviteFriendButton?.gameObject.SetActive(_multiplayerMode.IsHosting && steamActive);
 
         // Join-link line: shown only as a fallback when the Steam overlay is unavailable
         // (e.g. running under Proton or launched outside Steam). When the overlay works,
         // the Invite Friend button opens the normal Steam invite dialog and no URL is shown.
         if (_lobbyJoinLinkText != null)
         {
-            bool show = false;
+            var show = false;
             if (_multiplayerMode.IsHosting && steamActive && _steamTransport != null)
             {
                 var lobbyId = _steamTransport.HostedLobbyId;
-                bool overlayEnabled = false;
+                var overlayEnabled = false;
                 try
                 { overlayEnabled = SteamUtils.IsOverlayEnabled(); }
                 catch { }
+
                 if (lobbyId.IsValid() && !overlayEnabled)
                 {
                     uint appId = 0;
                     try
                     { appId = SteamUtils.GetAppID().m_AppId; }
                     catch { }
+
                     _lobbyJoinLinkText.text =
                         $"steam://joinlobby/{appId}/{lobbyId.m_SteamID}/{SteamUser.GetSteamID().m_SteamID}";
                     show = true;
                 }
             }
+
             _lobbyJoinLinkText.gameObject.SetActive(show);
         }
 
@@ -830,12 +875,12 @@ public class MultiplayerUI : MonoBehaviour
     private void OnDisconnectClicked()
     {
         Multiplayer.MultiplayerSession.DisconnectAndReset("User clicked disconnect");
-        if (_multiplayerPanel != null)
-            _multiplayerPanel.SetActive(false);
-        if (_waitingPanel != null)
-            _waitingPanel.SetActive(false);
-        if (_turnIndicatorPanel != null)
-            _turnIndicatorPanel.SetActive(false);
+        _multiplayerPanel?.SetActive(false);
+
+        _waitingPanel?.SetActive(false);
+
+        _turnIndicatorPanel?.SetActive(false);
+
         _overlayPanel.SetActive(true);
         ShowMainPanel();
     }
@@ -932,7 +977,7 @@ public class MultiplayerUI : MonoBehaviour
         var scene = SceneManager.GetActiveScene().name;
         var turnMsg = Events.Handlers.Coop.TurnChangeClientHandler.TurnMessage;
 
-        bool shouldShow = scene == "Battle"
+        var shouldShow = scene == "Battle"
             && _transport != null && _transport.IsConnected
             && LobbyUI.GameStartReceived
             && !string.IsNullOrEmpty(turnMsg);
@@ -940,13 +985,16 @@ public class MultiplayerUI : MonoBehaviour
         if (shouldShow)
         {
             if (_turnIndicatorPanel == null)
+            {
                 CreateTurnIndicator();
+            }
+
             _turnIndicatorPanel.SetActive(true);
             _turnIndicatorText.text = turnMsg;
         }
-        else if (_turnIndicatorPanel != null)
+        else
         {
-            _turnIndicatorPanel.SetActive(false);
+            _turnIndicatorPanel?.SetActive(false);
         }
     }
 
@@ -975,7 +1023,6 @@ public class MultiplayerUI : MonoBehaviour
         _turnIndicatorPanel.SetActive(false);
     }
 
-
     private void ShowMultiplayerView()
     {
         _overlayPanel.SetActive(false);
@@ -984,7 +1031,10 @@ public class MultiplayerUI : MonoBehaviour
         {
             // Diagnostics mode: show fullscreen event feed
             if (_multiplayerPanel == null)
+            {
                 CreateMultiplayerPanel();
+            }
+
             _multiplayerPanel.SetActive(true);
             _overlayVisible = true;
             EventFeed.Clear();
@@ -993,8 +1043,8 @@ public class MultiplayerUI : MonoBehaviour
         else
         {
             // Mirror mode: hide everything so the game renders normally
-            if (_multiplayerPanel != null)
-                _multiplayerPanel.SetActive(false);
+            _multiplayerPanel?.SetActive(false);
+
             _overlayVisible = false;
         }
     }
@@ -1007,8 +1057,7 @@ public class MultiplayerUI : MonoBehaviour
         _hostPanel.SetActive(false);
         _joinPanel.SetActive(false);
         _lobbyPanel.SetActive(false);
-        if (_friendListPanel != null)
-            _friendListPanel.SetActive(false);
+        _friendListPanel?.SetActive(false);
     }
 
     private void ShowLobby()
@@ -1017,11 +1066,10 @@ public class MultiplayerUI : MonoBehaviour
         _hostPanel.SetActive(false);
         _joinPanel.SetActive(false);
         _lobbyPanel.SetActive(true);
-        if (_friendListPanel != null)
-            _friendListPanel.SetActive(false);
+        _friendListPanel?.SetActive(false);
         // Hide the waiting panel (MapStateApplier shows it for MainMenu)
-        if (_waitingPanel != null)
-            _waitingPanel.SetActive(false);
+        _waitingPanel?.SetActive(false);
+
         UpdateLobbyPanel();
     }
 
@@ -1041,11 +1089,17 @@ public class MultiplayerUI : MonoBehaviour
 
         // If connected (either hosting or spectating), show lobby
         if ((_multiplayerMode.IsHosting || _multiplayerMode.IsSpectating) && _transport.IsConnected)
+        {
             ShowLobby();
+        }
         else if (_multiplayerMode.IsHosting)
+        {
             ShowLobby();
+        }
         else
+        {
             ShowMainPanel();
+        }
     }
 
     private void HideOverlay()
@@ -1057,9 +1111,13 @@ public class MultiplayerUI : MonoBehaviour
     private void ToggleOverlay()
     {
         if (_overlayVisible)
+        {
             HideOverlay();
+        }
         else
+        {
             ShowOverlay();
+        }
     }
 
     public static void ToggleOverlayStatic()
@@ -1067,9 +1125,13 @@ public class MultiplayerUI : MonoBehaviour
         try
         {
             if (_instance != null)
+            {
                 _instance.ToggleOverlay();
+            }
             else
+            {
                 MultiplayerPlugin.Logger?.LogWarning("MultiplayerUI: instance is null, cannot toggle overlay");
+            }
         }
         catch (Exception ex)
         {
@@ -1083,8 +1145,8 @@ public class MultiplayerUI : MonoBehaviour
         _hostPanel.SetActive(false);
         _joinPanel.SetActive(true);
         _lobbyPanel.SetActive(false);
-        if (_friendListPanel != null)
-            _friendListPanel.SetActive(false);
+        _friendListPanel?.SetActive(false);
+
         _statusText.text = _lastConnectionStatus;
     }
 
@@ -1106,7 +1168,9 @@ public class MultiplayerUI : MonoBehaviour
 
             // Register host in PlayerRegistry
             if (MultiplayerPlugin.Services?.TryResolve<Multiplayer.PlayerRegistry>(out var registry) == true)
+            {
                 registry.RegisterHost(LocalPlayerName, Application.version ?? "unknown", MultiplayerPluginInfo.VERSION);
+            }
 
             Log.LogInfo($"Started hosting on port {NetworkConfig.DefaultPort}");
             ShowLobby();
@@ -1126,6 +1190,7 @@ public class MultiplayerUI : MonoBehaviour
             Log?.LogWarning("Host (Steam) clicked but Steam transport unavailable");
             return;
         }
+
         try
         {
             _router.UseSteam();
@@ -1134,7 +1199,9 @@ public class MultiplayerUI : MonoBehaviour
             Utility.FileLogger.RoleTag = "HOST";
 
             if (MultiplayerPlugin.Services?.TryResolve<Multiplayer.PlayerRegistry>(out var registry) == true)
+            {
                 registry.RegisterHost(LocalPlayerName, Application.version ?? "unknown", MultiplayerPluginInfo.VERSION);
+            }
 
             Log.LogInfo("Started Steam lobby hosting");
             ShowLobby();
@@ -1154,6 +1221,7 @@ public class MultiplayerUI : MonoBehaviour
             Log?.LogWarning("Join Friend clicked but Steam transport unavailable");
             return;
         }
+
         ShowFriendListPanel();
     }
 
@@ -1163,9 +1231,13 @@ public class MultiplayerUI : MonoBehaviour
         // marshal to the main thread before touching Unity objects.
         var dispatcher = Utility.MainThreadDispatcher.Instance;
         if (dispatcher != null)
+        {
             dispatcher.Enqueue(() => PromptAcceptInvite(lobbyId));
+        }
         else
+        {
             PromptAcceptInvite(lobbyId);
+        }
     }
 
     private void PromptAcceptInvite(CSteamID lobbyId)
@@ -1178,7 +1250,7 @@ public class MultiplayerUI : MonoBehaviour
             return;
         }
 
-        string inviterName = "A friend";
+        var inviterName = "A friend";
         try
         {
             var owner = SteamMatchmaking.GetLobbyOwner(lobbyId);
@@ -1186,7 +1258,9 @@ public class MultiplayerUI : MonoBehaviour
             {
                 var name = SteamFriends.GetFriendPersonaName(owner);
                 if (!string.IsNullOrEmpty(name))
+                {
                     inviterName = name;
+                }
             }
         }
         catch { }
@@ -1205,7 +1279,9 @@ public class MultiplayerUI : MonoBehaviour
             _multiplayerMode.EnableSpectating();
             Utility.FileLogger.RoleTag = "CLIENT";
             if (_multiplayerMode is MultiplayerMode mode)
+            {
                 mode.ClientMode = ClientMode.Mirror;
+            }
 
             _steamTransport?.JoinSteamLobby(lobbyId);
 
@@ -1247,7 +1323,10 @@ public class MultiplayerUI : MonoBehaviour
             _multiplayerMode.EnableSpectating();
             Utility.FileLogger.RoleTag = "CLIENT";
             if (_multiplayerMode is MultiplayerMode mode)
+            {
                 mode.ClientMode = ClientMode.Mirror;
+            }
+
             _transport.Connect(ip, port);
             Log.LogInfo($"Connecting to {ip}:{port}");
             // OnConnected callback will switch to lobby panel
@@ -1303,9 +1382,14 @@ public class MultiplayerUI : MonoBehaviour
                 catch (Exception ex) { Log?.LogWarning($"[Lobby] Rebroadcast after disconnect failed: {ex.Message}"); }
             };
             if (dispatcher != null)
+            {
                 dispatcher.Enqueue(rebroadcast);
+            }
             else
+            {
                 rebroadcast();
+            }
+
             return;
         }
 
@@ -1329,12 +1413,12 @@ public class MultiplayerUI : MonoBehaviour
     {
         Multiplayer.MultiplayerSession.DisconnectAndReset("Transport disconnected");
 
-        if (_multiplayerPanel != null)
-            _multiplayerPanel.SetActive(false);
-        if (_waitingPanel != null)
-            _waitingPanel.SetActive(false);
-        if (_turnIndicatorPanel != null)
-            _turnIndicatorPanel.SetActive(false);
+        _multiplayerPanel?.SetActive(false);
+
+        _waitingPanel?.SetActive(false);
+
+        _turnIndicatorPanel?.SetActive(false);
+
         _overlayPanel?.SetActive(true);
         ShowMainPanel();
     }
@@ -1345,9 +1429,13 @@ public class MultiplayerUI : MonoBehaviour
 
         var dispatcher = Utility.MainThreadDispatcher.Instance;
         if (dispatcher != null)
+        {
             dispatcher.Enqueue(() => HandleConnectionRejected(reason));
+        }
         else
+        {
             HandleConnectionRejected(reason);
+        }
     }
 
     private void HandleConnectionRejected(string reason)
@@ -1374,7 +1462,9 @@ public class MultiplayerUI : MonoBehaviour
     private void ShowErrorDialog(string message)
     {
         if (_errorPanel != null)
+        {
             Destroy(_errorPanel);
+        }
 
         _errorPanel = new GameObject("ErrorPanel");
         _errorPanel.transform.SetParent(_canvasObj.transform, false);
@@ -1406,7 +1496,9 @@ public class MultiplayerUI : MonoBehaviour
     private void ShowConfirmDialog(string message, Action onAccept, Action onDecline)
     {
         if (_errorPanel != null)
+        {
             Destroy(_errorPanel);
+        }
 
         _errorPanel = new GameObject("ConfirmPanel");
         _errorPanel.transform.SetParent(_canvasObj.transform, false);

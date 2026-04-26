@@ -1,9 +1,9 @@
-namespace Multipeglin.Events.Handlers.Health;
 
 using System;
 using global::Battle;
 using Multipeglin.Events.Network.Health;
 
+namespace Multipeglin.Events.Handlers.Health;
 public sealed class DodgeClientHandler : IClientHandler<DodgeEvent>
 {
     public void Handle(DodgeEvent networkEvent)

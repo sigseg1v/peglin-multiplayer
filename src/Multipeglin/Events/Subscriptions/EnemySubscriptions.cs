@@ -6,7 +6,6 @@ using Multipeglin.Events.Network.Enemy;
 using Multipeglin.GameState;
 using Multipeglin.Multiplayer;
 using Multipeglin.Utility;
-using UnityEngine;
 
 namespace Multipeglin.Events.Subscriptions;
 
@@ -63,7 +62,9 @@ public sealed class EnemySubscriptions
     private void OnEnemySpawned(Enemy enemy)
     {
         if (!IsHosting)
+        {
             return;
+        }
 
         // Scale enemy stats by coop player count before capturing/dispatching, so
         // the client receives the already-scaled values through the heartbeat and
@@ -94,8 +95,8 @@ public sealed class EnemySubscriptions
     /// </summary>
     private void ApplyCoopScaling(Enemy enemy)
     {
-        int players = PlayerCount;
-        float hpMult = players switch
+        var players = PlayerCount;
+        var hpMult = players switch
         {
             <= 1 => 1f,
             2 => 1.75f,
@@ -103,13 +104,15 @@ public sealed class EnemySubscriptions
             _ => 2.5f,
         };
         if (hpMult == 1f)
+        {
             return;
+        }
 
         try
         {
             var maxHealthField = AccessTools.Field(typeof(Enemy), "_maxHealth");
-            float oldMax = enemy.maxHealth;
-            float newMax = oldMax * hpMult;
+            var oldMax = enemy.maxHealth;
+            var newMax = oldMax * hpMult;
             maxHealthField?.SetValue(enemy, newMax);
             // Initialize has just done `CurrentHealth = maxHealth;` — keep them in sync.
             enemy.CurrentHealth = newMax;
@@ -125,19 +128,23 @@ public sealed class EnemySubscriptions
     private void OnEnemyDamaged(Enemy enemy, long damage, Enemy.EnemyDamageSource source)
     {
         if (!IsHosting)
+        {
             return;
+        }
 
         // Attribute damage to the active coop player's run-summary tally.
         // During DoAttack's manual per-player replay, DamageAttributionSlotOverride is set
         // to the shot's owner so each shot's damage is credited to the player who fired it.
         if (damage > 0 && _coopStateManager != null)
         {
-            int attributionSlot = DamageAttributionSlotOverride >= 0
+            var attributionSlot = DamageAttributionSlotOverride >= 0
                 ? DamageAttributionSlotOverride
                 : _coopStateManager.ActivePlayerSlot;
             var slot = _coopStateManager.GetPlayerState(attributionSlot);
             if (slot != null)
+            {
                 slot.DamageDealt += damage;
+            }
         }
 
         _registry.Dispatch(new EnemyDamagedEvent
@@ -152,7 +159,10 @@ public sealed class EnemySubscriptions
     private void OnEnemyDestroyed(Enemy enemy)
     {
         if (!IsHosting)
+        {
             return;
+        }
+
         _registry.Dispatch(new EnemyDestroyedEvent
         {
             EnemyId = _enemyIdentifier.GetId(enemy)
@@ -162,11 +172,13 @@ public sealed class EnemySubscriptions
     private void OnEnemyKilled(string locKey)
     {
         if (!IsHosting)
+        {
             return;
+        }
 
         // OnEnemyKilled only provides locKey, not the Enemy object.
         // Try to find the GUID by scanning enemies with this locKey that are dead/dying.
-        string guid = "";
+        var guid = "";
         var enemies = UnityEngine.Object.FindObjectsOfType<Enemy>();
         foreach (var e in enemies)
         {
@@ -188,7 +200,10 @@ public sealed class EnemySubscriptions
     private void OnEnemyAttack(float damage, bool melee, Enemy enemy, PlayerHealthController.DamageSource source, bool forceMaxHPDamage)
     {
         if (!IsHosting)
+        {
             return;
+        }
+
         _registry.Dispatch(new EnemyAttackEvent
         {
             EnemyId = _enemyIdentifier.GetId(enemy),

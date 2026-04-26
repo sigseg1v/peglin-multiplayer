@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using BepInEx.Logging;
-using HarmonyLib;
 using Loading;
 using Multipeglin.GameState.Appliers;
 using Multipeglin.GameState.Snapshots;
@@ -92,7 +91,9 @@ public class GameStateApplyService
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
         if (mode != LoadSceneMode.Single)
+        {
             return;
+        }
 
         _log.LogInfo($"[ApplyService] Scene loaded: '{scene.name}' — clearing GUID registries, hostScene='{_hostScene}'");
         _enemyId.Clear();
@@ -107,7 +108,9 @@ public class GameStateApplyService
         _lastAppliedSubtitle = null;
         _lastAppliedResponseCount = -1;
         if (UI.MirrorEventUI.IsActive)
+        {
             UI.MirrorEventUI.Hide();
+        }
 
         // Reset shop/treasure/minigame/textscenario bypass flags on any scene transition
         Patches.MultiplayerClientPatches.AllowShopLogic = false;
@@ -123,8 +126,8 @@ public class GameStateApplyService
         var svc = MultiplayerPlugin.Services;
         IMultiplayerMode mpModeRef = null;
         svc?.TryResolve(out mpModeRef);
-        bool isHosting = mpModeRef?.IsHosting == true;
-        bool isSpectating = mpModeRef?.IsSpectating == true;
+        var isHosting = mpModeRef?.IsHosting == true;
+        var isSpectating = mpModeRef?.IsSpectating == true;
 
         // Shop scene: initialize wait-for-all on host, enable shopping on client.
         // NOTE: AllChoicesComplete lingers from prior phases (e.g. text_scenario)
@@ -310,6 +313,7 @@ public class GameStateApplyService
                     _latestMap = snapshot.Map;
                     _mapApplier.Apply(snapshot.Map);
                 }
+
                 ApplyNonMapState(snapshot);
                 return;
             }
@@ -322,7 +326,10 @@ public class GameStateApplyService
                 _log.LogInfo($"[ApplyService] Client on interactive scene '{clientScene}' (host='{hostScene}') — skipping scene transition");
                 // Don't apply player state during TextScenario — client is modifying its own state
                 if (!Patches.MultiplayerClientPatches.AllowTextScenarioLogic)
+                {
                     ApplyPlayerFromSnapshot(snapshot);
+                }
+
                 return;
             }
 
@@ -354,7 +361,10 @@ public class GameStateApplyService
     public void ReapplyLastMapState()
     {
         if (_latestMap?.Nodes == null || _latestMap.Nodes.Count == 0)
+        {
             return;
+        }
+
         _log.LogInfo($"[ApplyService] Re-applying {_latestMap.Nodes.Count} map nodes after MapController.Start");
         _mapApplier.Apply(_latestMap);
     }
@@ -383,9 +393,11 @@ public class GameStateApplyService
             // Map scenes: wait for MapController.Start to complete before applying
             // node types. Start resets all nodes to NONE (via blocked GenerateRoomType),
             // so we must apply AFTER it finishes. The postfix sets the flag.
-            float timeout = Time.time + 5f;
+            var timeout = Time.time + 5f;
             while (!Patches.MultiplayerClientPatches.MapControllerStartCompleted && Time.time < timeout)
+            {
                 yield return null;
+            }
         }
 
         var currentScene = SceneManager.GetActiveScene().name;
@@ -441,9 +453,13 @@ public class GameStateApplyService
         // coop routing (PlayerSummaries by slot) applies this client's own HP
         // instead of the host's active-slot HP carried in `_latestPlayer`.
         if (_latestFullSnapshot != null)
+        {
             ApplyPlayerFromSnapshot(_latestFullSnapshot);
+        }
         else if (_latestPlayer != null)
+        {
             SafeApply("Player", () => _playerApplier.Apply(_latestPlayer));
+        }
 
         // Check if a pending snapshot arrived while we were waiting
         if (_pendingSnapshot != null &&
@@ -455,7 +471,9 @@ public class GameStateApplyService
             _pendingSnapshotScene = "";
 
             if (pending.Map != null)
+            {
                 SafeApply("Map(late-pending)", () => _mapApplier.Apply(pending.Map));
+            }
 
             ApplyNonMapState(pending);
         }
@@ -464,17 +482,22 @@ public class GameStateApplyService
     private IEnumerator WaitForEnemyCache()
     {
         var cache = AssetLoading.Instance?.EnemyPrefabs;
-        int waitFrames = 0;
+        var waitFrames = 0;
         while ((cache == null || cache.Count == 0) && waitFrames < 30)
         {
             yield return null;
             waitFrames++;
             cache = AssetLoading.Instance?.EnemyPrefabs;
         }
+
         if (cache != null && cache.Count > 0)
+        {
             _log.LogInfo($"[ApplyService] Enemy prefab cache ready: {cache.Count} entries (waited {waitFrames} frames)");
+        }
         else
+        {
             _log.LogWarning($"[ApplyService] Enemy prefab cache still empty after {waitFrames} frames");
+        }
     }
 
     // =========================================================================
@@ -518,8 +541,8 @@ public class GameStateApplyService
                 }
             }
 
-            int mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
-            bool found = false;
+            var mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
+            var found = false;
             foreach (var summary in snapshot.PlayerSummaries)
             {
                 if (summary.SlotIndex == mySlot)
@@ -542,11 +565,13 @@ public class GameStateApplyService
                         myPlayerState.IsSpedUp = snapshot.Player.IsSpedUp;
                         myPlayerState.SpeedupLevel = snapshot.Player.SpeedupLevel;
                     }
+
                     SafeApply("Player(coop)", () => _playerApplier.Apply(myPlayerState));
                     found = true;
                     break;
                 }
             }
+
             if (!found && snapshot.Player != null)
             {
                 _log.LogWarning($"[ApplyService] Coop: could not find slot {mySlot} in PlayerSummaries, falling back to generic Player snapshot");
@@ -562,15 +587,26 @@ public class GameStateApplyService
         if (currentScene == "Battle")
         {
             if (snapshot.Enemies != null)
+            {
                 SafeApply("Enemies", () => _enemyApplier.Apply(snapshot.Enemies));
+            }
+
             if (snapshot.Pegboard != null)
+            {
                 SafeApply("Pegboard", () => _pegboardApplier.Apply(snapshot.Pegboard));
+            }
+
             if (!isCoop)
             {
                 if (snapshot.Deck != null)
+                {
                     SafeApply("Deck", () => _deckApplier.Apply(snapshot.Deck));
+                }
+
                 if (snapshot.Relics != null)
+                {
                     SafeApply("Relics", () => _relicApplier.Apply(snapshot.Relics));
+                }
             }
             else
             {
@@ -578,7 +614,7 @@ public class GameStateApplyService
                 // The host sends per-player deck data; we pick our slot.
                 Snapshots.DeckStateSnapshot myDeck = null;
                 Snapshots.RelicStateSnapshot myRelics = null;
-                int mySlotIdx = -1;
+                var mySlotIdx = -1;
                 if (snapshot.AllDecks != null)
                 {
                     var services = MultiplayerPlugin.Services;
@@ -639,13 +675,13 @@ public class GameStateApplyService
             {
                 try
                 {
-                    int mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
+                    var mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
                     var battleState = snapshot.Enemies?.BattleStateName ?? "";
-                    bool hostWantsMyShot = snapshot.ActivePlayerSlot == mySlot
+                    var hostWantsMyShot = snapshot.ActivePlayerSlot == mySlot
                         && (battleState == "AWAITING_SHOT" || battleState == "SPAWNING");
 
                     var handler = Events.Handlers.Coop.TurnChangeClientHandler.LatestTurnState;
-                    bool currentlyMyTurn = Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn;
+                    var currentlyMyTurn = Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn;
 
                     // If the heartbeat says it's my turn but the one-shot event was missed, fix it
                     if (hostWantsMyShot && !currentlyMyTurn)
@@ -680,15 +716,20 @@ public class GameStateApplyService
             {
                 // Non-battle scenes: still sync deck and relics (they're global) in spectator mode
                 if (snapshot.Deck != null)
+                {
                     SafeApply("Deck", () => _deckApplier.Apply(snapshot.Deck));
+                }
+
                 if (snapshot.Relics != null)
+                {
                     SafeApply("Relics", () => _relicApplier.Apply(snapshot.Relics));
+                }
             }
             else if (snapshot.AllRelics != null)
             {
                 // Coop non-battle scenes: still apply this client's own relics so
                 // map-screen relic UI counts and effects stay correct.
-                int mySlotIdx = -1;
+                var mySlotIdx = -1;
                 Snapshots.RelicStateSnapshot myRelics = null;
                 var services = MultiplayerPlugin.Services;
                 if (services?.TryResolve<Multiplayer.PlayerRegistry>(out var registry) == true
@@ -697,9 +738,13 @@ public class GameStateApplyService
                     mySlotIdx = registry.LocalSlot.SlotIndex;
                     snapshot.AllRelics.TryGetValue(mySlotIdx, out myRelics);
                 }
+
                 if (myRelics != null)
+                {
                     SafeApply("Relics(coop-own-nonbattle)", () => _relicApplier.Apply(myRelics));
+                }
             }
+
             _log.LogInfo($"[ApplyService] Non-battle scene '{currentScene}': applied player/deck/relics, skipped enemies/pegs{(isCoop ? " (coop: own relics applied)" : "")}");
         }
 
@@ -742,6 +787,7 @@ public class GameStateApplyService
             _log.LogInfo("[ApplyService] TextScenario navigation started — activating nav controller on client");
             ActivateClientNavigation();
         }
+
         _wasNavigating = ts.IsNavigating;
     }
 
@@ -754,15 +800,19 @@ public class GameStateApplyService
     {
         try
         {
-            bool subtitleChanged = subtitleText != _lastAppliedSubtitle;
-            bool responsesChanged = (responses?.Count ?? 0) != _lastAppliedResponseCount;
+            var subtitleChanged = subtitleText != _lastAppliedSubtitle;
+            var responsesChanged = (responses?.Count ?? 0) != _lastAppliedResponseCount;
 
             if (!subtitleChanged && !responsesChanged)
+            {
                 return;
+            }
 
             var dialogueUI = UnityEngine.Object.FindObjectOfType<PixelCrushers.DialogueSystem.StandardDialogueUI>();
             if (dialogueUI == null)
+            {
                 return;
+            }
 
             // Update NPC subtitle text
             if (subtitleChanged && !string.IsNullOrEmpty(subtitleText))
@@ -781,11 +831,13 @@ public class GameStateApplyService
                 var menuPanel = dialogueUI.conversationUIElements?.defaultMenuPanel;
                 if (menuPanel?.buttons != null)
                 {
-                    for (int i = 0; i < menuPanel.buttons.Length; i++)
+                    for (var i = 0; i < menuPanel.buttons.Length; i++)
                     {
                         var btn = menuPanel.buttons[i];
                         if (btn == null)
+                        {
                             continue;
+                        }
 
                         if (i < responses.Count && !string.IsNullOrEmpty(responses[i]))
                         {
@@ -798,6 +850,7 @@ public class GameStateApplyService
                             btn.gameObject.SetActive(false);
                         }
                     }
+
                     _lastAppliedResponseCount = responses.Count;
                 }
             }
@@ -817,32 +870,40 @@ public class GameStateApplyService
     private void ApplyResponseHighlight(int highlightedIndex)
     {
         if (highlightedIndex == _lastAppliedHighlightIndex)
+        {
             return;
+        }
+
         _lastAppliedHighlightIndex = highlightedIndex;
 
         try
         {
             var dialogueUI = UnityEngine.Object.FindObjectOfType<PixelCrushers.DialogueSystem.StandardDialogueUI>();
             if (dialogueUI == null)
+            {
                 return;
+            }
 
             var menuPanel = dialogueUI.conversationUIElements?.defaultMenuPanel;
             if (menuPanel?.buttons == null)
+            {
                 return;
+            }
 
-            for (int i = 0; i < menuPanel.buttons.Length; i++)
+            for (var i = 0; i < menuPanel.buttons.Length; i++)
             {
                 var btn = menuPanel.buttons[i];
                 if (btn == null || !btn.gameObject.activeInHierarchy || !btn.isVisible)
+                {
                     continue;
+                }
 
                 if (i == highlightedIndex && btn.button != null)
                 {
                     // Use Unity's EventSystem to select this button, which triggers
                     // the native UI highlight state (color transition, animation, etc.)
                     var eventSystem = UnityEngine.EventSystems.EventSystem.current;
-                    if (eventSystem != null)
-                        eventSystem.SetSelectedGameObject(btn.gameObject);
+                    eventSystem?.SetSelectedGameObject(btn.gameObject);
                 }
             }
         }
@@ -866,8 +927,7 @@ public class GameStateApplyService
             // Hide the dialogue text canvas — the host has moved to navigation
             var textCanvasField = HarmonyLib.AccessTools.Field(typeof(RNG.Scenarios.DialogueSystemScenario), "mainTextAnimatorCanvas");
             var textCanvas = textCanvasField?.GetValue(dss) as CanvasGroup;
-            if (textCanvas != null)
-                textCanvas.gameObject.SetActive(false);
+            textCanvas?.gameObject.SetActive(false);
 
             // Stop the client's conversation if still active
             if (PixelCrushers.DialogueSystem.DialogueManager.isConversationActive)
@@ -903,6 +963,7 @@ public class GameStateApplyService
         {
             _hostScene = snapshot.ActiveScene;
         }
+
         SafeApply("Map", () => _mapApplier.Apply(snapshot));
     }
 
@@ -921,6 +982,7 @@ public class GameStateApplyService
             _log.LogInfo("[ApplyService] Skipping player delta — client in native reward phase");
             return;
         }
+
         if (isCoop && Patches.MultiplayerClientPatches.AllowTextScenarioLogic)
         {
             _log.LogInfo("[ApplyService] Skipping player delta — client in TextScenario dialogue");
@@ -937,6 +999,7 @@ public class GameStateApplyService
             _log.LogInfo("[ApplyService] Buffered enemy state (not on Battle scene)");
             return;
         }
+
         SafeApply("Enemies", () => _enemyApplier.Apply(snapshot));
     }
 
@@ -947,6 +1010,7 @@ public class GameStateApplyService
             _log.LogInfo("[ApplyService] Buffered pegboard state (not on Battle scene)");
             return;
         }
+
         SafeApply("Pegboard", () => _pegboardApplier.Apply(snapshot));
     }
 
@@ -969,13 +1033,15 @@ public class GameStateApplyService
         try
         {
             if (SceneManager.GetActiveScene().name != "Battle")
+            {
                 return;
+            }
 
             if (snapshot.Enemies?.Enemies != null)
             {
                 var em = UnityEngine.Object.FindObjectOfType<EnemyManager>();
-                int clientEnemies = em?.Enemies?.Count ?? 0;
-                int hostEnemies = snapshot.Enemies.Enemies.Count;
+                var clientEnemies = em?.Enemies?.Count ?? 0;
+                var hostEnemies = snapshot.Enemies.Enemies.Count;
                 if (clientEnemies != hostEnemies)
                 {
                     _log.LogWarning($"[Consistency] ENEMY COUNT MISMATCH: host={hostEnemies}, client={clientEnemies}");
@@ -991,15 +1057,22 @@ public class GameStateApplyService
             {
                 var bc2 = UnityEngine.Object.FindObjectOfType<Battle.BattleController>();
                 var pm = bc2?.pegManager;
-                int clientPegs = 0;
+                var clientPegs = 0;
                 if (pm?.allPegs != null)
                 {
                     foreach (var p in pm.allPegs)
                     {
                         if (p == null || !p.gameObject.activeSelf || p.pegType == Peg.PegType.DESTROYED)
+                        {
                             continue;
+                        }
+
                         try
-                        { if (!p.IsDisabled()) clientPegs++; }
+                        { if (!p.IsDisabled())
+                            {
+                                clientPegs++;
+                            }
+                        }
                         catch { }
                     }
                 }
@@ -1011,22 +1084,37 @@ public class GameStateApplyService
                     foreach (var b in cbombs)
                     {
                         if (b == null || !b.gameObject.activeSelf || b.pegType == Peg.PegType.DESTROYED)
+                        {
                             continue;
+                        }
+
                         try
-                        { if (!b.IsDisabled()) clientPegs++; }
+                        { if (!b.IsDisabled())
+                            {
+                                clientPegs++;
+                            }
+                        }
                         catch { }
                     }
                 }
                 // Host count: not destroyed AND not popped (same criteria as client)
-                int hostActivePegs = 0;
+                var hostActivePegs = 0;
                 foreach (var p in snapshot.Pegboard.Pegs)
+                {
                     if (!p.IsDestroyed && !p.IsCleared)
+                    {
                         hostActivePegs++;
+                    }
+                }
 
                 if (System.Math.Abs(clientPegs - hostActivePegs) > 5)
+                {
                     _log.LogWarning($"[Consistency] PEG COUNT MISMATCH: host_active={hostActivePegs}, client_active={clientPegs}");
+                }
                 else
+                {
                     _log.LogInfo($"[Consistency] Pegs OK: host={hostActivePegs}, client={clientPegs}");
+                }
             }
         }
         catch (Exception ex)
@@ -1071,7 +1159,7 @@ public class GameStateApplyService
     private void TriggerNavigationIfNeeded(FullGameStateSnapshot snapshot)
     {
         var battleState = snapshot.Enemies?.BattleStateName;
-        bool isNav = battleState == "NAVIGATION" || battleState == "AWAITING_POST_BATTLE_CONTROLLER";
+        var isNav = battleState == "NAVIGATION" || battleState == "AWAITING_POST_BATTLE_CONTROLLER";
 
         if (!isNav)
         {
@@ -1137,7 +1225,7 @@ public class GameStateApplyService
 
         if (isCoop && snapshot.PlayerSummaries != null && snapshot.PlayerSummaries.Count > 0)
         {
-            int mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
+            var mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
             foreach (var summary in snapshot.PlayerSummaries)
             {
                 if (summary.SlotIndex == mySlot)
@@ -1156,11 +1244,13 @@ public class GameStateApplyService
                     {
                         myPlayerState.StatusEffects = summary.StatusEffects;
                     }
+
                     if (snapshot.Player != null)
                     {
                         myPlayerState.IsSpedUp = snapshot.Player.IsSpedUp;
                         myPlayerState.SpeedupLevel = snapshot.Player.SpeedupLevel;
                     }
+
                     SafeApply("Player(coop-xscene)", () => _playerApplier.Apply(myPlayerState));
                     return;
                 }
@@ -1168,7 +1258,9 @@ public class GameStateApplyService
         }
 
         if (snapshot.Player != null)
+        {
             SafeApply("Player", () => _playerApplier.Apply(snapshot.Player));
+        }
     }
 
     private void SafeApply(string name, Action action)
@@ -1196,9 +1288,14 @@ public class GameStateApplyService
         try
         {
             if (svc == null || coopMgr == null)
+            {
                 return;
+            }
+
             if (!svc.TryResolve<Events.IGameEventRegistry>(out var registry) || registry == null)
+            {
                 return;
+            }
 
             var allRelics = UnityEngine.Resources.FindObjectsOfTypeAll<Relics.Relic>();
             if (allRelics == null || allRelics.Length == 0)
@@ -1213,59 +1310,87 @@ public class GameStateApplyService
             // the broadcast is best-effort and the client patch can still re-pick
             // locally if the rarity ends up wrong.
             var mapDataTreasure = StaticGameData.dataToLoad as MapDataTreasure;
-            float baseRareChance = mapDataTreasure != null ? mapDataTreasure.rareChance : Relics.RelicManager.CHEST_RARE_CHANCE;
+            var baseRareChance = mapDataTreasure != null ? mapDataTreasure.rareChance : Relics.RelicManager.CHEST_RARE_CHANCE;
 
             Events.Handlers.Coop.CoopRewardState.PerSlotTreasureRelics.Clear();
 
             foreach (var kvp in coopMgr.PlayerStates)
             {
-                int slot = kvp.Key;
+                var slot = kvp.Key;
                 var state = kvp.Value;
                 if (state == null)
+                {
                     continue;
+                }
 
                 // Slot-keyed deterministic RNG so each slot picks differently and
                 // the same slot is reproducible across host/client.
-                int rngSeed = unchecked(((StaticGameData.currentSeed ?? "").GetHashCode() ^ (slot * 7919) ^ (StaticGameData.totalFloorCount * 104729)));
+                var rngSeed = unchecked(((StaticGameData.currentSeed ?? "").GetHashCode() ^ (slot * 7919) ^ (StaticGameData.totalFloorCount * 104729)));
                 var sysRng = new System.Random(rngSeed);
 
                 // Determine rarity: COMMON or RARE based on the same baseRareChance.
-                bool slotHasMoreTreasure = SlotHasRelicEffect(state, Relics.RelicEffect.MORE_TREASURE_NODES);
-                float rareChance = baseRareChance + (slotHasMoreTreasure ? 0.1f : 0f);
-                bool isRare = sysRng.NextDouble() <= rareChance;
+                var slotHasMoreTreasure = SlotHasRelicEffect(state, Relics.RelicEffect.MORE_TREASURE_NODES);
+                var rareChance = baseRareChance + (slotHasMoreTreasure ? 0.1f : 0f);
+                var isRare = sysRng.NextDouble() <= rareChance;
                 var rarity = isRare ? Relics.RelicRarity.RARE : Relics.RelicRarity.COMMON;
 
                 // Build candidate list filtered by this slot's owned relics.
                 var owned = new System.Collections.Generic.HashSet<int>();
                 if (state.OwnedRelics != null)
+                {
                     foreach (var r in state.OwnedRelics)
+                    {
                         if (r != null)
+                        {
                             owned.Add(r.Effect);
+                        }
+                    }
+                }
 
                 var candidates = new System.Collections.Generic.List<Relics.Relic>();
                 foreach (var r in allRelics)
                 {
                     if (r == null)
+                    {
                         continue;
+                    }
+
                     if (r.globalRarity != rarity)
+                    {
                         continue;
+                    }
+
                     if (owned.Contains((int)r.effect))
+                    {
                         continue;
+                    }
+
                     candidates.Add(r);
                 }
+
                 if (candidates.Count == 0)
                 {
                     foreach (var r in allRelics)
                     {
                         if (r == null)
+                        {
                             continue;
+                        }
+
                         if (owned.Contains((int)r.effect))
+                        {
                             continue;
+                        }
+
                         candidates.Add(r);
                     }
                 }
+
                 if (candidates.Count == 0)
+                {
                     continue;
+                }
+
                 candidates.Sort((a, b) => string.CompareOrdinal(a?.name, b?.name));
 
                 var relic = candidates[sysRng.Next(0, candidates.Count)];
@@ -1273,7 +1398,10 @@ public class GameStateApplyService
                 _log.LogInfo($"[ApplyService] Per-slot treasure relic slot={slot} rarity={rarity} relic='{relic.name}'");
 
                 if (slot == 0)
+                {
                     continue; // host reads its own list locally
+                }
+
                 registry.Dispatch(new Events.Network.Coop.CoopTreasureRelicChoiceEvent
                 {
                     TargetSlotIndex = slot,
@@ -1291,10 +1419,18 @@ public class GameStateApplyService
     private static bool SlotHasRelicEffect(CoopPlayerState state, Relics.RelicEffect effect)
     {
         if (state?.OwnedRelics == null)
+        {
             return false;
+        }
+
         foreach (var r in state.OwnedRelics)
+        {
             if (r != null && r.Effect == (int)effect)
+            {
                 return true;
+            }
+        }
+
         return false;
     }
 }

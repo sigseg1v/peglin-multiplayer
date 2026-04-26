@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using BepInEx.Logging;
 using Multipeglin.GameState.Snapshots;
 using PixelCrushers.DialogueSystem;
-using UnityEngine;
 using UnityEngine.SceneManagement;
 
 namespace Multipeglin.GameState.Providers;
@@ -24,7 +23,9 @@ public class TextScenarioStateProvider
         {
             var currentScene = SceneManager.GetActiveScene().name;
             if (currentScene != "TextScenario")
+            {
                 return null;
+            }
 
             var snapshot = new TextScenarioStateSnapshot
             {
@@ -69,11 +70,15 @@ public class TextScenarioStateProvider
             // Find the StandardDialogueUI in the scene
             var dialogueUI = UnityEngine.Object.FindObjectOfType<StandardDialogueUI>();
             if (dialogueUI == null)
+            {
                 return;
+            }
 
             var uiElements = dialogueUI.conversationUIElements;
             if (uiElements == null)
+            {
                 return;
+            }
 
             // Read NPC subtitle text
             var npcPanel = uiElements.defaultNPCSubtitlePanel;
@@ -115,7 +120,9 @@ public class TextScenarioStateProvider
     private static bool IsMirrorScenario(string scenarioName)
     {
         if (string.IsNullOrEmpty(scenarioName))
+        {
             return false;
+        }
         // The mirror event scenario name — check common patterns
         return scenarioName.IndexOf("Mirror", StringComparison.OrdinalIgnoreCase) >= 0;
     }

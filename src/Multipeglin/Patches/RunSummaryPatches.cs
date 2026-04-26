@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Battle.StatusEffects;
 using HarmonyLib;
-using I2.Loc;
 using Multipeglin.DI;
 using Multipeglin.Events;
 using Multipeglin.Events.Handlers.Coop;
@@ -13,7 +12,6 @@ using Multipeglin.Multiplayer;
 using PeglinUI.RunSummary;
 using Stats;
 using UnityEngine;
-using Worldmap;
 
 namespace Multipeglin.Patches;
 
@@ -33,9 +31,14 @@ public static class RunSummaryOnEnablePatch
         {
             var services = MultiplayerPlugin.Services;
             if (services == null)
+            {
                 return;
+            }
+
             if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting)
+            {
                 return;
+            }
 
             var stats = StaticGameData.CurrentRunStats;
             if (stats == null)
@@ -69,7 +72,9 @@ public static class RunSummaryOnEnablePatch
     {
         var result = new List<PerPlayerStats>();
         if (!services.TryResolve<CoopStateManager>(out var coop))
+        {
             return result;
+        }
 
         foreach (var kvp in coop.PlayerStates.OrderBy(p => p.Key))
         {
@@ -88,15 +93,24 @@ public static class RunSummaryOnEnablePatch
             };
 
             if (state.OwnedRelics != null)
+            {
                 foreach (var r in state.OwnedRelics)
+                {
                     entry.Relics.Add(r.Effect);
+                }
+            }
 
             if (state.CompleteDeck != null)
+            {
                 foreach (var o in state.CompleteDeck)
+                {
                     entry.Orbs.Add(new PerPlayerOrb { PrefabName = o.PrefabName, Level = o.Level });
+                }
+            }
 
             result.Add(entry);
         }
+
         return result;
     }
 
@@ -126,34 +140,67 @@ public static class RunSummaryOnEnablePatch
         };
 
         if (stats.visitedRooms != null)
+        {
             ev.VisitedRooms = stats.visitedRooms.Select(r => (int)r).ToList();
+        }
+
         if (stats.visitedBosses != null)
+        {
             ev.VisitedBosses = stats.visitedBosses.Select(b => (int)b).ToList();
+        }
+
         if (stats.relics != null)
+        {
             ev.Relics = stats.relics.Select(r => (int)r).ToList();
+        }
+
         if (stats.challenges != null)
+        {
             ev.Challenges = stats.challenges.Select(c => (int)c).ToList();
+        }
 
         // Pack enum-indexed dicts into dense arrays so the wire format is stable.
         var statusMax = 0;
         foreach (var v in Enum.GetValues(typeof(StatusEffectType)))
+        {
             if ((int)v > statusMax)
+            {
                 statusMax = (int)v;
+            }
+        }
+
         ev.StatusEffectStacks = Enumerable.Repeat(0, statusMax + 1).ToList();
         if (stats.stacksPerStatusEffect != null)
+        {
             foreach (var kv in stats.stacksPerStatusEffect)
+            {
                 if ((int)kv.Key >= 0 && (int)kv.Key < ev.StatusEffectStacks.Count)
+                {
                     ev.StatusEffectStacks[(int)kv.Key] = kv.Value;
+                }
+            }
+        }
 
         var slimeMax = 0;
         foreach (var v in Enum.GetValues(typeof(global::Peg.SlimeType)))
+        {
             if ((int)v > slimeMax)
+            {
                 slimeMax = (int)v;
+            }
+        }
+
         ev.SlimePegCounts = Enumerable.Repeat(0, slimeMax + 1).ToList();
         if (stats.slimePegsPerSlimeType != null)
+        {
             foreach (var kv in stats.slimePegsPerSlimeType)
+            {
                 if ((int)kv.Key >= 0 && (int)kv.Key < ev.SlimePegCounts.Count)
+                {
                     ev.SlimePegCounts[(int)kv.Key] = kv.Value;
+                }
+            }
+        }
 
         if (stats.orbStats != null)
         {
@@ -214,15 +261,22 @@ public static class RunStatisticsDetailsInitializePatch
         {
             var players = RunStatsSnapshotClientHandler.LatestPerPlayerStats;
             if (players == null || players.Count == 0)
+            {
                 return;
+            }
 
             // Keep pages ordered by slot index so page 1 is always host.
             var ordered = players.OrderBy(p => p.SlotIndex).ToList();
 
             if (CurrentPageIndex < 0)
+            {
                 CurrentPageIndex = 0;
+            }
+
             if (CurrentPageIndex >= ordered.Count)
+            {
                 CurrentPageIndex = ordered.Count - 1;
+            }
 
             var current = ordered[CurrentPageIndex];
             RenderPerPlayerPage(__instance, stats, current, CurrentPageIndex, ordered.Count);
@@ -240,16 +294,16 @@ public static class RunStatisticsDetailsInitializePatch
         var headerField = AccessTools.Field(typeof(RunStatisticsDetails), "headerText");
         if (headerField?.GetValue(inst) is TMPro.TextMeshProUGUI header)
         {
-            string classLocKey = FindClassLocKey(inst, player.ChosenClass);
-            string className = !string.IsNullOrEmpty(classLocKey)
+            var classLocKey = FindClassLocKey(inst, player.ChosenClass);
+            var className = !string.IsNullOrEmpty(classLocKey)
                 ? I2.Loc.LocalizationManager.GetTranslation(classLocKey)
                 : "";
-            string result = stats.hasWon
+            var result = stats.hasWon
                 ? I2.Loc.LocalizationManager.GetTranslation("Menu/RunSummary/win_label")
                 : player.IsAlive
                     ? I2.Loc.LocalizationManager.GetTranslation("Menu/RunSummary/loss_label")
                     : I2.Loc.LocalizationManager.GetTranslation("Menu/RunSummary/loss_label");
-            string pageSuffix = pageCount > 1 ? $"   ({pageIndex + 1}/{pageCount})" : "";
+            var pageSuffix = pageCount > 1 ? $"   ({pageIndex + 1}/{pageCount})" : "";
             header.text = $"{player.PlayerName} — {className} - {result}{pageSuffix}";
         }
 
@@ -284,28 +338,39 @@ public static class RunStatisticsDetailsInitializePatch
         if (orbsParent != null && orbsCarousel != null && orbPrefab != null)
         {
             // Destroy any orb GameObjects the native CreateOrbs instantiated under orbsParent.
-            for (int i = orbsParent.childCount - 1; i >= 0; i--)
+            for (var i = orbsParent.childCount - 1; i >= 0; i--)
+            {
                 UnityEngine.Object.Destroy(orbsParent.GetChild(i).gameObject);
+            }
+
             orbsCarousel.ClearElements();
 
             var list = new List<GameObject>();
             foreach (var orb in player.Orbs)
             {
                 if (string.IsNullOrEmpty(orb.PrefabName))
+                {
                     continue;
+                }
+
                 var orbGO = Loading.AssetLoading.Instance?.GetOrbPrefab(orb.PrefabName);
                 if (orbGO == null)
                 {
                     MultiplayerPlugin.Logger?.LogWarning($"[RunStatsSync] Orb prefab not found: {orb.PrefabName}");
                     continue;
                 }
+
                 var icon = UnityEngine.Object.Instantiate(orbPrefab, orbsParent).GetComponent<PeglinUI.LoadoutManager.LoadoutIcon>();
                 if (icon == null)
+                {
                     continue;
+                }
+
                 icon.InitializeOrb(orbGO, Mathf.Clamp(orb.Level, 0, 2));
                 ForceIconUnlocked(icon, orbGO, null);
                 list.Add(icon.gameObject);
             }
+
             orbsCarousel.Initialize(list);
         }
 
@@ -316,8 +381,11 @@ public static class RunStatisticsDetailsInitializePatch
         var relicMgr = AccessTools.Field(typeof(RunStatisticsDetails), "relicManager")?.GetValue(inst) as Relics.RelicManager;
         if (relicsParent != null && relicsCarousel != null && relicPrefab != null && relicMgr != null)
         {
-            for (int i = relicsParent.childCount - 1; i >= 0; i--)
+            for (var i = relicsParent.childCount - 1; i >= 0; i--)
+            {
                 UnityEngine.Object.Destroy(relicsParent.GetChild(i).gameObject);
+            }
+
             relicsCarousel.ClearElements();
 
             var list = new List<GameObject>();
@@ -329,13 +397,18 @@ public static class RunStatisticsDetailsInitializePatch
                     MultiplayerPlugin.Logger?.LogWarning($"[RunStatsSync] Relic not found for effect: {(Relics.RelicEffect)effectInt}");
                     continue;
                 }
+
                 var icon = UnityEngine.Object.Instantiate(relicPrefab, relicsParent).GetComponent<PeglinUI.LoadoutManager.LoadoutIcon>();
                 if (icon == null)
+                {
                     continue;
+                }
+
                 icon.InitializeRelic(relic);
                 ForceIconUnlocked(icon, null, relic);
                 list.Add(icon.gameObject);
             }
+
             relicsCarousel.Initialize(list);
         }
     }
@@ -370,16 +443,23 @@ public static class RunStatisticsDetailsInitializePatch
                 foreach (var comp in components)
                 {
                     if (comp == null)
+                    {
                         continue;
+                    }
+
                     var t = comp.GetType();
                     if (t.Name != "UIEffect")
+                    {
                         continue;
+                    }
+
                     var prop = t.GetProperty("colorFactor");
                     if (prop != null && prop.CanWrite)
                     {
                         prop.SetValue(comp, 0f, null);
                         break;
                     }
+
                     var field = t.GetField("colorFactor");
                     if (field != null)
                     {
@@ -401,14 +481,20 @@ public static class RunStatisticsDetailsInitializePatch
         {
             var classInfos = inst.classInfos;
             if (classInfos == null)
+            {
                 return null;
+            }
+
             foreach (var ci in classInfos)
             {
                 if ((int)ci.characterClass == chosenClass)
+                {
                     return ci.classNameLocKey;
+                }
             }
         }
         catch { }
+
         return null;
     }
 
@@ -416,18 +502,26 @@ public static class RunStatisticsDetailsInitializePatch
     {
         try
         {
-            string label = I2.Loc.LocalizationManager.GetTranslation(labelLocKey);
+            var label = I2.Loc.LocalizationManager.GetTranslation(labelLocKey);
             if (string.IsNullOrEmpty(label))
+            {
                 return;
+            }
 
             foreach (Transform child in parent)
             {
                 var sl = child.GetComponent<StatsLine>();
                 if (sl == null)
+                {
                     continue;
+                }
+
                 var texts = child.GetComponentsInChildren<TMPro.TextMeshProUGUI>(true);
                 if (texts == null || texts.Length < 2)
+                {
                     continue;
+                }
+
                 if (texts[0].text == label)
                 {
                     texts[1].text = newValue;
@@ -445,20 +539,25 @@ public static class RunStatisticsDetailsInitializePatch
         {
             var texts = child.GetComponentsInChildren<TMPro.TextMeshProUGUI>(true);
             if (texts != null && texts.Length > 0 && texts[0].text != null && texts[0].text.StartsWith(prefix))
+            {
                 toRemove.Add(child.gameObject);
+            }
         }
+
         foreach (var go in toRemove)
+        {
             UnityEngine.Object.DestroyImmediate(go);
+        }
     }
 
     private static void RestripeRows(Transform parent)
     {
-        int i = 1;
+        var i = 1;
         foreach (Transform child in parent)
         {
             var img = child.GetComponentInChildren<UnityEngine.UI.Image>();
-            if (img != null)
-                img.enabled = i != 0;
+            img?.enabled = i != 0;
+
             i = 1 - i;
         }
     }
@@ -479,9 +578,11 @@ public static class RunSummaryLoadMainMenuPatch
         {
             var players = RunStatsSnapshotClientHandler.LatestPerPlayerStats;
             if (players == null || players.Count <= 1)
+            {
                 return true;
+            }
 
-            int next = RunStatisticsDetailsInitializePatch.CurrentPageIndex + 1;
+            var next = RunStatisticsDetailsInitializePatch.CurrentPageIndex + 1;
             if (next >= players.Count)
             {
                 // Reset for the next run so the summary always opens at page 1.
@@ -499,6 +600,7 @@ public static class RunSummaryLoadMainMenuPatch
                 details.Initialize(stats);
                 MultiplayerPlugin.Logger?.LogInfo($"[RunStatsSync] Advanced to player page {next + 1}/{players.Count}");
             }
+
             return false;
         }
         catch (Exception ex)

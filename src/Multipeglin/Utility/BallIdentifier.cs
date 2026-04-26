@@ -19,9 +19,14 @@ public class BallIdentifier
     public string GetOrAssignGuid(PachinkoBall ball)
     {
         if (ball == null)
+        {
             return "null";
+        }
+
         if (_ballToGuid.TryGetValue(ball, out var existing))
+        {
             return existing;
+        }
 
         var guid = Guid.NewGuid().ToString("N")[..12];
         _guidToBall[guid] = ball;
@@ -32,7 +37,10 @@ public class BallIdentifier
     public string GetGuid(PachinkoBall ball)
     {
         if (ball == null)
+        {
             return null;
+        }
+
         return _ballToGuid.TryGetValue(ball, out var guid) ? guid : null;
     }
 
@@ -40,7 +48,10 @@ public class BallIdentifier
     public void Forget(PachinkoBall ball)
     {
         if (ball == null)
+        {
             return;
+        }
+
         if (_ballToGuid.TryGetValue(ball, out var guid))
         {
             _guidToBall.Remove(guid);
@@ -51,12 +62,17 @@ public class BallIdentifier
     public void ForgetByGuid(string guid)
     {
         if (string.IsNullOrEmpty(guid))
+        {
             return;
+        }
+
         if (_guidToBall.TryGetValue(guid, out var ball))
         {
             _guidToBall.Remove(guid);
             if (ball != null)
+            {
                 _ballToGuid.Remove(ball);
+            }
         }
     }
 
@@ -68,8 +84,11 @@ public class BallIdentifier
         foreach (var kvp in _guidToBall)
         {
             if (kvp.Value == null)
+            {
                 toRemove.Add(kvp.Key);
+            }
         }
+
         foreach (var guid in toRemove)
         {
             _guidToBall.Remove(guid);
@@ -78,10 +97,18 @@ public class BallIdentifier
         // Clean reverse map of stale refs
         var ballsToRemove = new List<PachinkoBall>();
         foreach (var kvp in _ballToGuid)
+        {
             if (kvp.Key == null)
+            {
                 ballsToRemove.Add(kvp.Key);
+            }
+        }
+
         foreach (var b in ballsToRemove)
+        {
             _ballToGuid.Remove(b);
+        }
+
         return removed;
     }
 
@@ -91,7 +118,9 @@ public class BallIdentifier
         _guidToBall.Clear();
         _ballToGuid.Clear();
         if (count > 0)
+        {
             Log?.LogInfo($"[BallGUID] Cleared {count} entries");
+        }
     }
 
     public int Count => _guidToBall.Count;

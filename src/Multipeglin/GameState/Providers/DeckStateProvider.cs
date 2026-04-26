@@ -1,7 +1,6 @@
 using System;
-using System.Collections.Generic;
-using BepInEx.Logging;
 using Battle.Attacks;
+using BepInEx.Logging;
 using Multipeglin.GameState.Snapshots;
 using Multipeglin.Utility;
 using UnityEngine;
@@ -34,16 +33,21 @@ public class DeckStateProvider : IGameStateProvider<DeckStateSnapshot>
             var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
             var dm = dms.Length > 0 ? dms[0] : null;
             if (dm == null)
+            {
                 return snapshot;
+            }
 
             var completeDeck = DeckManager.completeDeck;
             if (completeDeck != null)
             {
-                for (int i = 0; i < completeDeck.Count; i++)
+                for (var i = 0; i < completeDeck.Count; i++)
                 {
                     var go = completeDeck[i];
                     if (go == null)
+                    {
                         continue;
+                    }
+
                     var entry = CreateOrbEntry(go);
                     entry.Guid = _orbId.GetOrAssignGuid(go);
                     entry.DeckIndex = i;
@@ -54,11 +58,14 @@ public class DeckStateProvider : IGameStateProvider<DeckStateSnapshot>
             var battleDeck = dm.battleDeck;
             if (battleDeck != null)
             {
-                for (int i = 0; i < battleDeck.Count; i++)
+                for (var i = 0; i < battleDeck.Count; i++)
                 {
                     var go = battleDeck[i];
                     if (go == null)
+                    {
                         continue;
+                    }
+
                     var entry = CreateOrbEntry(go);
                     entry.Guid = _orbId.GetOrAssignGuid(go);
                     entry.DeckIndex = i;
@@ -80,7 +87,9 @@ public class DeckStateProvider : IGameStateProvider<DeckStateSnapshot>
                 foreach (var orb in dm.shuffledDeck)
                 {
                     if (orb != null)
+                    {
                         snapshot.ShuffledOrder.Add(_orbId.GetOrAssignGuid(orb));
+                    }
                 }
             }
             // else: shuffledDeck.Count == 0 -> ShuffledOrder stays as initialized empty list

@@ -1,10 +1,10 @@
-namespace Multipeglin.Events.Handlers.Peg;
 
 using System;
 using Multipeglin.Events.Network.Peg;
 using Multipeglin.Multiplayer;
 using Multipeglin.Utility;
 
+namespace Multipeglin.Events.Handlers.Peg;
 public sealed class PegDestroyedClientHandler : IClientHandler<PegDestroyedEvent>
 {
     public void Handle(PegDestroyedEvent networkEvent)
@@ -13,7 +13,9 @@ public sealed class PegDestroyedClientHandler : IClientHandler<PegDestroyedEvent
         {
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
             if (mode == null || !mode.IsSpectating)
+            {
                 return;
+            }
 
             // Find the actual peg on the client by GUID
             global::Peg peg = null;

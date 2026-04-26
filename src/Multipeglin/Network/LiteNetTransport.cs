@@ -41,13 +41,17 @@ public class LiteNetTransport : INetworkTransport, INetEventListener
     public void SendTo(int peerId, byte[] data)
     {
         if (_peers.TryGetValue(peerId, out var peer))
+        {
             peer.Send(data, DeliveryMethod.ReliableOrdered);
+        }
     }
 
     public void Broadcast(byte[] data)
     {
         foreach (var peer in _peers.Values)
+        {
             peer.Send(data, DeliveryMethod.ReliableOrdered);
+        }
     }
 
     public void PollEvents() => _netManager?.PollEvents();
@@ -69,13 +73,16 @@ public class LiteNetTransport : INetworkTransport, INetEventListener
         _peers.TryRemove(peer.Id, out _);
         if (!IsHost && disconnectInfo.Reason == DisconnectReason.ConnectionRejected)
         {
-            string reason = "version";
+            var reason = "version";
             try
             {
                 if (disconnectInfo.AdditionalData != null && disconnectInfo.AdditionalData.AvailableBytes > 0)
+                {
                     reason = disconnectInfo.AdditionalData.GetString();
+                }
             }
             catch { }
+
             OnConnectionRejected?.Invoke(reason);
         }
         else

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Battle.StatusEffects;
 using Challenges;
 using HarmonyLib;
@@ -9,7 +8,6 @@ using Multipeglin.Multiplayer;
 using PeglinUI.RunSummary;
 using Relics;
 using Stats;
-using UnityEngine;
 using Worldmap;
 
 namespace Multipeglin.Events.Handlers.Coop;
@@ -35,7 +33,9 @@ public sealed class RunStatsSnapshotClientHandler : IClientHandler<RunStatsSnaps
         {
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
             if (mode == null || mode.IsHosting)
+            {
                 return;
+            }
 
             var stats = StaticGameData.CurrentRunStats ?? new RunStats();
             stats.hasWon = e.HasWon;
@@ -57,7 +57,9 @@ public sealed class RunStatsSnapshotClientHandler : IClientHandler<RunStatsSnaps
             stats.runTimerElapsedMilliseconds = e.RunTimerElapsedMs;
 
             if (DateTime.TryParse(e.EndDateIso, out var endDate))
+            {
                 stats.endDate = endDate;
+            }
 
             // Prevent the native Stopwatch from adding live-client time on top
             // of the host's final elapsed counter.
@@ -67,13 +69,21 @@ public sealed class RunStatsSnapshotClientHandler : IClientHandler<RunStatsSnaps
 
             stats.visitedRooms = new Queue<RoomType>();
             if (e.VisitedRooms != null)
+            {
                 foreach (var r in e.VisitedRooms)
+                {
                     stats.visitedRooms.Enqueue((RoomType)r);
+                }
+            }
 
             stats.visitedBosses = new Queue<RunStats.BossType>();
             if (e.VisitedBosses != null)
+            {
                 foreach (var b in e.VisitedBosses)
+                {
                     stats.visitedBosses.Enqueue((RunStats.BossType)b);
+                }
+            }
 
             stats.relics = (e.Relics ?? new List<int>()).ConvertAll(r => (RelicEffect)r);
             stats.challenges = (e.Challenges ?? new List<int>()).ConvertAll(c => (ChallengeEffect)c);
@@ -81,17 +91,25 @@ public sealed class RunStatsSnapshotClientHandler : IClientHandler<RunStatsSnaps
             stats.stacksPerStatusEffect = new Dictionary<StatusEffectType, int>();
             if (e.StatusEffectStacks != null)
             {
-                for (int i = 0; i < e.StatusEffectStacks.Count; i++)
+                for (var i = 0; i < e.StatusEffectStacks.Count; i++)
+                {
                     if (e.StatusEffectStacks[i] > 0)
+                    {
                         stats.stacksPerStatusEffect[(StatusEffectType)i] = e.StatusEffectStacks[i];
+                    }
+                }
             }
 
             stats.slimePegsPerSlimeType = new Dictionary<global::Peg.SlimeType, int>();
             if (e.SlimePegCounts != null)
             {
-                for (int i = 0; i < e.SlimePegCounts.Count; i++)
+                for (var i = 0; i < e.SlimePegCounts.Count; i++)
+                {
                     if (e.SlimePegCounts[i] > 0)
+                    {
                         stats.slimePegsPerSlimeType[(global::Peg.SlimeType)i] = e.SlimePegCounts[i];
+                    }
+                }
             }
 
             stats.orbStats = new Dictionary<string, RunStats.OrbPlayData>();
@@ -100,7 +118,10 @@ public sealed class RunStatsSnapshotClientHandler : IClientHandler<RunStatsSnaps
                 foreach (var o in e.Orbs)
                 {
                     if (string.IsNullOrEmpty(o.Id))
+                    {
                         continue;
+                    }
+
                     stats.orbStats[o.Id] = new RunStats.OrbPlayData
                     {
                         id = o.Id,
@@ -122,7 +143,10 @@ public sealed class RunStatsSnapshotClientHandler : IClientHandler<RunStatsSnaps
                 foreach (var en in e.Enemies)
                 {
                     if (string.IsNullOrEmpty(en.Name))
+                    {
                         continue;
+                    }
+
                     stats.enemyData[en.Name] = new RunStats.EnemyPlayData
                     {
                         name = en.Name,

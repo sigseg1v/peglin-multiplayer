@@ -15,7 +15,10 @@ public sealed class FullGameStateClientHandler : IClientHandler<FullGameStateSna
         {
             // Always update co-op player visuals data from every heartbeat
             if (e.PlayerSummaries != null)
+            {
                 CoopPlayerVisuals.LatestPlayerSummaries = e.PlayerSummaries;
+            }
+
             CoopPlayerVisuals.LatestActiveSlot = e.ActivePlayerSlot;
 
             var mode = MultiplayerPlugin.Services?.Resolve<IMultiplayerMode>();
@@ -33,19 +36,40 @@ public sealed class FullGameStateClientHandler : IClientHandler<FullGameStateSna
             // Diagnostics mode: log everything
             log?.LogInfo("=== FULL GAME STATE RECEIVED ===");
             if (e.Map != null)
+            {
                 log?.LogInfo($"  Map: scene={e.Map.ActiveScene}, floor={e.Map.TotalFloorCount}, class={e.Map.ChosenClassName}, seed={e.Map.CurrentSeed}");
+            }
+
             if (e.Player != null)
+            {
                 log?.LogInfo($"  Player: hp={e.Player.CurrentHealth}/{e.Player.MaxHealth}, gold={e.Player.Gold}, effects={e.Player.StatusEffects?.Count ?? 0}");
+            }
+
             if (e.Deck != null)
+            {
                 log?.LogInfo($"  Deck: {e.Deck.DeckSize} orbs total");
+            }
+
             if (e.Relics != null)
+            {
                 log?.LogInfo($"  Relics: {e.Relics.TotalRelicCount} owned");
+            }
+
             if (e.Enemies != null)
+            {
                 log?.LogInfo($"  Battle: state={e.Enemies.BattleStateName}, {e.Enemies.Enemies?.Count ?? 0} enemies");
+            }
+
             if (e.Pegboard != null)
+            {
                 log?.LogInfo($"  Pegboard: {e.Pegboard.TotalPegCount} pegs");
+            }
+
             if (e.PlayerSummaries != null)
+            {
                 log?.LogInfo($"  CoopPlayers: {e.PlayerSummaries.Count} players, activeSlot={e.ActivePlayerSlot}");
+            }
+
             log?.LogInfo("================================");
         }
         catch (Exception ex)

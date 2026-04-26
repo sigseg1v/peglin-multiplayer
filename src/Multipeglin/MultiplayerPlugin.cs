@@ -7,7 +7,6 @@ using Multipeglin.DI;
 using Multipeglin.GameState;
 using Multipeglin.Network;
 using Multipeglin.Patches;
-using Multipeglin.Multiplayer;
 using Multipeglin.UI;
 using Multipeglin.Utility;
 using UnityEngine;
@@ -50,8 +49,10 @@ public class MultiplayerPlugin : BaseUnityPlugin
             // destroyed by the game during scene init (~2s after Awake).
             // HideAndDontSave prevents the game from finding and destroying it.
             // This is the same pattern ProLib and Promethium use.
-            _modObject = new GameObject("Multipeglin");
-            _modObject.hideFlags = HideFlags.HideAndDontSave;
+            _modObject = new GameObject("Multipeglin")
+            {
+                hideFlags = HideFlags.HideAndDontSave
+            };
             DontDestroyOnLoad(_modObject);
 
             var poller = _modObject.AddComponent<NetworkPollBehaviour>();
@@ -88,12 +89,13 @@ public class MultiplayerPlugin : BaseUnityPlugin
                 MissingPatches = new List<string> { $"PatchAll failed: {ex.Message}" };
             }
 
-            int patchCount = 0;
+            var patchCount = 0;
             foreach (var method in _harmony.GetPatchedMethods())
             {
                 Logger.LogInfo($"Harmony patched: {method.DeclaringType?.FullName}.{method.Name}");
                 patchCount++;
             }
+
             Logger.LogInfo($"Harmony total patches applied: {patchCount}");
 
             // Validate all declared patch targets exist at runtime
@@ -104,7 +106,10 @@ public class MultiplayerPlugin : BaseUnityPlugin
                 {
                     Logger.LogWarning($"[PatchValidator] {missing.Count} patch target(s) not found:");
                     foreach (var p in missing)
+                    {
                         Logger.LogWarning($"  Missing: {p}");
+                    }
+
                     MissingPatches = missing;
                 }
             }

@@ -1,8 +1,8 @@
-namespace Multipeglin.Events.Handlers.Relic;
 
 using System;
 using Multipeglin.Events.Network.Relic;
 
+namespace Multipeglin.Events.Handlers.Relic;
 public sealed class RelicAddedClientHandler : IClientHandler<RelicAddedEvent>
 {
     public void Handle(RelicAddedEvent networkEvent)

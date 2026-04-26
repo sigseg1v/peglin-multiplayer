@@ -1,12 +1,11 @@
-namespace Multipeglin.Events.Handlers.Health;
 
 using System;
 using global::Battle;
 using HarmonyLib;
 using Multipeglin.Events.Network.Health;
 using Multipeglin.Multiplayer;
-using UnityEngine;
 
+namespace Multipeglin.Events.Handlers.Health;
 public sealed class PlayerDamagedClientHandler : IClientHandler<PlayerDamagedEvent>
 {
     public void Handle(PlayerDamagedEvent e)
@@ -15,11 +14,15 @@ public sealed class PlayerDamagedClientHandler : IClientHandler<PlayerDamagedEve
         {
             // During native post-battle rewards, the client's health is managed locally.
             if (Coop.CoopRewardState.ClientInNativeRewardPhase)
+            {
                 return;
+            }
 
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
             if (mode == null || !mode.IsSpectating)
+            {
                 return;
+            }
 
             // Set health directly from host data
             var ctrl = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
@@ -30,10 +33,9 @@ public sealed class PlayerDamagedClientHandler : IClientHandler<PlayerDamagedEve
                 var healthVar = healthField?.GetValue(ctrl) as FloatVariable;
                 var maxHealthVar = maxHealthField?.GetValue(ctrl) as FloatVariable;
 
-                if (maxHealthVar != null)
-                    maxHealthVar.Set(e.MaxHealth);
-                if (healthVar != null)
-                    healthVar.Set(e.RemainingHealth);
+                maxHealthVar?.Set(e.MaxHealth);
+
+                healthVar?.Set(e.RemainingHealth);
             }
 
             // Fire the event for UI animations (health bar shake, flash, etc.)

@@ -4,9 +4,6 @@ using Battle;
 using BepInEx.Logging;
 using Multipeglin.GameState;
 using Multipeglin.Multiplayer;
-using Multipeglin.Utility;
-using Tutorial;
-using UnityEngine;
 using UnityEngine.SceneManagement;
 
 namespace Multipeglin.Events.Subscriptions;
@@ -120,7 +117,9 @@ public sealed class StateSyncSubscriptions
         SceneManager.sceneLoaded += (scene, loadMode) =>
         {
             if (loadMode == LoadSceneMode.Single)
+            {
                 SafeSync("SceneLoaded:" + scene.name, () => _sync.SyncAll("SceneLoaded:" + scene.name));
+            }
         };
 
         // Heartbeat is now self-contained in MainThreadDispatcher.RunHeartbeat()
@@ -133,7 +132,10 @@ public sealed class StateSyncSubscriptions
     private void SafeSync(string trigger, Action action)
     {
         if (!_mode.IsHosting)
+        {
             return;
+        }
+
         try
         {
             action();

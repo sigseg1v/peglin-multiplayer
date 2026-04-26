@@ -1,4 +1,3 @@
-namespace Multipeglin.Events.Handlers.Lobby;
 
 using System;
 using System.Linq;
@@ -6,6 +5,7 @@ using Multipeglin.Events.Network.Lobby;
 using Multipeglin.Multiplayer;
 using Multipeglin.UI;
 
+namespace Multipeglin.Events.Handlers.Lobby;
 /// <summary>
 /// Client receives GameStartEvent: set the local player's class in StaticGameData,
 /// store the final player list, and prepare for game start.
@@ -18,7 +18,9 @@ public sealed class GameStartClientHandler : IClientHandler<GameStartEvent>
         {
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
             if (mode == null || !mode.IsSpectating)
+            {
                 return;
+            }
 
             MultiplayerPlugin.Logger?.LogInfo($"[GameStart] Received game start with {networkEvent.FinalPlayers?.Count ?? 0} players");
 
@@ -31,15 +33,21 @@ public sealed class GameStartClientHandler : IClientHandler<GameStartEvent>
                 var localName = UI.MultiplayerUI.LocalPlayerName;
                 LobbyPlayerEntry myEntry = null;
                 if (!string.IsNullOrEmpty(localName))
+                {
                     myEntry = networkEvent.FinalPlayers.FirstOrDefault(p => !p.IsHost && p.PlayerName == localName);
+                }
+
                 if (myEntry == null)
                 {
                     // Fallback: pick the first non-host (correct only for 2-player sessions).
                     myEntry = networkEvent.FinalPlayers.FirstOrDefault(p => !p.IsHost);
                     if (myEntry != null)
+                    {
                         MultiplayerPlugin.Logger?.LogWarning(
                             $"[GameStart] Could not match local name '{localName}' to any non-host entry; falling back to first non-host (slot {myEntry.SlotIndex}). This will misroute events with 3+ players.");
+                    }
                 }
+
                 if (myEntry != null)
                 {
                     var chosenClass = (Peglin.ClassSystem.Class)myEntry.ChosenClass;
@@ -73,10 +81,7 @@ public sealed class GameStartClientHandler : IClientHandler<GameStartEvent>
                 var services = MultiplayerPlugin.Services;
                 if (services?.TryResolve<PlayerRegistry>(out var registry) == true && myEntry != null)
                 {
-                    var slot = registry.GetSlotByIndex(myEntry.SlotIndex);
-                    if (slot == null)
-                    {
-                        slot = new PlayerSlot
+                    var slot = registry.GetSlotByIndex(myEntry.SlotIndex) ?? new PlayerSlot
                         {
                             SlotIndex = myEntry.SlotIndex,
                             PeerId = -1,
@@ -85,7 +90,7 @@ public sealed class GameStartClientHandler : IClientHandler<GameStartEvent>
                             ChosenClass = myEntry.ChosenClass,
                             IsReady = true,
                         };
-                    }
+
                     registry.LocalSlot = slot;
                     MultiplayerPlugin.Logger?.LogInfo($"[GameStart] Set LocalSlot: index={slot.SlotIndex}, name={slot.PlayerName}");
                 }

@@ -20,7 +20,10 @@ public static class EventFeed
         {
             _entries.Add(line);
             if (_entries.Count > MaxEntries)
+            {
                 _entries.RemoveAt(0);
+            }
+
             _version++;
         }
     }
@@ -31,8 +34,11 @@ public static class EventFeed
         {
             var start = _entries.Count > maxLines ? _entries.Count - maxLines : 0;
             var sb = new System.Text.StringBuilder();
-            for (int i = start; i < _entries.Count; i++)
+            for (var i = start; i < _entries.Count; i++)
+            {
                 sb.AppendLine(_entries[i]);
+            }
+
             return sb.ToString();
         }
     }

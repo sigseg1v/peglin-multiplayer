@@ -20,16 +20,23 @@ public sealed class RewardChoiceClientHandler : IClientHandler<RewardChoiceEvent
         {
             var services = MultiplayerPlugin.Services;
             if (services == null)
+            {
                 return;
+            }
 
             if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting)
+            {
                 return;
+            }
 
             var eventRegistry = services.TryResolve<IGameEventRegistry>(out var reg) ? reg : null;
             var senderPeerId = (eventRegistry as GameEventRegistry)?.CurrentSenderPeerId ?? -1;
 
             if (!services.TryResolve<PlayerRegistry>(out var registry))
+            {
                 return;
+            }
+
             var slot = registry.GetSlotByPeerId(senderPeerId);
             if (slot == null)
             {
@@ -103,8 +110,8 @@ public sealed class RewardChoiceClientHandler : IClientHandler<RewardChoiceEvent
         {
             case "heal":
                 {
-                    float before = playerState.CurrentHealth;
-                    float maxHp = playerState.MaxHealth;
+                    var before = playerState.CurrentHealth;
+                    var maxHp = playerState.MaxHealth;
                     playerState.CurrentHealth = Math.Min(playerState.CurrentHealth + 20f, maxHp);
                     MultiplayerPlugin.Logger?.LogInfo(
                         $"[CoopReward] Slot {slotIndex} heal: HP {before} -> {playerState.CurrentHealth} (max {maxHp})");
@@ -113,8 +120,8 @@ public sealed class RewardChoiceClientHandler : IClientHandler<RewardChoiceEvent
 
             case "max_hp":
                 {
-                    float beforeMax = playerState.MaxHealth;
-                    float beforeCur = playerState.CurrentHealth;
+                    var beforeMax = playerState.MaxHealth;
+                    var beforeCur = playerState.CurrentHealth;
                     playerState.MaxHealth += 5f;
                     playerState.CurrentHealth += 5f;
                     MultiplayerPlugin.Logger?.LogInfo(
@@ -125,8 +132,8 @@ public sealed class RewardChoiceClientHandler : IClientHandler<RewardChoiceEvent
 
             case "skip":
                 {
-                    int beforeGold = playerState.Gold;
-                    int goldReward = option.GoldReward > 0 ? option.GoldReward : 10;
+                    var beforeGold = playerState.Gold;
+                    var goldReward = option.GoldReward > 0 ? option.GoldReward : 10;
                     playerState.Gold += goldReward;
                     MultiplayerPlugin.Logger?.LogInfo(
                         $"[CoopReward] Slot {slotIndex} skip: Gold {beforeGold} -> {playerState.Gold} (+{goldReward})");

@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Newtonsoft.Json;
 using BepInEx.Logging;
 using Multipeglin.Network;
 using Multipeglin.Network.Protocol;
+using Newtonsoft.Json;
 
 namespace Multipeglin.Events;
 
@@ -50,7 +50,10 @@ public class GameEventRegistry : IGameEventRegistry
             var networkEvent = (TNetworkEvent)obj;
             var result = serverHandler.Handle(networkEvent);
             if (result == null)
+            {
                 return;
+            }
+
             var data = _serializer.Serialize(result);
             _transport.Broadcast(data);
         };
@@ -62,12 +65,14 @@ public class GameEventRegistry : IGameEventRegistry
                 _log.LogWarning($"Received empty payload for {typeId}, skipping");
                 return;
             }
+
             var networkEvent = JsonConvert.DeserializeObject<TNetworkEvent>(jsonPayload);
             if (networkEvent == null)
             {
                 _log.LogWarning($"Failed to deserialize {typeId} payload, skipping");
                 return;
             }
+
             clientHandler.Handle(networkEvent);
         };
     }
@@ -137,7 +142,10 @@ public class GameEventRegistry : IGameEventRegistry
     private static string Truncate(string s, int maxLen)
     {
         if (string.IsNullOrEmpty(s))
+        {
             return "(empty)";
+        }
+
         return s.Length <= maxLen ? s : s.Substring(0, maxLen) + "...";
     }
 }

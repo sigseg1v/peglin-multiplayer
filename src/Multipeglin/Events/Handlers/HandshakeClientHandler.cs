@@ -54,7 +54,9 @@ public sealed class HandshakeClientHandler : IClientHandler<HandshakeEvent>
 
                 // Broadcast updated lobby state
                 if (services.TryResolve<IGameEventRegistry>(out var eventRegistry))
+                {
                     LobbyHelper.BroadcastLobbyState(registry, eventRegistry);
+                }
             }
         }
     }

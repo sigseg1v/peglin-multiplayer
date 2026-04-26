@@ -20,15 +20,23 @@ public sealed class ShopPurchaseClientHandler : IClientHandler<ShopPurchaseEvent
         {
             var services = MultiplayerPlugin.Services;
             if (services == null)
+            {
                 return;
+            }
+
             if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting)
+            {
                 return;
+            }
 
             var eventRegistry = services.TryResolve<IGameEventRegistry>(out var reg) ? reg : null;
             var senderPeerId = (eventRegistry as GameEventRegistry)?.CurrentSenderPeerId ?? -1;
 
             if (!services.TryResolve<PlayerRegistry>(out var registry))
+            {
                 return;
+            }
+
             var slot = registry.GetSlotByPeerId(senderPeerId);
             if (slot == null)
             {
@@ -37,7 +45,10 @@ public sealed class ShopPurchaseClientHandler : IClientHandler<ShopPurchaseEvent
             }
 
             if (!services.TryResolve<CoopStateManager>(out var coopState))
+            {
                 return;
+            }
+
             var playerState = coopState.GetPlayerState(slot.SlotIndex);
             if (playerState == null)
             {
@@ -45,13 +56,17 @@ public sealed class ShopPurchaseClientHandler : IClientHandler<ShopPurchaseEvent
                 return;
             }
 
-            int oldGold = playerState.Gold;
+            var oldGold = playerState.Gold;
             playerState.Gold = Math.Max(0, playerState.Gold - e.Cost);
 
             if (e.Type == "orb")
+            {
                 ApplyOrbPurchase(playerState, e);
+            }
             else if (e.Type == "relic")
+            {
                 ApplyRelicPurchase(playerState, e);
+            }
 
             MultiplayerPlugin.Logger?.LogInfo(
                 $"[ShopPurchase] Slot {slot.SlotIndex} ({slot.PlayerName}) bought {e.Type} '{e.Name}' " +
@@ -104,7 +119,9 @@ public sealed class ShopPurchaseClientHandler : IClientHandler<ShopPurchaseEvent
         try
         {
             if (purchase.RelicEffect < 0)
+            {
                 return;
+            }
 
             var allRelics = Resources.FindObjectsOfTypeAll<Relics.Relic>();
             foreach (var relic in allRelics)

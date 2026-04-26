@@ -1,10 +1,10 @@
-namespace Multipeglin.Events.Handlers.Battle;
 
 using System;
 using global::Battle;
 using Multipeglin.Events.Network.Battle;
 using Multipeglin.Utility;
 
+namespace Multipeglin.Events.Handlers.Battle;
 public sealed class BattleStartedClientHandler : IClientHandler<BattleStartedEvent>
 {
     public void Handle(BattleStartedEvent networkEvent)

@@ -21,10 +21,14 @@ public class OrbIdentifier
     public string GetOrAssignGuid(GameObject orb)
     {
         if (orb == null)
+        {
             return "null";
+        }
 
         if (_orbToGuid.TryGetValue(orb, out var existing))
+        {
             return existing;
+        }
 
         var guid = Guid.NewGuid().ToString("N")[..12];
         _guidToOrb[guid] = orb;
@@ -35,12 +39,19 @@ public class OrbIdentifier
     public void Register(GameObject orb, string guid)
     {
         if (orb == null || string.IsNullOrEmpty(guid))
+        {
             return;
+        }
 
         if (_guidToOrb.TryGetValue(guid, out var old) && old != orb)
+        {
             _orbToGuid.Remove(old);
+        }
+
         if (_orbToGuid.TryGetValue(orb, out var oldGuid) && oldGuid != guid)
+        {
             _guidToOrb.Remove(oldGuid);
+        }
 
         _guidToOrb[guid] = orb;
         _orbToGuid[orb] = guid;
@@ -49,18 +60,30 @@ public class OrbIdentifier
     public GameObject Find(string guid)
     {
         if (string.IsNullOrEmpty(guid))
+        {
             return null;
+        }
+
         if (_guidToOrb.TryGetValue(guid, out var orb) && orb != null)
+        {
             return orb;
+        }
+
         if (orb == null && _guidToOrb.ContainsKey(guid))
+        {
             _guidToOrb.Remove(guid);
+        }
+
         return null;
     }
 
     public string GetGuid(GameObject orb)
     {
         if (orb == null)
+        {
             return null;
+        }
+
         return _orbToGuid.TryGetValue(orb, out var guid) ? guid : null;
     }
 
@@ -68,17 +91,26 @@ public class OrbIdentifier
     public string GetId(GameObject ball)
     {
         if (ball == null)
+        {
             return "unknown";
+        }
+
         var attack = ball.GetComponent<Attack>();
         if (attack != null && !string.IsNullOrEmpty(attack.locNameString))
+        {
             return attack.locNameString;
+        }
+
         return ball.name;
     }
 
     public int GetLevel(GameObject ball)
     {
         if (ball == null)
+        {
             return 0;
+        }
+
         var attack = ball.GetComponent<Attack>();
         return attack?.Level ?? 0;
     }
@@ -89,7 +121,9 @@ public class OrbIdentifier
         _guidToOrb.Clear();
         _orbToGuid.Clear();
         if (count > 0)
+        {
             Log?.LogInfo($"[OrbGUID] Cleared {count} entries");
+        }
     }
 
     public int Count => _guidToOrb.Count;

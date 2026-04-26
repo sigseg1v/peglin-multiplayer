@@ -14,11 +14,15 @@ public sealed class PostBattleStartClientHandler : IClientHandler<PostBattleStar
     {
         var services = MultiplayerPlugin.Services;
         if (services == null)
+        {
             return;
+        }
 
         // Only process on client (spectating)
         if (services.TryResolve<IMultiplayerMode>(out var mode) && mode.IsHosting)
+        {
             return;
+        }
 
         MultiplayerPlugin.Logger?.LogInfo("[PostBattleStart] Client received post-battle start — activating native reward screen");
 

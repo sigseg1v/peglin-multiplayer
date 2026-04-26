@@ -48,7 +48,9 @@ public static class PatchValidator
                 var classAttrs = type.GetCustomAttributes(typeof(HarmonyPatch), false)
                     .Cast<HarmonyPatch>().ToArray();
                 if (classAttrs.Length == 0)
+                {
                     continue;
+                }
 
                 // Extract class-level target info
                 Type classTarget = null;
@@ -56,16 +58,23 @@ public static class PatchValidator
                 foreach (var a in classAttrs)
                 {
                     if (a.info.declaringType != null)
+                    {
                         classTarget = a.info.declaringType;
+                    }
+
                     if (a.info.methodName != null)
+                    {
                         classMethodName = a.info.methodName;
+                    }
                 }
 
                 // If class fully specifies a target (like PlayButtonAwakePatch), check it
                 if (classTarget != null && classMethodName != null)
                 {
                     if (!HasMember(classTarget, classMethodName))
+                    {
                         missing.Add($"{classTarget.Name}.{classMethodName}");
+                    }
                 }
 
                 // Check method-level [HarmonyPatch] attributes
@@ -78,7 +87,9 @@ public static class PatchValidator
                     var methodAttrs = method.GetCustomAttributes(typeof(HarmonyPatch), false)
                         .Cast<HarmonyPatch>().ToArray();
                     if (methodAttrs.Length == 0)
+                    {
                         continue;
+                    }
 
                     // Merge class + method level info (method overrides class)
                     var target = classTarget;
@@ -86,15 +97,22 @@ public static class PatchValidator
                     foreach (var a in methodAttrs)
                     {
                         if (a.info.declaringType != null)
+                        {
                             target = a.info.declaringType;
+                        }
+
                         if (a.info.methodName != null)
+                        {
                             methodName = a.info.methodName;
+                        }
                     }
 
                     if (target != null && methodName != null)
                     {
                         if (!HasMember(target, methodName))
+                        {
                             missing.Add($"{target.Name}.{methodName}");
+                        }
                     }
                 }
             }

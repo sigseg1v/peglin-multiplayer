@@ -74,9 +74,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
             var unmatchedEntries = new List<PegEntry>();
 
-            int pegsCount = clientPegs?.Count ?? 0;
-            int bombsCount = clientBombs?.Count ?? 0;
-            int bouncersCount = clientBouncers?.Count ?? 0;
+            var pegsCount = clientPegs?.Count ?? 0;
+            var bombsCount = clientBombs?.Count ?? 0;
+            var bouncersCount = clientBouncers?.Count ?? 0;
 
             // Pre-build a structural index of unbound client pegs keyed by
             // (parent_name, localPos). This key is stable across host/client
@@ -141,9 +141,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     if (peg != null)
                     {
                         // Validate: bomb GUIDs → bombs, bouncer GUIDs → bouncers, regular → neither
-                        bool pegIsBomb = peg is Bomb;
-                        bool pegIsBouncer = peg is BouncerPeg;
-                        bool typeOk = (entry.IsBomb == pegIsBomb) && (entry.IsBouncer == pegIsBouncer);
+                        var pegIsBomb = peg is Bomb;
+                        var pegIsBouncer = peg is BouncerPeg;
+                        var typeOk = (entry.IsBomb == pegIsBomb) && (entry.IsBouncer == pegIsBouncer);
                         if (!typeOk)
                         {
                             _log.LogWarning($"[PegboardApplier] GUID type mismatch: {entry.Guid} " +
@@ -166,11 +166,17 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 if (peg == null)
                 {
                     if (entry.IsBomb)
+                    {
                         peg = FindClosestUnmatched(entry, null, clientBombs, null, matchedPegs, 3f);
+                    }
                     else if (entry.IsBouncer)
+                    {
                         peg = FindClosestUnmatched(entry, null, null, clientBouncers, matchedPegs, 3f);
+                    }
                     else
+                    {
                         peg = FindClosestUnmatched(entry, clientPegs, null, null, matchedPegs, 1f);
+                    }
 
                     if (peg != null)
                     {
@@ -203,11 +209,12 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     // (was a per-heartbeat 6× spam for stable bomb fields).
                     if (entry.IsBomb && peg is Bomb bombPeg)
                     {
-                        bool pegDisabled = false;
+                        var pegDisabled = false;
                         try
                         { pegDisabled = peg.IsDisabled(); }
                         catch { }
-                        bool stateMatchesHost = pegDisabled == entry.IsDestroyed && bombPeg.HitCount == entry.HitCount;
+
+                        var stateMatchesHost = pegDisabled == entry.IsDestroyed && bombPeg.HitCount == entry.HitCount;
                         if (!stateMatchesHost)
                         {
                             _log.LogInfo($"[PegboardApplier] BOMB DRIFT: guid={entry.Guid} " +
@@ -238,28 +245,38 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 foreach (var p in clientPegs)
                 {
                     if (p != null && !matchedPegs.Contains(p))
+                    {
                         availableRegulars.Add(p);
+                    }
                 }
+
                 if (clientBombs != null)
                 {
                     foreach (var b in clientBombs)
                     {
                         if (b != null && !matchedPegs.Contains(b))
+                        {
                             availableBombs.Add(b);
+                        }
                     }
                 }
+
                 if (clientBouncers != null)
                 {
                     foreach (var bo in clientBouncers)
                     {
                         if (bo != null && !matchedPegs.Contains(bo))
+                        {
                             availableBouncers.Add(bo);
+                        }
                     }
                 }
 
                 Peg templatePeg = null;
                 if (clientPegs.Count > 0)
+                {
                     templatePeg = clientPegs[0];
+                }
 
                 foreach (var entry in unmatchedEntries)
                 {
@@ -276,19 +293,23 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     }
                     else if (entry.IsBomb && availableRegulars.Count > 0)
                     {
-                        int closestIdx = -1;
-                        float closestDist = float.MaxValue;
-                        for (int i = 0; i < availableRegulars.Count; i++)
+                        var closestIdx = -1;
+                        var closestDist = float.MaxValue;
+                        for (var i = 0; i < availableRegulars.Count; i++)
                         {
                             var r = availableRegulars[i];
                             if (r == null)
+                            {
                                 continue;
-                            float dx = r.transform.position.x - entry.PosX;
-                            float dy = r.transform.position.y - entry.PosY;
-                            float d = dx * dx + dy * dy;
+                            }
+
+                            var dx = r.transform.position.x - entry.PosX;
+                            var dy = r.transform.position.y - entry.PosY;
+                            var d = dx * dx + dy * dy;
                             if (d < closestDist)
                             { closestDist = d; closestIdx = i; }
                         }
+
                         if (closestIdx >= 0)
                         {
                             peg = availableRegulars[closestIdx];
@@ -309,6 +330,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                                     $"— bomb synthesis failed");
                                 continue;
                             }
+
                             repositioned++;
                         }
                     }
@@ -325,6 +347,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                                 $"— bomb synthesis failed");
                             continue;
                         }
+
                         repositioned++;
                     }
                     else if (!entry.IsBomb && !entry.IsBouncer && templatePeg != null)
@@ -337,6 +360,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         try
                         { pm.AddPeg(peg); }
                         catch { clientPegs.Add(peg); }
+
                         repositioned++;
                     }
                     else
@@ -371,7 +395,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 }
             }
 
-            int extrasRemoved = 0;
+            var extrasRemoved = 0;
             foreach (var peg in clientPegs)
             {
                 if (peg != null && peg.gameObject.activeSelf && !matchedPegs.Contains(peg)
@@ -386,10 +410,10 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             // the host never sees. Deactivating them isn't enough — they stay in
             // the list and re-trigger GUID type-mismatch warnings every heartbeat.
             // REMOVE them from the _bombs list, clear the GUID registry, destroy the GO.
-            int staleBombsRemoved = 0;
+            var staleBombsRemoved = 0;
             if (clientBombs != null)
             {
-                for (int i = clientBombs.Count - 1; i >= 0; i--)
+                for (var i = clientBombs.Count - 1; i >= 0; i--)
                 {
                     var bomb = clientBombs[i];
                     if (bomb == null)
@@ -397,10 +421,16 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         clientBombs.RemoveAt(i);
                         continue;
                     }
+
                     if (matchedPegs.Contains(bomb))
+                    {
                         continue;
+                    }
+
                     if (matchedParents.Contains(bomb.transform))
+                    {
                         continue;
+                    }
 
                     // Unmatched: host snapshot has no bomb corresponding to this
                     // client bomb. It's stale (from client-side RNG placement or
@@ -425,12 +455,17 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     try
                     { UnityEngine.Object.Destroy(bomb.gameObject); }
                     catch { }
+
                     staleBombsRemoved++;
                     extrasRemoved++;
                 }
             }
+
             if (staleBombsRemoved > 0)
+            {
                 _log.LogWarning($"[PegboardApplier] Purged {staleBombsRemoved} stale client bombs (not in host snapshot)");
+            }
+
             if (clientBouncers != null)
             {
                 foreach (var bouncer in clientBouncers)
@@ -444,7 +479,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 }
             }
 
-            int totalClient = clientPegs.Count + (clientBombs?.Count ?? 0) + (clientBouncers?.Count ?? 0);
+            var totalClient = clientPegs.Count + (clientBombs?.Count ?? 0) + (clientBouncers?.Count ?? 0);
             _log.LogInfo($"[PegboardApplier] StructMatched={structMatched}, IdxMatched={idxMatched}, GUIDMatched={guidMatched}, PosMatched={posMatched}, " +
                 $"Repositioned={repositioned}, TypeChanged={typeChanged}, Destroyed={destroyed}, " +
                 $"Reactivated={reactivated}, Cleared={cleared}, Missed={missed}, GUIDTypeInvalid={guidTypeInvalid}, " +
@@ -459,22 +494,24 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
             // Per-bomb dump previously logged 6 lines per heartbeat — now only logged
             // when the client/host bomb count diverges (a real sync issue).
-            int hostBombCount = snapshot.BombPegCount;
-            int clientBombCount = clientBombs?.Count ?? 0;
+            var hostBombCount = snapshot.BombPegCount;
+            var clientBombCount = clientBombs?.Count ?? 0;
             if (clientBombCount != hostBombCount)
             {
                 LogActualPegState(clientPegs, clientBombs, clientBouncers);
                 if (clientBombs != null)
                 {
-                    for (int i = 0; i < clientBombs.Count; i++)
+                    for (var i = 0; i < clientBombs.Count; i++)
                     {
                         var b = clientBombs[i];
                         if (b == null)
                         { _log.LogInfo($"[PegboardApplier] CLIENT_BOMB[{i}] NULL"); continue; }
-                        bool dis = false;
+
+                        var dis = false;
                         try
                         { dis = b.IsDisabled(); }
                         catch { }
+
                         var guid = _pegId.GetGuid(b) ?? "none";
                         _log.LogInfo($"[PegboardApplier] CLIENT_BOMB[{i}] guid={guid} " +
                             $"pos=({b.transform.position.x:F1},{b.transform.position.y:F1}) " +
@@ -496,15 +533,13 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     /// so the entire row shifts correctly (avoids wrap-direction conflicts).
     /// Hard-snaps static pegs; soft-lerps other moving pegs.
     /// </summary>
-    private HashSet<Transform> _syncedMovementParents = new HashSet<Transform>();
+    private readonly HashSet<Transform> _syncedMovementParents = new HashSet<Transform>();
 
     public void ResetMovementParentTracking() => _syncedMovementParents.Clear();
 
     private void SyncPegPosition(Peg originalPeg, PegEntry entry)
     {
-        var finalPeg = !string.IsNullOrEmpty(entry.Guid) ? _pegId.Find(entry.Guid) : null;
-        if (finalPeg == null)
-            finalPeg = originalPeg;
+        var finalPeg = (!string.IsNullOrEmpty(entry.Guid) ? _pegId.Find(entry.Guid) : null) ?? originalPeg;
 
         var hostPos = new Vector3(entry.PosX, entry.PosY, finalPeg.transform.position.z);
 
@@ -512,9 +547,14 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         // grandparent (bombs are children of the original peg which is child of LPM row).
         var lpm = finalPeg.GetComponent<Battle.PegBehaviour.LinearPegMovement>();
         if (lpm == null && finalPeg.transform.parent != null)
+        {
             lpm = finalPeg.transform.parent.GetComponent<Battle.PegBehaviour.LinearPegMovement>();
+        }
+
         if (lpm == null && finalPeg.transform.parent?.parent != null)
+        {
             lpm = finalPeg.transform.parent.parent.GetComponent<Battle.PegBehaviour.LinearPegMovement>();
+        }
 
         // Also detect via the snapshot — host tells us this peg is under LPM
         if (lpm == null && entry.LpmParentPosX.HasValue)
@@ -541,9 +581,13 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         entry.LpmParentPosY.Value, parentT.position.z);
                     var rb = lpm.GetComponent<Rigidbody2D>();
                     if (rb != null)
+                    {
                         rb.position = new Vector2(newParentPos.x, newParentPos.y);
+                    }
                     else
+                    {
                         parentT.position = newParentPos;
+                    }
                 }
                 else
                 {
@@ -554,9 +598,13 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     newParentPos.z = parentT.position.z;
                     var rb = lpm.GetComponent<Rigidbody2D>();
                     if (rb != null)
+                    {
                         rb.position = new Vector2(newParentPos.x, newParentPos.y);
+                    }
                     else
+                    {
                         parentT.position = newParentPos;
+                    }
                 }
             }
             // Skip individual peg position setting — parent handles it
@@ -575,13 +623,15 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             {
                 rb2.position = new Vector2(entry.PosX, entry.PosY);
                 if (rb2.bodyType != RigidbodyType2D.Static)
+                {
                     rb2.velocity = Vector2.zero;
+                }
             }
         }
 
         // Bombs always hard-snap — they must match host exactly every heartbeat
         // per the "dumb canvas" rule. Lerp leaves visible drift that never converges.
-        bool isBomb = finalPeg is Bomb;
+        var isBomb = finalPeg is Bomb;
         if (!isBomb && HasMovementComponent(finalPeg))
         {
             finalPeg.transform.position = Vector3.Lerp(
@@ -596,7 +646,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 rb.position = new Vector2(entry.PosX, entry.PosY);
                 // Zero velocity on static pegs to prevent physics drift from position corrections
                 if (rb.bodyType != RigidbodyType2D.Static)
+                {
                     rb.velocity = Vector2.zero;
+                }
             }
         }
     }
@@ -629,8 +681,11 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     }
                 }
             }
+
             if (_cachedBombPrefab == null)
+            {
                 return null;
+            }
 
             // Prefer parenting under the matching LPM row transform when the host
             // marks this bomb as living under LinearPegMovement. Without this, the
@@ -638,25 +693,32 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             // position sync visibly teleports it; under the LPM row, the existing
             // moving-peg sync (parent-nudge + LPM tween) carries it smoothly.
             Transform parent = null;
-            bool parentedUnderLpm = false;
+            var parentedUnderLpm = false;
             if (entry.HasLpm && entry.LpmParentPosX.HasValue && entry.LpmParentPosY.HasValue)
             {
                 var lpms = UnityEngine.Object.FindObjectsOfType<Battle.PegBehaviour.LinearPegMovement>();
-                float bestDistSq = 0.5f * 0.5f;
+                var bestDistSq = 0.5f * 0.5f;
                 foreach (var lpm in lpms)
                 {
                     if (lpm == null)
+                    {
                         continue;
+                    }
+
                     var lp = lpm.transform.position;
-                    float dx = lp.x - entry.LpmParentPosX.Value;
-                    float dy = lp.y - entry.LpmParentPosY.Value;
-                    float d = dx * dx + dy * dy;
+                    var dx = lp.x - entry.LpmParentPosX.Value;
+                    var dy = lp.y - entry.LpmParentPosY.Value;
+                    var d = dx * dx + dy * dy;
                     if (d < bestDistSq)
                     { bestDistSq = d; parent = lpm.transform; }
                 }
+
                 if (parent != null)
+                {
                     parentedUnderLpm = true;
+                }
             }
+
             if (parent == null)
             {
                 foreach (var p in clientPegs)
@@ -675,9 +737,12 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 UnityEngine.Object.Destroy(go);
                 return null;
             }
+
             _pegId.Register(bomb, entry.Guid);
             if (clientBombs != null && !clientBombs.Contains(bomb))
+            {
                 clientBombs.Add(bomb);
+            }
 
             // The bomb prefab carries its own Rigidbody2D, which keeps it pinned
             // to its instantiate-time position regardless of parent transform
@@ -739,27 +804,48 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 list = new List<Peg>();
                 dict[key] = list;
             }
+
             list.Add(p);
         }
+
         void Add(Peg p)
         {
             if (p == null)
+            {
                 return;
+            }
+
             var parent = p.transform.parent;
             var parentName = parent != null ? parent.name : string.Empty;
             var lp = p.transform.localPosition;
             AddTo(index.ByPos, MakePosStructKey(parentName, lp.x, lp.y), p);
             AddTo(index.BySibling, MakeSiblingStructKey(parentName, p.transform.GetSiblingIndex()), p);
         }
+
         if (clientPegs != null)
+        {
             foreach (var p in clientPegs)
+            {
                 Add(p);
+            }
+        }
+
         if (clientBombs != null)
+        {
             foreach (var b in clientBombs)
+            {
                 Add(b);
+            }
+        }
+
         if (clientBouncers != null)
+        {
             foreach (var bo in clientBouncers)
+            {
                 Add(bo);
+            }
+        }
+
         return index;
     }
 
@@ -786,7 +872,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     private static Peg ResolveByStructKey(StructIndex index, PegEntry entry)
     {
         if (index == null || string.IsNullOrEmpty(entry.ParentName))
+        {
             return null;
+        }
 
         Peg peg = null;
         if (entry.HasLpm)
@@ -819,13 +907,17 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             // Remove from the other dict too so this peg can't be double-bound.
             RemovePegFromAllLists(index, peg);
         }
+
         return peg;
     }
 
     private static Peg PopFromIndex(Dictionary<string, List<Peg>> dict, string key)
     {
         if (!dict.TryGetValue(key, out var list) || list.Count == 0)
+        {
             return null;
+        }
+
         var peg = list[list.Count - 1];
         list.RemoveAt(list.Count - 1);
         return peg;
@@ -842,7 +934,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         Dictionary<string, List<Peg>> dict, string key, PegEntry entry)
     {
         if (!dict.TryGetValue(key, out var list) || list.Count == 0)
+        {
             return null;
+        }
 
         if (list.Count == 1)
         {
@@ -851,16 +945,19 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             return only;
         }
 
-        int bestIdx = -1;
-        float bestDistSq = float.MaxValue;
-        for (int i = 0; i < list.Count; i++)
+        var bestIdx = -1;
+        var bestDistSq = float.MaxValue;
+        for (var i = 0; i < list.Count; i++)
         {
             var p = list[i];
             if (p == null)
+            {
                 continue;
-            float dx = p.transform.position.x - entry.PosX;
-            float dy = p.transform.position.y - entry.PosY;
-            float d2 = dx * dx + dy * dy;
+            }
+
+            var dx = p.transform.position.x - entry.PosX;
+            var dy = p.transform.position.y - entry.PosY;
+            var d2 = dx * dx + dy * dy;
             if (d2 < bestDistSq)
             {
                 bestDistSq = d2;
@@ -873,7 +970,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         // and we should let Phase 2 (FindClosestUnmatched) handle it rather
         // than commit to a wrong bind.
         if (bestIdx < 0 || bestDistSq > 1.5f * 1.5f)
+        {
             return null;
+        }
 
         var picked = list[bestIdx];
         list.RemoveAt(bestIdx);
@@ -883,9 +982,14 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     private static void RemovePegFromAllLists(StructIndex index, Peg peg)
     {
         foreach (var list in index.ByPos.Values)
+        {
             list.Remove(peg);
+        }
+
         foreach (var list in index.BySibling.Values)
+        {
             list.Remove(peg);
+        }
     }
 
     /// <summary>
@@ -897,17 +1001,19 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     /// </summary>
     private static bool IndexBindPositionSane(Peg indexCandidate, PegEntry entry)
     {
-        float dx = indexCandidate.transform.position.x - entry.PosX;
-        float dy = indexCandidate.transform.position.y - entry.PosY;
-        float distSq = dx * dx + dy * dy;
+        var dx = indexCandidate.transform.position.x - entry.PosX;
+        var dy = indexCandidate.transform.position.y - entry.PosY;
+        var distSq = dx * dx + dy * dy;
         if (distSq <= 1.5f * 1.5f)
+        {
             return true;
+        }
 
         // Both sides in buffer region — accept (structural tie-break not available).
-        bool hostBuffer = System.Math.Abs(entry.PosX) < 0.5f && System.Math.Abs(entry.PosY - 1.4f) < 0.5f;
-        float cx = indexCandidate.transform.position.x;
-        float cy = indexCandidate.transform.position.y;
-        bool clientBuffer = System.Math.Abs(cx) < 0.5f && System.Math.Abs(cy - 1.4f) < 0.5f;
+        var hostBuffer = System.Math.Abs(entry.PosX) < 0.5f && System.Math.Abs(entry.PosY - 1.4f) < 0.5f;
+        var cx = indexCandidate.transform.position.x;
+        var cy = indexCandidate.transform.position.y;
+        var clientBuffer = System.Math.Abs(cx) < 0.5f && System.Math.Abs(cy - 1.4f) < 0.5f;
         return hostBuffer && clientBuffer;
     }
 
@@ -923,15 +1029,27 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         List<Peg> clientPegs, List<Bomb> clientBombs, List<BouncerPeg> clientBouncers)
     {
         if (index < 0)
+        {
             return null;
+        }
+
         if (index < pegsCount)
+        {
             return clientPegs[index];
-        int bombIdx = index - pegsCount;
+        }
+
+        var bombIdx = index - pegsCount;
         if (bombIdx < bombsCount)
+        {
             return clientBombs[bombIdx];
-        int bouncerIdx = bombIdx - bombsCount;
+        }
+
+        var bouncerIdx = bombIdx - bombsCount;
         if (clientBouncers != null && bouncerIdx < clientBouncers.Count)
+        {
             return clientBouncers[bouncerIdx];
+        }
+
         return null;
     }
 
@@ -942,8 +1060,8 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     /// </summary>
     private static bool TypeMatches(Peg peg, PegEntry entry)
     {
-        bool pegIsBomb = peg is Bomb;
-        bool pegIsBouncer = peg is BouncerPeg;
+        var pegIsBomb = peg is Bomb;
+        var pegIsBouncer = peg is BouncerPeg;
         return pegIsBomb == entry.IsBomb && pegIsBouncer == entry.IsBouncer;
     }
 
@@ -956,47 +1074,59 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         HashSet<Peg> matched, float maxDist)
     {
         Peg closest = null;
-        float closestDist = maxDist * maxDist;
+        var closestDist = maxDist * maxDist;
 
         if (clientPegs != null)
         {
             foreach (var p in clientPegs)
             {
                 if (p == null || matched.Contains(p))
+                {
                     continue;
-                float dx = p.transform.position.x - entry.PosX;
-                float dy = p.transform.position.y - entry.PosY;
-                float dist = dx * dx + dy * dy;
+                }
+
+                var dx = p.transform.position.x - entry.PosX;
+                var dy = p.transform.position.y - entry.PosY;
+                var dist = dx * dx + dy * dy;
                 if (dist < closestDist)
                 { closestDist = dist; closest = p; }
             }
         }
+
         if (clientBombs != null)
         {
             foreach (var b in clientBombs)
             {
                 if (b == null || matched.Contains(b))
+                {
                     continue;
-                float dx = b.transform.position.x - entry.PosX;
-                float dy = b.transform.position.y - entry.PosY;
-                float dist = dx * dx + dy * dy;
+                }
+
+                var dx = b.transform.position.x - entry.PosX;
+                var dy = b.transform.position.y - entry.PosY;
+                var dist = dx * dx + dy * dy;
                 if (dist < closestDist)
                 { closestDist = dist; closest = b; }
             }
         }
+
         if (clientBouncers != null)
         {
             foreach (var bo in clientBouncers)
             {
                 if (bo == null || matched.Contains(bo))
+                {
                     continue;
-                float dx = bo.transform.position.x - entry.PosX;
-                float dy = bo.transform.position.y - entry.PosY;
-                float dist = dx * dx + dy * dy;
+                }
+
+                var dx = bo.transform.position.x - entry.PosX;
+                var dy = bo.transform.position.y - entry.PosY;
+                var dist = dx * dx + dy * dy;
                 if (dist < closestDist)
                 { closestDist = dist; closest = bo; }
             }
         }
+
         return closest;
     }
 
@@ -1008,9 +1138,11 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     {
         // Register with host GUID
         if (!string.IsNullOrEmpty(entry.Guid))
+        {
             _pegId.Register(peg, entry.Guid);
+        }
 
-        bool clientPopped = false;
+        var clientPopped = false;
         try
         { clientPopped = peg.IsDisabled(); }
         catch { }
@@ -1047,7 +1179,11 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     // accumulates from a real ball collision; client never simulates
                     // that, so force the collider-off state directly to match host.
                     try
-                    { if (!longPegCleared.IsDisabled()) longPegCleared.SetActiveStatus(active: false); }
+                    { if (!longPegCleared.IsDisabled())
+                        {
+                            longPegCleared.SetActiveStatus(active: false);
+                        }
+                    }
                     catch { }
                 }
                 else
@@ -1077,8 +1213,10 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     // just set the type so the state matches the host.
                     peg.pegType = Peg.PegType.DESTROYED;
                 }
+
                 destroyed++;
             }
+
             return;
         }
 
@@ -1107,7 +1245,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 // Otherwise IsDisabled() keeps returning true and every heartbeat
                 // loops through reactivation with no effect.
                 if (peg.pegType == Peg.PegType.DESTROYED)
+                {
                     peg.pegType = Peg.PegType.REGULAR;
+                }
 
                 try
                 { peg.Reset(false); }
@@ -1119,7 +1259,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
             else
             {
-                bool clientCleared = (bool)(clearedField?.GetValue(peg) ?? false);
+                var clientCleared = (bool)(clearedField?.GetValue(peg) ?? false);
                 if (clientCleared != entry.WasPreviouslyCleared)
                 {
                     clearedField?.SetValue(peg, entry.WasPreviouslyCleared);
@@ -1146,8 +1286,8 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         {
             var hitField = HarmonyLib.AccessTools.Field(typeof(LongPeg), "_hit");
             var beingHitField = HarmonyLib.AccessTools.Field(typeof(LongPeg), "_beingHit");
-            bool isHit = (bool)(hitField?.GetValue(peg) ?? false);
-            bool beingHit = (bool)(beingHitField?.GetValue(peg) ?? false);
+            var isHit = (bool)(hitField?.GetValue(peg) ?? false);
+            var beingHit = (bool)(beingHitField?.GetValue(peg) ?? false);
 
             if (entry.IsLongPegHit)
             {
@@ -1164,10 +1304,14 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             {
                 var targetType = (Peg.PegType)entry.PegType;
                 if (targetType != Peg.PegType.DESTROYED)
+                {
                     peg.pegType = targetType;
+                }
+
                 try
                 { longPeg.HardReset(); }
                 catch { }
+
                 _log.LogInfo($"[PegboardApplier] LongPeg hit-state normalized: guid={entry.Guid} " +
                     $"wasHit={isHit} wasBeingHit={beingHit} → {targetType} at " +
                     $"({entry.PosX:F1},{entry.PosY:F1})");
@@ -1193,10 +1337,14 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                             if (newBomb != null)
                             {
                                 if (!string.IsNullOrEmpty(entry.Guid))
+                                {
                                     _pegId.Register(newBomb, entry.Guid);
+                                }
 
                                 if (clientBombs != null && !clientBombs.Contains(newBomb))
+                                {
                                     clientBombs.Add(newBomb);
+                                }
                             }
                         }
                     }
@@ -1209,6 +1357,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 {
                     peg.pegType = targetType;
                 }
+
                 typeChanged++;
             }
 
@@ -1232,7 +1381,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 var renderer = rendererField?.GetValue(peg) as SpriteRenderer;
                 var sprite = spriteField?.GetValue(peg) as Sprite;
                 if (renderer != null && sprite != null)
+                {
                     renderer.sprite = sprite;
+                }
             }
         }
 
@@ -1243,19 +1394,23 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             try
             {
                 if (targetSlime == Peg.SlimeType.None)
+                {
                     peg.RemoveSlime(true);
+                }
                 else
+                {
                     peg.ApplySlimeToPeg(targetSlime);
+                }
             }
             catch { }
         }
 
         // Sync gold coins: add missing or collect consumed
         {
-            int currentCoins = peg.NumCoins();
+            var currentCoins = peg.NumCoins();
             if (currentCoins < entry.CoinCount)
             {
-                for (int c = currentCoins; c < entry.CoinCount; c++)
+                for (var c = currentCoins; c < entry.CoinCount; c++)
                 {
                     try
                     { peg.AddCoin(false); }
@@ -1271,7 +1426,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     var overlay = overlayField?.GetValue(peg) as Battle.PegBehaviour.PegCoinOverlay;
                     if (overlay != null)
                     {
-                        int toCollect = currentCoins - entry.CoinCount;
+                        var toCollect = currentCoins - entry.CoinCount;
                         overlay.CollectCoins(toCollect);
                     }
                 }
@@ -1282,7 +1437,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         // Sync buff amount
         if (peg.buffAmount != entry.BuffAmount)
         {
-            int diff = entry.BuffAmount - peg.buffAmount;
+            var diff = entry.BuffAmount - peg.buffAmount;
             if (diff != 0)
             {
                 try
@@ -1327,6 +1482,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     try
                     { peg.ApplyShielding(claimed: false, startupShield: false); }
                     catch { }
+
                     overlay = overlayField?.GetValue(peg) as Battle.PegBehaviour.PegShieldOverlay;
                 }
 
@@ -1341,8 +1497,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         anim?.SetInteger(UnityEngine.Animator.StringToHash("HitCount"), entry.ShieldHitCount);
                         // Hide if broken
                         var rend = overlay.GetComponent<UnityEngine.SpriteRenderer>();
-                        if (rend != null)
-                            rend.enabled = entry.ShieldHitCount < entry.ShieldHitLimit;
+                        rend?.enabled = entry.ShieldHitCount < entry.ShieldHitLimit;
                     }
                     catch { }
                 }
@@ -1355,6 +1510,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     overlay.hitCount = overlay.hitLimit;
                     overlay.gameObject.SetActive(false);
                 }
+
                 shieldedField?.SetValue(peg, false);
             }
         }
@@ -1364,15 +1520,23 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     private static bool HasMovementComponent(Peg peg)
     {
         if (peg == null)
+        {
             return false;
+        }
+
         var go = peg.gameObject;
 
         // Check self and direct parent only for LinearPegMovement (not distant ancestors)
         if (go.GetComponent<Battle.PegBehaviour.LinearPegMovement>() != null)
+        {
             return true;
+        }
+
         if (go.transform.parent != null &&
             go.transform.parent.GetComponent<Battle.PegBehaviour.LinearPegMovement>() != null)
+        {
             return true;
+        }
 
         return go.GetComponent<Battle.PegBehaviour.PegMoveAndReturn>() != null
             || go.GetComponent<Battle.PegBehaviour.PegSquareMovement>() != null
@@ -1395,6 +1559,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 _log.LogInfo($"[PegboardApplier] Activating inactive parent '{parent.name}' for peg at ({go.transform.position.x:F1},{go.transform.position.y:F1})");
                 parent.gameObject.SetActive(true);
             }
+
             parent = parent.parent;
         }
     }
@@ -1402,7 +1567,10 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     private void ForceSpecialPegSpriteIfNeeded(Peg peg, Peg.PegType targetType)
     {
         if (targetType != Peg.PegType.CRIT && targetType != Peg.PegType.RESET)
+        {
             return;
+        }
+
         try
         {
             if (peg is RegularPeg)
@@ -1410,20 +1578,23 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 var rendererField = HarmonyLib.AccessTools.Field(typeof(RegularPeg), "_renderer");
                 var renderer = rendererField?.GetValue(peg) as SpriteRenderer;
                 if (renderer == null)
+                {
                     return;
+                }
 
                 var spriteFieldName = targetType == Peg.PegType.CRIT ? "_critSprite" : "_resetSprite";
                 var spriteField = HarmonyLib.AccessTools.Field(typeof(RegularPeg), spriteFieldName);
                 var sprite = spriteField?.GetValue(peg) as Sprite;
                 if (sprite == null || renderer.sprite == sprite)
+                {
                     return;
+                }
 
                 renderer.sprite = sprite;
 
                 var colliderField = HarmonyLib.AccessTools.Field(typeof(RegularPeg), "_specialPegCollider");
                 var coll = colliderField?.GetValue(peg) as Collider2D;
-                if (coll != null)
-                    coll.enabled = true;
+                coll?.enabled = true;
             }
             else if (peg is LongPeg)
             {
@@ -1431,20 +1602,23 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 var spriteField = HarmonyLib.AccessTools.Field(typeof(LongPeg), spriteFieldName);
                 var sprite = spriteField?.GetValue(peg) as Sprite;
                 if (sprite == null)
+                {
                     return;
+                }
 
                 var overlayField = HarmonyLib.AccessTools.Field(typeof(LongPeg), "_resetOrCritSprite");
                 var overlay = overlayField?.GetValue(peg) as SpriteRenderer;
                 if (overlay == null || overlay.sprite == sprite)
+                {
                     return;
+                }
 
                 overlay.sprite = sprite;
                 overlay.enabled = true;
 
                 var holderField = HarmonyLib.AccessTools.Field(typeof(LongPeg), "_resetAndCritSpriteHolder");
                 var holder = holderField?.GetValue(peg) as GameObject;
-                if (holder != null)
-                    holder.SetActive(true);
+                holder?.SetActive(true);
             }
         }
         catch { }
@@ -1462,7 +1636,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 {
                     var c = renderer.color;
                     if (c.a < 1f)
+                    {
                         renderer.color = new Color(c.r, c.g, c.b, 1f);
+                    }
                 }
             }
             else if (peg is LongPeg)
@@ -1473,7 +1649,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 {
                     var c = renderer.material.color;
                     if (c.a < 1f)
+                    {
                         renderer.material.color = new Color(c.r, c.g, c.b, 1f);
+                    }
                 }
             }
             else if (peg is BouncerPeg)
@@ -1484,7 +1662,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 {
                     var c = renderer.color;
                     if (c.a < 1f)
+                    {
                         renderer.color = new Color(c.r, c.g, c.b, 1f);
+                    }
                 }
             }
         }
@@ -1497,54 +1677,84 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         foreach (var peg in pegs)
         {
             if (peg == null || !peg.gameObject.activeSelf || peg.pegType == Peg.PegType.DESTROYED)
+            {
                 continue;
-            bool disabled = false;
+            }
+
+            var disabled = false;
             try
             { disabled = peg.IsDisabled(); }
             catch { }
+
             if (disabled)
+            {
                 continue;
+            }
+
             active++;
             var pt = (int)peg.pegType;
             if ((pt & 0x2) != 0)
+            {
                 crits++;
+            }
             else if ((pt & 0x8) != 0)
+            {
                 resets++;
+            }
             else if ((pt & 0x1) != 0)
+            {
                 regular++;
+            }
         }
+
         if (bombs != null)
         {
             foreach (var bomb in bombs)
             {
                 if (bomb == null || !bomb.gameObject.activeSelf || bomb.pegType == Peg.PegType.DESTROYED)
+                {
                     continue;
-                bool disabled = false;
+                }
+
+                var disabled = false;
                 try
                 { disabled = bomb.IsDisabled(); }
                 catch { }
+
                 if (disabled)
+                {
                     continue;
+                }
+
                 active++;
                 bombCount++;
             }
         }
+
         if (bouncers != null)
         {
             foreach (var bouncer in bouncers)
             {
                 if (bouncer == null || !bouncer.gameObject.activeSelf || bouncer.pegType == Peg.PegType.DESTROYED)
+                {
                     continue;
-                bool disabled = false;
+                }
+
+                var disabled = false;
                 try
                 { disabled = bouncer.IsDisabled(); }
                 catch { }
+
                 if (disabled)
+                {
                     continue;
+                }
+
                 active++;
                 bouncerCount++;
             }
         }
+
         _log.LogInfo($"[PegboardApplier] CLIENT ACTUAL: {active} active pegs " +
             $"(regular={regular}, crit={crits}, bomb={bombCount}, reset={resets}, bouncer={bouncerCount})");
     }
@@ -1563,10 +1773,15 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             foreach (var kvp in _clientVines)
             {
                 if (kvp.Value == null)
+                {
                     stale.Add(kvp.Key);
+                }
             }
+
             foreach (var key in stale)
+            {
                 _clientVines.Remove(key);
+            }
 
             var hostVineKeys = new HashSet<string>();
 
@@ -1575,13 +1790,17 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 foreach (var vine in snapshot.Vines)
                 {
                     if (string.IsNullOrEmpty(vine.Peg1Guid) || string.IsNullOrEmpty(vine.Peg2Guid))
+                    {
                         continue;
+                    }
 
                     var key = VineKey(vine.Peg1Guid, vine.Peg2Guid);
                     hostVineKeys.Add(key);
 
                     if (_clientVines.ContainsKey(key))
+                    {
                         continue;
+                    }
 
                     var peg1 = _pegId.Find(vine.Peg1Guid);
                     var peg2 = _pegId.Find(vine.Peg2Guid);
@@ -1609,7 +1828,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                             var vineComp = vineGo.GetComponent<Battle.Pachinko.Obstacles.PegBoardBramballVine>();
                             if (vineComp != null && vineComp.vineMaterials != null && vineComp.vineMaterials.Count > 0)
                             {
-                                int matIdx = UnityEngine.Random.Range(0, vineComp.vineMaterials.Count);
+                                var matIdx = UnityEngine.Random.Range(0, vineComp.vineMaterials.Count);
                                 lr.material = vineComp.vineMaterials[matIdx];
                             }
                         }
@@ -1621,7 +1840,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
                         // Disable ALL colliders — client vines are visual only
                         foreach (var col in vineGo.GetComponentsInChildren<Collider2D>(true))
+                        {
                             col.enabled = false;
+                        }
 
                         _clientVines[key] = vineGo;
                         _log.LogInfo($"[PegboardApplier] Created vine between {vine.Peg1Guid} and {vine.Peg2Guid}");
@@ -1640,12 +1861,18 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 if (!hostVineKeys.Contains(kvp.Key))
                 {
                     if (kvp.Value != null)
+                    {
                         UnityEngine.Object.Destroy(kvp.Value);
+                    }
+
                     toRemove.Add(kvp.Key);
                 }
             }
+
             foreach (var key in toRemove)
+            {
                 _clientVines.Remove(key);
+            }
 
             if ((snapshot.Vines?.Count ?? 0) > 0 || _clientVines.Count > 0)
             {

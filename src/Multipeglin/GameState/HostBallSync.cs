@@ -32,13 +32,18 @@ public class HostBallSync : MonoBehaviour
     {
         var services = MultiplayerPlugin.Services;
         if (services == null)
+        {
             return;
+        }
+
         services.TryResolve(out _registry);
         services.TryResolve(out _mode);
         services.TryResolve(out _ballId);
 
         if (_ballId != null)
+        {
             _provider = new BallStateProvider(MultiplayerPlugin.Logger, _ballId);
+        }
     }
 
     private void Update()
@@ -47,16 +52,25 @@ public class HostBallSync : MonoBehaviour
         {
             Start();
             if (_registry == null || _mode == null || _provider == null)
+            {
                 return;
+            }
         }
+
         if (!_mode.IsHosting)
+        {
             return;
+        }
+
         if (Time.time - _lastSendTime < SendInterval)
+        {
             return;
+        }
+
         _lastSendTime = Time.time;
 
         var snap = _provider.Capture();
-        bool hasBalls = snap.Balls.Count > 0;
+        var hasBalls = snap.Balls.Count > 0;
 
         // Dispatch whenever balls are present OR on the first tick after they
         // disappear — the empty snapshot tells the client to drop visuals that
@@ -69,6 +83,8 @@ public class HostBallSync : MonoBehaviour
 
         // Periodically prune the GUID registry of destroyed balls.
         if (!hasBalls)
+        {
             _ballId.PruneDestroyed();
+        }
     }
 }

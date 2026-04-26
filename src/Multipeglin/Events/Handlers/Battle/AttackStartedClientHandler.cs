@@ -1,4 +1,3 @@
-namespace Multipeglin.Events.Handlers.Battle;
 
 using System;
 using System.Collections;
@@ -10,6 +9,7 @@ using Multipeglin.GameState;
 using Multipeglin.Multiplayer;
 using UnityEngine;
 
+namespace Multipeglin.Events.Handlers.Battle;
 public sealed class AttackStartedClientHandler : IClientHandler<AttackStartedEvent>
 {
     // Per-shot events arrive back-to-back during a coop attack phase. We queue
@@ -34,16 +34,23 @@ public sealed class AttackStartedClientHandler : IClientHandler<AttackStartedEve
     private static void StartPlaybackIfNeeded()
     {
         if (_playbackRunning)
+        {
             return;
+        }
+
         var runner = ClientAttackProjectile.Instance;
         if (runner == null)
         {
             // No MonoBehaviour available to host the coroutine — fall back to
             // one-shot handling so we don't lose the event entirely.
             if (_queue.Count > 0)
+            {
                 PlayOneImmediate(_queue.Dequeue());
+            }
+
             return;
         }
+
         _playbackRunning = true;
         runner.StartCoroutine(Playback());
     }
@@ -56,7 +63,7 @@ public sealed class AttackStartedClientHandler : IClientHandler<AttackStartedEve
             PlayOneImmediate(e);
 
             // Wait for this shot's projectile to finish before starting the next.
-            float waited = 0f;
+            var waited = 0f;
             var cap = ClientAttackProjectile.Instance;
             while (cap != null && cap.IsAttacking && waited < 2.0f)
             {
@@ -67,6 +74,7 @@ public sealed class AttackStartedClientHandler : IClientHandler<AttackStartedEve
             // Small gap between shots so enemy flinch animations are legible.
             yield return new WaitForSeconds(0.3f);
         }
+
         _playbackRunning = false;
     }
 

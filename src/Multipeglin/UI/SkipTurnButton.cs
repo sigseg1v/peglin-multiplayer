@@ -1,4 +1,3 @@
-namespace Multipeglin.UI;
 
 using System;
 using Multipeglin.Events.Handlers.Coop;
@@ -11,6 +10,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using BattleCtrl = global::Battle.BattleController;
 
+namespace Multipeglin.UI;
 /// <summary>
 /// Screen-space Skip Turn button shown during battle when it's the local
 /// player's turn. Host click runs CoopSubscriptions.SkipCurrentTurn directly;
@@ -32,18 +32,22 @@ public sealed class SkipTurnButton : MonoBehaviour
     private void OnDestroy()
     {
         if (_canvasObj != null)
+        {
             Destroy(_canvasObj);
+        }
     }
 
     private void Update()
     {
         if (MultiplayerPlugin.Services == null)
         { SetVisible(false); return; }
+
         if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode))
         {
             SetVisible(false);
             return;
         }
+
         if (!mode.IsHosting && !mode.IsSpectating)
         { SetVisible(false); return; }
 
@@ -51,11 +55,13 @@ public sealed class SkipTurnButton : MonoBehaviour
         if (mode.IsHosting)
         {
             // Host: gate on local BattleController + TurnManager (both local authority).
-            bool inBattle = BattleCtrl.CurrentBattleState == BattleCtrl.BattleState.AWAITING_SHOT;
+            var inBattle = BattleCtrl.CurrentBattleState == BattleCtrl.BattleState.AWAITING_SHOT;
             if (!inBattle)
             { SetVisible(false); return; }
+
             if (!MultiplayerPlugin.Services.TryResolve<GameState.TurnManager>(out var tm))
             { SetVisible(false); return; }
+
             myTurn = tm.Phase == GameState.TurnPhase.PLAYER_AIMING && tm.CurrentPlayerSlot == 0;
         }
         else
@@ -73,24 +79,33 @@ public sealed class SkipTurnButton : MonoBehaviour
     {
         if (!visible)
         {
-            if (_canvasObj != null)
-                _canvasObj.SetActive(false);
+            _canvasObj?.SetActive(false);
+
             return;
         }
+
         if (_canvasObj == null)
+        {
             Build();
+        }
+
         _canvasObj.SetActive(true);
     }
 
     private void TryEnsureFont()
     {
         if (_font != null)
+        {
             return;
+        }
+
         try
         {
             foreach (var tmp in FindObjectsOfType<TextMeshProUGUI>())
+            {
                 if (tmp.font != null)
                 { _font = tmp.font; break; }
+            }
         }
         catch { }
     }
@@ -153,7 +168,10 @@ public sealed class SkipTurnButton : MonoBehaviour
         var tmp = labelObj.AddComponent<TextMeshProUGUI>();
         TryEnsureFont();
         if (_font != null)
+        {
             tmp.font = _font;
+        }
+
         tmp.text = "SKIP TURN";
         tmp.fontSize = 32;
         tmp.fontStyle = FontStyles.Bold;
@@ -171,9 +189,14 @@ public sealed class SkipTurnButton : MonoBehaviour
         try
         {
             if (MultiplayerPlugin.Services == null)
+            {
                 return;
+            }
+
             if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode))
+            {
                 return;
+            }
 
             if (mode.IsHosting)
             {
@@ -183,6 +206,7 @@ public sealed class SkipTurnButton : MonoBehaviour
                     MultiplayerPlugin.Logger?.LogWarning("[SkipTurnButton] Host click but CoopSubscriptions.Instance null");
                     return;
                 }
+
                 subs.SkipCurrentTurn(0, "host UI");
             }
             else if (mode.IsSpectating)
@@ -192,6 +216,7 @@ public sealed class SkipTurnButton : MonoBehaviour
                     MultiplayerPlugin.Logger?.LogWarning("[SkipTurnButton] Client click but IMessageSender not resolvable");
                     return;
                 }
+
                 sender.Send(new SkipTurnRequestEvent());
                 MultiplayerPlugin.Logger?.LogInfo("[SkipTurnButton] Client sent SkipTurnRequestEvent");
             }

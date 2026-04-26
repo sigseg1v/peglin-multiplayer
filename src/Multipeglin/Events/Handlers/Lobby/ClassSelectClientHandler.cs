@@ -1,8 +1,8 @@
-namespace Multipeglin.Events.Handlers.Lobby;
 
 using Multipeglin.Events.Network.Lobby;
 using Multipeglin.Multiplayer;
 
+namespace Multipeglin.Events.Handlers.Lobby;
 /// <summary>
 /// On host: a client sent their class selection. Update the registry and broadcast lobby state.
 /// On client: this event is not rebroadcast (server handler returns null), so clients
@@ -16,14 +16,24 @@ public sealed class ClassSelectClientHandler : IClientHandler<ClassSelectEvent>
         // The host's GameEventRegistry.HandleIncoming is called for client→host events.
         var services = MultiplayerPlugin.Services;
         if (services == null)
+        {
             return;
+        }
 
         if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting)
+        {
             return;
+        }
+
         if (!services.TryResolve<PlayerRegistry>(out var registry))
+        {
             return;
+        }
+
         if (!services.TryResolve<Events.IGameEventRegistry>(out var eventRegistry))
+        {
             return;
+        }
 
         var senderPeerId = (eventRegistry as Events.GameEventRegistry)?.CurrentSenderPeerId ?? -1;
         var slot = registry.GetSlotByPeerId(senderPeerId);

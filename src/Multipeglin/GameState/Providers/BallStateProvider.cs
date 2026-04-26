@@ -29,29 +29,39 @@ public class BallStateProvider : IGameStateProvider<BallStateSnapshot>
         {
             var balls = UnityEngine.Object.FindObjectsOfType<PachinkoBall>();
             if (balls == null)
+            {
                 return snap;
+            }
 
             foreach (var ball in balls)
             {
                 if (ball == null || ball.IsDummy)
+                {
                     continue;
+                }
 
                 // CoopTempOrb_host is a placeholder stuck off-screen at (-999,-999)
                 // used by the coop damage pipeline; never stream it.
                 var goName = ball.gameObject.name;
                 if (!string.IsNullOrEmpty(goName) && goName.StartsWith("CoopTempOrb"))
+                {
                     continue;
+                }
 
                 // Skip balls parked at the off-screen position regardless of name.
                 var pos = ball.transform.position;
                 if (pos.x < -900f && pos.y < -900f)
+                {
                     continue;
+                }
 
                 // Only sync balls that are actually in flight — skip WAITING/AIMING
                 // (those haven't been fired). Multiball children are spawned directly
                 // into FIRING state, so they pass.
                 if (!ball.IsFiring())
+                {
                     continue;
+                }
 
                 var guid = _ballId.GetOrAssignGuid(ball);
                 var rb = ball.GetComponent<Rigidbody2D>();
@@ -65,12 +75,16 @@ public class BallStateProvider : IGameStateProvider<BallStateSnapshot>
                 Vector3 scale;
                 var spriteRenderer = ball.GetComponentInChildren<SpriteRenderer>();
                 if (spriteRenderer != null)
+                {
                     scale = spriteRenderer.transform.lossyScale;
+                }
                 else
+                {
                     scale = ball.transform.localScale;
+                }
 
                 // Primary ball: the one tracked by the client-patch _firedBallGO.
-                bool isPrimary = ReferenceEquals(ball.gameObject, Patches.MultiplayerClientPatches.PrimaryBall);
+                var isPrimary = ReferenceEquals(ball.gameObject, Patches.MultiplayerClientPatches.PrimaryBall);
 
                 snap.Balls.Add(new BallEntry
                 {
@@ -90,6 +104,7 @@ public class BallStateProvider : IGameStateProvider<BallStateSnapshot>
         {
             _log?.LogWarning($"[BallProvider] Capture failed: {ex.Message}");
         }
+
         return snap;
     }
 }

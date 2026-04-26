@@ -37,9 +37,14 @@ public class TextScenarioSpectatorUI : MonoBehaviour
     private void OnDestroy()
     {
         if (_instance == this)
+        {
             _instance = null;
+        }
+
         if (_canvasObj != null)
+        {
             Destroy(_canvasObj);
+        }
     }
 
     private void CreateUI()
@@ -123,20 +128,20 @@ public class TextScenarioSpectatorUI : MonoBehaviour
 
     public void Show()
     {
-        if (_canvasObj != null)
-            _canvasObj.SetActive(true);
+        _canvasObj?.SetActive(true);
     }
 
     public void Hide()
     {
-        if (_canvasObj != null)
-            _canvasObj.SetActive(false);
+        _canvasObj?.SetActive(false);
     }
 
     public void UpdateDialogue(string speakerName, string subtitleText, List<string> responses, int highlightedIndex)
     {
         if (_canvasObj == null)
+        {
             return;
+        }
 
         _speakerText.text = speakerName ?? "";
         _subtitleText.text = subtitleText ?? "";
@@ -148,7 +153,9 @@ public class TextScenarioSpectatorUI : MonoBehaviour
     private void UpdateResponses(List<string> responses, int highlightedIndex)
     {
         if (responses == null)
+        {
             responses = new List<string>();
+        }
 
         // Rebuild response items if count changed
         while (_responseItems.Count < responses.Count)
@@ -156,6 +163,7 @@ public class TextScenarioSpectatorUI : MonoBehaviour
             var item = CreateResponseItem(_responsesContainer.transform, _responseItems.Count);
             _responseItems.Add(item);
         }
+
         while (_responseItems.Count > responses.Count)
         {
             var last = _responseItems[_responseItems.Count - 1];
@@ -164,7 +172,7 @@ public class TextScenarioSpectatorUI : MonoBehaviour
         }
 
         // Update text and highlight
-        for (int i = 0; i < responses.Count; i++)
+        for (var i = 0; i < responses.Count; i++)
         {
             var item = _responseItems[i];
             item.SetActive(true);
@@ -172,17 +180,16 @@ public class TextScenarioSpectatorUI : MonoBehaviour
             var arrowText = item.transform.Find("Arrow")?.GetComponent<TextMeshProUGUI>();
             var responseText = item.transform.Find("Text")?.GetComponent<TextMeshProUGUI>();
 
-            if (responseText != null)
-                responseText.text = responses[i];
+            responseText?.text = responses[i];
 
-            bool isHighlighted = i == highlightedIndex;
+            var isHighlighted = i == highlightedIndex;
             if (arrowText != null)
             {
                 arrowText.text = isHighlighted ? ">" : " ";
                 arrowText.color = ArrowColor;
             }
-            if (responseText != null)
-                responseText.color = isHighlighted ? HighlightColor : NormalColor;
+
+            responseText?.color = isHighlighted ? HighlightColor : NormalColor;
         }
 
         _lastHighlightIndex = highlightedIndex;

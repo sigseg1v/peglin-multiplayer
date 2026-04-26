@@ -81,7 +81,9 @@ public class CoopStateManager
     public void CaptureInitialState(int slotIndex)
     {
         if (!PlayerStates.TryGetValue(slotIndex, out var state))
+        {
             return;
+        }
 
         SaveDeckState(state);
         SaveRelicState(state);
@@ -99,9 +101,14 @@ public class CoopStateManager
     public void SaveActivePlayerState()
     {
         if (ActivePlayerSlot < 0)
+        {
             return;
+        }
+
         if (!PlayerStates.TryGetValue(ActivePlayerSlot, out var state))
+        {
             return;
+        }
 
         SaveDeckState(state);
         SaveRelicState(state);
@@ -118,7 +125,9 @@ public class CoopStateManager
     public void LoadPlayerState(int slotIndex)
     {
         if (!PlayerStates.TryGetValue(slotIndex, out var state))
+        {
             return;
+        }
 
         LoadDeckState(state);
         LoadRelicState(state);
@@ -137,10 +146,14 @@ public class CoopStateManager
     public void SwapToPlayer(int slotIndex)
     {
         if (slotIndex == ActivePlayerSlot)
+        {
             return;
+        }
 
         if (ActivePlayerSlot >= 0)
+        {
             SaveActivePlayerState();
+        }
 
         LoadPlayerState(slotIndex);
     }
@@ -153,12 +166,17 @@ public class CoopStateManager
     public void SendTreasureRelicChoicesToClients()
     {
         if (TotalPlayerCount < 2)
+        {
             return;
+        }
+
         try
         {
             var services = MultiplayerPlugin.Services;
             if (services?.TryResolve<Events.IGameEventRegistry>(out var registry) != true)
+            {
                 return;
+            }
 
             var relicMgr = Resources.FindObjectsOfTypeAll<Relics.RelicManager>()?.FirstOrDefault();
             if (relicMgr == null)
@@ -169,11 +187,14 @@ public class CoopStateManager
             Events.Handlers.Coop.CoopRewardState.HostHasChosenRelic = true; // Host picks natively
             Events.Handlers.Coop.CoopRewardState.ClientRelicChoicesReceived.Clear();
 
-            int clientCount = 0;
+            var clientCount = 0;
             foreach (var kvp in PlayerStates)
             {
                 if (kvp.Key == 0)
+                {
                     continue; // Host picks natively from chest
+                }
+
                 clientCount++;
 
                 // Generate 3 common relic choices for this client
@@ -182,21 +203,25 @@ public class CoopStateManager
 
                 foreach (var relic in relics)
                 {
-                    string displayName = relic.locKey ?? "Unknown";
+                    var displayName = relic.locKey ?? "Unknown";
                     try
                     {
                         var translated = I2.Loc.LocalizationManager.GetTranslation("Relics/" + relic.locKey);
                         if (!string.IsNullOrEmpty(translated))
+                        {
                             displayName = translated;
+                        }
                     }
                     catch { }
 
-                    string description = relic.locKey ?? "";
+                    var description = relic.locKey ?? "";
                     try
                     {
                         var translated = I2.Loc.LocalizationManager.GetTranslation("Relics/" + relic.locKey + "_desc");
                         if (!string.IsNullOrEmpty(translated))
+                        {
                             description = translated;
+                        }
                     }
                     catch { }
 
@@ -236,13 +261,20 @@ public class CoopStateManager
     public void DistributeGoldToInactivePlayers(int amount)
     {
         if (amount <= 0)
+        {
             return;
+        }
+
         foreach (var kvp in PlayerStates)
         {
             if (kvp.Key == ActivePlayerSlot)
+            {
                 continue; // Active player gets it via singleton
+            }
+
             kvp.Value.Gold += amount;
         }
+
         _log.LogInfo($"[CoopState] Distributed +{amount} gold to {PlayerStates.Count - 1} inactive player(s)");
     }
 
@@ -278,16 +310,21 @@ public class CoopStateManager
         {
             var deckMgr = Resources.FindObjectsOfTypeAll<DeckManager>()?.FirstOrDefault();
             if (deckMgr == null)
+            {
                 return;
+            }
 
             // Guard: if all completeDeck objects are destroyed (Unity-null from scene unload),
             // don't overwrite CoopPlayerState with empty data.
             if (DeckManager.completeDeck != null && DeckManager.completeDeck.Count > 0)
             {
-                bool anyValid = false;
+                var anyValid = false;
                 foreach (var orb in DeckManager.completeDeck)
+                {
                     if (orb != null)
                     { anyValid = true; break; }
+                }
+
                 if (!anyValid && state.CompleteDeck.Count > 0)
                 {
                     _log.LogInfo($"[CoopState] SaveDeckState: singleton orbs are destroyed, preserving {state.CompleteDeck.Count} existing orbs");
@@ -295,9 +332,9 @@ public class CoopStateManager
                 }
             }
 
-            int prevComplete = state.CompleteDeck.Count;
-            int prevBattle = state.BattleDeck.Count;
-            int prevShuffled = state.ShuffledOrder.Count;
+            var prevComplete = state.CompleteDeck.Count;
+            var prevBattle = state.BattleDeck.Count;
+            var prevShuffled = state.ShuffledOrder.Count;
 
             state.CompleteDeck.Clear();
             if (DeckManager.completeDeck != null)
@@ -305,7 +342,10 @@ public class CoopStateManager
                 foreach (var orb in DeckManager.completeDeck)
                 {
                     if (orb == null)
+                    {
                         continue;
+                    }
+
                     var attack = orb.GetComponent<Battle.Attacks.Attack>();
                     var persist = orb.GetComponent<Battle.Pachinko.PersistentOrb>();
                     state.CompleteDeck.Add(new SerializedOrb
@@ -324,7 +364,10 @@ public class CoopStateManager
                 foreach (var orb in deckMgr.battleDeck)
                 {
                     if (orb == null)
+                    {
                         continue;
+                    }
+
                     var attack = orb.GetComponent<Battle.Attacks.Attack>();
                     var persist = orb.GetComponent<Battle.Pachinko.PersistentOrb>();
                     state.BattleDeck.Add(new SerializedOrb
@@ -343,7 +386,9 @@ public class CoopStateManager
                 foreach (var orb in deckMgr.shuffledDeck)
                 {
                     if (orb == null)
+                    {
                         continue;
+                    }
                     // Save GUID if available, otherwise fall back to prefab name
                     var guid = _orbId?.GetGuid(orb);
                     state.ShuffledOrder.Add(guid ?? orb.name.Replace("(Clone)", "").Trim());
@@ -373,16 +418,25 @@ public class CoopStateManager
         {
             var deckMgr = Resources.FindObjectsOfTypeAll<DeckManager>()?.FirstOrDefault();
             if (deckMgr == null)
+            {
                 return;
+            }
 
             // Rebuild completeDeck from serialized orb names
             if (DeckManager.completeDeck == null)
+            {
                 DeckManager.completeDeck = new List<GameObject>();
+            }
 
             // Destroy existing orb instances
             foreach (var go in DeckManager.completeDeck)
+            {
                 if (go != null)
+                {
                     UnityEngine.Object.Destroy(go);
+                }
+            }
+
             DeckManager.completeDeck.Clear();
 
             foreach (var orb in state.CompleteDeck)
@@ -399,16 +453,19 @@ public class CoopStateManager
                     // share the same instanceID, making IsAttackUnique always return true
                     // (breaks Spinventoriginality / UNIQUE_ORBS_BUFF).
                     var attack = instance.GetComponent<Battle.Attacks.Attack>();
-                    if (attack != null)
-                        attack.SetInstanceId();
+                    attack?.SetInstanceId();
+
                     if (!string.IsNullOrEmpty(orb.Guid) && _orbId != null)
+                    {
                         _orbId.Register(instance, orb.Guid);
+                    }
+
                     if (orb.RemainingPersistence >= 0)
                     {
                         var persist = instance.GetComponent<Battle.Pachinko.PersistentOrb>();
-                        if (persist != null)
-                            persist.remainingPersistence = orb.RemainingPersistence;
+                        persist?.remainingPersistence = orb.RemainingPersistence;
                     }
+
                     DeckManager.completeDeck.Add(instance);
                 }
                 else
@@ -419,11 +476,18 @@ public class CoopStateManager
 
             // Rebuild battleDeck
             if (deckMgr.battleDeck == null)
+            {
                 deckMgr.battleDeck = new List<GameObject>();
+            }
 
             foreach (var go in deckMgr.battleDeck)
+            {
                 if (go != null)
+                {
                     UnityEngine.Object.Destroy(go);
+                }
+            }
+
             deckMgr.battleDeck.Clear();
 
             foreach (var orb in state.BattleDeck)
@@ -436,16 +500,19 @@ public class CoopStateManager
                     instance.SetActive(false);
                     UnityEngine.Object.DontDestroyOnLoad(instance);
                     var attack = instance.GetComponent<Battle.Attacks.Attack>();
-                    if (attack != null)
-                        attack.SetInstanceId();
+                    attack?.SetInstanceId();
+
                     if (!string.IsNullOrEmpty(orb.Guid) && _orbId != null)
+                    {
                         _orbId.Register(instance, orb.Guid);
+                    }
+
                     if (orb.RemainingPersistence >= 0)
                     {
                         var persist = instance.GetComponent<Battle.Pachinko.PersistentOrb>();
-                        if (persist != null)
-                            persist.remainingPersistence = orb.RemainingPersistence;
+                        persist?.remainingPersistence = orb.RemainingPersistence;
                     }
+
                     deckMgr.battleDeck.Add(instance);
                 }
             }
@@ -455,14 +522,16 @@ public class CoopStateManager
             if (state.ShuffledOrder != null)
             {
                 // Push in reverse — stack is LIFO, index 0 = top = first draw
-                for (int i = state.ShuffledOrder.Count - 1; i >= 0; i--)
+                for (var i = state.ShuffledOrder.Count - 1; i >= 0; i--)
                 {
                     var entry = state.ShuffledOrder[i];
                     GameObject match = null;
 
                     // Try GUID lookup first
                     if (_orbId != null)
+                    {
                         match = _orbId.Find(entry);
+                    }
 
                     // Fall back to name matching — should rarely be needed if SaveDeckState always saves GUIDs
                     if (match == null)
@@ -481,7 +550,9 @@ public class CoopStateManager
                     }
 
                     if (match != null)
+                    {
                         deckMgr.shuffledDeck.Push(match);
+                    }
                 }
             }
 
@@ -522,7 +593,10 @@ public class CoopStateManager
         try
         {
             if (deckMgr == null)
+            {
                 deckMgr = Resources.FindObjectsOfTypeAll<DeckManager>()?.FirstOrDefault();
+            }
+
             if (deckMgr == null)
             { _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: DeckManager null"); return; }
 
@@ -545,15 +619,17 @@ public class CoopStateManager
             // throwing and aborting the draw animation chain (top-peg pull-up + aimer
             // sprite never render). Player can still aim/shoot — visual only.
             if (deckMgr.shuffledDeck == null || deckMgr.shuffledDeck.Count == 0)
+            {
                 return;
+            }
 
             // Fast path: skip the destroy-and-recreate churn when the cached signature
             // matches the current shuffledDeck, the same DeckInfoManager is still
             // active, and the existing displayOrbs count matches what we'd produce.
             // This converts heartbeat-driven calls into no-ops while still rebuilding
             // whenever the deck actually changes (turn swap, draw, shuffle).
-            string signature = ComputeShuffledDeckSignature(deckMgr);
-            bool sameDim = _lastRebuildDim != null && _lastRebuildDim.IsAlive && ReferenceEquals(_lastRebuildDim.Target, dim);
+            var signature = ComputeShuffledDeckSignature(deckMgr);
+            var sameDim = _lastRebuildDim != null && _lastRebuildDim.IsAlive && ReferenceEquals(_lastRebuildDim.Target, dim);
             if (sameDim
                 && _lastRebuildSignature != null
                 && _lastRebuildSignature == signature
@@ -564,8 +640,13 @@ public class CoopStateManager
             }
 
             foreach (var go in displayOrbs)
+            {
                 if (go != null)
+                {
                     UnityEngine.Object.Destroy(go);
+                }
+            }
+
             displayOrbs.Clear();
 
             // Recreate display orbs from shuffledDeck, replicating the positioning
@@ -584,35 +665,42 @@ public class CoopStateManager
             var startPos = startPosField != null ? (UnityEngine.Vector3)startPosField.GetValue(dim) : UnityEngine.Vector3.zero;
             var topTransform = AccessTools.Field(typeof(DeckInfoManager), "_topTransform")?.GetValue(dim) as Transform;
 
-            float orbSpriteOffset = 0.875f; // DeckInfoManager.ORB_SPRITE_OFFSET
-            float fudge = dim.upcomingDisplayOrbFudgeFactor;
+            var orbSpriteOffset = 0.875f; // DeckInfoManager.ORB_SPRITE_OFFSET
+            var fudge = dim.upcomingDisplayOrbFudgeFactor;
 
             var arr = deckMgr.shuffledDeck.ToArray();
-            float yAccum = (float)arr.Length * -orbSpriteOffset;
+            var yAccum = (float)arr.Length * -orbSpriteOffset;
 
             // Position the plunger graphic to the starting offset
-            if (plungerGraphic != null)
-                plungerGraphic.localPosition = new UnityEngine.Vector3(startPos.x, yAccum + startPos.y);
+            plungerGraphic?.localPosition = new UnityEngine.Vector3(startPos.x, yAccum + startPos.y);
 
-            int created = 0;
-            for (int i = arr.Length - 1; i >= 0; i--)
+            var created = 0;
+            for (var i = arr.Length - 1; i >= 0; i--)
             {
                 if (arr[i] == null)
+                {
                     continue;
+                }
 
                 // Temporarily activate inactive orbs so PachinkoBall.sprite is populated
                 // (UpcomingOrbDisplay.Initialize reads it, which is null on inactive clones)
-                bool wasActive = arr[i].activeSelf;
+                var wasActive = arr[i].activeSelf;
                 if (!wasActive)
+                {
                     arr[i].SetActive(true);
+                }
+
                 var previewGO = createMethod.Invoke(dim, new object[] { arr[i], (float)i * 0.01f }) as GameObject;
                 if (!wasActive)
+                {
                     arr[i].SetActive(false);
+                }
+
                 if (previewGO != null)
                 {
                     previewGO.transform.parent = plungerParent;
                     var sr = previewGO.GetComponent<UnityEngine.SpriteRenderer>();
-                    float spriteHeight = sr != null ? sr.bounds.size.y : 0f;
+                    var spriteHeight = sr != null ? sr.bounds.size.y : 0f;
                     previewGO.transform.localPosition = UnityEngine.Vector3.up * (yAccum + fudge + spriteHeight * 0.5f);
                     yAccum += spriteHeight;
                     displayOrbs.Push(previewGO);
@@ -622,10 +710,12 @@ public class CoopStateManager
 
             // Move plunger parent to the top position (skip animation, just snap)
             if (topTransform != null)
+            {
                 plungerParent.position = new UnityEngine.Vector3(
                     plungerParent.position.x,
                     topTransform.position.y - yAccum,
                     plungerParent.position.z);
+            }
 
             _lastRebuildDim = new System.WeakReference(dim);
             _lastRebuildSignature = signature;
@@ -645,14 +735,19 @@ public class CoopStateManager
         {
             var shuffled = deckMgr?.shuffledDeck;
             if (shuffled == null)
+            {
                 return "<null>";
+            }
+
             var sb = new System.Text.StringBuilder();
             foreach (var go in shuffled)
             {
                 if (go == null)
                 { sb.Append("<n>|"); continue; }
+
                 sb.Append(go.GetInstanceID()).Append(':').Append(go.name).Append('|');
             }
+
             return sb.ToString();
         }
         catch
@@ -666,8 +761,11 @@ public class CoopStateManager
         foreach (var go in displayOrbs)
         {
             if (go == null)
+            {
                 return false;
+            }
         }
+
         return true;
     }
 
@@ -679,16 +777,22 @@ public class CoopStateManager
         {
             var relicMgr = Resources.FindObjectsOfTypeAll<RelicManager>()?.FirstOrDefault();
             if (relicMgr == null)
+            {
                 return;
+            }
 
             var ownedField = AccessTools.Field(typeof(RelicManager), "_ownedRelics");
             var countdownField = AccessTools.Field(typeof(RelicManager), "_relicRemainingCountdowns");
             if (ownedField == null)
+            {
                 return;
+            }
 
             var owned = ownedField.GetValue(relicMgr) as Dictionary<RelicEffect, Relic>;
             if (owned == null)
+            {
                 return;
+            }
 
             state.OwnedRelics.Clear();
             foreach (var kvp in owned)
@@ -706,7 +810,9 @@ public class CoopStateManager
             if (countdowns != null)
             {
                 foreach (var kvp in countdowns)
+                {
                     state.RelicCountdowns[(int)kvp.Key] = kvp.Value;
+                }
             }
 
             // Per-shot / per-battle / per-run counters live in separate dicts —
@@ -728,9 +834,14 @@ public class CoopStateManager
         var f = AccessTools.Field(typeof(RelicManager), fieldName);
         var src = f?.GetValue(rm) as Dictionary<RelicEffect, int>;
         if (src == null)
+        {
             return;
+        }
+
         foreach (var kvp in src)
+        {
             target[(int)kvp.Key] = kvp.Value;
+        }
     }
 
     private void CopyStateToDict(RelicManager rm, string fieldName, Dictionary<int, int> source)
@@ -738,9 +849,14 @@ public class CoopStateManager
         var f = AccessTools.Field(typeof(RelicManager), fieldName);
         var dst = f?.GetValue(rm) as Dictionary<RelicEffect, int>;
         if (dst == null)
+        {
             return;
+        }
+
         foreach (var kvp in source)
+        {
             dst[(RelicEffect)kvp.Key] = kvp.Value;
+        }
     }
 
     private void LoadRelicState(CoopPlayerState state)
@@ -749,7 +865,9 @@ public class CoopStateManager
         {
             var relicMgr = Resources.FindObjectsOfTypeAll<RelicManager>()?.FirstOrDefault();
             if (relicMgr == null)
+            {
                 return;
+            }
 
             // Clear owned relics directly via reflection instead of calling Reset().
             // Reset() fires OnRelicsReset, clears disabled relics, order tracking, usage
@@ -770,12 +888,14 @@ public class CoopStateManager
             // relics to the client and overwriting the client's own relics. It also
             // modifies PersistentPlayerData (save corruption), removes from relic pools,
             // and applies effects (already applied when originally chosen).
-            int added = 0;
+            var added = 0;
             foreach (var entry in state.OwnedRelics)
             {
                 var effect = (RelicEffect)entry.Effect;
                 if (effect == RelicEffect.NONE)
+                {
                     continue;
+                }
 
                 var relicAsset = allRelicAssets.FirstOrDefault(r => r.effect == effect)
                     ?? allRelicAssets.FirstOrDefault(r => r.locKey == entry.LocKey);
@@ -810,7 +930,9 @@ public class CoopStateManager
                 if (countdowns != null)
                 {
                     foreach (var kvp in state.RelicCountdowns)
+                    {
                         countdowns[(RelicEffect)kvp.Key] = kvp.Value;
+                    }
                 }
             }
 
@@ -869,36 +991,49 @@ public class CoopStateManager
     public void MergeBoardRelics()
     {
         if (TotalPlayerCount < 2)
+        {
             return;
+        }
+
         try
         {
             var relicMgr = Resources.FindObjectsOfTypeAll<RelicManager>()?.FirstOrDefault();
             if (relicMgr == null)
+            {
                 return;
+            }
 
             var ownedField = AccessTools.Field(typeof(RelicManager), "_ownedRelics");
             var owned = ownedField?.GetValue(relicMgr) as Dictionary<RelicEffect, Relic>;
             if (owned == null)
+            {
                 return;
+            }
 
             var allRelicAssets = Resources.FindObjectsOfTypeAll<Relic>();
             var boardEffectSet = new HashSet<int>(BoardRelicEffects);
-            int merged = 0;
+            var merged = 0;
 
             foreach (var kvp in PlayerStates)
             {
                 // Skip the active player — their relics are already loaded
                 if (kvp.Key == ActivePlayerSlot)
+                {
                     continue;
+                }
 
                 foreach (var entry in kvp.Value.OwnedRelics)
                 {
                     if (!boardEffectSet.Contains(entry.Effect))
+                    {
                         continue;
+                    }
 
                     var effect = (RelicEffect)entry.Effect;
                     if (owned.ContainsKey(effect))
+                    {
                         continue; // Active player already has it
+                    }
 
                     var relicAsset = allRelicAssets.FirstOrDefault(r => r.effect == effect);
                     if (relicAsset != null)
@@ -911,7 +1046,9 @@ public class CoopStateManager
             }
 
             if (merged > 0)
+            {
                 _log.LogInfo($"[CoopState] MergeBoardRelics: merged {merged} board relics from non-active players");
+            }
         }
         catch (Exception ex)
         {
@@ -941,6 +1078,7 @@ public class CoopStateManager
                     var valProp = maxVar.GetType().GetProperty("Value");
                     state.MaxHealth = valProp != null ? (float)valProp.GetValue(maxVar) : 0;
                 }
+
                 _log.LogInfo($"[CoopState] SaveHealthState slot {state.SlotIndex}: hp={state.CurrentHealth}/{state.MaxHealth}");
                 return;
             }
@@ -953,13 +1091,19 @@ public class CoopStateManager
             foreach (var fv in floatVars)
             {
                 if (fv.name == "PlayerHealth" || fv.name == "playerHealth")
+                {
                     state.CurrentHealth = fv.Value;
+                }
                 else if (fv.name == "MaxPlayerHealth" || fv.name == "maxPlayerHealth")
+                {
                     state.MaxHealth = fv.Value;
+                }
             }
 
             if (state.CurrentHealth > 0 || state.MaxHealth > 0)
+            {
                 _log.LogInfo($"[CoopState] SaveHealthState via FloatVariable fallback: hp={state.CurrentHealth}/{state.MaxHealth}");
+            }
         }
         catch (Exception ex)
         {
@@ -987,11 +1131,13 @@ public class CoopStateManager
                     var setMethod = maxVar.GetType().GetMethod("Set", new[] { typeof(float) });
                     setMethod?.Invoke(maxVar, new object[] { state.MaxHealth });
                 }
+
                 if (healthVar != null)
                 {
                     var setMethod = healthVar.GetType().GetMethod("Set", new[] { typeof(float) });
                     setMethod?.Invoke(healthVar, new object[] { state.CurrentHealth });
                 }
+
                 return;
             }
 
@@ -1001,12 +1147,17 @@ public class CoopStateManager
             foreach (var fv in floatVars)
             {
                 if (fv.name == "MaxPlayerHealth" || fv.name == "maxPlayerHealth")
+                {
                     fv.Set(state.MaxHealth);
+                }
             }
+
             foreach (var fv in floatVars)
             {
                 if (fv.name == "PlayerHealth" || fv.name == "playerHealth")
+                {
                     fv.Set(state.CurrentHealth);
+                }
             }
         }
         catch (Exception ex)
@@ -1041,7 +1192,9 @@ public class CoopStateManager
         {
             var currMgr = Currency.CurrencyManager.Instance;
             if (currMgr == null)
+            {
                 return;
+            }
 
             var beforeGold = currMgr.GoldAmount;
             var diff = state.Gold - beforeGold;
@@ -1050,15 +1203,20 @@ public class CoopStateManager
             try
             {
                 if (diff > 0)
+                {
                     currMgr.AddGold(diff, true);
+                }
                 else if (diff < 0)
+                {
                     currMgr.RemoveGold(-diff, true);
+                }
             }
             finally
             {
                 IsLoadingPlayerGold = false;
                 Patches.MultiplayerClientPatches.AllowCurrencySync = false;
             }
+
             _log.LogInfo($"[CoopState] LoadGoldState slot {state.SlotIndex}: gold {beforeGold}->{state.Gold} (diff={diff})");
         }
         catch (Exception ex)
@@ -1097,12 +1255,16 @@ public class CoopStateManager
                 var typeField = AccessTools.Field(effect.GetType(), "EffectType");
                 var intensityField = AccessTools.Field(effect.GetType(), "Intensity");
                 if (typeField == null)
+                {
                     continue;
+                }
 
                 var effectType = typeField.GetValue(effect);
                 var intensity = (int)(intensityField?.GetValue(effect) ?? 0);
                 if (intensity <= 0)
+                {
                     continue;
+                }
 
                 state.StatusEffects.Add(new SerializedStatusEffect
                 {
@@ -1161,9 +1323,14 @@ public class CoopStateManager
             {
                 var effectType = (Battle.StatusEffects.StatusEffectType)saved.EffectType;
                 if (effectType == Battle.StatusEffects.StatusEffectType.None)
+                {
                     continue;
+                }
+
                 if (saved.Intensity <= 0)
+                {
                     continue;
+                }
 
                 effects.Add(new Battle.StatusEffects.StatusEffect(effectType, saved.Intensity));
             }

@@ -9,7 +9,6 @@ using Multipeglin.Events.Network.Map;
 using Multipeglin.GameState;
 using Multipeglin.Multiplayer;
 using Multipeglin.Patches;
-using Scenarios;
 using UnityEngine;
 
 namespace Multipeglin.Events.Handlers.Map;
@@ -23,7 +22,9 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
         {
             var mode = MultiplayerPlugin.Services?.Resolve<IMultiplayerMode>();
             if (mode == null || !mode.IsSpectating)
+            {
                 return;
+            }
 
             log?.LogInfo($"[NodeActivated] Host battle={e.BattleName} at ({e.PosX:F1},{e.PosY:F1})");
 
@@ -113,14 +114,7 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
 
             // Find the MapDataBattle asset by name — it's a ScriptableObject loaded in memory
             var allBattles = Resources.FindObjectsOfTypeAll<MapDataBattle>();
-            var match = allBattles.FirstOrDefault(b => b.name == e.BattleName);
-
-            if (match == null)
-            {
-                // Cross-scene cache populated while on map scenes — Castle/Mines/Core
-                // battles may not be in Resources once their map scene unloads.
-                match = GameState.Appliers.MapStateApplier.TryGetCachedBattle(e.BattleName);
-            }
+            var match = allBattles.FirstOrDefault(b => b.name == e.BattleName) ?? GameState.Appliers.MapStateApplier.TryGetCachedBattle(e.BattleName);
 
             if (match == null)
             {
@@ -170,7 +164,9 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
             foreach (var asset in all)
             {
                 if (asset.name == assetName)
+                {
                     return asset;
+                }
             }
             // Don't warn here — may be a TextScenario asset, not a PegMinigame
         }
@@ -178,6 +174,7 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
         {
             log?.LogWarning($"[NodeActivated] FindPegMinigameData failed: {ex.Message}");
         }
+
         return null;
     }
 
@@ -189,14 +186,18 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
             foreach (var asset in all)
             {
                 if (asset.name == assetName)
+                {
                     return asset;
+                }
             }
+
             log?.LogWarning($"[NodeActivated] MapDataScenario '{assetName}' not found in {all.Length} loaded assets");
         }
         catch (Exception ex)
         {
             log?.LogWarning($"[NodeActivated] FindTextScenarioData failed: {ex.Message}");
         }
+
         return null;
     }
 
@@ -208,13 +209,16 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
             foreach (var asset in all)
             {
                 if (asset.name == assetName)
+                {
                     return asset;
+                }
             }
         }
         catch (Exception ex)
         {
             log?.LogWarning($"[NodeActivated] FindShopData failed: {ex.Message}");
         }
+
         return null;
     }
 
@@ -226,13 +230,16 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
             foreach (var asset in all)
             {
                 if (asset.name == assetName)
+                {
                     return asset;
+                }
             }
         }
         catch (Exception ex)
         {
             log?.LogWarning($"[NodeActivated] FindTreasureData failed: {ex.Message}");
         }
+
         return null;
     }
 

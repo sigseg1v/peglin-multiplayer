@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using Battle.Enemies;
 using BepInEx.Logging;
-using UnityEngine;
 
 namespace Multipeglin.Utility;
 
@@ -26,10 +25,14 @@ public class EnemyIdentifier
     public string GetOrAssignGuid(Enemy enemy)
     {
         if (enemy == null)
+        {
             return "null";
+        }
 
         if (_enemyToGuid.TryGetValue(enemy, out var existing))
+        {
             return existing;
+        }
 
         var guid = Guid.NewGuid().ToString("N")[..12]; // 12 hex chars, compact
         _guidToEnemy[guid] = enemy;
@@ -44,7 +47,9 @@ public class EnemyIdentifier
     public void Register(Enemy enemy, string guid)
     {
         if (enemy == null || string.IsNullOrEmpty(guid))
+        {
             return;
+        }
 
         // Remove any stale mapping for this GUID (enemy may have been destroyed and recreated)
         if (_guidToEnemy.TryGetValue(guid, out var oldEnemy) && oldEnemy != enemy)
@@ -71,14 +76,20 @@ public class EnemyIdentifier
     public Enemy Find(string guid)
     {
         if (string.IsNullOrEmpty(guid))
+        {
             return null;
+        }
 
         if (_guidToEnemy.TryGetValue(guid, out var enemy) && enemy != null)
+        {
             return enemy;
+        }
 
         // Enemy was destroyed or reference is stale — clean up silently
         if (enemy == null && _guidToEnemy.ContainsKey(guid))
+        {
             _guidToEnemy.Remove(guid);
+        }
 
         return null;
     }
@@ -90,7 +101,10 @@ public class EnemyIdentifier
     public string GetGuid(Enemy enemy)
     {
         if (enemy == null)
+        {
             return null;
+        }
+
         return _enemyToGuid.TryGetValue(enemy, out var guid) ? guid : null;
     }
 
@@ -100,7 +114,10 @@ public class EnemyIdentifier
     public void Unregister(Enemy enemy)
     {
         if (enemy == null)
+        {
             return;
+        }
+
         if (_enemyToGuid.TryGetValue(enemy, out var guid))
         {
             _enemyToGuid.Remove(enemy);
@@ -114,12 +131,17 @@ public class EnemyIdentifier
     public void Unregister(string guid)
     {
         if (string.IsNullOrEmpty(guid))
+        {
             return;
+        }
+
         if (_guidToEnemy.TryGetValue(guid, out var enemy))
         {
             _guidToEnemy.Remove(guid);
             if (enemy != null)
+            {
                 _enemyToGuid.Remove(enemy);
+            }
         }
     }
 

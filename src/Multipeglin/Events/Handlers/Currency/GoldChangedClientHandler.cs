@@ -1,10 +1,9 @@
-namespace Multipeglin.Events.Handlers.Currency;
 
 using System;
 using HarmonyLib;
 using Multipeglin.Events.Network.Currency;
-using UnityEngine;
 
+namespace Multipeglin.Events.Handlers.Currency;
 public sealed class GoldChangedClientHandler : IClientHandler<GoldChangedEvent>
 {
     public void Handle(GoldChangedEvent networkEvent)
@@ -45,14 +44,17 @@ public sealed class GoldChangedClientHandler : IClientHandler<GoldChangedEvent>
                 // CurrencyManager.GoldAmount is a public auto-property with protected set.
                 // Use AccessTools to find the backing field.
                 var field = AccessTools.Field(typeof(global::Currency.CurrencyManager), "<GoldAmount>k__BackingField");
-                if (field != null)
-                    field.SetValue(cm, networkEvent.NewAmount);
+                field?.SetValue(cm, networkEvent.NewAmount);
             }
 
             if (networkEvent.IsGain)
+            {
                 global::Currency.CurrencyManager.OnGoldAdded?.Invoke(networkEvent.PreviousAmount, networkEvent.Delta, false);
+            }
             else
+            {
                 global::Currency.CurrencyManager.OnGoldRemoved?.Invoke(networkEvent.PreviousAmount, -networkEvent.Delta, false);
+            }
         }
         catch (Exception e)
         {

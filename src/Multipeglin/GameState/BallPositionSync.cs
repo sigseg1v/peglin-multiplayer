@@ -26,7 +26,10 @@ public class BallPositionSync : MonoBehaviour
     {
         var services = MultiplayerPlugin.Services;
         if (services == null)
+        {
             return;
+        }
+
         services.TryResolve(out _registry);
         services.TryResolve(out _mode);
         services.TryResolve(out _transport);
@@ -36,33 +39,51 @@ public class BallPositionSync : MonoBehaviour
     private void Update()
     {
         if (_registry == null || _mode == null || _transport == null)
+        {
             return;
+        }
+
         if (!_mode.IsHosting || !_transport.IsConnected)
+        {
             return;
+        }
 
         var state = BattleController.CurrentBattleState;
 
-        bool isNav = state == BattleController.BattleState.NAVIGATION;
+        var isNav = state == BattleController.BattleState.NAVIGATION;
         var activeBall = isNav ? FindActiveBall() : null;
-        bool navBallFired = activeBall != null && activeBall.IsFiring();
+        var navBallFired = activeBall != null && activeBall.IsFiring();
 
         // Only stream aim while the host is actively aiming their own shot —
         // client turns have no aimer on the host side.
         if (state != BattleController.BattleState.AWAITING_SHOT && !(isNav && !navBallFired))
+        {
             return;
+        }
 
         if (_turnManager != null && _turnManager.CurrentPlayerSlot > 0)
+        {
             return;
+        }
+
         if (Time.time - _lastAimSendTime < AimSendInterval)
+        {
             return;
+        }
+
         _lastAimSendTime = Time.time;
 
         var ball = FindActiveBall();
         if (ball == null)
+        {
             return;
+        }
+
         var aimVec = ball.aimVector;
         if (aimVec == Vector2.zero)
+        {
             return;
+        }
 
         var pos = ball.transform.position;
         _registry.Dispatch(new AimUpdateEvent
@@ -79,8 +100,11 @@ public class BallPositionSync : MonoBehaviour
         foreach (var ball in FindObjectsOfType<PachinkoBall>())
         {
             if (!ball.IsDummy)
+            {
                 return ball;
+            }
         }
+
         return null;
     }
 }

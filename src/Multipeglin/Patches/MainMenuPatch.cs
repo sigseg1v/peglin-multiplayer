@@ -21,7 +21,9 @@ public static class MenuButtonInjector
         {
             // Already injected and still alive
             if (_multiplayerButton != null && _multiplayerButton)
+            {
                 return;
+            }
 
             // Check if a previous injection left a button (e.g. from Harmony + SceneWatcher both firing)
             var existing = GameObject.Find("MultiplayerButton");
@@ -41,9 +43,14 @@ public static class MenuButtonInjector
             {
                 var nameUpper = btn.gameObject.name.ToUpperInvariant();
                 if (nameUpper.Contains("ENCIRCLEPEDIA") || nameUpper.Contains("ENCYCLOPEDIA"))
+                {
                     encirclepediaTransform = btn.transform;
+                }
+
                 if (cloneSource == null && (nameUpper.Contains("CREDIT") || nameUpper.Contains("OPTION")))
+                {
                     cloneSource = btn;
+                }
             }
 
             if (cloneSource == null)
@@ -58,14 +65,15 @@ public static class MenuButtonInjector
 
             // Change the text
             var tmp = _multiplayerButton.GetComponentInChildren<TextMeshProUGUI>(true);
-            if (tmp != null)
-                tmp.text = "Multiplayer";
+            tmp?.text = "Multiplayer";
 
             // Remove localization so it doesn't overwrite our text
             foreach (var comp in _multiplayerButton.GetComponentsInChildren<Component>(true))
             {
                 if (comp != null && comp.GetType().Name == "Localize")
+                {
                     UnityEngine.Object.Destroy(comp);
+                }
             }
 
             // Rewire click handler — must reset the entire onClick to clear
@@ -172,16 +180,25 @@ public static class PauseMenuQuitToMenuPatch
     {
         var services = MultiplayerPlugin.Services;
         if (services == null)
+        {
             return true;
+        }
+
         if (!services.TryResolve<IMultiplayerMode>(out var mode))
+        {
             return true;
+        }
+
         if (!mode.IsSpectating && !mode.IsHosting)
+        {
             return true;
+        }
 
         MultiplayerPlugin.Logger?.LogInfo("[PauseMenu] QuitToMenu in multiplayer — disconnecting");
         try
         { __instance.Resume(); }
         catch { }
+
         MultiplayerSession.DisconnectAndReset("Returned to main menu");
         return false;
     }

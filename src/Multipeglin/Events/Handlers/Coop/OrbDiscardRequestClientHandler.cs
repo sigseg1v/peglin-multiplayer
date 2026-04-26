@@ -1,9 +1,9 @@
-namespace Multipeglin.Events.Handlers.Coop;
 
 using Multipeglin.Events.Network.Coop;
 using Multipeglin.GameState;
 using Multipeglin.Multiplayer;
 
+namespace Multipeglin.Events.Handlers.Coop;
 /// <summary>
 /// On host: receives an OrbDiscardRequest from a client, validates it's their turn,
 /// and queues the discard for execution by BattleController_Update_Postfix.
@@ -19,17 +19,30 @@ public sealed class OrbDiscardRequestClientHandler : IClientHandler<OrbDiscardRe
     {
         var services = MultiplayerPlugin.Services;
         if (services == null)
+        {
             return;
+        }
 
         // Only the host processes discard requests
         if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting)
+        {
             return;
+        }
+
         if (!services.TryResolve<TurnManager>(out var turnManager))
+        {
             return;
+        }
+
         if (!services.TryResolve<PlayerRegistry>(out var registry))
+        {
             return;
+        }
+
         if (!services.TryResolve<IGameEventRegistry>(out var eventRegistry))
+        {
             return;
+        }
 
         var senderPeerId = (eventRegistry as GameEventRegistry)?.CurrentSenderPeerId ?? -1;
         var senderSlot = registry.GetSlotByPeerId(senderPeerId);

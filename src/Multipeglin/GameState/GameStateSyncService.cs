@@ -50,7 +50,9 @@ public class GameStateSyncService : IGameStateSyncService
     public void SyncAll(string trigger = null)
     {
         if (!_mode.IsHosting)
+        {
             return;
+        }
 
         var tag = string.IsNullOrEmpty(trigger) ? "" : $"[{trigger}] ";
 
@@ -72,12 +74,11 @@ public class GameStateSyncService : IGameStateSyncService
 
             // Tag per-player snapshots with the active slot so the client knows
             // whose data this is and can avoid applying another player's state.
-            if (snapshot.Player != null)
-                snapshot.Player.ActiveSlotIndex = activeSlot;
-            if (snapshot.Deck != null)
-                snapshot.Deck.ActiveSlotIndex = activeSlot;
-            if (snapshot.Relics != null)
-                snapshot.Relics.ActiveSlotIndex = activeSlot;
+            snapshot.Player?.ActiveSlotIndex = activeSlot;
+
+            snapshot.Deck?.ActiveSlotIndex = activeSlot;
+
+            snapshot.Relics?.ActiveSlotIndex = activeSlot;
 
             // Add co-op multi-player data if available
             if (_coopStateManager != null && _coopStateManager.TotalPlayerCount > 0)
@@ -184,6 +185,7 @@ public class GameStateSyncService : IGameStateSyncService
                                 });
                             }
                         }
+
                         snapshot.AllRelics[kvp.Key] = relicSnap;
                     }
                 }
@@ -193,8 +195,11 @@ public class GameStateSyncService : IGameStateSyncService
             if (snapshot.PlayerSummaries != null)
             {
                 foreach (var s in snapshot.PlayerSummaries)
+                {
                     _log.LogInfo($"{tag}Player slot={s.SlotIndex} name={s.PlayerName} class={s.ChosenClass} hp={s.CurrentHealth}/{s.MaxHealth} gold={s.Gold} isHost={s.SlotIndex == 0}");
+                }
             }
+
             if (snapshot.AllDecks != null)
             {
                 foreach (var dk in snapshot.AllDecks)
@@ -223,7 +228,9 @@ public class GameStateSyncService : IGameStateSyncService
 
             // Only dump verbose diagnostics for non-heartbeat syncs to reduce log noise
             if (trigger == null || !trigger.StartsWith("HEARTBEAT"))
+            {
                 DiagnosticLogger.DumpBattleState("HOST_SyncAll");
+            }
         }
         catch (Exception ex)
         {
@@ -234,60 +241,96 @@ public class GameStateSyncService : IGameStateSyncService
     public void SyncMap()
     {
         if (!_mode.IsHosting)
+        {
             return;
+        }
+
         var state = _mapProvider.Capture();
         if (state != null)
+        {
             _registry.Dispatch(state);
+        }
+
         _log.LogInfo($"SyncMap: scene={state?.ActiveScene}, floor={state?.TotalFloorCount}");
     }
 
     public void SyncPegboard()
     {
         if (!_mode.IsHosting)
+        {
             return;
+        }
+
         var state = _pegboardProvider.Capture();
         if (state != null)
+        {
             _registry.Dispatch(state);
+        }
+
         _log.LogInfo($"SyncPegboard: {state?.TotalPegCount} pegs ({state?.CritPegCount} crit, {state?.BombPegCount} bomb, {state?.ResetPegCount} reset)");
     }
 
     public void SyncEnemies()
     {
         if (!_mode.IsHosting)
+        {
             return;
+        }
+
         var state = _enemyProvider.Capture();
         if (state != null)
+        {
             _registry.Dispatch(state);
+        }
+
         _log.LogInfo($"SyncEnemies: {state?.Enemies?.Count ?? 0} enemies, battleState={state?.BattleStateName}");
     }
 
     public void SyncPlayer()
     {
         if (!_mode.IsHosting)
+        {
             return;
+        }
+
         var state = _playerProvider.Capture();
         if (state != null)
+        {
             _registry.Dispatch(state);
+        }
+
         _log.LogInfo($"SyncPlayer: hp={state?.CurrentHealth}/{state?.MaxHealth}, gold={state?.Gold}, effects={state?.StatusEffects?.Count ?? 0}");
     }
 
     public void SyncDeck()
     {
         if (!_mode.IsHosting)
+        {
             return;
+        }
+
         var state = _deckProvider.Capture();
         if (state != null)
+        {
             _registry.Dispatch(state);
+        }
+
         _log.LogInfo($"SyncDeck: {state?.DeckSize} orbs in complete deck, {state?.BattleDeck?.Count ?? 0} in battle deck");
     }
 
     public void SyncRelics()
     {
         if (!_mode.IsHosting)
+        {
             return;
+        }
+
         var state = _relicProvider.Capture();
         if (state != null)
+        {
             _registry.Dispatch(state);
+        }
+
         _log.LogInfo($"SyncRelics: {state?.TotalRelicCount} relics");
     }
 }

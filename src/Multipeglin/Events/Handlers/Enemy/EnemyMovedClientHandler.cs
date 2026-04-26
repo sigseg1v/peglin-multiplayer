@@ -1,9 +1,9 @@
-namespace Multipeglin.Events.Handlers.Enemy;
 
 using System;
 using Multipeglin.Events.Network.Enemy;
 using Multipeglin.Utility;
 
+namespace Multipeglin.Events.Handlers.Enemy;
 public sealed class EnemyMovedClientHandler : IClientHandler<EnemyMovedEvent>
 {
     public void Handle(EnemyMovedEvent networkEvent)

@@ -1,11 +1,10 @@
-namespace Multipeglin.Events.Handlers.Ball;
 
 using System;
 using Multipeglin.Events.Network.Ball;
 using Multipeglin.GameState;
 using Multipeglin.Multiplayer;
-using UnityEngine;
 
+namespace Multipeglin.Events.Handlers.Ball;
 public sealed class ShotFiredClientHandler : IClientHandler<ShotFiredEvent>
 {
     public void Handle(ShotFiredEvent e)
@@ -14,7 +13,9 @@ public sealed class ShotFiredClientHandler : IClientHandler<ShotFiredEvent>
         {
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
             if (mode == null || !mode.IsSpectating)
+            {
                 return;
+            }
 
             MultiplayerPlugin.Logger?.LogInfo($"[ShotFired] orb={e.OrbName}, aim=({e.AimX:F2},{e.AimY:F2}), spawn=({e.SpawnX:F1},{e.SpawnY:F1})");
 

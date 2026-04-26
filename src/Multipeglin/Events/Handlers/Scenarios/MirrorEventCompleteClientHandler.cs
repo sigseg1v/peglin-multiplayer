@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using Battle.Attacks;
 using Multipeglin.Events.Network.Scenarios;
@@ -22,17 +21,24 @@ public sealed class MirrorEventCompleteClientHandler : IClientHandler<MirrorEven
         {
             var services = MultiplayerPlugin.Services;
             if (services == null)
+            {
                 return;
+            }
 
             if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting)
+            {
                 return;
+            }
 
             // Identify the sending client
             var eventRegistry = services.TryResolve<IGameEventRegistry>(out var reg) ? reg : null;
             var senderPeerId = (eventRegistry as GameEventRegistry)?.CurrentSenderPeerId ?? -1;
 
             if (!services.TryResolve<PlayerRegistry>(out var registry))
+            {
                 return;
+            }
+
             var slot = registry.GetSlotByPeerId(senderPeerId);
             if (slot == null)
             {
@@ -45,7 +51,10 @@ public sealed class MirrorEventCompleteClientHandler : IClientHandler<MirrorEven
                 $"[MirrorEventComplete] Player '{slot.PlayerName}' (slot {slot.SlotIndex}) chose: action={e.Action}");
 
             if (!services.TryResolve<CoopStateManager>(out var coopState))
+            {
                 return;
+            }
+
             var playerState = coopState.GetPlayerState(slot.SlotIndex);
             if (playerState == null)
             {
@@ -112,7 +121,7 @@ public sealed class MirrorEventCompleteClientHandler : IClientHandler<MirrorEven
         // Remove all non-CannotBeRemoved orbs
         // We check the CannotBeRemoved component by looking up the prefab
         var removedCount = 0;
-        for (int i = playerState.CompleteDeck.Count - 1; i >= 0; i--)
+        for (var i = playerState.CompleteDeck.Count - 1; i >= 0; i--)
         {
             var orb = playerState.CompleteDeck[i];
             // Check if the orb prefab has CannotBeRemoved component
@@ -160,7 +169,10 @@ public sealed class MirrorEventCompleteClientHandler : IClientHandler<MirrorEven
                 foreach (var orbPrefab in mirrorPool.AvailableOrbs)
                 {
                     if (orbPrefab == null)
+                    {
                         continue;
+                    }
+
                     var attack = orbPrefab.GetComponent<Attack>();
                     playerState.CompleteDeck.Add(new SerializedOrb
                     {
@@ -169,6 +181,7 @@ public sealed class MirrorEventCompleteClientHandler : IClientHandler<MirrorEven
                         Level = attack?.Level ?? 1,
                     });
                 }
+
                 MultiplayerPlugin.Logger?.LogInfo(
                     $"[MirrorEventComplete] Added {mirrorPool.AvailableOrbs.Length} replacement orbs from pool '{mirrorPool.name}'");
             }
@@ -182,7 +195,10 @@ public sealed class MirrorEventCompleteClientHandler : IClientHandler<MirrorEven
                     foreach (var orbGo in hostDeck)
                     {
                         if (orbGo == null)
+                        {
                             continue;
+                        }
+
                         var attack = orbGo.GetComponent<Attack>();
                         // Add orbs that aren't already in the client's deck
                         // (the host's deck post-mirror has only the replacement orbs + CannotBeRemoved)
@@ -197,6 +213,7 @@ public sealed class MirrorEventCompleteClientHandler : IClientHandler<MirrorEven
                             });
                         }
                     }
+
                     MultiplayerPlugin.Logger?.LogInfo(
                         $"[MirrorEventComplete] Used host's current deck as fallback for replacement orbs");
                 }
@@ -231,6 +248,7 @@ public sealed class MirrorEventCompleteClientHandler : IClientHandler<MirrorEven
             }
         }
         catch { }
+
         return false;
     }
 }

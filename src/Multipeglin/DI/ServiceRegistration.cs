@@ -3,40 +3,26 @@ using Multipeglin.Events;
 using Multipeglin.Events.Handlers;
 using Multipeglin.Events.Handlers.Ball;
 using Multipeglin.Events.Handlers.Battle;
-using Multipeglin.Events.Handlers.Cursor;
 using Multipeglin.Events.Handlers.Currency;
+using Multipeglin.Events.Handlers.Cursor;
 using Multipeglin.Events.Handlers.Deck;
 using Multipeglin.Events.Handlers.Enemy;
 using Multipeglin.Events.Handlers.Health;
-using CoopHandlers = Multipeglin.Events.Handlers.Coop;
-using LobbyHandlers = Multipeglin.Events.Handlers.Lobby;
-using ScenarioHandlers = Multipeglin.Events.Handlers.Scenarios;
 using Multipeglin.Events.Handlers.Map;
 using Multipeglin.Events.Handlers.Peg;
 using Multipeglin.Events.Handlers.Relic;
 using Multipeglin.Events.Handlers.State;
 using Multipeglin.Events.Handlers.StatusEffect;
-using Multipeglin.GameState;
-using Multipeglin.GameState.Snapshots;
 using Multipeglin.Events.Network;
-using Multipeglin.Events.Network.Ball;
-using Multipeglin.Events.Network.Battle;
-using Multipeglin.Events.Network.Currency;
-using Multipeglin.Events.Network.Deck;
-using Multipeglin.Events.Network.Enemy;
-using Multipeglin.Events.Network.Health;
-using Multipeglin.Events.Network.Coop;
-using Multipeglin.Events.Network.Lobby;
-using Multipeglin.Events.Network.Scenarios;
-using Multipeglin.Events.Network.Map;
-using Multipeglin.Events.Network.Peg;
-using Multipeglin.Events.Network.Relic;
-using Multipeglin.Events.Network.StatusEffect;
 using Multipeglin.Events.Subscriptions;
+using Multipeglin.GameState;
+using Multipeglin.Multiplayer;
 using Multipeglin.Network;
 using Multipeglin.Network.Protocol;
-using Multipeglin.Multiplayer;
 using Multipeglin.Utility;
+using CoopHandlers = Multipeglin.Events.Handlers.Coop;
+using LobbyHandlers = Multipeglin.Events.Handlers.Lobby;
+using ScenarioHandlers = Multipeglin.Events.Handlers.Scenarios;
 
 namespace Multipeglin.DI;
 
@@ -168,7 +154,10 @@ public static class ServiceRegistration
         RegisterAllHandlers(eventRegistry);
 
         foreach (var typeId in eventRegistry.RegisteredTypeIds)
+        {
             eventDiscovery.MarkRegistered(typeId);
+        }
+
         eventDiscovery.LogReport();
     }
 
@@ -206,7 +195,9 @@ public static class ServiceRegistration
 
             // Send full game state to newly connected client
             if (transport.IsHost)
+            {
                 syncService.SyncAll("ClientHandshake");
+            }
         };
 
         // Host-side: handle client disconnects during battle
@@ -214,7 +205,9 @@ public static class ServiceRegistration
         transport.OnDisconnected += peerId =>
         {
             if (!transport.IsHost)
+            {
                 return;
+            }
 
             var slot = playerRegistry.GetSlotByPeerId(peerId);
             if (slot == null)

@@ -1,4 +1,3 @@
-namespace Multipeglin.Events.Handlers.Deck;
 
 using System;
 using DG.Tweening;
@@ -7,6 +6,7 @@ using Multipeglin.Events.Network.Deck;
 using Multipeglin.Multiplayer;
 using UnityEngine;
 
+namespace Multipeglin.Events.Handlers.Deck;
 public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
 {
     public void Handle(BallUsedEvent e)
@@ -16,11 +16,15 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
             // In coop mode, BallUsed events reflect the HOST's active player's deck actions.
             // Don't pop from the client's own deck — the heartbeat sync handles deck state.
             if (UI.LobbyUI.GameStartReceived)
+            {
                 return;
+            }
 
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
             if (mode == null || !mode.IsSpectating)
+            {
                 return;
+            }
 
             var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
             var dm = dms.Length > 0 ? dms[0] : null;
@@ -34,7 +38,9 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
 
             // Force-complete shuffle animation if still running
             if (dim != null && DeckInfoManager.animating)
+            {
                 ForceCompleteShuffleAnimation(dim);
+            }
 
             // Pop from shuffledDeck (data)
             var popped = dm.shuffledDeck.Pop();
@@ -81,7 +87,9 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
             var plungerField = AccessTools.Field(typeof(DeckInfoManager), "_plungerParent");
             var plunger = plungerField?.GetValue(dim) as Transform;
             if (plunger != null)
+            {
                 DOTween.Kill(plunger);
+            }
 
             // Destroy the current active orb if one exists
             var currentOrbField = AccessTools.Field(typeof(DeckInfoManager), "_currentOrb");
@@ -101,7 +109,7 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
 
             // Get the orb height BEFORE unparenting (need it for plunger shift)
             var spriteRenderer = nextOrb.GetComponent<SpriteRenderer>();
-            float orbHeight = spriteRenderer != null ? spriteRenderer.bounds.size.y : 0f;
+            var orbHeight = spriteRenderer != null ? spriteRenderer.bounds.size.y : 0f;
 
             // Unparent from plunger so world position is independent
             nextOrb.transform.SetParent(null);
@@ -110,39 +118,48 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
             var displayPosField = AccessTools.Field(typeof(DeckInfoManager), "_currentOrbDisplayPos");
             var displayPos = displayPosField?.GetValue(dim) as Transform;
             if (displayPos != null)
+            {
                 nextOrb.transform.position = displayPos.position;
+            }
 
             nextOrb.transform.localScale = Vector3.one * 0.85f; // ACTIVE_ORB_DISPLAY_HEIGHT
 
             // Move the plunger up by the orb height so remaining orbs shift up to fill the gap
             // (same as what DrawNextOrb does on the host)
             if (plunger != null && orbHeight > 0f)
+            {
                 plunger.position += Vector3.up * orbHeight;
+            }
 
             // Set level ring sprite
             var uod = nextOrb.GetComponentInChildren<PeglinUI.OrbDisplay.UpcomingOrbDisplay>();
-            int levelIdx = 0;
+            var levelIdx = 0;
             if (uod?.attack != null)
+            {
                 levelIdx = Mathf.Clamp(uod.attack.Level - 1, 0, 2);
+            }
 
             var levelRingField = AccessTools.Field(typeof(DeckInfoManager), "_currentOrbLevelRingRenderer");
             var levelSpritesField = AccessTools.Field(typeof(DeckInfoManager), "_orbLevelDisplaySprites");
             var levelRing = levelRingField?.GetValue(dim) as SpriteRenderer;
             var levelSprites = levelSpritesField?.GetValue(dim) as Sprite[];
             if (levelRing != null && levelSprites != null && levelIdx < levelSprites.Length)
+            {
                 levelRing.sprite = levelSprites[levelIdx];
+            }
 
             // Activate the level frame mask
             if (uod?.mainOrbLevelFrameMask != null)
+            {
                 uod.mainOrbLevelFrameMask.SetActive(true);
+            }
 
             // Set as current orb
             currentOrbField?.SetValue(dim, nextOrb);
 
             // Enable the animator
             var animator = nextOrb.GetComponentInChildren<Animator>();
-            if (animator != null)
-                animator.speed = 1f;
+            animator?.speed = 1f;
 
             // Fire events for any listeners
             DeckInfoManager.onActiveOrbScaleStarted?.Invoke(nextOrb);
@@ -170,12 +187,13 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
             var plungerParent = plungerParentField?.GetValue(dim) as Transform;
             if (plungerParent != null)
             {
-                int safety = 0;
+                var safety = 0;
                 while (DeckInfoManager.animating && safety++ < 5)
                 {
                     DOTween.Complete(plungerParent, true);
                 }
             }
+
             MultiplayerPlugin.Logger?.LogInfo($"[BallUsed] Force-completed shuffle animation (still animating: {DeckInfoManager.animating})");
         }
         catch (Exception ex)

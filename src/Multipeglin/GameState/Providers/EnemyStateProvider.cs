@@ -4,7 +4,6 @@ using BepInEx.Logging;
 using HarmonyLib;
 using Multipeglin.GameState.Snapshots;
 using Multipeglin.Utility;
-using UnityEngine;
 
 namespace Multipeglin.GameState.Providers;
 
@@ -52,11 +51,13 @@ public class EnemyStateProvider : IGameStateProvider<EnemyStateSnapshot>
 
                 if (enemiesList != null)
                 {
-                    for (int i = 0; i < enemiesList.Count; i++)
+                    for (var i = 0; i < enemiesList.Count; i++)
                     {
                         var enemy = enemiesList[i];
                         if (enemy == null)
+                        {
                             continue;
+                        }
 
                         // Use EnemyIdentifier for stable GUID assignment
                         var guid = _enemyId.GetOrAssignGuid(enemy);
@@ -78,13 +79,17 @@ public class EnemyStateProvider : IGameStateProvider<EnemyStateSnapshot>
                         // Max health (protected field)
                         var maxHpField = AccessTools.Field(typeof(Battle.Enemies.Enemy), "_maxHealth");
                         if (maxHpField != null)
+                        {
                             entry.MaxHealth = (float)maxHpField.GetValue(enemy);
+                        }
 
                         // Charge
                         entry.CurrentCharge = enemy.currentChargeTime;
                         var chargeLenField = AccessTools.Field(typeof(Battle.Enemies.Enemy), "AttackChargeLength");
                         if (chargeLenField != null)
+                        {
                             entry.ChargeTime = (int)chargeLenField.GetValue(enemy);
+                        }
 
                         // Cruciball-extra HP bar — detect by comparing UpdateSlider's
                         // current background sprite to its _c19Background slot.
@@ -98,7 +103,9 @@ public class EnemyStateProvider : IGameStateProvider<EnemyStateSnapshot>
                                 var bgImg = bgField?.GetValue(slider) as UnityEngine.UI.Image;
                                 var c19Sprite = c19Field?.GetValue(slider) as UnityEngine.Sprite;
                                 if (bgImg != null && c19Sprite != null && bgImg.sprite == c19Sprite)
+                                {
                                     entry.IsC19Extra = true;
+                                }
                             }
                         }
                         catch { }
@@ -115,7 +122,10 @@ public class EnemyStateProvider : IGameStateProvider<EnemyStateSnapshot>
                                 entry.ShieldCurrentHealth = shield.CurrentHealth;
                                 var shieldMaxField = AccessTools.Field(typeof(Battle.Enemies.Enemy), "_maxHealth");
                                 if (shieldMaxField != null)
+                                {
                                     entry.ShieldMaxHealth = (float)shieldMaxField.GetValue(shield);
+                                }
+
                                 entry.ShieldActive = shield.gameObject.activeInHierarchy;
                             }
                         }
@@ -174,14 +184,19 @@ public class EnemyStateProvider : IGameStateProvider<EnemyStateSnapshot>
                     foreach (var element in elements)
                     {
                         if (element == null)
+                        {
                             continue;
+                        }
                         // EnemyInfoElement has an _enemy field set by SetEnemy()
                         var enemyField = AccessTools.Field(typeof(Battle.EnemyInfoElement), "_enemy");
                         var enemy = enemyField?.GetValue(element) as Battle.Enemies.Enemy;
                         if (enemy != null)
+                        {
                             snapshot.UpcomingEnemyNames.Add(enemy.gameObject.name);
+                        }
                     }
                 }
+
                 _log.LogInfo($"[EnemyProvider] Upcoming enemies: {snapshot.UpcomingEnemyNames.Count}");
             }
 
