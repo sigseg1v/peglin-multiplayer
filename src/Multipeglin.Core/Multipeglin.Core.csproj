@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <AssemblyName>Multipeglin.Core</AssemblyName>
-    <Version>0.1.6</Version>
+    <Version>0.1.7</Version>
     <Description>Core mod loader for Peglin</Description>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
