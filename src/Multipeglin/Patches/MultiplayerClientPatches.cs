@@ -482,11 +482,14 @@ public static class MultiplayerClientPatches
             // fires and Fire() is never called — soft-locks the client. Gate by
             // IsPointerOverInteractiveUI() instead so non-button UI overlays don't
             // block the shot, while Fire/Skip/Discard buttons still suppress it.
+            // Also gate on IsPointerOverEnemy(): clicking an enemy is target-selection,
+            // NOT a fire intent — firing on target-click annoys the player.
             // Idempotent: Fire prefix sets ClientShotSentThisTurn first if it runs.
             if (_clientBallInitialized && _clientBallGO != null
                 && !ClientShotSentThisTurn
                 && UnityEngine.Input.GetMouseButtonDown(0)
-                && !IsPointerOverInteractiveUI())
+                && !IsPointerOverInteractiveUI()
+                && !IsPointerOverEnemy())
             {
                 TrySendDirectShot();
             }
@@ -799,6 +802,45 @@ public static class MultiplayerClientPatches
                 }
 
                 if (go.GetComponentInParent<UnityEngine.UI.Button>() != null)
+                {
+                    return true;
+                }
+            }
+        }
+        catch { }
+
+        return false;
+    }
+
+    private static readonly UnityEngine.Collider2D[] _enemyOverlapBuf = new UnityEngine.Collider2D[8];
+
+    /// <summary>
+    /// Returns true if the cursor is over a 2D collider belonging to an Enemy.
+    /// Used to suppress the fallback left-click → shot path so target-selection
+    /// clicks (clicking an enemy to set currentTarget) don't fire the player's shot.
+    /// </summary>
+    private static bool IsPointerOverEnemy()
+    {
+        try
+        {
+            var cam = UnityEngine.Camera.main;
+            if (cam == null)
+            {
+                return false;
+            }
+
+            var world = cam.ScreenToWorldPoint(UnityEngine.Input.mousePosition);
+            var point = new UnityEngine.Vector2(world.x, world.y);
+            var count = UnityEngine.Physics2D.OverlapPointNonAlloc(point, _enemyOverlapBuf);
+            for (var i = 0; i < count; i++)
+            {
+                var col = _enemyOverlapBuf[i];
+                if (col == null)
+                {
+                    continue;
+                }
+
+                if (col.GetComponentInParent<Battle.Enemies.Enemy>() != null)
                 {
                     return true;
                 }
@@ -1889,7 +1931,9 @@ public static class MultiplayerClientPatches
     /// game's own MapController/node flow from triggering a second Battle load after
     /// we've already loaded the correct scene.
     /// </summary>
-    [HarmonyPatch(typeof(PeglinSceneLoader), nameof(PeglinSceneLoader.LoadScene),
+    [HarmonyPatch(
+        typeof(PeglinSceneLoader),
+        nameof(PeglinSceneLoader.LoadScene),
         new[] { typeof(PeglinSceneLoader.Scene), typeof(UnityEngine.SceneManagement.LoadSceneMode), typeof(bool), typeof(float) })]
     [HarmonyPrefix]
     public static bool PeglinSceneLoader_LoadScene_Prefix(PeglinSceneLoader.Scene scene)
@@ -3008,6 +3052,27 @@ public static class MultiplayerClientPatches
     // =========================================================================
 
     /// <summary>
+    /// Block BattleController.HandlePegActivated on the client. The host runs all
+    /// peg-driven game logic (crit activation, damage queueing, peg multihits, relic
+    /// checks) and forwards the resulting visual state via DamageTextEvent / heartbeat.
+    /// If Peg.OnPegActivated ever fires on the client (e.g. from a stray PegActivated()
+    /// call in our own appliers), we must not let the original handler run — it
+    /// would call QueueCritTextDisplay / QueueDamageTextDisplay and render a SECOND
+    /// "Crit!" or damage number on top of the one we already received from the host.
+    /// </summary>
+    [HarmonyPatch(typeof(BattleController), "HandlePegActivated")]
+    [HarmonyPrefix]
+    public static bool BattleController_HandlePegActivated_Prefix()
+    {
+        if (!ShouldSuppressClientLogic)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// After each peg activation, compute the running damage total for the
     /// current player and dispatch a PendingDamagePreviewEvent so both host
     /// and client render persistent damage text above targeted enemies.
@@ -3141,8 +3206,11 @@ public static class MultiplayerClientPatches
             foreach (var entry in entries)
             {
                 UI.PendingDamageOverlay.SetPlayerDamage(
-                    entry.SlotIndex, entry.PlayerName, entry.Damage,
-                    entry.TargetEnemyGuid, entry.IsAoE);
+                    entry.SlotIndex,
+                    entry.PlayerName,
+                    entry.Damage,
+                    entry.TargetEnemyGuid,
+                    entry.IsAoE);
             }
         }
         catch (System.Exception ex)
@@ -3476,8 +3544,13 @@ public static class MultiplayerClientPatches
                                 continue;
                             }
 
-                            rt.Damage(shot.Damage, screenshake: false, 0.25f, 1f,
-                                unblockable: false, Battle.Enemies.Enemy.EnemyDamageSource.TargetedAttack);
+                            rt.Damage(
+                                shot.Damage,
+                                screenshake: false,
+                                0.25f,
+                                1f,
+                                unblockable: false,
+                                Battle.Enemies.Enemy.EnemyDamageSource.TargetedAttack);
                         }
                     }
                     finally
@@ -3812,8 +3885,11 @@ public static class MultiplayerClientPatches
     /// PINPOINT orbs intentionally ignore blockers — returns null to preserve that.
     /// </summary>
     private static System.Collections.Generic.List<Battle.Enemies.Enemy> ResolveShotTargetsViaRaycast(
-        BattleController bc, EnemyManager em, Battle.Enemies.Enemy declaredTarget,
-        string orbPrefabName, int pierceCount)
+        BattleController bc,
+        EnemyManager em,
+        Battle.Enemies.Enemy declaredTarget,
+        string orbPrefabName,
+        int pierceCount)
     {
         if (bc == null || em == null || declaredTarget == null)
         {
@@ -3925,8 +4001,11 @@ public static class MultiplayerClientPatches
     /// <summary>Capture attack trigger, target enemy, peg count, crit, and orb name when attack starts.</summary>
     [HarmonyPatch(typeof(Battle.Attacks.AttackManager), "Attack")]
     [HarmonyPostfix]
-    public static void AttackManager_Attack_Postfix(Battle.Attacks.AttackManager __instance, Battle.Enemies.Enemy target,
-        int numPegsHitThisShot, int criticalHitCount)
+    public static void AttackManager_Attack_Postfix(
+        Battle.Attacks.AttackManager __instance,
+        Battle.Enemies.Enemy target,
+        int numPegsHitThisShot,
+        int criticalHitCount)
     {
         if (!IsHosting)
         {

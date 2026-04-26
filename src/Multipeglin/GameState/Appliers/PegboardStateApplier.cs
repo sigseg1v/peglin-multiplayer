@@ -121,8 +121,13 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 // position-sanity guard to reject obviously-wrong bindings.
                 if (peg == null && string.IsNullOrEmpty(entry.ParentName))
                 {
-                    var indexCandidate = ResolveByIndex(entry.Index, pegsCount, bombsCount,
-                        clientPegs, clientBombs, clientBouncers);
+                    var indexCandidate = ResolveByIndex(
+                        entry.Index,
+                        pegsCount,
+                        bombsCount,
+                        clientPegs,
+                        clientBombs,
+                        clientBouncers);
                     if (indexCandidate != null
                         && !matchedPegs.Contains(indexCandidate)
                         && string.IsNullOrEmpty(_pegId.GetGuid(indexCandidate))
@@ -579,8 +584,10 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 if (entry.LpmParentPosX.HasValue && entry.LpmParentPosY.HasValue)
                 {
                     // Use host's authoritative parent position directly
-                    var newParentPos = new Vector3(entry.LpmParentPosX.Value,
-                        entry.LpmParentPosY.Value, parentT.position.z);
+                    var newParentPos = new Vector3(
+                        entry.LpmParentPosX.Value,
+                        entry.LpmParentPosY.Value,
+                        parentT.position.z);
                     var rb = lpm.GetComponent<Rigidbody2D>();
                     if (rb != null)
                     {
@@ -885,20 +892,25 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         Peg peg = null;
         if (entry.HasLpm)
         {
-            peg = PopFromIndex(index.BySibling,
+            peg = PopFromIndex(
+                index.BySibling,
                 MakeSiblingStructKey(entry.ParentName, entry.SiblingIndex));
             if (peg == null)
             {
                 // Fallback to pos for LPM-on-ancestor pegs (localPosition is
                 // still stable when LPM moves a parent row).
-                peg = PopPosMatchingEntry(index.ByPos,
-                    MakePosStructKey(entry.ParentName, entry.LocalPosX, entry.LocalPosY), entry);
+                peg = PopPosMatchingEntry(
+                    index.ByPos,
+                    MakePosStructKey(entry.ParentName, entry.LocalPosX, entry.LocalPosY),
+                    entry);
             }
         }
         else
         {
-            peg = PopPosMatchingEntry(index.ByPos,
-                MakePosStructKey(entry.ParentName, entry.LocalPosX, entry.LocalPosY), entry);
+            peg = PopPosMatchingEntry(
+                index.ByPos,
+                MakePosStructKey(entry.ParentName, entry.LocalPosX, entry.LocalPosY),
+                entry);
             if (peg == null && entry.SiblingIndex >= 0)
             {
                 // Fallback to sibling for legacy layouts where localPos drifts
@@ -1031,8 +1043,13 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     /// [pegsCount+bombsCount .. ]     = clientBouncers[index - pegsCount - bombsCount]
     /// Returns null for out-of-range indices.
     /// </summary>
-    private static Peg ResolveByIndex(int index, int pegsCount, int bombsCount,
-        List<Peg> clientPegs, List<Bomb> clientBombs, List<BouncerPeg> clientBouncers)
+    private static Peg ResolveByIndex(
+        int index,
+        int pegsCount,
+        int bombsCount,
+        List<Peg> clientPegs,
+        List<Bomb> clientBombs,
+        List<BouncerPeg> clientBouncers)
     {
         if (index < 0)
         {
@@ -1075,9 +1092,13 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     /// Find the closest unmatched peg within the given distance threshold.
     /// Pass null for any list to skip it (type-aware matching).
     /// </summary>
-    private Peg FindClosestUnmatched(PegEntry entry, List<Peg> clientPegs,
-        List<Bomb> clientBombs, List<BouncerPeg> clientBouncers,
-        HashSet<Peg> matched, float maxDist)
+    private Peg FindClosestUnmatched(
+        PegEntry entry,
+        List<Peg> clientPegs,
+        List<Bomb> clientBombs,
+        List<BouncerPeg> clientBouncers,
+        HashSet<Peg> matched,
+        float maxDist)
     {
         Peg closest = null;
         var closestDist = maxDist * maxDist;
@@ -1142,8 +1163,14 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     /// <summary>
     /// Apply host state (type, cleared, destroyed, slime, coins, bomb fuse) to a matched client peg.
     /// </summary>
-    private void ApplyPegState(Peg peg, PegEntry entry, List<Bomb> clientBombs,
-        ref int typeChanged, ref int destroyed, ref int reactivated, ref int cleared)
+    private void ApplyPegState(
+        Peg peg,
+        PegEntry entry,
+        List<Bomb> clientBombs,
+        ref int typeChanged,
+        ref int destroyed,
+        ref int reactivated,
+        ref int cleared)
     {
         // Register with host GUID
         if (!string.IsNullOrEmpty(entry.Guid))
@@ -1197,7 +1224,14 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 }
                 else
                 {
-                    peg.PegActivated(playAudio: false, forcePop: true);
+                    // Visual-only pop. Calling peg.PegActivated() here would fire
+                    // Peg.OnPegActivated on the client, which triggers
+                    // BattleController.HandlePegActivated → QueueCritTextDisplay
+                    // → DisplayCritText → a duplicate "Crit!" rendered on top of
+                    // the one the host already sent us via DamageTextEvent. Mirror
+                    // PegActivatedClientHandler's surgical visual pop instead so
+                    // no game-logic delegates fire.
+                    PopPegVisualOnly(peg);
                 }
 
                 cleared++;
@@ -1374,7 +1408,16 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             // RESET→CRIT clobber rejection, renderer null, etc.) leaving pegType
             // correct but the sprite still showing the previous visual. Force the
             // special sprite via reflection so CRIT/RESET always render correctly.
-            ForceSpecialPegSpriteIfNeeded(peg, targetType);
+            // BUT skip when host says peg is cleared — CRIT pegs in particular keep
+            // pegType=CRIT for ~1-2s after activation (until end-of-shot SoftReset).
+            // Re-applying _critSprite to a peg that PegActivatedClientHandler already
+            // popped causes the user-visible "peg disappears, then crit sprite flashes
+            // back briefly, then finally goes to dot" lag. RESET pegs are immune
+            // because their host pegType becomes REGULAR within PegActivated itself.
+            if (!entry.IsCleared)
+            {
+                ForceSpecialPegSpriteIfNeeded(peg, targetType);
+            }
         }
 
         // After type conversion, if the peg is in "previously cleared" state,
@@ -1571,6 +1614,47 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
             parent = parent.parent;
         }
+    }
+
+    /// <summary>
+    /// Pop a peg visually without triggering any game-logic side effects. Mirrors
+    /// PegActivatedClientHandler's surgical pop: collect coins, mark cleared,
+    /// disable colliders, play destruction tween. Crucially does NOT fire
+    /// Peg.OnPegActivated, so subscribers like BattleController.HandlePegActivated
+    /// (which would queue duplicate Crit/damage text on the client) stay silent.
+    /// </summary>
+    private static void PopPegVisualOnly(Peg peg)
+    {
+        try
+        {
+            try
+            {
+                var overlayField = HarmonyLib.AccessTools.Field(typeof(Peg), "PegCoinOverlayInstance");
+                var overlay = overlayField?.GetValue(peg) as Battle.PegBehaviour.PegCoinOverlay;
+                if (overlay != null && overlay.NumCoins > 0)
+                {
+                    overlay.CollectCoins();
+                }
+            }
+            catch { }
+
+            var clearedField = HarmonyLib.AccessTools.Field(typeof(Peg), "_cleared");
+            clearedField?.SetValue(peg, true);
+
+            if (peg is RegularPeg)
+            {
+                var disableMethod = HarmonyLib.AccessTools.Method(typeof(RegularPeg), "DisableRegularColliders");
+                disableMethod?.Invoke(peg, null);
+
+                var playMethod = HarmonyLib.AccessTools.Method(typeof(RegularPeg), "PlayDestructionAnimation");
+                playMethod?.Invoke(peg, null);
+            }
+            else
+            {
+                peg.gameObject.SetActive(false);
+            }
+        }
+        catch { }
     }
 
     private void ForceSpecialPegSpriteIfNeeded(Peg peg, Peg.PegType targetType)
@@ -1844,7 +1928,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
                         vineGo.transform.position = (pos1 + pos2) / 2f;
                         var to = pos2 - pos1;
-                        vineGo.transform.eulerAngles = new Vector3(0f, 0f,
+                        vineGo.transform.eulerAngles = new Vector3(
+                            0f,
+                            0f,
                             Vector3.SignedAngle(Vector3.up, to, Vector3.forward));
 
                         // Disable ALL colliders — client vines are visual only
