@@ -23,6 +23,10 @@ public class RemoteCursorRenderer : MonoBehaviour
     // don't keep stale indicators around on disconnect / alt-tab / etc.
     private const float StaleTimeout = 5f;
     private const float Alpha = 0.5f;
+    // Hotspot of the game's normal cursor texture — matches CursorManagement._hotspot.
+    // (0,0) is top-left in pixel space.
+    private const float HotspotX = 16f;
+    private const float HotspotY = 4f;
 
     private class CursorVisual
     {
@@ -196,22 +200,46 @@ public class RemoteCursorRenderer : MonoBehaviour
 
         var color = WithAlpha(SlotColor(slotIndex), Alpha);
 
-        // Arrow glyph as the cursor — solid left-pointing triangle rotated 45°
-        // so the tip points toward the upper-left. Avoids the stray-pixel artifact
-        // baked into the U+2196 ↖ glyph in the bundled TMP font.
+        // Use the game's normal cursor texture so remote-player cursors look
+        // identical to the local player's hardware/software cursor — just
+        // tinted by slot color and translucent.
+        var cursorTex = FindNormalCursorTexture();
+
         var iconGo = new GameObject("Icon");
         iconGo.transform.SetParent(root.transform, worldPositionStays: false);
         var iconRect = iconGo.AddComponent<RectTransform>();
-        iconRect.sizeDelta = new Vector2(40f, 40f);
-        iconRect.pivot = new Vector2(0f, 1f);
+        iconRect.anchorMin = new Vector2(0.5f, 0.5f);
+        iconRect.anchorMax = new Vector2(0.5f, 0.5f);
         iconRect.anchoredPosition = Vector2.zero;
-        iconRect.localEulerAngles = new Vector3(0f, 0f, 45f);
-        var icon = iconGo.AddComponent<TextMeshProUGUI>();
-        icon.text = "\u25C0"; // ◀ BLACK LEFT-POINTING TRIANGLE (rotated 45° → NW)
-        icon.fontSize = 36f;
-        icon.alignment = TextAlignmentOptions.Center;
-        icon.raycastTarget = false;
-        icon.color = color;
+
+        if (cursorTex != null)
+        {
+            var w = cursorTex.width;
+            var h = cursorTex.height;
+            iconRect.sizeDelta = new Vector2(w, h);
+            // Hotspot is in top-left-origin pixels; pivot is in bottom-left-origin
+            // normalized coords. Convert so the texture's hotspot lands at the
+            // root center (which is the lerped screen position from the host).
+            iconRect.pivot = new Vector2(HotspotX / w, 1f - HotspotY / h);
+            var sprite = Sprite.Create(cursorTex, new Rect(0f, 0f, w, h), new Vector2(0.5f, 0.5f));
+            var img = iconGo.AddComponent<Image>();
+            img.sprite = sprite;
+            img.color = color;
+            img.raycastTarget = false;
+        }
+        else
+        {
+            // Fallback: solid triangle glyph if the cursor texture isn't loaded yet.
+            iconRect.sizeDelta = new Vector2(40f, 40f);
+            iconRect.pivot = new Vector2(0f, 1f);
+            iconRect.localEulerAngles = new Vector3(0f, 0f, 45f);
+            var icon = iconGo.AddComponent<TextMeshProUGUI>();
+            icon.text = "\u25C0";
+            icon.fontSize = 36f;
+            icon.alignment = TextAlignmentOptions.Center;
+            icon.raycastTarget = false;
+            icon.color = color;
+        }
 
         // Number label below-left of the cursor tip.
         var labelGo = new GameObject("Label");
@@ -231,6 +259,27 @@ public class RemoteCursorRenderer : MonoBehaviour
         label.outlineColor = new Color32(0, 0, 0, (byte)(255 * Alpha));
 
         return new CursorVisual { Root = root, Rect = rect };
+    }
+
+    private static Texture2D FindNormalCursorTexture()
+    {
+        try
+        {
+            var managers = Resources.FindObjectsOfTypeAll<PeglinUI.CursorManagement>();
+            for (var i = 0; i < managers.Length; i++)
+            {
+                var t = managers[i]?.normalCursor;
+                if (t != null)
+                {
+                    return t;
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        return null;
     }
 
     private static Color WithAlpha(Color c, float a)
