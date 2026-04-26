@@ -617,7 +617,7 @@ public class MultiplayerUI : MonoBehaviour
         _inviteFriendButton = CreateButton(
             _lobbyPanel.transform,
             "InviteFriendBtn",
-            "Invite Friend",
+            "Copy Invite Link",
             new Color(0.2f, 0.45f, 0.55f, 1f),
             new Vector2(0, -345),
             new Vector2(400, 56));
