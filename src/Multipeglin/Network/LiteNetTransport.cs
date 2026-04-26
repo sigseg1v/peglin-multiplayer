@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using LiteNetLib;
@@ -9,7 +10,7 @@ namespace Multipeglin.Network;
 public class LiteNetTransport : INetworkTransport, INetEventListener
 {
     private NetManager _netManager;
-    private readonly Dictionary<int, NetPeer> _peers = new Dictionary<int, NetPeer>();
+    private readonly ConcurrentDictionary<int, NetPeer> _peers = new ConcurrentDictionary<int, NetPeer>();
 
     public bool IsHost { get; private set; }
     public bool IsConnected => _peers.Count > 0;
@@ -65,7 +66,7 @@ public class LiteNetTransport : INetworkTransport, INetEventListener
 
     public void OnPeerDisconnected(NetPeer peer, DisconnectInfo disconnectInfo)
     {
-        _peers.Remove(peer.Id);
+        _peers.TryRemove(peer.Id, out _);
         if (!IsHost && disconnectInfo.Reason == DisconnectReason.ConnectionRejected)
         {
             string reason = "version";
