@@ -42,7 +42,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             // Show waiting message when host is in post-battle state
             if (snapshot.BattleStateName == "AWAITING_POST_BATTLE_CONTROLLER")
             {
-                MapStateApplier.ClientWaitingMessage = "Waiting for host...";
+                MapStateApplier.ClientWaitingMessage = "Waiting for other players...";
             }
 
             // Sync pachinkoBallSpawnLocation so boss fights (SlimeBoss) which alternate

@@ -40,6 +40,13 @@ public class CoopRewardUI : MonoBehaviour
     // Track scene changes to auto-hide the overlay when leaving a battle
     private string _lastSceneName;
 
+    // Host-side force-continue: after 60s of waiting on the same phase, show a
+    // "Force Continue" button so the host can break out of any client-side softlock.
+    private const float ForceContinueDelaySeconds = 60f;
+    private float _hostWaitingStartTime = -1f;
+    private string _hostWaitingPhaseKey;
+    private GameObject _forceContinueButton;
+
     private void Start()
     {
         try
@@ -166,6 +173,7 @@ public class CoopRewardUI : MonoBehaviour
             {
                 if (_currentState != DisplayState.Waiting)
                     ShowWaiting();
+                TickHostForceContinue();
                 return;
             }
 
@@ -296,24 +304,20 @@ public class CoopRewardUI : MonoBehaviour
             || CoopRewardState.PegMinigameAwaitingHostNavigation)
         {
             // Client-side post-shop/event/peg-minigame: choice is done, host is picking next stage.
-            _titleText.text = "Waiting for host to select the next stage...";
+            _titleText.text = "Waiting for other players to select the next stage...";
         }
         else if (CoopRewardState.TreasureAwaitingHostNavigation)
         {
             // Client-side post-treasure: relic chosen, host is shooting the chest.
-            _titleText.text = "Waiting for host...";
+            _titleText.text = "Waiting for other players...";
         }
         else if (CoopRewardState.TextScenarioPhaseActive)
         {
-            _titleText.text = isHost
-                ? "Waiting for clients to finish the event..."
-                : "Waiting for other players to finish the event...";
+            _titleText.text = "Waiting for other players to finish the event...";
         }
         else if (CoopRewardState.ShopPhaseActive)
         {
-            _titleText.text = isHost
-                ? "Waiting for clients to finish shopping..."
-                : "Waiting for other players to finish shopping...";
+            _titleText.text = "Waiting for other players to finish shopping...";
         }
         else if (CoopRewardState.TreasurePhaseActive)
         {
@@ -333,7 +337,7 @@ public class CoopRewardUI : MonoBehaviour
         {
             // Post-battle reward — client picked from native BattleUpgradeCanvas
             // and is now waiting for host to finish its own rewards and navigation.
-            _titleText.text = "Waiting for host...";
+            _titleText.text = "Waiting for other players...";
         }
         else
         {
@@ -342,15 +346,270 @@ public class CoopRewardUI : MonoBehaviour
         _statusText.text = "";
         _overlayPanel.SetActive(true);
         _currentState = DisplayState.Waiting;
+
+        // Track host-side waiting phase for the 60s force-continue button.
+        // Reset the timer whenever the host transitions between distinct phases.
+        if (isHost)
+        {
+            string phaseKey = ResolveHostWaitingPhase();
+            if (phaseKey != null)
+            {
+                if (_hostWaitingPhaseKey != phaseKey)
+                {
+                    _hostWaitingPhaseKey = phaseKey;
+                    _hostWaitingStartTime = Time.unscaledTime;
+                    DestroyForceContinueButton();
+                }
+            }
+            else
+            {
+                ClearHostWaitingTimer();
+            }
+        }
+        else
+        {
+            ClearHostWaitingTimer();
+        }
     }
 
     private void HideOverlay()
     {
         ClearButtons();
+        DestroyForceContinueButton();
+        ClearHostWaitingTimer();
         _overlayPanel.SetActive(false);
         _currentState = DisplayState.Hidden;
         _displayedRelicCount = 0;
         _displayedRewardCount = 0;
+    }
+
+    /// <summary>
+    /// Returns a phase key the host is currently waiting on (and has finished its
+    /// own part of), or null if the host isn't waiting on a recoverable phase.
+    /// </summary>
+    private static string ResolveHostWaitingPhase()
+    {
+        if (CoopRewardState.ShopPhaseActive && CoopRewardState.HostShopDone)
+            return "shop";
+        if (CoopRewardState.TreasurePhaseActive && CoopRewardState.HostTreasureDone)
+            return "treasure";
+        if (CoopRewardState.PegMinigamePhaseActive && CoopRewardState.HostPegMinigameDone)
+            return "peg_minigame";
+        if (CoopRewardState.TextScenarioPhaseActive && CoopRewardState.HostTextScenarioDone)
+            return "text_scenario";
+        if (CoopRewardState.HostRewardPhaseActive && CoopRewardState.HostRewardsDone)
+            return "post_battle";
+        if (CoopRewardState.HostRelicSelectionActive && CoopRewardState.HostHasChosenRelic)
+            return "starting_relic";
+        return null;
+    }
+
+    private void ClearHostWaitingTimer()
+    {
+        _hostWaitingStartTime = -1f;
+        _hostWaitingPhaseKey = null;
+    }
+
+    private void DestroyForceContinueButton()
+    {
+        if (_forceContinueButton != null)
+        {
+            Destroy(_forceContinueButton);
+            _forceContinueButton = null;
+        }
+    }
+
+    /// <summary>
+    /// Once the host has been waiting on the same phase for 60s, spawn a
+    /// "Force Continue" button so the host can resume past a stuck client.
+    /// </summary>
+    private void TickHostForceContinue()
+    {
+        if (_currentState != DisplayState.Waiting) return;
+        if (_hostWaitingStartTime < 0f || _hostWaitingPhaseKey == null) return;
+
+        // Re-validate the phase: clients may have completed naturally meanwhile
+        // (in which case AllChoicesComplete will hide the overlay on the next tick).
+        if (ResolveHostWaitingPhase() != _hostWaitingPhaseKey)
+        {
+            ClearHostWaitingTimer();
+            DestroyForceContinueButton();
+            return;
+        }
+
+        if (_forceContinueButton != null) return;
+        if (Time.unscaledTime - _hostWaitingStartTime < ForceContinueDelaySeconds) return;
+
+        _forceContinueButton = CreateForceContinueButton();
+    }
+
+    private GameObject CreateForceContinueButton()
+    {
+        var obj = new GameObject("ForceContinueButton");
+        obj.transform.SetParent(_overlayPanel.transform, false);
+
+        var img = obj.AddComponent<Image>();
+        img.color = new Color(0.55f, 0.18f, 0.18f);
+
+        var btn = obj.AddComponent<Button>();
+        var colors = btn.colors;
+        colors.highlightedColor = new Color(0.7f, 0.25f, 0.25f);
+        colors.pressedColor = new Color(0.4f, 0.12f, 0.12f);
+        btn.colors = colors;
+
+        var rect = obj.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 0);
+        rect.anchorMax = new Vector2(0.5f, 0);
+        rect.pivot = new Vector2(0.5f, 0);
+        rect.anchoredPosition = new Vector2(0, 160);
+        rect.sizeDelta = new Vector2(360, 70);
+
+        var labelObj = new GameObject("Label");
+        labelObj.transform.SetParent(obj.transform, false);
+        var label = labelObj.AddComponent<TextMeshProUGUI>();
+        label.text = "Force Continue";
+        label.fontSize = 32;
+        label.fontStyle = FontStyles.Bold;
+        label.alignment = TextAlignmentOptions.Center;
+        label.color = Color.white;
+        var labelRect = label.rectTransform;
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = Vector2.zero;
+        labelRect.offsetMax = Vector2.zero;
+
+        btn.onClick.AddListener(OnForceContinueClicked);
+        return obj;
+    }
+
+    private void OnForceContinueClicked()
+    {
+        var phase = _hostWaitingPhaseKey;
+        Log?.LogWarning($"[CoopRewardUI] Force Continue clicked — phase='{phase}'");
+
+        try
+        {
+            switch (phase)
+            {
+                case "shop":           ForceContinueShop();          break;
+                case "treasure":       ForceContinueTreasure();      break;
+                case "peg_minigame":   ForceContinuePegMinigame();   break;
+                case "text_scenario":  ForceContinueTextScenario();  break;
+                case "post_battle":    ForceContinuePostBattle();    break;
+                case "starting_relic": ForceContinueStartingRelic(); break;
+                default:
+                    Log?.LogWarning($"[CoopRewardUI] Force Continue: unknown phase '{phase}'");
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log?.LogError($"[CoopRewardUI] Force Continue failed: {ex}");
+        }
+
+        DestroyForceContinueButton();
+        ClearHostWaitingTimer();
+    }
+
+    private static void DispatchAllChoicesComplete(string phase)
+    {
+        var services = MultiplayerPlugin.Services;
+        if (services?.TryResolve<IGameEventRegistry>(out var reg) == true)
+            reg.Dispatch(new AllChoicesCompleteEvent { Phase = phase });
+    }
+
+    private void ForceContinueShop()
+    {
+        CoopRewardState.WaitingForOtherPlayers = false;
+        CoopRewardState.ShopPhaseActive = false;
+        CoopRewardState.ShopCompletionProceeded = true;
+        DispatchAllChoicesComplete("shop");
+
+        var pending = CoopRewardState.PendingShopManager;
+        CoopRewardState.PendingShopManager = null;
+        if (pending is global::Scenarios.Shop.ShopManager shopMgr)
+        {
+            Log?.LogWarning("[CoopRewardUI] Force-resuming host CloseStore");
+            shopMgr.CloseStore();
+        }
+    }
+
+    private void ForceContinueTreasure()
+    {
+        CoopRewardState.WaitingForOtherPlayers = false;
+        CoopRewardState.TreasurePhaseActive = false;
+        DispatchAllChoicesComplete("treasure");
+
+        var pending = CoopRewardState.PendingChestController;
+        CoopRewardState.PendingChestController = null;
+        if (pending != null)
+        {
+            Log?.LogWarning("[CoopRewardUI] Force-resuming host ChestScenarioController.Skip");
+            pending.Skip();
+        }
+    }
+
+    private void ForceContinuePegMinigame()
+    {
+        CoopRewardState.WaitingForOtherPlayers = false;
+        CoopRewardState.PegMinigamePhaseActive = false;
+        DispatchAllChoicesComplete("peg_minigame");
+
+        var pending = CoopRewardState.PendingPegMinigameManager;
+        CoopRewardState.PendingPegMinigameManager = null;
+        if (pending != null)
+        {
+            Log?.LogWarning("[CoopRewardUI] Force-resuming host PegMinigameManager.FadeAndLoad");
+            pending.FadeAndLoad();
+        }
+    }
+
+    private void ForceContinueTextScenario()
+    {
+        CoopRewardState.WaitingForOtherPlayers = false;
+        CoopRewardState.TextScenarioPhaseActive = false;
+        DispatchAllChoicesComplete("text_scenario");
+
+        var pending = CoopRewardState.PendingDialogueSystemScenario;
+        CoopRewardState.PendingDialogueSystemScenario = null;
+        if (pending is RNG.Scenarios.DialogueSystemScenario scenario)
+        {
+            Log?.LogWarning("[CoopRewardUI] Force-resuming host DialogueSystemScenario.ConversationEnded");
+            scenario.ConversationEnded();
+        }
+    }
+
+    private void ForceContinuePostBattle()
+    {
+        CoopRewardState.WaitingForOtherPlayers = false;
+        CoopRewardState.HostRewardPhaseActive = false;
+        DispatchAllChoicesComplete("post_battle");
+
+        var pbc = CoopRewardState.PendingPostBattleController;
+        CoopRewardState.PendingPostBattleController = null;
+        if (pbc != null)
+        {
+            Log?.LogWarning("[CoopRewardUI] Force-resuming host PostBattleController.StartNavigation");
+            var navMethod = HarmonyLib.AccessTools.Method(typeof(global::Battle.PostBattleController), "StartNavigation");
+            navMethod?.Invoke(pbc, new object[] { true });
+        }
+    }
+
+    private void ForceContinueStartingRelic()
+    {
+        CoopRewardState.HostRelicSelectionActive = false;
+        CoopRewardState.AllChoicesComplete = true;
+        CoopRewardState.WaitingForOtherPlayers = false;
+        DispatchAllChoicesComplete("starting_relic");
+
+        if (CoopRewardState.PendingGameInitInstance is GameInit gameInit)
+        {
+            CoopRewardState.PendingGameInitInstance = null;
+            Log?.LogWarning("[CoopRewardUI] Force-resuming host GameInit.LoadMapScene");
+            var loadMapMethod = typeof(GameInit).GetMethod("LoadMapScene",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            loadMapMethod?.Invoke(gameInit, null);
+        }
     }
 
     private void OnRelicChosen(int relicEffect)

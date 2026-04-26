@@ -3957,6 +3957,12 @@ public static class MultiplayerClientPatches
     {
         if (!ShouldSuppressClientLogic) return true;
         if (UI.LobbyUI.GameStartReceived && Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn) return true;
+        // TextScenario dialogues (Mirror Duplicate, Helpful Spirits, etc.) call
+        // DeckManager.DialoguePopulate* helpers that internally call ShuffleCompleteDeck
+        // to pick which orbs to offer. Blocking it here leaves shuffledDeck empty,
+        // the dialogue's randomOrbN variables never populate, and the UI softlocks
+        // because no orb-choice buttons appear.
+        if (AllowTextScenarioLogic) return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DeckManager.ShuffleCompleteDeck on client");
         return false;
     }
@@ -4653,7 +4659,7 @@ public static class MultiplayerClientPatches
                 // Not all clients done — store reference and block
                 Events.Handlers.Coop.CoopRewardState.PendingDialogueSystemScenario = __instance;
                 Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = true;
-                MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Host ConversationEnded — waiting for clients to finish TextScenario");
+                MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Host ConversationEnded — waiting for other players to finish TextScenario");
                 return false;
             }
         }
@@ -5039,7 +5045,7 @@ public static class MultiplayerClientPatches
                 // Not all clients done — store reference, flag waiting, block.
                 Events.Handlers.Coop.CoopRewardState.PendingShopManager = __instance;
                 Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = true;
-                MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Host CloseStore — waiting for clients to finish shopping");
+                MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Host CloseStore — waiting for other players to finish shopping");
                 return false; // Block until all clients done
             }
         }
@@ -5110,7 +5116,7 @@ public static class MultiplayerClientPatches
             {
                 Events.Handlers.Coop.CoopRewardState.PendingChestController = __instance;
                 Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = true;
-                MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Host Skip — waiting for clients to finish treasure");
+                MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Host Skip — waiting for other players to finish treasure");
                 return false; // Block until all clients done
             }
         }

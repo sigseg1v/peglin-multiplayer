@@ -165,7 +165,7 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
 
             if (snapshot.ActiveScene == "MainMenu")
             {
-                ClientWaitingMessage = "Waiting for host to start game...";
+                ClientWaitingMessage = "Waiting for other players to start game...";
                 _log.LogInfo("[MapApplier] Host is on MainMenu — showing waiting message");
                 return;
             }
@@ -204,7 +204,7 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             if (snapshot.ActiveScene == "ForestWinScene" || snapshot.ActiveScene == "CastleWinScene" ||
                 snapshot.ActiveScene == "FinalWinScene" || snapshot.ActiveScene == "CoreWinScene")
             {
-                ClientWaitingMessage = "Act complete! Waiting for host...";
+                ClientWaitingMessage = "Act complete! Waiting for other players...";
                 _log.LogInfo($"[MapApplier] Host is on win scene '{snapshot.ActiveScene}' — showing waiting message");
                 return;
             }
