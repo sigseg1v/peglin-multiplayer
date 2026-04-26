@@ -202,7 +202,7 @@ public sealed class MirrorEventCompleteClientHandler : IClientHandler<MirrorEven
                         var attack = orbGo.GetComponent<Attack>();
                         // Add orbs that aren't already in the client's deck
                         // (the host's deck post-mirror has only the replacement orbs + CannotBeRemoved)
-                        var prefabName = orbGo.name.Replace("(Clone)", "").Trim();
+                        var prefabName = orbGo.name.Replace("(Clone)", string.Empty).Trim();
                         if (playerState.CompleteDeck.All(o => o.PrefabName != prefabName))
                         {
                             playerState.CompleteDeck.Add(new SerializedOrb

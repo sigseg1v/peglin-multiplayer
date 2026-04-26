@@ -7,10 +7,16 @@ namespace Multipeglin.GameState;
 public interface IGameStateSyncService
 {
     void SyncAll(string trigger = null);
+
     void SyncMap();
+
     void SyncPegboard();
+
     void SyncEnemies();
+
     void SyncPlayer();
+
     void SyncDeck();
+
     void SyncRelics();
 }

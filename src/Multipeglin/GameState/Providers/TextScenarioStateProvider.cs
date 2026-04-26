@@ -87,13 +87,13 @@ public class TextScenarioStateProvider
                 var subtitle = npcPanel.currentSubtitle;
                 if (subtitle != null)
                 {
-                    snapshot.SubtitleText = subtitle.formattedText?.text ?? "";
-                    snapshot.SpeakerName = npcPanel.portraitActorName ?? "";
+                    snapshot.SubtitleText = subtitle.formattedText?.text ?? string.Empty;
+                    snapshot.SpeakerName = npcPanel.portraitActorName ?? string.Empty;
                 }
                 else
                 {
-                    snapshot.SubtitleText = npcPanel.subtitleText?.text ?? "";
-                    snapshot.SpeakerName = npcPanel.portraitName?.text ?? "";
+                    snapshot.SubtitleText = npcPanel.subtitleText?.text ?? string.Empty;
+                    snapshot.SpeakerName = npcPanel.portraitName?.text ?? string.Empty;
                 }
             }
 
@@ -106,7 +106,7 @@ public class TextScenarioStateProvider
                 {
                     if (btn != null && btn.gameObject.activeInHierarchy && btn.isVisible)
                     {
-                        snapshot.Responses.Add(btn.text ?? "");
+                        snapshot.Responses.Add(btn.text ?? string.Empty);
                     }
                 }
             }

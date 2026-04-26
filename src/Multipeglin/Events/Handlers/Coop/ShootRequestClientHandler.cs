@@ -1,9 +1,9 @@
-
 using Multipeglin.Events.Network.Coop;
 using Multipeglin.GameState;
 using Multipeglin.Multiplayer;
 
 namespace Multipeglin.Events.Handlers.Coop;
+
 /// <summary>
 /// On host: receives a ShootRequest from a client, validates it's their turn,
 /// and queues the shot for execution by the game.
@@ -106,8 +106,12 @@ public sealed class ShootRequestClientHandler : IClientHandler<ShootRequestEvent
 public class PendingShot
 {
     public int SlotIndex { get; set; }
+
     public string PlayerName { get; set; }
+
     public float AimDirectionX { get; set; }
+
     public float AimDirectionY { get; set; }
+
     public string TargetEnemyGuid { get; set; }
 }

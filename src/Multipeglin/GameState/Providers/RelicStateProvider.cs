@@ -66,7 +66,7 @@ public class RelicStateProvider : IGameStateProvider<RelicStateSnapshot>
                 {
                     Effect = (int)kvp.Key,
                     EffectName = kvp.Key.ToString(),
-                    LocKey = relic.locKey ?? "",
+                    LocKey = relic.locKey ?? string.Empty,
                     Rarity = 0, // relic.rarity may not be public
                     RemainingCountdown = countdown,
                     RemainingUsesPerShot = ps,

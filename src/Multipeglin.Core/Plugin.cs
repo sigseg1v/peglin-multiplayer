@@ -8,7 +8,8 @@ namespace Multipeglin.Core;
 public class Plugin : BaseUnityPlugin
 {
     public static Plugin Instance { get; private set; }
-    public new static ManualLogSource Logger { get; private set; }
+
+    public static new ManualLogSource Logger { get; private set; }
 
     private Harmony _harmony;
 

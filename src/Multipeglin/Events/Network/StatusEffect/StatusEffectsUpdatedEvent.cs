@@ -9,6 +9,7 @@ public class StatusEffectsUpdatedEvent
     public class StatusEffectInfo
     {
         public int EffectType { get; set; }
+
         public int Intensity { get; set; }
     }
 }

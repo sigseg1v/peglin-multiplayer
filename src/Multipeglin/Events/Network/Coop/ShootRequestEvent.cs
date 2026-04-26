@@ -7,6 +7,7 @@ namespace Multipeglin.Events.Network.Coop;
 public class ShootRequestEvent
 {
     public float AimDirectionX { get; set; }
+
     public float AimDirectionY { get; set; }
 
     /// <summary>

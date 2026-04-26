@@ -117,7 +117,7 @@ public class CoopPlayerVisuals : MonoBehaviour
 
     private readonly List<PlayerVisual> _visuals = new List<PlayerVisual>();
     private bool _inBattle;
-    private string _lastScene = "";
+    private string _lastScene = string.Empty;
     private GameObject _playerRef;
     // Labels for slot 0 (host) which always occupies the "main" position
     // (_playerRef). Clones (in _visuals) are used for all slots > 0.
@@ -185,7 +185,8 @@ public class CoopPlayerVisuals : MonoBehaviour
             if (scene != "Battle")
             {
                 if (_inBattle)
-                { CleanupVisuals(); _inBattle = false; }
+                { CleanupVisuals();
+                    _inBattle = false; }
 
                 return;
             }
@@ -387,7 +388,8 @@ public class CoopPlayerVisuals : MonoBehaviour
         foreach (var s in summaries)
         {
             if (s.SlotIndex == HostSlot)
-            { hostSummary = s; break; }
+            { hostSummary = s;
+                break; }
         }
 
         // Remove stale clones. Slot 0 (host) never has a clone — it uses
@@ -399,7 +401,8 @@ public class CoopPlayerVisuals : MonoBehaviour
             foreach (var s in summaries)
             {
                 if (s.SlotIndex == v.SlotIndex)
-                { found = true; break; }
+                { found = true;
+                    break; }
             }
 
             if (!found || v.SpriteClone == null || v.SlotIndex == HostSlot)
@@ -449,7 +452,8 @@ public class CoopPlayerVisuals : MonoBehaviour
             foreach (var v in _visuals)
             {
                 if (v.SlotIndex == summary.SlotIndex)
-                { exists = true; break; }
+                { exists = true;
+                    break; }
             }
 
             if (exists)
@@ -512,7 +516,8 @@ public class CoopPlayerVisuals : MonoBehaviour
             foreach (var tmp in UnityEngine.Object.FindObjectsOfType<TextMeshProUGUI>())
             {
                 if (tmp.font != null)
-                { _gameFont = tmp.font; break; }
+                { _gameFont = tmp.font;
+                    break; }
             }
         }
         catch { }
@@ -550,7 +555,8 @@ public class CoopPlayerVisuals : MonoBehaviour
 
                     var tmp = intensityField.GetValue(icon) as TextMeshProUGUI;
                     if (tmp?.font != null)
-                    { _numberFont = tmp.font; break; }
+                    { _numberFont = tmp.font;
+                        break; }
                 }
             }
         }
@@ -916,7 +922,8 @@ public class CoopPlayerVisuals : MonoBehaviour
             foreach (var s in summaries)
             {
                 if (s.SlotIndex == HostSlot)
-                { hostSummary = s; break; }
+                { hostSummary = s;
+                    break; }
             }
 
             if (hostSummary != null)
@@ -937,7 +944,8 @@ public class CoopPlayerVisuals : MonoBehaviour
             foreach (var s in summaries)
             {
                 if (s.SlotIndex == visual.SlotIndex)
-                { summary = s; break; }
+                { summary = s;
+                    break; }
             }
 
             if (summary == null)
@@ -1018,7 +1026,7 @@ public class CoopPlayerVisuals : MonoBehaviour
         PositionPanelAtWorld(visual.NamePanel, charPos + new Vector3(0, 2.0f, 0), cam);
         PositionPanelAtWorld(visual.HpPanel, charPos + new Vector3(0, -0.6f, 0), cam);
 
-        var isActive = (activeSlot == visual.SlotIndex);
+        var isActive = activeSlot == visual.SlotIndex;
 
         // Pulsate name color when this player is active
         if (visual.NameText != null)
@@ -1353,7 +1361,8 @@ public class CoopPlayerVisuals : MonoBehaviour
 
         var screenPos = cam.WorldToScreenPoint(worldPos);
         if (screenPos.z < 0)
-        { panel.SetActive(false); return; }
+        { panel.SetActive(false);
+            return; }
 
         if (!panel.activeSelf)
         {
@@ -1467,7 +1476,10 @@ public class CoopPlayerVisuals : MonoBehaviour
     // sprite for the requested class. Falls back to ClassInfo.classSprite.
     private static readonly HashSet<int> _loggedMissingClassSprite = new HashSet<int>();
     private static Sprite _cachedPeglinSprite, _cachedBalladinSprite, _cachedRoundrelSprite, _cachedSpinventorSprite;
-    private static RuntimeAnimatorController _cachedPeglinCtrl, _cachedBalladinCtrl, _cachedRoundrelCtrl, _cachedSpinventorCtrl;
+    private static RuntimeAnimatorController _cachedPeglinCtrl;
+    private static RuntimeAnimatorController _cachedBalladinCtrl;
+    private static RuntimeAnimatorController _cachedRoundrelCtrl;
+    private static RuntimeAnimatorController _cachedSpinventorCtrl;
     private static readonly HashSet<int> _loggedMissingClassCtrl = new HashSet<int>();
 
     /// <summary>
@@ -1681,7 +1693,7 @@ public class CoopPlayerVisuals : MonoBehaviour
 
             if (_loggedMissingClassSprite.Add(chosenClass))
             {
-                Log?.LogWarning($"[CoopPlayerVisuals] No sprite for class {chosenClass} — switchers={all?.Length ?? 0}, caches: P={(_cachedPeglinSprite != null)} B={(_cachedBalladinSprite != null)} R={(_cachedRoundrelSprite != null)} S={(_cachedSpinventorSprite != null)}");
+                Log?.LogWarning($"[CoopPlayerVisuals] No sprite for class {chosenClass} — switchers={all?.Length ?? 0}, caches: P={ _cachedPeglinSprite != null} B={ _cachedBalladinSprite != null} R={ _cachedRoundrelSprite != null} S={ _cachedSpinventorSprite != null}");
             }
 
             return null;

@@ -307,7 +307,8 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                             var dy = r.transform.position.y - entry.PosY;
                             var d = dx * dx + dy * dy;
                             if (d < closestDist)
-                            { closestDist = d; closestIdx = i; }
+                            { closestDist = d;
+                                closestIdx = i; }
                         }
 
                         if (closestIdx >= 0)
@@ -505,7 +506,8 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     {
                         var b = clientBombs[i];
                         if (b == null)
-                        { _log.LogInfo($"[PegboardApplier] CLIENT_BOMB[{i}] NULL"); continue; }
+                        { _log.LogInfo($"[PegboardApplier] CLIENT_BOMB[{i}] NULL");
+                            continue; }
 
                         var dis = false;
                         try
@@ -676,7 +678,8 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         {
                             var candidate = prefabField.GetValue(rp) as GameObject;
                             if (candidate != null)
-                            { _cachedBombPrefab = candidate; break; }
+                            { _cachedBombPrefab = candidate;
+                                break; }
                         }
                     }
                 }
@@ -710,7 +713,8 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     var dy = lp.y - entry.LpmParentPosY.Value;
                     var d = dx * dx + dy * dy;
                     if (d < bestDistSq)
-                    { bestDistSq = d; parent = lpm.transform; }
+                    { bestDistSq = d;
+                        parent = lpm.transform; }
                 }
 
                 if (parent != null)
@@ -724,7 +728,8 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 foreach (var p in clientPegs)
                 {
                     if (p != null && p.transform.parent != null)
-                    { parent = p.transform.parent; break; }
+                    { parent = p.transform.parent;
+                        break; }
                 }
             }
 
@@ -789,6 +794,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     {
         public Dictionary<string, List<Peg>> ByPos =
             new Dictionary<string, List<Peg>>(System.StringComparer.Ordinal);
+
         public Dictionary<string, List<Peg>> BySibling =
             new Dictionary<string, List<Peg>>(System.StringComparer.Ordinal);
     }
@@ -1089,7 +1095,8 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 var dy = p.transform.position.y - entry.PosY;
                 var dist = dx * dx + dy * dy;
                 if (dist < closestDist)
-                { closestDist = dist; closest = p; }
+                { closestDist = dist;
+                    closest = p; }
             }
         }
 
@@ -1106,7 +1113,8 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 var dy = b.transform.position.y - entry.PosY;
                 var dist = dx * dx + dy * dy;
                 if (dist < closestDist)
-                { closestDist = dist; closest = b; }
+                { closestDist = dist;
+                    closest = b; }
             }
         }
 
@@ -1123,7 +1131,8 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 var dy = bo.transform.position.y - entry.PosY;
                 var dist = dx * dx + dy * dy;
                 if (dist < closestDist)
-                { closestDist = dist; closest = bo; }
+                { closestDist = dist;
+                    closest = bo; }
             }
         }
 

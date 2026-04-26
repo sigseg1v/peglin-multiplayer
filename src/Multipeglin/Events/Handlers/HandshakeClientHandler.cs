@@ -68,18 +68,18 @@ public sealed class HandshakeClientHandler : IClientHandler<HandshakeEvent>
 public static class RemotePeerInfo
 {
     public static bool Received;
-    public static string PlayerName = "";
-    public static string ModVersion = "";
-    public static string GameVersion = "";
+    public static string PlayerName = string.Empty;
+    public static string ModVersion = string.Empty;
+    public static string GameVersion = string.Empty;
     public static bool IsHost;
     public static int HandlerCount;
 
     public static void Reset()
     {
         Received = false;
-        PlayerName = "";
-        ModVersion = "";
-        GameVersion = "";
+        PlayerName = string.Empty;
+        ModVersion = string.Empty;
+        GameVersion = string.Empty;
         IsHost = false;
         HandlerCount = 0;
     }

@@ -8,8 +8,11 @@ public sealed class VersionChecker
     private readonly ManualLogSource _log;
 
     public string CompiledGameVersion => MultiplayerPluginInfo.COMPILED_GAME_VERSION;
+
     public string ModVersion => MultiplayerPluginInfo.VERSION;
+
     public string RuntimeGameVersion { get; private set; }
+
     public bool IsVersionMatch { get; private set; }
 
     public VersionChecker(ManualLogSource log)

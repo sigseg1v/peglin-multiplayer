@@ -1,8 +1,8 @@
-
 using Multipeglin.Events.Network.Lobby;
 using Multipeglin.Multiplayer;
 
 namespace Multipeglin.Events.Handlers.Lobby;
+
 /// <summary>
 /// On host: a client sent their class selection. Update the registry and broadcast lobby state.
 /// On client: this event is not rebroadcast (server handler returns null), so clients

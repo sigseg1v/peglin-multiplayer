@@ -13,12 +13,17 @@ public class LiteNetTransport : INetworkTransport, INetEventListener
     private readonly ConcurrentDictionary<int, NetPeer> _peers = new ConcurrentDictionary<int, NetPeer>();
 
     public bool IsHost { get; private set; }
+
     public bool IsConnected => _peers.Count > 0;
+
     public IReadOnlyList<int> ConnectedPeerIds => _peers.Keys.ToList();
 
     public event Action<int, byte[]> OnDataReceived;
+
     public event Action<int> OnClientConnected;
+
     public event Action<int> OnDisconnected;
+
     public event Action<string> OnConnectionRejected;
 
     public void StartHost(int port)
@@ -104,7 +109,8 @@ public class LiteNetTransport : INetworkTransport, INetEventListener
         string key;
         try
         { key = request.Data.GetString(); }
-        catch { request.Reject(); return; }
+        catch { request.Reject();
+            return; }
 
         if (key != NetworkConfig.ConnectionKey)
         {
@@ -125,6 +131,8 @@ public class LiteNetTransport : INetworkTransport, INetEventListener
     }
 
     public void OnNetworkError(System.Net.IPEndPoint endPoint, System.Net.Sockets.SocketError socketError) { }
+
     public void OnNetworkReceiveUnconnected(System.Net.IPEndPoint remoteEndPoint, NetPacketReader reader, UnconnectedMessageType messageType) { }
+
     public void OnNetworkLatencyUpdate(NetPeer peer, int latency) { }
 }

@@ -1,4 +1,3 @@
-
 using System;
 using Multipeglin.Events.Handlers.Coop;
 using Multipeglin.Events.Network.Coop;
@@ -11,6 +10,7 @@ using UnityEngine.UI;
 using BattleCtrl = global::Battle.BattleController;
 
 namespace Multipeglin.UI;
+
 /// <summary>
 /// Screen-space Skip Turn button shown during battle when it's the local
 /// player's turn. Host click runs CoopSubscriptions.SkipCurrentTurn directly;
@@ -40,7 +40,8 @@ public sealed class SkipTurnButton : MonoBehaviour
     private void Update()
     {
         if (MultiplayerPlugin.Services == null)
-        { SetVisible(false); return; }
+        { SetVisible(false);
+            return; }
 
         if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode))
         {
@@ -49,7 +50,8 @@ public sealed class SkipTurnButton : MonoBehaviour
         }
 
         if (!mode.IsHosting && !mode.IsSpectating)
-        { SetVisible(false); return; }
+        { SetVisible(false);
+            return; }
 
         bool myTurn;
         if (mode.IsHosting)
@@ -57,10 +59,12 @@ public sealed class SkipTurnButton : MonoBehaviour
             // Host: gate on local BattleController + TurnManager (both local authority).
             var inBattle = BattleCtrl.CurrentBattleState == BattleCtrl.BattleState.AWAITING_SHOT;
             if (!inBattle)
-            { SetVisible(false); return; }
+            { SetVisible(false);
+                return; }
 
             if (!MultiplayerPlugin.Services.TryResolve<GameState.TurnManager>(out var tm))
-            { SetVisible(false); return; }
+            { SetVisible(false);
+                return; }
 
             myTurn = tm.Phase == GameState.TurnPhase.PLAYER_AIMING && tm.CurrentPlayerSlot == 0;
         }
@@ -104,7 +108,8 @@ public sealed class SkipTurnButton : MonoBehaviour
             foreach (var tmp in FindObjectsOfType<TextMeshProUGUI>())
             {
                 if (tmp.font != null)
-                { _font = tmp.font; break; }
+                { _font = tmp.font;
+                    break; }
             }
         }
         catch { }

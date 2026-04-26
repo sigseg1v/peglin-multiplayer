@@ -18,8 +18,10 @@ namespace Multipeglin;
 public class MultiplayerPlugin : BaseUnityPlugin
 {
     public static MultiplayerPlugin Instance { get; private set; }
+
     public static IServiceContainer Services { get; private set; }
-    public new static ManualLogSource Logger { get; private set; }
+
+    public static new ManualLogSource Logger { get; private set; }
 
     /// <summary>
     /// Patch targets that were declared but not found at runtime.

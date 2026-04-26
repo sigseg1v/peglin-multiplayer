@@ -1,10 +1,10 @@
-
 using System;
 using Multipeglin.Events.Network.Ball;
 using Multipeglin.GameState;
 using Multipeglin.Multiplayer;
 
 namespace Multipeglin.Events.Handlers.Ball;
+
 public sealed class ShotFiredClientHandler : IClientHandler<ShotFiredEvent>
 {
     public void Handle(ShotFiredEvent e)

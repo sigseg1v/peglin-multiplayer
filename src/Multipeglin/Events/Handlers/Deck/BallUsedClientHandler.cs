@@ -1,4 +1,3 @@
-
 using System;
 using DG.Tweening;
 using HarmonyLib;
@@ -7,6 +6,7 @@ using Multipeglin.Multiplayer;
 using UnityEngine;
 
 namespace Multipeglin.Events.Handlers.Deck;
+
 public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
 {
     public void Handle(BallUsedEvent e)

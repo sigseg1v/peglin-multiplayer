@@ -63,7 +63,8 @@ public sealed class BallSubscriptions
                 var playerField = HarmonyLib.AccessTools.Field(typeof(Battle.BattleController), "_playerTransform");
                 var pt = playerField?.GetValue(bc) as Transform;
                 if (pt != null)
-                { spawnX = pt.position.x; spawnY = pt.position.y; }
+                { spawnX = pt.position.x;
+                    spawnY = pt.position.y; }
             }
         }
         catch { }

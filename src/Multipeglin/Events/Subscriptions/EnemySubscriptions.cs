@@ -178,7 +178,7 @@ public sealed class EnemySubscriptions
 
         // OnEnemyKilled only provides locKey, not the Enemy object.
         // Try to find the GUID by scanning enemies with this locKey that are dead/dying.
-        var guid = "";
+        var guid = string.Empty;
         var enemies = UnityEngine.Object.FindObjectsOfType<Enemy>();
         foreach (var e in enemies)
         {

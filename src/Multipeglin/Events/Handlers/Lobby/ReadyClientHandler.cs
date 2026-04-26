@@ -1,8 +1,8 @@
-
 using Multipeglin.Events.Network.Lobby;
 using Multipeglin.Multiplayer;
 
 namespace Multipeglin.Events.Handlers.Lobby;
+
 public sealed class ReadyClientHandler : IClientHandler<ReadyEvent>
 {
     public void Handle(ReadyEvent networkEvent)

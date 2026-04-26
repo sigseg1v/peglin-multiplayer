@@ -36,12 +36,12 @@ public class GameStateApplyService
     private readonly PegIdentifier _pegId;
 
     // --- Authoritative host state ---
-    private string _hostScene = "";
+    private string _hostScene = string.Empty;
     private long _hostSceneTimestamp;
 
     // --- Pending snapshot for a scene the client is transitioning to ---
     private FullGameStateSnapshot _pendingSnapshot;
-    private string _pendingSnapshotScene = "";
+    private string _pendingSnapshotScene = string.Empty;
 
     // --- Individual buffered snapshots (for partial updates) ---
     private PlayerStateSnapshot _latestPlayer;
@@ -73,10 +73,10 @@ public class GameStateApplyService
     /// </summary>
     public void Reset()
     {
-        _hostScene = "";
+        _hostScene = string.Empty;
         _hostSceneTimestamp = 0;
         _pendingSnapshot = null;
-        _pendingSnapshotScene = "";
+        _pendingSnapshotScene = string.Empty;
         _latestPlayer = null;
         _latestMap = null;
         _latestFullSnapshot = null;
@@ -254,7 +254,7 @@ public class GameStateApplyService
             _log.LogInfo($"[ApplyService] Applying PENDING snapshot for '{scene.name}' (queued while transitioning)");
             var pending = _pendingSnapshot;
             _pendingSnapshot = null;
-            _pendingSnapshotScene = "";
+            _pendingSnapshotScene = string.Empty;
 
             // Apply after a short delay for scene init
             var dispatcher = MultiplayerPlugin.Services?.TryResolve<MainThreadDispatcher>(out var d) == true ? d : null;
@@ -275,7 +275,7 @@ public class GameStateApplyService
     public void ApplyAll(FullGameStateSnapshot snapshot)
     {
         var clientScene = SceneManager.GetActiveScene().name;
-        var hostScene = snapshot.Map?.ActiveScene ?? "";
+        var hostScene = snapshot.Map?.ActiveScene ?? string.Empty;
 
         // Update authoritative host scene
         _hostScene = hostScene;
@@ -468,7 +468,7 @@ public class GameStateApplyService
             _log.LogInfo($"[ApplyService] Pending snapshot arrived during wait — applying now");
             var pending = _pendingSnapshot;
             _pendingSnapshot = null;
-            _pendingSnapshotScene = "";
+            _pendingSnapshotScene = string.Empty;
 
             if (pending.Map != null)
             {
@@ -676,7 +676,7 @@ public class GameStateApplyService
                 try
                 {
                     var mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
-                    var battleState = snapshot.Enemies?.BattleStateName ?? "";
+                    var battleState = snapshot.Enemies?.BattleStateName ?? string.Empty;
                     var hostWantsMyShot = snapshot.ActivePlayerSlot == mySlot
                         && (battleState == "AWAITING_SHOT" || battleState == "SPAWNING");
 
@@ -693,10 +693,10 @@ public class GameStateApplyService
                     }
                     // If the heartbeat says it's NOT my turn but the client thinks it is, fix it
                     else if (!hostWantsMyShot && currentlyMyTurn
-                        && battleState != "" && battleState != "SHOULD_SPAWN")
+                        && battleState != string.Empty && battleState != "SHOULD_SPAWN")
                     {
                         Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn = false;
-                        Events.Handlers.Coop.TurnChangeClientHandler.TurnMessage = "";
+                        Events.Handlers.Coop.TurnChangeClientHandler.TurnMessage = string.Empty;
                     }
                 }
                 catch (Exception ex)
@@ -745,7 +745,7 @@ public class GameStateApplyService
                 }
             }
 
-            _log.LogInfo($"[ApplyService] Non-battle scene '{currentScene}': applied player/deck/relics, skipped enemies/pegs{(isCoop ? " (coop: own relics applied)" : "")}");
+            _log.LogInfo($"[ApplyService] Non-battle scene '{currentScene}': applied player/deck/relics, skipped enemies/pegs{(isCoop ? " (coop: own relics applied)" : string.Empty)}");
         }
 
         // TextScenario spectator UI — driven by heartbeat
@@ -1325,7 +1325,7 @@ public class GameStateApplyService
 
                 // Slot-keyed deterministic RNG so each slot picks differently and
                 // the same slot is reproducible across host/client.
-                var rngSeed = unchecked(((StaticGameData.currentSeed ?? "").GetHashCode() ^ (slot * 7919) ^ (StaticGameData.totalFloorCount * 104729)));
+                var rngSeed = unchecked((StaticGameData.currentSeed ?? string.Empty).GetHashCode() ^ (slot * 7919) ^ (StaticGameData.totalFloorCount * 104729));
                 var sysRng = new System.Random(rngSeed);
 
                 // Determine rarity: COMMON or RARE based on the same baseRareChance.

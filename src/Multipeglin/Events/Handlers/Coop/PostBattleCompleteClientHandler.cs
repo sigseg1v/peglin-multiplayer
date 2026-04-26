@@ -109,7 +109,7 @@ public sealed class PostBattleCompleteClientHandler : IClientHandler<PostBattleC
             // Battle deck and shuffled order will be rebuilt at the start of the next battle
             playerState.BattleDeck.Clear();
             playerState.ShuffledOrder.Clear();
-            playerState.CurrentOrb = "";
+            playerState.CurrentOrb = string.Empty;
 
             // Add the chosen boss/rare relic to the player's relic list
             if (networkEvent.ChosenRelicEffect >= 0)

@@ -56,6 +56,7 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         public float? PlayerPosX;
         public float? PlayerPosY;
     }
+
     private static readonly Dictionary<string, CachedMapState> _mapStateCache =
         new Dictionary<string, CachedMapState>(StringComparer.OrdinalIgnoreCase);
 
@@ -404,7 +405,8 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                         for (var i = 0; i < prev.Count; i++)
                         {
                             if (prev[i] != snapshot.SeededShopRelicEffects[i])
-                            { changed = true; break; }
+                            { changed = true;
+                                break; }
                         }
                     }
 
@@ -429,7 +431,7 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         // so we must cache them BEFORE the scene unloads for the Battle transition.
         CacheMapBattlesFromController();
 
-        var seed = snapshot.CurrentSeed ?? "";
+        var seed = snapshot.CurrentSeed ?? string.Empty;
         StaticGameData.currentSeed = seed;
         StaticGameData.seedSet = true;
         StaticGameData.totalFloorCount = snapshot.TotalFloorCount;
@@ -770,7 +772,8 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
 
                         var d = Vector3.SqrMagnitude(node.transform.position - target);
                         if (d < closestDist)
-                        { closestDist = d; closest = node; }
+                        { closestDist = d;
+                            closest = node; }
                     }
 
                     if (closest != null)
@@ -1140,7 +1143,8 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
 
                 var d = Vector3.SqrMagnitude(node.transform.position - targetPos);
                 if (d < closestDist)
-                { closestDist = d; closest = node; }
+                { closestDist = d;
+                    closest = node; }
             }
 
             if (closest != null)

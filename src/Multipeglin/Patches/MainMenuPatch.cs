@@ -13,6 +13,7 @@ namespace Multipeglin.Patches;
 public static class MenuButtonInjector
 {
     private static ManualLogSource Log => MultiplayerPlugin.Logger;
+
     private static GameObject _multiplayerButton;
 
     public static void InjectIfNeeded()
@@ -116,7 +117,8 @@ public static class PlayButtonAwakePatch
 public class SceneWatcher : MonoBehaviour
 {
     private static ManualLogSource Log => MultiplayerPlugin.Logger;
-    private string _lastScene = "";
+
+    private string _lastScene = string.Empty;
 
     private void OnEnable()
     {

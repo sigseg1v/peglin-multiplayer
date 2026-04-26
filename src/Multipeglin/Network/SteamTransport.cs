@@ -37,15 +37,21 @@ public class SteamTransport : ISteamTransport
     private byte[] _recvBuffer = new byte[1200];
 
     public bool IsHost => _isHost;
+
     public bool IsConnected => _peerIdByCSteamId.Count > 0;
+
     public IReadOnlyList<int> ConnectedPeerIds => _peerIdByCSteamId.Values.ToList();
 
     public event Action<int, byte[]> OnDataReceived;
+
     public event Action<int> OnClientConnected;
+
     public event Action<int> OnDisconnected;
+
     public event Action<string> OnConnectionRejected;
 
     public CSteamID HostedLobbyId => _lobbyId;
+
     // Fires when Steam delivers an incoming lobby join request (friend invite
     // or "Join Game" overlay click). Arg = the lobby CSteamID to join.
     // The transport does NOT auto-join — the UI layer decides whether to

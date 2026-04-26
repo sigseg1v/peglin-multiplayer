@@ -1,9 +1,9 @@
-
 using System;
 using Multipeglin.Events.Network.Ball;
 using UnityEngine;
 
 namespace Multipeglin.Events.Handlers.Ball;
+
 public sealed class BallWallBounceClientHandler : IClientHandler<BallWallBounceEvent>
 {
     public void Handle(BallWallBounceEvent networkEvent)

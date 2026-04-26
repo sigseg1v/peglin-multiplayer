@@ -1,4 +1,3 @@
-
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -10,6 +9,7 @@ using Multipeglin.Multiplayer;
 using UnityEngine;
 
 namespace Multipeglin.Events.Handlers.Battle;
+
 public sealed class AttackStartedClientHandler : IClientHandler<AttackStartedEvent>
 {
     // Per-shot events arrive back-to-back during a coop attack phase. We queue

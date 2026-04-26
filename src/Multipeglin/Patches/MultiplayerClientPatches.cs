@@ -592,7 +592,8 @@ public static class MultiplayerClientPatches
         }
 
         if (_clientTrajectoryGO != null)
-        { UnityEngine.Object.Destroy(_clientTrajectoryGO); _clientTrajectoryGO = null; }
+        { UnityEngine.Object.Destroy(_clientTrajectoryGO);
+            _clientTrajectoryGO = null; }
 
         _clientTrajectoryLR = null;
         _clientBallInitialized = false;
@@ -1394,7 +1395,8 @@ public static class MultiplayerClientPatches
                 {
                     var existing = coopState.GetPlayerState(player.SlotIndex);
                     if (existing == null || !existing.IsInitialized)
-                    { needsInit = true; break; }
+                    { needsInit = true;
+                        break; }
                 }
             }
 
@@ -1484,7 +1486,8 @@ public static class MultiplayerClientPatches
                     {
                         MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches]   classLoadout: {pair.Class} orbs={pair.Loadout?.StartingOrbs?.Count ?? 0}");
                         if (pair.Class == targetClass)
-                        { loadout = pair.Loadout; break; }
+                        { loadout = pair.Loadout;
+                            break; }
                     }
                 }
                 else
@@ -1530,7 +1533,7 @@ public static class MultiplayerClientPatches
                         playerState.OwnedRelics.Add(new GameState.SerializedRelic
                         {
                             Effect = (int)relic.effect,
-                            LocKey = relic.locKey ?? "",
+                            LocKey = relic.locKey ?? string.Empty,
                             Rarity = (int)relic.globalRarity,
                         });
                     }
@@ -1684,7 +1687,7 @@ public static class MultiplayerClientPatches
                             var relics = rm.GetMultipleRelicsOffOfQueue(3, Relics.RelicRarity.COMMON);
                             foreach (var relic in relics)
                             {
-                                var displayName = "";
+                                var displayName = string.Empty;
                                 try
                                 {
                                     displayName = LocalizationManager.GetTranslation(relic.nameKey);
@@ -1695,16 +1698,16 @@ public static class MultiplayerClientPatches
                                 }
                                 catch { displayName = relic.englishDisplayName ?? relic.locKey ?? "Unknown"; }
 
-                                var description = "";
+                                var description = string.Empty;
                                 try
                                 {
                                     description = LocalizationManager.GetTranslation(relic.descKey);
                                     if (string.IsNullOrEmpty(description))
                                     {
-                                        description = relic.locKey ?? "";
+                                        description = relic.locKey ?? string.Empty;
                                     }
                                 }
-                                catch { description = relic.locKey ?? ""; }
+                                catch { description = relic.locKey ?? string.Empty; }
 
                                 choices.Add(new GameState.Snapshots.RelicEntry
                                 {
@@ -1739,7 +1742,7 @@ public static class MultiplayerClientPatches
                         var relics2 = rm.GetMultipleRelicsOffOfQueue(3, Relics.RelicRarity.COMMON);
                         foreach (var relic in relics2)
                         {
-                            var displayName2 = "";
+                            var displayName2 = string.Empty;
                             try
                             {
                                 displayName2 = LocalizationManager.GetTranslation(relic.nameKey);
@@ -1750,16 +1753,16 @@ public static class MultiplayerClientPatches
                             }
                             catch { displayName2 = relic.englishDisplayName ?? relic.locKey ?? "Unknown"; }
 
-                            var description2 = "";
+                            var description2 = string.Empty;
                             try
                             {
                                 description2 = LocalizationManager.GetTranslation(relic.descKey);
                                 if (string.IsNullOrEmpty(description2))
                                 {
-                                    description2 = relic.locKey ?? "";
+                                    description2 = relic.locKey ?? string.Empty;
                                 }
                             }
-                            catch { description2 = relic.locKey ?? ""; }
+                            catch { description2 = relic.locKey ?? string.Empty; }
 
                             hostChoices.Add(new GameState.Snapshots.RelicEntry
                             {
@@ -2027,7 +2030,8 @@ public static class MultiplayerClientPatches
                             {
                                 var go = spawn.spawnData.enemyAssetReference.LoadAssetAsync<GameObject>().WaitForCompletion();
                                 if (go != null)
-                                { cache[key] = go; loaded++; }
+                                { cache[key] = go;
+                                    loaded++; }
                             }
                         }
                         catch { }
@@ -3936,7 +3940,7 @@ public static class MultiplayerClientPatches
             LastAttackAnimTrigger = attack?.PeglinAttackAnimationTrigger ?? "attack";
             LastAttackNumPegsHit = numPegsHitThisShot;
             LastAttackIsCrit = criticalHitCount > 0;
-            LastAttackOrbName = attack?.gameObject?.name?.Replace("(Clone)", "").Trim();
+            LastAttackOrbName = attack?.gameObject?.name?.Replace("(Clone)", string.Empty).Trim();
 
             if (target != null)
             {
@@ -4415,10 +4419,10 @@ public static class MultiplayerClientPatches
 
             var count = System.Math.Max(1, __instance.numberOfRewards);
             var take = System.Math.Min(count, sorted.Count);
-            var seed = unchecked(((StaticGameData.currentSeed ?? "").GetHashCode()
+            var seed = unchecked((StaticGameData.currentSeed ?? string.Empty).GetHashCode()
                 ^ (mySlot * 7919)
                 ^ (StaticGameData.totalFloorCount * 104729)
-                ^ 0x4F2BD17));
+                ^ 0x4F2BD17);
             var rng = new System.Random(seed);
 
             var rewards = new System.Collections.Generic.List<Peglin.PegMinigame.Reward>();
@@ -4639,7 +4643,7 @@ public static class MultiplayerClientPatches
                     var reward = ____mapData.Rewards[__state];
                     if (reward is Peglin.PegMinigame.OrbReward orbReward && orbReward.Orb != null)
                     {
-                        evt.ChosenOrbPrefabName = orbReward.Orb.name.Replace("(Clone)", "").Trim();
+                        evt.ChosenOrbPrefabName = orbReward.Orb.name.Replace("(Clone)", string.Empty).Trim();
                         evt.OrbLevel = orbReward.Orb.GetComponent<Battle.Attacks.Attack>()?.Level ?? 0;
                         MultiplayerPlugin.Logger?.LogInfo(
                             $"[CoopReward] PegMinigame client: chose orb '{evt.ChosenOrbPrefabName}' (lvl={evt.OrbLevel})");
@@ -4781,7 +4785,7 @@ public static class MultiplayerClientPatches
                     var nextLevel = orbPrefab?.GetComponent<Battle.Attacks.Attack>()?.NextLevelPrefab;
                     if (nextLevel != null)
                     {
-                        var newName = nextLevel.name.Replace("(Clone)", "").Trim();
+                        var newName = nextLevel.name.Replace("(Clone)", string.Empty).Trim();
                         var newLevel = nextLevel.GetComponent<Battle.Attacks.Attack>()?.Level ?? (orbToUpgrade.Level + 1);
                         kvp.Value.CompleteDeck[idx] = new GameState.SerializedOrb
                         {
@@ -4862,7 +4866,8 @@ public static class MultiplayerClientPatches
                 foreach (var r in kvp.Value.OwnedRelics)
                 {
                     if (r.Effect == (int)relic.effect)
-                    { alreadyOwns = true; break; }
+                    { alreadyOwns = true;
+                        break; }
                 }
 
                 if (alreadyOwns)
@@ -4873,7 +4878,7 @@ public static class MultiplayerClientPatches
                 kvp.Value.OwnedRelics.Add(new GameState.SerializedRelic
                 {
                     Effect = (int)relic.effect,
-                    LocKey = relic.locKey ?? "",
+                    LocKey = relic.locKey ?? string.Empty,
                     Rarity = (int)relic.globalRarity,
                 });
                 MultiplayerPlugin.Logger?.LogInfo(
@@ -6131,7 +6136,7 @@ public static class MultiplayerClientPatches
                     }
 
                     var attack = orbGo.GetComponent<Battle.Attacks.Attack>();
-                    var prefabName = orbGo.name.Replace("(Clone)", "").Trim();
+                    var prefabName = orbGo.name.Replace("(Clone)", string.Empty).Trim();
                     var guid = orbId?.GetGuid(orbGo);
                     evt.CompleteDeck.Add(new GameState.SerializedOrb
                     {
@@ -6393,7 +6398,7 @@ public static class MultiplayerClientPatches
                 // Get the orb prefab name from the PurchasableOrb via reflection
                 var prefabField = HarmonyLib.AccessTools.Field(typeof(Scenarios.Shop.PurchasableOrb), "_orbPrefab");
                 var prefab = prefabField?.GetValue(orbItem) as UnityEngine.GameObject;
-                purchase.Name = prefab?.name?.Replace("(Clone)", "").Trim() ?? "unknown";
+                purchase.Name = prefab?.name?.Replace("(Clone)", string.Empty).Trim() ?? "unknown";
                 purchase.Cost = item.GetCost();
             }
             else if (item is Scenarios.Shop.PurchasableRelic relicItem)
@@ -6720,6 +6725,7 @@ public static class MultiplayerClientPatches
 
     private static readonly System.Reflection.FieldInfo _bombsRegularField =
         AccessTools.Field(typeof(BattleController), "_bombsToThrowRegular");
+
     private static readonly System.Reflection.FieldInfo _bombsRiggedField =
         AccessTools.Field(typeof(BattleController), "_bombsToThrowRigged");
 
@@ -6854,7 +6860,7 @@ public static class MultiplayerClientPatches
             int pick;
             if (slotIndex >= 0)
             {
-                var seed = unchecked(((StaticGameData.currentSeed ?? "").GetHashCode() ^ (slotIndex * 7919) ^ ((int)rarity * 31) ^ (StaticGameData.totalFloorCount * 104729)));
+                var seed = unchecked((StaticGameData.currentSeed ?? string.Empty).GetHashCode() ^ (slotIndex * 7919) ^ ((int)rarity * 31) ^ (StaticGameData.totalFloorCount * 104729));
                 pick = new System.Random(seed).Next(0, candidates.Count);
             }
             else
@@ -6934,10 +6940,10 @@ public static class MultiplayerClientPatches
 
             candidates.Sort((a, b) => string.CompareOrdinal(a?.name, b?.name));
 
-            var seed = unchecked(((StaticGameData.currentSeed ?? "").GetHashCode()
+            var seed = unchecked((StaticGameData.currentSeed ?? string.Empty).GetHashCode()
                 ^ (slotIndex * 7919)
                 ^ ((int)rarity * 31)
-                ^ (StaticGameData.totalFloorCount * 104729)));
+                ^ (StaticGameData.totalFloorCount * 104729));
             var rng = new System.Random(seed);
             // Fisher-Yates partial shuffle for the first `count` slots.
             var take = System.Math.Min(count, candidates.Count);
@@ -7221,7 +7227,8 @@ public static class MultiplayerClientPatches
                 foreach (var b in potentialDownButtons)
                 {
                     if (b != null && b.gameObject.activeInHierarchy)
-                    { selectOnDown = b; break; }
+                    { selectOnDown = b;
+                        break; }
                 }
             }
 
@@ -7311,7 +7318,8 @@ public static class MultiplayerClientPatches
                 foreach (var go in pool)
                 {
                     if (go != null && go.name == name)
-                    { found = go; break; }
+                    { found = go;
+                        break; }
                 }
 
                 if (found != null)
@@ -7331,7 +7339,8 @@ public static class MultiplayerClientPatches
                     }
 
                     if (attack.gameObject.name == name)
-                    { found = attack.gameObject; break; }
+                    { found = attack.gameObject;
+                        break; }
                 }
             }
 

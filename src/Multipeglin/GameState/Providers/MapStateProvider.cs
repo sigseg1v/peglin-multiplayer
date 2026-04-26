@@ -42,7 +42,7 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
 
             var snapshot = new MapStateSnapshot
             {
-                CurrentSeed = StaticGameData.currentSeed ?? "",
+                CurrentSeed = StaticGameData.currentSeed ?? string.Empty,
                 TotalFloorCount = StaticGameData.totalFloorCount,
                 ChosenClass = (int)StaticGameData.chosenClass,
                 ChosenClassName = StaticGameData.chosenClass.ToString(),
@@ -140,7 +140,7 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
                     var rarities = new System.Collections.Generic.List<int>();
                     foreach (var entry in shopNode.shopOrbs)
                     {
-                        names.Add(entry.orb != null ? entry.orb.name : "");
+                        names.Add(entry.orb != null ? entry.orb.name : string.Empty);
                         rarities.Add((int)entry.orbRarity);
                     }
 

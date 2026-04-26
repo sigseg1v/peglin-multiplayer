@@ -14,6 +14,8 @@ namespace Multipeglin.Events.Network.Coop;
 public class PostBattleGoldSpentEvent
 {
     public int Amount { get; set; }
+
     public float CurrentHealth { get; set; }
+
     public float MaxHealth { get; set; }
 }

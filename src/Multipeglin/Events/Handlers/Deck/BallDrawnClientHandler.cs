@@ -1,10 +1,10 @@
-
 using System;
 using Multipeglin.Events.Network.Deck;
 using Multipeglin.Multiplayer;
 using UnityEngine;
 
 namespace Multipeglin.Events.Handlers.Deck;
+
 public sealed class BallDrawnClientHandler : IClientHandler<BallDrawnEvent>
 {
     public void Handle(BallDrawnEvent e)

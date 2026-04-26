@@ -1,10 +1,10 @@
-
 using System;
 using Multipeglin.Events.Network.Peg;
 using Multipeglin.Multiplayer;
 using Multipeglin.Utility;
 
 namespace Multipeglin.Events.Handlers.Peg;
+
 public sealed class PegDestroyedClientHandler : IClientHandler<PegDestroyedEvent>
 {
     public void Handle(PegDestroyedEvent networkEvent)

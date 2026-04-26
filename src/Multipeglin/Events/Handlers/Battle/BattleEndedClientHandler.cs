@@ -1,10 +1,10 @@
-
 using System;
 using global::Battle;
 using Multipeglin.Events.Network.Battle;
 using Multipeglin.Utility;
 
 namespace Multipeglin.Events.Handlers.Battle;
+
 public sealed class BattleEndedClientHandler : IClientHandler<BattleEndedEvent>
 {
     public void Handle(BattleEndedEvent networkEvent)

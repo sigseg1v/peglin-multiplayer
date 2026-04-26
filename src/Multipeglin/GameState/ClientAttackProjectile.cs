@@ -105,21 +105,25 @@ public class ClientAttackProjectile : MonoBehaviour
         PeglinBattleAnimationController.OnFirePoint -= OnFirePoint;
 
         if (string.IsNullOrEmpty(_targetEnemyGuid))
-        { IsAttacking = false; return; }
+        { IsAttacking = false;
+            return; }
 
         var enemyId = MultiplayerPlugin.Services?.TryResolve<EnemyIdentifier>(out var eid) == true ? eid : null;
         var enemy = enemyId?.Find(_targetEnemyGuid);
         if (enemy == null)
-        { IsAttacking = false; return; }
+        { IsAttacking = false;
+            return; }
 
         var bc = Object.FindObjectOfType<Battle.BattleController>();
         if (bc == null)
-        { IsAttacking = false; return; }
+        { IsAttacking = false;
+            return; }
 
         var playerField = AccessTools.Field(typeof(Battle.BattleController), "_playerTransform");
         var playerTransform = playerField?.GetValue(bc) as Transform;
         if (playerTransform == null)
-        { IsAttacking = false; return; }
+        { IsAttacking = false;
+            return; }
 
         StartCoroutine(LaunchProjectile(playerTransform.position, enemy));
     }
@@ -234,7 +238,7 @@ public class ClientAttackProjectile : MonoBehaviour
         foreach (var beh in go.GetComponentsInChildren<MonoBehaviour>(includeInactive: true))
         {
             // Kill anything in the Battle.Attacks namespace except what we need for visuals.
-            var ns = beh?.GetType().Namespace ?? "";
+            var ns = beh?.GetType().Namespace ?? string.Empty;
             if (ns.StartsWith("Battle.Attacks"))
             {
                 Destroy(beh);
@@ -279,7 +283,7 @@ public class ClientAttackProjectile : MonoBehaviour
             return null;
         }
 
-        var key = orbName.Replace("(Clone)", "").Trim() + (isCrit ? "#crit" : "#normal");
+        var key = orbName.Replace("(Clone)", string.Empty).Trim() + (isCrit ? "#crit" : "#normal");
         if (_shotCache.TryGetValue(key, out var cached))
         {
             return cached;
@@ -290,11 +294,13 @@ public class ClientAttackProjectile : MonoBehaviour
         {
             var orbGo = FindOrbPrefab(orbName);
             if (orbGo == null)
-            { _shotCache[key] = null; return null; }
+            { _shotCache[key] = null;
+                return null; }
 
             var pa = orbGo.GetComponent<Battle.Attacks.ProjectileAttack>();
             if (pa == null)
-            { _shotCache[key] = null; return null; }
+            { _shotCache[key] = null;
+                return null; }
 
             var primaryField = isCrit ? "_criticalShotPrefab" : "_shotPrefab";
             var shotGo = AccessTools.Field(typeof(Battle.Attacks.ProjectileAttack), primaryField)
@@ -306,11 +312,13 @@ public class ClientAttackProjectile : MonoBehaviour
             }
 
             if (shotGo == null)
-            { _shotCache[key] = null; return null; }
+            { _shotCache[key] = null;
+                return null; }
 
             var sb = shotGo.GetComponent<Battle.Attacks.ShotBehavior>();
             if (sb == null)
-            { _shotCache[key] = null; return null; }
+            { _shotCache[key] = null;
+                return null; }
 
             Vector3 minSize = (Vector3)(AccessTools.Field(typeof(Battle.Attacks.ShotBehavior), "_minSize")
                 ?.GetValue(sb) ?? DefaultMinSize);
@@ -344,7 +352,7 @@ public class ClientAttackProjectile : MonoBehaviour
 
     private static GameObject FindOrbPrefab(string orbName)
     {
-        var cleanName = orbName.Replace("(Clone)", "").Trim();
+        var cleanName = orbName.Replace("(Clone)", string.Empty).Trim();
 
         var loader = Loading.AssetLoading.Instance;
         var prefab = loader?.GetOrbPrefab(cleanName);
@@ -359,7 +367,7 @@ public class ClientAttackProjectile : MonoBehaviour
         {
             foreach (var orb in dm.battleDeck)
             {
-                if (orb != null && orb.name.Replace("(Clone)", "").Trim() == cleanName)
+                if (orb != null && orb.name.Replace("(Clone)", string.Empty).Trim() == cleanName)
                 {
                     return orb;
                 }

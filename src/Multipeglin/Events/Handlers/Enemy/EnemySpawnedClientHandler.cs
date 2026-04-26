@@ -1,8 +1,8 @@
-
 using System;
 using Multipeglin.Events.Network.Enemy;
 
 namespace Multipeglin.Events.Handlers.Enemy;
+
 public sealed class EnemySpawnedClientHandler : IClientHandler<EnemySpawnedEvent>
 {
     public void Handle(EnemySpawnedEvent networkEvent)

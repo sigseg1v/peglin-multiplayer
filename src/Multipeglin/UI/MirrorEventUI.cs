@@ -221,8 +221,8 @@ public static class MirrorEventUI
 
                 var attack = orbGo.GetComponent<Attack>();
                 var orbName = attack != null ? attack.GetNameWithLevel() : orbGo.name;
-                var prefabName = orbGo.name.Replace("(Clone)", "").Trim();
-                var guid = orbId?.GetGuid(orbGo) ?? "";
+                var prefabName = orbGo.name.Replace("(Clone)", string.Empty).Trim();
+                var guid = orbId?.GetGuid(orbGo) ?? string.Empty;
 
                 CreateOrbButton(contentObj.transform, i, orbName, prefabName, guid);
             }

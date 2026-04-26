@@ -1,4 +1,3 @@
-
 using System;
 using System.Linq;
 using Multipeglin.Events.Network.Lobby;
@@ -6,6 +5,7 @@ using Multipeglin.Multiplayer;
 using Multipeglin.UI;
 
 namespace Multipeglin.Events.Handlers.Lobby;
+
 /// <summary>
 /// Client receives GameStartEvent: set the local player's class in StaticGameData,
 /// store the final player list, and prepare for game start.

@@ -14,5 +14,6 @@ public class PostBattleRelicChoicesEvent
 public class RelicChoiceEntry
 {
     public int Effect { get; set; }
+
     public string LocKey { get; set; }
 }

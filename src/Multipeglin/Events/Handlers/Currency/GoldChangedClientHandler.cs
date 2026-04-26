@@ -1,9 +1,9 @@
-
 using System;
 using HarmonyLib;
 using Multipeglin.Events.Network.Currency;
 
 namespace Multipeglin.Events.Handlers.Currency;
+
 public sealed class GoldChangedClientHandler : IClientHandler<GoldChangedEvent>
 {
     public void Handle(GoldChangedEvent networkEvent)
@@ -36,7 +36,7 @@ public sealed class GoldChangedClientHandler : IClientHandler<GoldChangedEvent>
                 return;
             }
 
-            MultiplayerPlugin.Logger.LogInfo($"Multiplayer: Gold changed {networkEvent.PreviousAmount} -> {networkEvent.NewAmount} ({(networkEvent.IsGain ? "+" : "")}{networkEvent.Delta})");
+            MultiplayerPlugin.Logger.LogInfo($"Multiplayer: Gold changed {networkEvent.PreviousAmount} -> {networkEvent.NewAmount} ({(networkEvent.IsGain ? "+" : string.Empty)}{networkEvent.Delta})");
 
             var cm = UnityEngine.Object.FindObjectOfType<global::Currency.CurrencyManager>();
             if (cm != null)

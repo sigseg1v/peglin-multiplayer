@@ -1,10 +1,10 @@
-
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace Multipeglin.UI;
+
 /// <summary>
 /// Renders persistent damage preview text above enemies during coop battles.
 /// Shows each player's accumulating damage above their targeted enemy as pegs
@@ -14,6 +14,7 @@ namespace Multipeglin.UI;
 public sealed class PendingDamageOverlay : MonoBehaviour
 {
     private static PendingDamageOverlay _instance;
+
     public static PendingDamageOverlay Instance => _instance;
 
     private GameObject _canvasObj;
@@ -43,12 +44,12 @@ public sealed class PendingDamageOverlay : MonoBehaviour
         public TextMeshProUGUI Label;
     }
 
-    void Awake()
+    private void Awake()
     {
         _instance = this;
     }
 
-    void OnDestroy()
+    private void OnDestroy()
     {
         if (_instance == this)
         {
@@ -58,7 +59,7 @@ public sealed class PendingDamageOverlay : MonoBehaviour
         DestroyCanvas();
     }
 
-    void LateUpdate()
+    private void LateUpdate()
     {
         if (_panels.Count == 0)
         {
@@ -368,7 +369,8 @@ public sealed class PendingDamageOverlay : MonoBehaviour
             foreach (var tmp in FindObjectsOfType<TextMeshProUGUI>())
             {
                 if (tmp.font != null)
-                { _gameFont = tmp.font; break; }
+                { _gameFont = tmp.font;
+                    break; }
             }
         }
         catch { }

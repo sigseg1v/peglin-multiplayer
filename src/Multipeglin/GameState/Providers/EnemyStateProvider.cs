@@ -163,7 +163,7 @@ public class EnemyStateProvider : IGameStateProvider<EnemyStateSnapshot>
                             ? string.Join(",", entry.StatusEffects.ConvertAll(e => $"{e.EffectName}={e.Intensity}"))
                             : "none";
                         var shieldStr = entry.HasShield
-                            ? $" shield={entry.ShieldCurrentHealth:F0}/{entry.ShieldMaxHealth:F0}{(entry.ShieldActive ? "" : " (dead)")}"
+                            ? $" shield={entry.ShieldCurrentHealth:F0}/{entry.ShieldMaxHealth:F0}{(entry.ShieldActive ? string.Empty : " (dead)")}"
                             : string.Empty;
                         _log.LogInfo($"[EnemyProvider] Captured enemy: guid={guid} loc={entry.LocKey} name={entry.EnemyName} " +
                             $"hp={entry.CurrentHealth}/{entry.MaxHealth} pos=({entry.PosX:F1},{entry.PosY:F1}) slot={i} effects=[{effectStr}]{shieldStr}");

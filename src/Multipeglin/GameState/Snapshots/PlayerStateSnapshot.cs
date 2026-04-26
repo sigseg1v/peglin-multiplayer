@@ -11,16 +11,23 @@ public class PlayerStateSnapshot
     public int ActiveSlotIndex { get; set; } = -1;
 
     public float CurrentHealth { get; set; }
+
     public float MaxHealth { get; set; }
+
     public int Gold { get; set; }
+
     public List<StatusEffectEntry> StatusEffects { get; set; } = new List<StatusEffectEntry>();
+
     public bool IsSpedUp { get; set; }
+
     public float SpeedupLevel { get; set; } = 2f;
 }
 
 public class StatusEffectEntry
 {
     public int EffectType { get; set; }
+
     public string EffectName { get; set; }
+
     public int Intensity { get; set; }
 }

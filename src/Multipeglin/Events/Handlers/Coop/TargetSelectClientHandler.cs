@@ -1,10 +1,10 @@
-
 using System;
 using Multipeglin.Events.Network.Coop;
 using Multipeglin.Multiplayer;
 using Multipeglin.Utility;
 
 namespace Multipeglin.Events.Handlers.Coop;
+
 /// <summary>
 /// On host: receives a client's target selection and toggles a visual
 /// targeting indicator on the selected enemy. This lets the host see

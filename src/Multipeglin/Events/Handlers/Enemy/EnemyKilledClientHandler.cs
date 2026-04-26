@@ -1,10 +1,10 @@
-
 using System;
 using Multipeglin.Events.Network.Enemy;
 using Multipeglin.Multiplayer;
 using Multipeglin.Utility;
 
 namespace Multipeglin.Events.Handlers.Enemy;
+
 public sealed class EnemyKilledClientHandler : IClientHandler<EnemyKilledEvent>
 {
     public void Handle(EnemyKilledEvent e)

@@ -99,8 +99,8 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                     // existing enemy alive (host runtime variants like Knight_Variant_4
                     // aren't in the client prefab cache; destroying then failing to
                     // respawn caused a per-heartbeat flicker).
-                    var matchName = match.gameObject.name.Replace("(Clone)", "").Trim();
-                    var hostName = (entry.EnemyName ?? "").Replace("(Clone)", "").Trim();
+                    var matchName = match.gameObject.name.Replace("(Clone)", string.Empty).Trim();
+                    var hostName = (entry.EnemyName ?? string.Empty).Replace("(Clone)", string.Empty).Trim();
                     var typeMismatch = !string.IsNullOrEmpty(hostName) && matchName != hostName;
                     var newPrefabKnown = typeMismatch && !_missingPrefabs.Contains(hostName) && FindEnemyPrefab(hostName) != null;
                     if (typeMismatch && newPrefabKnown)
@@ -675,7 +675,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             return null;
         }
 
-        var cleanName = name.Replace("(Clone)", "").Trim();
+        var cleanName = name.Replace("(Clone)", string.Empty).Trim();
 
         // Short-circuit known-missing names — Resources.FindObjectsOfTypeAll is very
         // expensive and runtime-only variants (Knight_Variant_4, etc.) will never

@@ -23,6 +23,7 @@ public class GameEventRegistry : IGameEventRegistry
 
     /// <summary>Type IDs received from remote that we had no handler for.</summary>
     public IReadOnlyCollection<string> UnhandledTypeIds => _unhandledTypeIds;
+
     private readonly HashSet<string> _unhandledTypeIds = new HashSet<string>();
 
     /// <summary>The peer ID of the sender of the event currently being handled.</summary>
@@ -100,7 +101,7 @@ public class GameEventRegistry : IGameEventRegistry
     public void HandleIncoming(string typeId, string jsonPayload, int senderPeerId)
     {
         // Feed all incoming events to the multiplayer UI
-        UI.EventFeed.Add(typeId, jsonPayload ?? "");
+        UI.EventFeed.Add(typeId, jsonPayload ?? string.Empty);
 
         // Set sender context for handlers to access
         var previousSender = CurrentSenderPeerId;

@@ -1,4 +1,3 @@
-
 using System;
 using HarmonyLib;
 using Multipeglin.Events.Network.Peg;
@@ -7,6 +6,7 @@ using Multipeglin.Utility;
 using UnityEngine;
 
 namespace Multipeglin.Events.Handlers.Peg;
+
 /// <summary>
 /// Real-time visual sync for pegs that get hit but DON'T pop (bombs ticking
 /// down hit count, coin pegs decrementing on collection, shield overlays).

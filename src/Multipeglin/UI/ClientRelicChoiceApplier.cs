@@ -1,7 +1,7 @@
-
 using UnityEngine;
 
 namespace Multipeglin.UI;
+
 /// <summary>
 /// Disabled: post-battle relic choices are now generated independently on each
 /// player's BattleUpgradeCanvas using their own RelicManager state. The host no

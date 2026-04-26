@@ -1,4 +1,3 @@
-
 using System;
 using System.Collections;
 using global::Battle;
@@ -9,14 +8,18 @@ using Multipeglin.Utility;
 using UnityEngine;
 
 namespace Multipeglin.Events.Handlers.Battle;
+
 public sealed class BombThrownClientHandler : IClientHandler<BombThrownEvent>
 {
     private static readonly System.Reflection.FieldInfo _bombPrefabField =
         AccessTools.Field(typeof(BattleController), "_tossableBombPrefab");
+
     private static readonly System.Reflection.FieldInfo _riggedBombPrefabField =
         AccessTools.Field(typeof(BattleController), "_tossableRiggedBombPrefab");
+
     private static readonly System.Reflection.FieldInfo _playerTransformField =
         AccessTools.Field(typeof(BattleController), "_playerTransform");
+
     private static readonly System.Reflection.FieldInfo _playerOffsetField =
         AccessTools.Field(typeof(BattleController), "_playerTransformOffset");
 

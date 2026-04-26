@@ -5,11 +5,17 @@ namespace Multipeglin.GameState.Snapshots;
 public class PegboardStateSnapshot
 {
     public List<PegEntry> Pegs { get; set; } = new List<PegEntry>();
+
     public List<VineEntry> Vines { get; set; } = new List<VineEntry>();
+
     public int TotalPegCount { get; set; }
+
     public int CritPegCount { get; set; }
+
     public int BombPegCount { get; set; }
+
     public int ResetPegCount { get; set; }
+
     public int BouncerPegCount { get; set; }
 }
 
@@ -21,10 +27,15 @@ public class PegEntry
     public int Index { get; set; }
 
     public int PegType { get; set; }
+
     public string PegTypeName { get; set; }
+
     public float PosX { get; set; }
+
     public float PosY { get; set; }
+
     public int SlimeType { get; set; }
+
     public bool IsDestroyed { get; set; }
 
     /// <summary>Number of gold coins on this peg (0 = no gold).</summary>
@@ -69,6 +80,7 @@ public class PegEntry
 
     /// <summary>World X of the LinearPegMovement parent (null if peg is not under LPM).</summary>
     public float? LpmParentPosX { get; set; }
+
     /// <summary>World Y of the LinearPegMovement parent (null if peg is not under LPM).</summary>
     public float? LpmParentPosY { get; set; }
 
@@ -77,6 +89,7 @@ public class PegEntry
 
     /// <summary>Local position relative to transform.parent (stable across host/client — baked into prefab).</summary>
     public float LocalPosX { get; set; }
+
     public float LocalPosY { get; set; }
 
     /// <summary>
@@ -99,5 +112,6 @@ public class PegEntry
 public class VineEntry
 {
     public string Peg1Guid { get; set; }
+
     public string Peg2Guid { get; set; }
 }

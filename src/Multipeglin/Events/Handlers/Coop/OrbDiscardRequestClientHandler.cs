@@ -1,9 +1,9 @@
-
 using Multipeglin.Events.Network.Coop;
 using Multipeglin.GameState;
 using Multipeglin.Multiplayer;
 
 namespace Multipeglin.Events.Handlers.Coop;
+
 /// <summary>
 /// On host: receives an OrbDiscardRequest from a client, validates it's their turn,
 /// and queues the discard for execution by BattleController_Update_Postfix.

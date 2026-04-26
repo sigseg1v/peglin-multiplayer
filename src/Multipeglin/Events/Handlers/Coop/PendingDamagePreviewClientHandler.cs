@@ -1,8 +1,8 @@
-
 using Multipeglin.Events.Network.Coop;
 using Multipeglin.UI;
 
 namespace Multipeglin.Events.Handlers.Coop;
+
 /// <summary>
 /// Renders the pending damage overlay on both host and client.
 /// On the host this runs locally via Dispatch; on the client it runs

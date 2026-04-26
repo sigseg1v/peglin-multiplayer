@@ -1,9 +1,9 @@
-
 using Multipeglin.Events.Network.Coop;
 using UnityEngine;
 using BattleCtrl = global::Battle.BattleController;
 
 namespace Multipeglin.Events.Handlers.Coop;
+
 /// <summary>
 /// On client: store the latest turn state so UI can display whose turn it is.
 /// </summary>
@@ -24,7 +24,7 @@ public sealed class TurnChangeClientHandler : IClientHandler<TurnChangeEvent>
     /// <summary>
     /// Human-readable message for UI overlay (e.g. "Waiting for Player2...").
     /// </summary>
-    public static string TurnMessage { get; internal set; } = "";
+    public static string TurnMessage { get; internal set; } = string.Empty;
 
     public void Handle(TurnChangeEvent networkEvent)
     {
@@ -105,11 +105,11 @@ public sealed class TurnChangeClientHandler : IClientHandler<TurnChangeEvent>
         else if (networkEvent.TurnPhase == nameof(GameState.TurnPhase.ALL_DONE)
               || networkEvent.TurnPhase == nameof(GameState.TurnPhase.DAMAGE_PHASE))
         {
-            TurnMessage = "";
+            TurnMessage = string.Empty;
         }
         else
         {
-            TurnMessage = "";
+            TurnMessage = string.Empty;
         }
 
         MultiplayerPlugin.Logger?.LogInfo(

@@ -56,13 +56,15 @@ public sealed class RelicChoiceClientHandler : IClientHandler<RelicChoiceEvent>
                 {
                     // Find the relic data to get display info — can't use CommonRelicPool
                     // because GetMultipleRelicsOffOfQueue already dequeued relics from the pool.
-                    var locKey = "";
+                    var locKey = string.Empty;
                     var rarity = 0;
                     var allRelics = Resources.FindObjectsOfTypeAll<Relics.Relic>();
                     foreach (var r in allRelics)
                     {
                         if ((int)r.effect == networkEvent.ChosenRelicEffect)
-                        { locKey = r.locKey; rarity = (int)r.globalRarity; break; }
+                        { locKey = r.locKey;
+                            rarity = (int)r.globalRarity;
+                            break; }
                     }
 
                     playerState.OwnedRelics.Add(new SerializedRelic
@@ -140,7 +142,8 @@ public sealed class RelicChoiceClientHandler : IClientHandler<RelicChoiceEvent>
         foreach (var r in playerState.OwnedRelics)
         {
             if (r.Effect == 106) // INCREASE_MAX_HP_GAIN
-            { hasHpGainBoost = true; break; }
+            { hasHpGainBoost = true;
+                break; }
         }
 
         var hpBonus = 0f;
@@ -177,7 +180,7 @@ public sealed class RelicChoiceClientHandler : IClientHandler<RelicChoiceEvent>
         MultiplayerPlugin.Logger?.LogInfo(
             $"[CoopReward] Relic HP effect={relicEffect}: slot {playerState.SlotIndex} " +
             $"MaxHP {beforeMax}->{playerState.MaxHealth}, HP {beforeCur}->{playerState.CurrentHealth}" +
-            (hasHpGainBoost ? " (+1 from INCREASE_MAX_HP_GAIN)" : ""));
+            (hasHpGainBoost ? " (+1 from INCREASE_MAX_HP_GAIN)" : string.Empty));
     }
 
     /// <summary>

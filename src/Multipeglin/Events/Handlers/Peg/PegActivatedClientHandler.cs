@@ -1,4 +1,3 @@
-
 using System;
 using HarmonyLib;
 using Multipeglin.Events.Network.Peg;
@@ -6,6 +5,7 @@ using Multipeglin.Multiplayer;
 using Multipeglin.Utility;
 
 namespace Multipeglin.Events.Handlers.Peg;
+
 public sealed class PegActivatedClientHandler : IClientHandler<PegActivatedEvent>
 {
     public void Handle(PegActivatedEvent networkEvent)

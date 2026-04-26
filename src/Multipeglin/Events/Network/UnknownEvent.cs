@@ -7,5 +7,6 @@ namespace Multipeglin.Events.Network;
 public sealed class UnknownEvent
 {
     public string OriginalTypeId { get; set; }
+
     public string RawPayload { get; set; }
 }

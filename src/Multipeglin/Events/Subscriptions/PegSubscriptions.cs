@@ -71,7 +71,8 @@ public sealed class PegSubscriptions
                 var overlayField = HarmonyLib.AccessTools.Field(typeof(Peg), "PegShieldOverlayInstance");
                 var shield = overlayField?.GetValue(peg) as Battle.PegBehaviour.PegShieldOverlay;
                 if (shield != null)
-                { shieldHits = shield.hitCount; shieldLimit = shield.hitLimit; }
+                { shieldHits = shield.hitCount;
+                    shieldLimit = shield.hitLimit; }
             }
             catch { }
         }

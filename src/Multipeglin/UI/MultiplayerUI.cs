@@ -91,11 +91,12 @@ public class MultiplayerUI : MonoBehaviour
 
     // Static access for menu button and player name
     private static MultiplayerUI _instance;
-    public static string LocalPlayerName { get; private set; } = "";
+
+    public static string LocalPlayerName { get; private set; } = string.Empty;
 
     // State
     private bool _overlayVisible;
-    private string _lastConnectionStatus = "";
+    private string _lastConnectionStatus = string.Empty;
 
     private void Start()
     {
@@ -441,7 +442,7 @@ public class MultiplayerUI : MonoBehaviour
         var hostRect = _hostPanel.GetComponent<RectTransform>() ?? _hostPanel.AddComponent<RectTransform>();
         StretchFill(hostRect);
 
-        _hostInfoText = CreateText(_hostPanel.transform, "HostInfo", "", 29);
+        _hostInfoText = CreateText(_hostPanel.transform, "HostInfo", string.Empty, 29);
         var infoRect = _hostInfoText.rectTransform;
         infoRect.anchorMin = new Vector2(0.5f, 0.5f);
         infoRect.anchorMax = new Vector2(0.5f, 0.5f);
@@ -479,7 +480,7 @@ public class MultiplayerUI : MonoBehaviour
         connectBtn.onClick.AddListener(OnConnectClicked);
 
         // Status text
-        _statusText = CreateText(_joinPanel.transform, "StatusText", "", 26);
+        _statusText = CreateText(_joinPanel.transform, "StatusText", string.Empty, 26);
         _statusText.color = new Color(0.8f, 0.8f, 0.3f, 1f);
         var statusRect = _statusText.rectTransform;
         statusRect.anchorMin = new Vector2(0.5f, 0.5f);
@@ -516,7 +517,7 @@ public class MultiplayerUI : MonoBehaviour
         StretchFill(rect);
 
         // Status line
-        _lobbyStatusText = CreateText(_lobbyPanel.transform, "LobbyStatus", "", 22);
+        _lobbyStatusText = CreateText(_lobbyPanel.transform, "LobbyStatus", string.Empty, 22);
         _lobbyStatusText.color = new Color(0.6f, 0.6f, 0.6f, 1f);
         var statusRect = _lobbyStatusText.rectTransform;
         statusRect.anchorMin = new Vector2(0.5f, 0.5f);
@@ -526,7 +527,7 @@ public class MultiplayerUI : MonoBehaviour
         statusRect.sizeDelta = new Vector2(640, 36);
 
         // Persistent join-link line (steam://joinlobby/... when hosting via Steam)
-        _lobbyJoinLinkText = CreateText(_lobbyPanel.transform, "LobbyJoinLink", "", 16);
+        _lobbyJoinLinkText = CreateText(_lobbyPanel.transform, "LobbyJoinLink", string.Empty, 16);
         _lobbyJoinLinkText.color = new Color(0.55f, 0.75f, 0.95f, 1f);
         _lobbyJoinLinkText.enableWordWrapping = true;
         var linkRect = _lobbyJoinLinkText.rectTransform;
@@ -642,7 +643,7 @@ public class MultiplayerUI : MonoBehaviour
         contentRect.anchoredPosition = Vector2.zero;
         contentRect.sizeDelta = new Vector2(0, 0);
 
-        _friendListStatusText = CreateText(_friendListPanel.transform, "FriendsStatus", "", 22);
+        _friendListStatusText = CreateText(_friendListPanel.transform, "FriendsStatus", string.Empty, 22);
         _friendListStatusText.color = new Color(0.8f, 0.8f, 0.3f, 1f);
         var stRect = _friendListStatusText.rectTransform;
         stRect.anchorMin = new Vector2(0.5f, 0.5f);
@@ -733,7 +734,7 @@ public class MultiplayerUI : MonoBehaviour
 
         _friendListStatusText.text = found == 0
             ? "No friends are hosting a Multipeglin lobby right now."
-            : $"{found} friend{(found == 1 ? "" : "s")} hosting.";
+            : $"{found} friend{(found == 1 ? string.Empty : "s")} hosting.";
     }
 
     private void AddFriendRow(int index, string name, CSteamID lobbyId)
@@ -904,7 +905,7 @@ public class MultiplayerUI : MonoBehaviour
         titleRect.sizeDelta = new Vector2(0, 48);
 
         // Scrolling event text
-        _multiplayerFeedText = CreateText(_multiplayerPanel.transform, "FeedText", "", 36);
+        _multiplayerFeedText = CreateText(_multiplayerPanel.transform, "FeedText", string.Empty, 36);
         _multiplayerFeedText.alignment = TextAlignmentOptions.TopLeft;
         _multiplayerFeedText.enableWordWrapping = true;
         _multiplayerFeedText.overflowMode = TextOverflowModes.Truncate;
@@ -935,7 +936,7 @@ public class MultiplayerUI : MonoBehaviour
         bg.color = new Color(0.05f, 0.05f, 0.1f, 0.92f);
         StretchFill(_waitingPanel.GetComponent<RectTransform>());
 
-        _waitingText = CreateText(_waitingPanel.transform, "WaitingText", "", 42);
+        _waitingText = CreateText(_waitingPanel.transform, "WaitingText", string.Empty, 42);
         _waitingText.alignment = TextAlignmentOptions.Center;
         var rect = _waitingText.rectTransform;
         rect.anchorMin = new Vector2(0.5f, 0.5f);
@@ -961,7 +962,7 @@ public class MultiplayerUI : MonoBehaviour
         bannerRect.anchoredPosition = Vector2.zero;
         bannerRect.sizeDelta = new Vector2(0, 60);
 
-        _spectatorBannerText = CreateText(_spectatorBanner.transform, "SpectatorText", "", 32);
+        _spectatorBannerText = CreateText(_spectatorBanner.transform, "SpectatorText", string.Empty, 32);
         _spectatorBannerText.alignment = TextAlignmentOptions.Center;
         var textRect = _spectatorBannerText.rectTransform;
         textRect.anchorMin = Vector2.zero;
@@ -1011,7 +1012,7 @@ public class MultiplayerUI : MonoBehaviour
         panelRect.offsetMin = Vector2.zero;
         panelRect.offsetMax = Vector2.zero;
 
-        _turnIndicatorText = CreateText(_turnIndicatorPanel.transform, "TurnText", "", 28);
+        _turnIndicatorText = CreateText(_turnIndicatorPanel.transform, "TurnText", string.Empty, 28);
         _turnIndicatorText.alignment = TextAlignmentOptions.Center;
         _turnIndicatorText.raycastTarget = false;
         var textRect = _turnIndicatorText.rectTransform;
@@ -1297,7 +1298,7 @@ public class MultiplayerUI : MonoBehaviour
 
     private void OnJoinClicked()
     {
-        _lastConnectionStatus = "";
+        _lastConnectionStatus = string.Empty;
         ShowJoinPanel();
     }
 

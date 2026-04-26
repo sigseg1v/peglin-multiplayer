@@ -58,6 +58,7 @@ public static class LobbyUI
     }
 
     public static bool GameStartReceived => _gameStartReceived;
+
     public static GameStartEvent LatestGameStartEvent => _gameStartEvent;
 
     public static void Reset()
@@ -324,7 +325,8 @@ public static class LobbyUI
                     foreach (var p in players)
                     {
                         if (!p.IsHost && !p.IsReady)
-                        { allReady = false; break; }
+                        { allReady = false;
+                            break; }
                     }
 
                     var hasClients = players.Count > 1;
@@ -374,7 +376,7 @@ public static class LobbyUI
         var row = new PlayerRow
         {
             Root = rowObj,         // Column 1: Player name (left side)
-            NameText = createText(rowObj.transform, $"Name_{rowIndex}", "", 30)
+            NameText = createText(rowObj.transform, $"Name_{rowIndex}", string.Empty, 30)
         };
         var nameRect = row.NameText.rectTransform;
         nameRect.anchorMin = new Vector2(0.5f, 0.5f);
@@ -407,7 +409,7 @@ public static class LobbyUI
         OffsetArrowLabel(row.RightArrow);
 
         // Column 3: Ready status text (shifted left to make room for version)
-        row.ReadyText = createText(rowObj.transform, $"Ready_{rowIndex}", "", 28);
+        row.ReadyText = createText(rowObj.transform, $"Ready_{rowIndex}", string.Empty, 28);
         var readyRect = row.ReadyText.rectTransform;
         readyRect.anchorMin = new Vector2(0.5f, 0.5f);
         readyRect.anchorMax = new Vector2(0.5f, 0.5f);
@@ -417,7 +419,7 @@ public static class LobbyUI
         row.ReadyText.alignment = TextAlignmentOptions.Center;
 
         // Column 4: Version info (right side)
-        row.VersionText = createText(rowObj.transform, $"Version_{rowIndex}", "", 18);
+        row.VersionText = createText(rowObj.transform, $"Version_{rowIndex}", string.Empty, 18);
         var verRect = row.VersionText.rectTransform;
         verRect.anchorMin = new Vector2(0.5f, 0.5f);
         verRect.anchorMax = new Vector2(0.5f, 0.5f);

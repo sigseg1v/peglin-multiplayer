@@ -13,6 +13,7 @@ namespace Multipeglin.UI;
 public class TextScenarioSpectatorUI : MonoBehaviour
 {
     private static TextScenarioSpectatorUI _instance;
+
     public static TextScenarioSpectatorUI Instance => _instance;
 
     private GameObject _canvasObj;
@@ -143,8 +144,8 @@ public class TextScenarioSpectatorUI : MonoBehaviour
             return;
         }
 
-        _speakerText.text = speakerName ?? "";
-        _subtitleText.text = subtitleText ?? "";
+        _speakerText.text = speakerName ?? string.Empty;
+        _subtitleText.text = subtitleText ?? string.Empty;
 
         UpdateResponses(responses, highlightedIndex);
         Show();

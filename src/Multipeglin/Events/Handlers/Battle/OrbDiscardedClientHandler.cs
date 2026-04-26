@@ -1,4 +1,3 @@
-
 using System;
 using global::Battle;
 using HarmonyLib;
@@ -6,6 +5,7 @@ using Multipeglin.Events.Network.Battle;
 using UnityEngine;
 
 namespace Multipeglin.Events.Handlers.Battle;
+
 public sealed class OrbDiscardedClientHandler : IClientHandler<OrbDiscardedEvent>
 {
     public void Handle(OrbDiscardedEvent networkEvent)

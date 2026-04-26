@@ -1,4 +1,3 @@
-
 using System;
 using Multipeglin.Events.Network.Cursor;
 using Multipeglin.GameState;
@@ -6,6 +5,7 @@ using Multipeglin.Multiplayer;
 using Multipeglin.Network;
 
 namespace Multipeglin.Events.Handlers.Cursor;
+
 public sealed class CursorPositionClientHandler : IClientHandler<CursorPositionEvent>
 {
     public void Handle(CursorPositionEvent e)

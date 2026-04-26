@@ -21,7 +21,9 @@ public class CoopStateManager
     private OrbIdentifier _orbId;
 
     public Dictionary<int, CoopPlayerState> PlayerStates { get; } = new Dictionary<int, CoopPlayerState>();
+
     public int ActivePlayerSlot { get; internal set; } = -1;
+
     public int TotalPlayerCount => PlayerStates.Count;
 
     /// <summary>
@@ -180,7 +182,8 @@ public class CoopStateManager
 
             var relicMgr = Resources.FindObjectsOfTypeAll<Relics.RelicManager>()?.FirstOrDefault();
             if (relicMgr == null)
-            { _log.LogWarning("[CoopState] TreasureRelics: RelicManager null"); return; }
+            { _log.LogWarning("[CoopState] TreasureRelics: RelicManager null");
+                return; }
 
             // Set up CoopRewardState so RelicChoiceClientHandler knows this is treasure
             Events.Handlers.Coop.CoopRewardState.HostRelicSelectionActive = true;
@@ -214,7 +217,7 @@ public class CoopStateManager
                     }
                     catch { }
 
-                    var description = relic.locKey ?? "";
+                    var description = relic.locKey ?? string.Empty;
                     try
                     {
                         var translated = I2.Loc.LocalizationManager.GetTranslation("Relics/" + relic.locKey + "_desc");
@@ -322,7 +325,8 @@ public class CoopStateManager
                 foreach (var orb in DeckManager.completeDeck)
                 {
                     if (orb != null)
-                    { anyValid = true; break; }
+                    { anyValid = true;
+                        break; }
                 }
 
                 if (!anyValid && state.CompleteDeck.Count > 0)
@@ -350,7 +354,7 @@ public class CoopStateManager
                     var persist = orb.GetComponent<Battle.Pachinko.PersistentOrb>();
                     state.CompleteDeck.Add(new SerializedOrb
                     {
-                        PrefabName = orb.name.Replace("(Clone)", "").Trim(),
+                        PrefabName = orb.name.Replace("(Clone)", string.Empty).Trim(),
                         Guid = _orbId?.GetGuid(orb),
                         Level = attack?.Level ?? 0,
                         RemainingPersistence = persist != null ? persist.remainingPersistence : -1,
@@ -372,7 +376,7 @@ public class CoopStateManager
                     var persist = orb.GetComponent<Battle.Pachinko.PersistentOrb>();
                     state.BattleDeck.Add(new SerializedOrb
                     {
-                        PrefabName = orb.name.Replace("(Clone)", "").Trim(),
+                        PrefabName = orb.name.Replace("(Clone)", string.Empty).Trim(),
                         Guid = _orbId?.GetGuid(orb),
                         Level = attack?.Level ?? 0,
                         RemainingPersistence = persist != null ? persist.remainingPersistence : -1,
@@ -391,7 +395,7 @@ public class CoopStateManager
                     }
                     // Save GUID if available, otherwise fall back to prefab name
                     var guid = _orbId?.GetGuid(orb);
-                    state.ShuffledOrder.Add(guid ?? orb.name.Replace("(Clone)", "").Trim());
+                    state.ShuffledOrder.Add(guid ?? orb.name.Replace("(Clone)", string.Empty).Trim());
                 }
             }
 
@@ -399,7 +403,7 @@ public class CoopStateManager
             // actively being aimed/fired.  For non-active players no orb has been drawn,
             // so leave it empty.  The active player's CurrentOrb is captured live from
             // BattleController.activePachinkoBall by DeckStateProvider.
-            state.CurrentOrb = "";
+            state.CurrentOrb = string.Empty;
 
             _log.LogInfo($"[CoopState] SaveDeckState slot {state.SlotIndex}: " +
                 $"complete {prevComplete}->{state.CompleteDeck.Count}, " +
@@ -537,10 +541,10 @@ public class CoopStateManager
                     if (match == null)
                     {
                         _log.LogWarning($"[CoopState] LoadDeckState: GUID lookup failed for shuffledDeck entry '{entry}', falling back to name matching");
-                        var name = entry.Replace("(Clone)", "").Trim();
+                        var name = entry.Replace("(Clone)", string.Empty).Trim();
                         foreach (var go in deckMgr.battleDeck)
                         {
-                            if (go != null && go.name.Replace("(Clone)", "").Trim() == name)
+                            if (go != null && go.name.Replace("(Clone)", string.Empty).Trim() == name)
                             {
                                 match = go;
                                 _log.LogWarning($"[CoopState] LoadDeckState: name fallback matched '{name}' for entry '{entry}'");
@@ -598,17 +602,20 @@ public class CoopStateManager
             }
 
             if (deckMgr == null)
-            { _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: DeckManager null"); return; }
+            { _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: DeckManager null");
+                return; }
 
             var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
             if (dim == null)
-            { _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: DeckInfoManager null"); return; }
+            { _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: DeckInfoManager null");
+                return; }
 
             // Clear existing display orbs
             var displayOrbsField = AccessTools.Field(typeof(DeckInfoManager), "_displayOrbs");
             var displayOrbs = displayOrbsField?.GetValue(dim) as System.Collections.Generic.Stack<GameObject>;
             if (displayOrbs == null)
-            { _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: _displayOrbs null"); return; }
+            { _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: _displayOrbs null");
+                return; }
 
             // If shuffledDeck is empty (end-of-round, all orbs drawn), bail out without
             // clearing displayOrbs. The native ChooseShuffleOrDrawAtEndOfTurn flow is
@@ -654,11 +661,13 @@ public class CoopStateManager
             var createMethod = AccessTools.Method(typeof(DeckInfoManager), "CreatePreviewSprite",
                 new[] { typeof(GameObject), typeof(float) });
             if (createMethod == null)
-            { _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: CreatePreviewSprite method null"); return; }
+            { _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: CreatePreviewSprite method null");
+                return; }
 
             var plungerParent = AccessTools.Field(typeof(DeckInfoManager), "_plungerParent")?.GetValue(dim) as Transform;
             if (plungerParent == null)
-            { _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: _plungerParent null"); return; }
+            { _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: _plungerParent null");
+                return; }
 
             var plungerGraphic = AccessTools.Field(typeof(DeckInfoManager), "_plungerGraphic")?.GetValue(dim) as Transform;
             var startPosField = AccessTools.Field(typeof(DeckInfoManager), "_startingPlungerGraphicPosition");
@@ -743,7 +752,8 @@ public class CoopStateManager
             foreach (var go in shuffled)
             {
                 if (go == null)
-                { sb.Append("<n>|"); continue; }
+                { sb.Append("<n>|");
+                    continue; }
 
                 sb.Append(go.GetInstanceID()).Append(':').Append(go.name).Append('|');
             }
@@ -800,7 +810,7 @@ public class CoopStateManager
                 state.OwnedRelics.Add(new SerializedRelic
                 {
                     Effect = (int)kvp.Key,
-                    LocKey = kvp.Value?.locKey ?? "",
+                    LocKey = kvp.Value?.locKey ?? string.Empty,
                     Rarity = (int)(kvp.Value?.globalRarity ?? 0),
                 });
             }

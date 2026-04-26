@@ -1,9 +1,9 @@
-
 using BepInEx.Logging;
 using Multipeglin.Events.Network.Coop;
 using Multipeglin.GameState;
 
 namespace Multipeglin.Events.Handlers.Coop;
+
 /// <summary>
 /// Host broadcasts turn change events to all clients.
 /// Also updates local turn UI state so the host sees "Waiting for X..." during other players' turns.
@@ -67,7 +67,7 @@ public sealed class TurnChangeServerHandler : IServerHandler<TurnChangeEvent>
         }
         else
         {
-            TurnChangeClientHandler.TurnMessage = "";
+            TurnChangeClientHandler.TurnMessage = string.Empty;
         }
 
         return networkEvent;

@@ -88,7 +88,8 @@ public static class DiagnosticLogger
                     {
                         var e = enemies[i];
                         if (e == null)
-                        { Log?.LogInfo($"    [{i}] NULL"); continue; }
+                        { Log?.LogInfo($"    [{i}] NULL");
+                            continue; }
 
                         Log?.LogInfo($"    [{i}] {e.locKey} name={e.gameObject.name} hp={e.CurrentHealth}/{GetMaxHp(e):F0} " +
                             $"pos=({e.transform.position.x:F2},{e.transform.position.y:F2}) flying={e.IsFlying}");

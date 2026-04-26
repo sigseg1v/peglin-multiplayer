@@ -1,7 +1,7 @@
-
 using Multipeglin.Events.Network.Coop;
 
 namespace Multipeglin.Events.Handlers.Coop;
+
 /// <summary>
 /// TargetSelect is client → host only. Do NOT rebroadcast — the host
 /// processes it locally to show targeting indicators.

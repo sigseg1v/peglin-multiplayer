@@ -40,12 +40,14 @@ public class ClientBallRenderer : MonoBehaviour
         public float LastUpdateTime;
         public bool HasReceivedPosition;
     }
+
     private readonly Dictionary<string, FlightVisual> _flightBalls = new Dictionary<string, FlightVisual>();
 
     // Higher = snappier, lower = smoother. ~25 hides 50 ms-spaced packets.
     private const float PositionSmoothRate = 25f;
 
     private void Awake() { Instance = this; }
+
     private void OnDestroy() { if (Instance == this)
         {
             Instance = null;
@@ -59,7 +61,7 @@ public class ClientBallRenderer : MonoBehaviour
     public void OnOrbDrawn(string orbName)
     {
         EnsureAimingBall();
-        _currentOrbName = orbName?.Replace("(Clone)", "").Trim();
+        _currentOrbName = orbName?.Replace("(Clone)", string.Empty).Trim();
         ApplyOrbSprite(_aimingRenderer, _aimingBall, orbName, scaleFactor: 0.8f, wantTrail: false);
 
         var bc = Object.FindObjectOfType<Battle.BattleController>();
@@ -244,7 +246,7 @@ public class ClientBallRenderer : MonoBehaviour
 
         try
         {
-            var cleanName = orbName?.Replace("(Clone)", "").Trim();
+            var cleanName = orbName?.Replace("(Clone)", string.Empty).Trim();
             GameObject orbGo = FindOrbPrefab(cleanName);
 
             if (orbGo != null)
@@ -320,7 +322,7 @@ public class ClientBallRenderer : MonoBehaviour
         {
             foreach (var orb in dm.battleDeck)
             {
-                if (orb != null && orb.name.Replace("(Clone)", "").Trim() == cleanName)
+                if (orb != null && orb.name.Replace("(Clone)", string.Empty).Trim() == cleanName)
                 {
                     return orb;
                 }

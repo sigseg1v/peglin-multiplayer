@@ -1,9 +1,9 @@
-
 using System;
 using global::Battle;
 using Multipeglin.Events.Network.Battle;
 
 namespace Multipeglin.Events.Handlers.Battle;
+
 public sealed class ShotTimeoutClientHandler : IClientHandler<ShotTimeoutEvent>
 {
     public void Handle(ShotTimeoutEvent networkEvent)

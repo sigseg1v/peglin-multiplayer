@@ -7,7 +7,10 @@ namespace Multipeglin.Events.Network.Coop;
 public class TurnChangeEvent
 {
     public int ActiveSlotIndex { get; set; }
+
     public string ActivePlayerName { get; set; }
+
     public string TurnPhase { get; set; }
+
     public int RoundNumber { get; set; }
 }

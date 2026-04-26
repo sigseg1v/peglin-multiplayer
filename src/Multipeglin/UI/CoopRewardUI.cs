@@ -32,7 +32,11 @@ public class CoopRewardUI : MonoBehaviour
     private readonly List<GameObject> _buttons = new List<GameObject>();
 
     // Track what we're currently displaying
-    private enum DisplayState { Hidden, RelicChoices, RewardChoices, Waiting }
+    private enum DisplayState { Hidden,
+        RelicChoices,
+        RewardChoices,
+        Waiting }
+
     private DisplayState _currentState = DisplayState.Hidden;
     private int _displayedRelicCount;
     private int _displayedRewardCount;
@@ -111,7 +115,7 @@ public class CoopRewardUI : MonoBehaviour
         var statusObj = new GameObject("StatusText");
         statusObj.transform.SetParent(_overlayPanel.transform, false);
         _statusText = statusObj.AddComponent<TextMeshProUGUI>();
-        _statusText.text = "";
+        _statusText.text = string.Empty;
         _statusText.fontSize = 32;
         _statusText.alignment = TextAlignmentOptions.Center;
         _statusText.color = new Color(0.8f, 0.8f, 0.3f);
@@ -229,7 +233,7 @@ public class CoopRewardUI : MonoBehaviour
         ClearButtons();
 
         _titleText.text = "Choose a Relic";
-        _statusText.text = "";
+        _statusText.text = string.Empty;
         _overlayPanel.SetActive(true);
         _currentState = DisplayState.RelicChoices;
         _displayedRelicCount = choices.Choices.Count;
@@ -245,7 +249,7 @@ public class CoopRewardUI : MonoBehaviour
             var xPos = startX + i * (buttonWidth + spacing);
 
             // Try to resolve relic description via localization as a fallback
-            var desc = relic.LocKey ?? "";
+            var desc = relic.LocKey ?? string.Empty;
             try
             {
                 // If LocKey looks like a raw loc key (no spaces, starts with lowercase),
@@ -287,7 +291,7 @@ public class CoopRewardUI : MonoBehaviour
         ClearButtons();
 
         _titleText.text = "Choose a Reward";
-        _statusText.text = "";
+        _statusText.text = string.Empty;
         _overlayPanel.SetActive(true);
         _currentState = DisplayState.RewardChoices;
         _displayedRewardCount = choices.Options.Count;
@@ -308,7 +312,7 @@ public class CoopRewardUI : MonoBehaviour
                 _buttonContainer.transform,
                 $"RewardBtn_{i}",
                 option.DisplayName ?? option.Type,
-                option.Description ?? "",
+                option.Description ?? string.Empty,
                 bgColor,
                 new Vector2(xPos, 0),
                 new Vector2(buttonWidth, 200));
@@ -373,7 +377,7 @@ public class CoopRewardUI : MonoBehaviour
             _titleText.text = "Waiting...";
         }
 
-        _statusText.text = "";
+        _statusText.text = string.Empty;
         _overlayPanel.SetActive(true);
         _currentState = DisplayState.Waiting;
 

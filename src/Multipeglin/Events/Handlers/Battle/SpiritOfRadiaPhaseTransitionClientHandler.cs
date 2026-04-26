@@ -1,9 +1,9 @@
-
 using System;
 using global::Battle.Enemies;
 using Multipeglin.Events.Network.Battle;
 
 namespace Multipeglin.Events.Handlers.Battle;
+
 public sealed class SpiritOfRadiaPhaseTransitionClientHandler : IClientHandler<SpiritOfRadiaPhaseTransitionEvent>
 {
     public void Handle(SpiritOfRadiaPhaseTransitionEvent networkEvent)

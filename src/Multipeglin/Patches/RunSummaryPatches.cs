@@ -125,7 +125,7 @@ public static class RunSummaryOnEnablePatch
             SelectedClass = (int)stats.selectedClass,
             CruciballLevel = stats.cruciballLevel,
             EndDateIso = stats.endDate.ToString("o"),
-            Seed = stats.seed ?? "",
+            Seed = stats.seed ?? string.Empty,
             RunTimerElapsedMs = stats.runTimerElapsedMilliseconds + (stats.runTimerSw?.ElapsedMilliseconds ?? 0),
             FinalHp = stats.finalHp,
             MaxHp = stats.maxHp,
@@ -297,13 +297,13 @@ public static class RunStatisticsDetailsInitializePatch
             var classLocKey = FindClassLocKey(inst, player.ChosenClass);
             var className = !string.IsNullOrEmpty(classLocKey)
                 ? I2.Loc.LocalizationManager.GetTranslation(classLocKey)
-                : "";
+                : string.Empty;
             var result = stats.hasWon
                 ? I2.Loc.LocalizationManager.GetTranslation("Menu/RunSummary/win_label")
                 : player.IsAlive
                     ? I2.Loc.LocalizationManager.GetTranslation("Menu/RunSummary/loss_label")
                     : I2.Loc.LocalizationManager.GetTranslation("Menu/RunSummary/loss_label");
-            var pageSuffix = pageCount > 1 ? $"   ({pageIndex + 1}/{pageCount})" : "";
+            var pageSuffix = pageCount > 1 ? $"   ({pageIndex + 1}/{pageCount})" : string.Empty;
             header.text = $"{player.PlayerName} — {className} - {result}{pageSuffix}";
         }
 

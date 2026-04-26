@@ -278,6 +278,7 @@ public class TurnManager
 
         return wasCurrentTurn;
     }
+
     /// <summary>
     /// Reset the turn manager for a new battle.
     /// </summary>
@@ -299,7 +300,7 @@ public class TurnManager
         var slot = CurrentPlayerSlot;
         if (slot < 0)
         {
-            return "";
+            return string.Empty;
         }
 
         var state = _coopState.GetPlayerState(slot);
@@ -324,7 +325,10 @@ public class TurnManager
 public class TurnSnapshot
 {
     public int ActiveSlotIndex { get; set; } = -1;
-    public string ActivePlayerName { get; set; } = "";
+
+    public string ActivePlayerName { get; set; } = string.Empty;
+
     public TurnPhase Phase { get; set; } = TurnPhase.WAITING_FOR_PLAYERS;
+
     public int RoundNumber { get; set; }
 }

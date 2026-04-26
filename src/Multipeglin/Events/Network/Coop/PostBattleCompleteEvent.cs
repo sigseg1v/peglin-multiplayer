@@ -10,8 +10,11 @@ namespace Multipeglin.Events.Network.Coop;
 public class PostBattleCompleteEvent
 {
     public float CurrentHealth { get; set; }
+
     public float MaxHealth { get; set; }
+
     public int Gold { get; set; }
+
     public List<PostBattleOrbEntry> CompleteDeck { get; set; } = new List<PostBattleOrbEntry>();
 
     /// <summary>Relic effect chosen during boss/rare relic selection. -1 if skipped or none.</summary>
@@ -24,5 +27,6 @@ public class PostBattleCompleteEvent
 public class PostBattleOrbEntry
 {
     public string PrefabName { get; set; }
+
     public int Level { get; set; }
 }

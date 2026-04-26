@@ -1,10 +1,10 @@
-
 using System;
 using global::Battle;
 using Multipeglin.Events.Handlers.Coop;
 using Multipeglin.Events.Network.Health;
 
 namespace Multipeglin.Events.Handlers.Health;
+
 public sealed class PlayerHealedClientHandler : IClientHandler<PlayerHealedEvent>
 {
     public void Handle(PlayerHealedEvent networkEvent)

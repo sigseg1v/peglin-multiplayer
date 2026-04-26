@@ -16,5 +16,6 @@ public class AnimationSyncEvent
 
     /// <summary>Position for entity lookup fallback.</summary>
     public float PosX { get; set; }
+
     public float PosY { get; set; }
 }

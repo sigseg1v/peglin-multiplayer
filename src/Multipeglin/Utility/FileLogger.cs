@@ -54,7 +54,8 @@ public sealed class FileLogger : IDisposable
         get => _roleTag;
         set => _roleTag = AnnotateClientTag(value);
     }
-    private static string _roleTag = "";
+
+    private static string _roleTag = string.Empty;
 
     private static string AnnotateClientTag(string baseTag)
     {
@@ -85,7 +86,7 @@ public sealed class FileLogger : IDisposable
 
     public void Log(LogLevel level, string message)
     {
-        var tag = string.IsNullOrEmpty(RoleTag) ? "" : $"[{RoleTag}] ";
+        var tag = string.IsNullOrEmpty(RoleTag) ? string.Empty : $"[{RoleTag}] ";
         var line = $"[{DateTime.Now:HH:mm:ss.fff}] [{level}] {tag}{message}";
         _nlog.Info(line);
     }

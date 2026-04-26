@@ -20,8 +20,11 @@ public class TransportRouter : INetworkTransport, ISteamTransport
     private INetworkTransport _active;
 
     public bool HasSteam => _steam != null;
+
     public SteamTransport InnerSteam => _steam;
+
     public LiteNetTransport InnerLite => _lite;
+
     public bool ActiveIsSteam => _active == _steam;
 
     public TransportRouter(LiteNetTransport lite, SteamTransport steam)
@@ -93,14 +96,21 @@ public class TransportRouter : INetworkTransport, ISteamTransport
     // --- INetworkTransport ---
 
     public bool IsHost => _active.IsHost;
+
     public bool IsConnected => _active.IsConnected;
+
     public IReadOnlyList<int> ConnectedPeerIds => _active.ConnectedPeerIds;
 
     public void StartHost(int port) => _active.StartHost(port);
+
     public void Connect(string address, int port) => _active.Connect(address, port);
+
     public void Send(byte[] data) => _active.Send(data);
+
     public void SendTo(int peerId, byte[] data) => _active.SendTo(peerId, data);
+
     public void Broadcast(byte[] data) => _active.Broadcast(data);
+
     public void Stop() => _active.Stop();
 
     public void PollEvents()
@@ -110,8 +120,11 @@ public class TransportRouter : INetworkTransport, ISteamTransport
     }
 
     public event Action<int, byte[]> OnDataReceived;
+
     public event Action<int> OnClientConnected;
+
     public event Action<int> OnDisconnected;
+
     public event Action<string> OnConnectionRejected;
 
     // --- ISteamTransport ---
@@ -139,6 +152,7 @@ public class TransportRouter : INetworkTransport, ISteamTransport
                 _steam.OnIncomingInvite += value;
             }
         }
+
         remove { if (_steam != null)
             {
                 _steam.OnIncomingInvite -= value;

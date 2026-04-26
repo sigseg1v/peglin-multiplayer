@@ -1,4 +1,3 @@
-
 using System;
 using global::Battle;
 using HarmonyLib;
@@ -6,6 +5,7 @@ using Multipeglin.Events.Network.Health;
 using Multipeglin.Multiplayer;
 
 namespace Multipeglin.Events.Handlers.Health;
+
 public sealed class PlayerDamagedClientHandler : IClientHandler<PlayerDamagedEvent>
 {
     public void Handle(PlayerDamagedEvent e)

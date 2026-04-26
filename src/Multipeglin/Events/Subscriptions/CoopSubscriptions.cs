@@ -339,7 +339,8 @@ public sealed class CoopSubscriptions
                 {
                     var st = _coopStateManager.GetPlayerState(slot);
                     if (st != null && st.CurrentHealth > 0)
-                    { nextSlot = slot; break; }
+                    { nextSlot = slot;
+                        break; }
                 }
 
                 _coopStateManager.SwapToPlayer(nextSlot);
@@ -815,7 +816,7 @@ public sealed class CoopSubscriptions
                     var activeBall = activeBallField?.GetValue(bc) as GameObject;
                     if (activeBall != null)
                     {
-                        capturedOrbName = activeBall.name.Replace("(Clone)", "").Trim();
+                        capturedOrbName = activeBall.name.Replace("(Clone)", string.Empty).Trim();
                     }
                     else
                     {
@@ -1858,7 +1859,7 @@ public sealed class CoopSubscriptions
                     if (deckAttack != null && deckAttack.locNameString == attack.locNameString)
                     {
                         attack.CloneInstanceId(deckAttack);
-                        attack.CheckUniqueBuff("");
+                        attack.CheckUniqueBuff(string.Empty);
                         break;
                     }
                 }

@@ -88,11 +88,11 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                             // Fallback to name matching (coop non-active players send prefab names)
                             if (match == null)
                             {
-                                var orbName = entry.Replace("(Clone)", "").Trim();
+                                var orbName = entry.Replace("(Clone)", string.Empty).Trim();
                                 for (var j = 0; j < dm.battleDeck.Count; j++)
                                 {
                                     if (dm.battleDeck[j] != null &&
-                                        dm.battleDeck[j].name.Replace("(Clone)", "").Trim() == orbName)
+                                        dm.battleDeck[j].name.Replace("(Clone)", string.Empty).Trim() == orbName)
                                     {
                                         match = dm.battleDeck[j];
                                         break;
@@ -315,7 +315,7 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
 
             // Find the orb prefab/instance to create the active display from CurrentOrb name
             // (NOT from displayOrbs — those are the remaining deck tube)
-            var orbName = activeOrbName.Replace("(Clone)", "").Trim();
+            var orbName = activeOrbName.Replace("(Clone)", string.Empty).Trim();
             GameObject orbSource = null;
 
             // Try to find the orb in battleDeck by name
@@ -323,7 +323,7 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             {
                 foreach (var orb in dm.battleDeck)
                 {
-                    if (orb != null && orb.name.Replace("(Clone)", "").Trim() == orbName)
+                    if (orb != null && orb.name.Replace("(Clone)", string.Empty).Trim() == orbName)
                     {
                         orbSource = orb;
                         break;
@@ -469,7 +469,7 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             {
                 // Already showing, but check if the displayed orb is stale (wrong orb name).
                 // This happens when the host switches active orb between heartbeats (e.g. coop turn change).
-                var cleanActiveOrb = activeOrbName?.Replace("(Clone)", "").Trim();
+                var cleanActiveOrb = activeOrbName?.Replace("(Clone)", string.Empty).Trim();
                 var displayedOrb = cbr.CurrentOrbName;
                 if (!string.IsNullOrEmpty(cleanActiveOrb) && displayedOrb != cleanActiveOrb)
                 {
@@ -506,11 +506,13 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             for (var i = 0; i < hostDeck.Count; i++)
             {
                 if (i >= completeDeck.Count || completeDeck[i] == null)
-                { match = false; break; }
+                { match = false;
+                    break; }
 
                 var name = completeDeck[i].GetComponent<Attack>()?.locNameString ?? completeDeck[i].name;
                 if (name != hostDeck[i].LocName && completeDeck[i].name != hostDeck[i].Name)
-                { match = false; break; }
+                { match = false;
+                    break; }
             }
 
             if (match)
@@ -587,7 +589,8 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
 
                 var clientGuid = _orbId.GetGuid(dm.battleDeck[i]);
                 if (clientGuid != hostGuid)
-                { guidsMatch = false; break; }
+                { guidsMatch = false;
+                    break; }
             }
 
             if (guidsMatch)

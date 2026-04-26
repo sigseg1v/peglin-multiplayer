@@ -12,6 +12,8 @@ namespace Multipeglin.Events.Network.Coop;
 public class CoopTreasureRelicChoiceEvent
 {
     public int TargetSlotIndex { get; set; }
+
     public string RelicName { get; set; }
+
     public int Rarity { get; set; }
 }

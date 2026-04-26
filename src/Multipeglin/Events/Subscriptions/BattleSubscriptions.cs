@@ -65,16 +65,19 @@ public sealed class BattleEventSubscriptions
             _registry.Dispatch(new BattleStartedEvent());
         }
     }
+
     private void OnBattleEnded() { if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new BattleEndedEvent());
         }
     }
+
     private void OnVictory() { if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new VictoryEvent());
         }
     }
+
     private void OnAttackStarted()
     {
         if (!_multiplayerMode.IsHosting)
@@ -99,11 +102,13 @@ public sealed class BattleEventSubscriptions
             OrbName = Patches.MultiplayerClientPatches.LastAttackOrbName,
         });
     }
+
     private void OnTurnComplete() { if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new TurnCompleteEvent());
         }
     }
+
     private void OnShotComplete()
     {
         if (!_multiplayerMode.IsHosting)
@@ -141,28 +146,34 @@ public sealed class BattleEventSubscriptions
 
         _registry.Dispatch(new ShotCompleteEvent());
     }
+
     private void OnRoundIncremented(int roundCount) { if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new RoundIncrementedEvent { RoundCount = roundCount });
         }
     }
+
     private void OnReloadStarted() { if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new ReloadStartedEvent());
         }
     }
+
     private void OnCritActivated() { if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new CritActivatedEvent());
         }
     }
+
     private void OnCritDeactivated() { if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new CritDeactivatedEvent());
         }
     }
+
     private static readonly System.Reflection.FieldInfo _bombsRegularField =
         AccessTools.Field(typeof(BattleController), "_bombsToThrowRegular");
+
     private static readonly System.Reflection.FieldInfo _bombsRiggedField =
         AccessTools.Field(typeof(BattleController), "_bombsToThrowRigged");
 
@@ -187,26 +198,31 @@ public sealed class BattleEventSubscriptions
 
         _registry.Dispatch(new BombThrownEvent { RegularCount = regular, RiggedCount = rigged });
     }
+
     private void OnBombDetonated() { if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new BombDetonatedEvent());
         }
     }
+
     private void OnOrbDiscarded() { if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new OrbDiscardedEvent());
         }
     }
+
     private void OnAwaitingShot() { if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new AwaitingShotEvent());
         }
     }
+
     private void OnShotTimeout() { if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new ShotTimeoutEvent());
         }
     }
+
     private void OnDefeat() { if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new DefeatEvent());

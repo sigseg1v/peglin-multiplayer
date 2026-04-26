@@ -15,5 +15,6 @@ namespace Multipeglin.Events.Network.Coop;
 public class CoopOrbRewardChoicesEvent
 {
     public int TargetSlotIndex { get; set; }
+
     public List<string> OrbPrefabNames { get; set; } = new List<string>();
 }

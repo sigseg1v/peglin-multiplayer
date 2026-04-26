@@ -44,7 +44,7 @@ public sealed class RunStatsSnapshotClientHandler : IClientHandler<RunStatsSnaps
             stats.vampireDealTaken = e.VampireDealTaken;
             stats.selectedClass = (Peglin.ClassSystem.Class)e.SelectedClass;
             stats.cruciballLevel = e.CruciballLevel;
-            stats.seed = e.Seed ?? "";
+            stats.seed = e.Seed ?? string.Empty;
             stats.finalHp = e.FinalHp;
             stats.maxHp = e.MaxHp;
             stats.totalDamageDealt = e.TotalDamageDealt;

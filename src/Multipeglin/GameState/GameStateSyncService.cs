@@ -54,7 +54,7 @@ public class GameStateSyncService : IGameStateSyncService
             return;
         }
 
-        var tag = string.IsNullOrEmpty(trigger) ? "" : $"[{trigger}] ";
+        var tag = string.IsNullOrEmpty(trigger) ? string.Empty : $"[{trigger}] ";
 
         try
         {
@@ -175,7 +175,7 @@ public class GameStateSyncService : IGameStateSyncService
                                 {
                                     Effect = sr.Effect,
                                     EffectName = ((Relics.RelicEffect)sr.Effect).ToString(),
-                                    LocKey = sr.LocKey ?? "",
+                                    LocKey = sr.LocKey ?? string.Empty,
                                     Rarity = sr.Rarity,
                                     RemainingCountdown = countdown,
                                     RemainingUsesPerShot = ups,

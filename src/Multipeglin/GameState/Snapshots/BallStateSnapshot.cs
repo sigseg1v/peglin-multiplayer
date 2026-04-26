@@ -10,15 +10,20 @@ namespace Multipeglin.GameState.Snapshots;
 public class BallStateSnapshot
 {
     public float Timestamp { get; set; }
+
     public List<BallEntry> Balls { get; set; } = new List<BallEntry>();
 }
 
 public class BallEntry
 {
     public string Guid { get; set; }
+
     public float PosX { get; set; }
+
     public float PosY { get; set; }
+
     public float VelX { get; set; }
+
     public float VelY { get; set; }
 
     /// <summary>Orb prefab name (e.g. "DaggerOrb-Lvl1(Clone)") for sprite lookup.</summary>
@@ -26,6 +31,7 @@ public class BallEntry
 
     /// <summary>Local scale X to match host (for scaling effects like Big relic).</summary>
     public float ScaleX { get; set; } = 1f;
+
     public float ScaleY { get; set; } = 1f;
 
     /// <summary>True if this is the primary ball (the one the player fired, not a multiball spawn).</summary>
