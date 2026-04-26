@@ -28,8 +28,6 @@ public class RemoteCursorRenderer : MonoBehaviour
     {
         public GameObject Root;
         public RectTransform Rect;
-        public Image Icon;
-        public TextMeshProUGUI Label;
         public Vector2 TargetWorld;
         public Vector2 ScreenPos;
         public float LastUpdateTime;
@@ -38,7 +36,6 @@ public class RemoteCursorRenderer : MonoBehaviour
 
     private readonly Dictionary<int, CursorVisual> _visuals = new Dictionary<int, CursorVisual>();
     private Canvas _canvas;
-    private Sprite _cursorSprite;
     private IMultiplayerMode _mode;
 
     private void Awake()
@@ -189,10 +186,6 @@ public class RemoteCursorRenderer : MonoBehaviour
     private CursorVisual CreateVisual(int slotIndex)
     {
         EnsureCanvas();
-        if (_cursorSprite == null)
-        {
-            _cursorSprite = BuildCursorSprite();
-        }
 
         var root = new GameObject($"RemoteCursor_Slot{slotIndex}");
         root.transform.SetParent(_canvas.transform, worldPositionStays: false);
@@ -201,20 +194,24 @@ public class RemoteCursorRenderer : MonoBehaviour
         rect.sizeDelta = new Vector2(32f, 32f);
         rect.pivot = new Vector2(0.5f, 0.5f);
 
-        // Icon
+        var color = WithAlpha(SlotColor(slotIndex), Alpha);
+
+        // Arrow glyph as the cursor — top-left tip aligned with the rect's top-left.
         var iconGo = new GameObject("Icon");
         iconGo.transform.SetParent(root.transform, worldPositionStays: false);
         var iconRect = iconGo.AddComponent<RectTransform>();
-        iconRect.sizeDelta = new Vector2(24f, 32f);
-        // Pivot at top-left so the sprite "tip" lands at the cursor position.
+        iconRect.sizeDelta = new Vector2(40f, 40f);
         iconRect.pivot = new Vector2(0f, 1f);
         iconRect.anchoredPosition = Vector2.zero;
-        var icon = iconGo.AddComponent<Image>();
-        icon.sprite = _cursorSprite;
+        var icon = iconGo.AddComponent<TextMeshProUGUI>();
+        icon.text = "\u2196"; // ↖ NORTH WEST ARROW
+        icon.fontSize = 36f;
+        icon.fontStyle = FontStyles.Bold;
+        icon.alignment = TextAlignmentOptions.TopLeft;
         icon.raycastTarget = false;
-        icon.color = WithAlpha(SlotColor(slotIndex), Alpha);
+        icon.color = color;
 
-        // Number label above-left of the cursor tip.
+        // Number label below-left of the cursor tip.
         var labelGo = new GameObject("Label");
         labelGo.transform.SetParent(root.transform, worldPositionStays: false);
         var labelRect = labelGo.AddComponent<RectTransform>();
@@ -227,19 +224,11 @@ public class RemoteCursorRenderer : MonoBehaviour
         label.fontStyle = FontStyles.Bold;
         label.alignment = TextAlignmentOptions.MidlineRight;
         label.raycastTarget = false;
-        label.color = WithAlpha(SlotColor(slotIndex), Alpha);
-        // Outline via a shadow so the number stays readable against busy scenes.
-        label.enableVertexGradient = false;
+        label.color = color;
         label.outlineWidth = 0.2f;
         label.outlineColor = new Color32(0, 0, 0, (byte)(255 * Alpha));
 
-        return new CursorVisual
-        {
-            Root = root,
-            Rect = rect,
-            Icon = icon,
-            Label = label,
-        };
+        return new CursorVisual { Root = root, Rect = rect };
     }
 
     private static Color WithAlpha(Color c, float a)
@@ -267,79 +256,4 @@ public class RemoteCursorRenderer : MonoBehaviour
                 return new Color(1.00f, 1.00f, 0.40f);
         }
     }
-
-    // Narrow classic-cursor-shaped triangle, pointing up-left.
-    // Large texture + 4x supersampled coverage = smooth edges, no chunky stairs.
-    // Vertices (in normalized [0,1] coords, y-up with (0,1) = top):
-    //   A = (0.00, 1.00)  tip
-    //   B = (0.10, 0.00)  tail bottom
-    //   C = (0.80, 0.25)  side flare
-    private static Sprite BuildCursorSprite()
-    {
-        const int size = 64;
-        const int ss = 4; // 4x4 supersampling per pixel for anti-aliasing
-
-        var tipNorm = new Vector2(0.00f, 1.00f);
-        var tailNorm = new Vector2(0.10f, 0.00f);
-        var flareNorm = new Vector2(0.80f, 0.25f);
-
-        var a = new Vector2(tipNorm.x * (size - 1), tipNorm.y * (size - 1));
-        var b = new Vector2(tailNorm.x * (size - 1), tailNorm.y * (size - 1));
-        var c = new Vector2(flareNorm.x * (size - 1), flareNorm.y * (size - 1));
-
-        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
-        {
-            filterMode = FilterMode.Bilinear,
-            wrapMode = TextureWrapMode.Clamp,
-        };
-        var clear = new Color32(0, 0, 0, 0);
-
-        var invSs = 1f / ss;
-        var halfInvSs = invSs * 0.5f;
-        for (var y = 0; y < size; y++)
-        {
-            for (var x = 0; x < size; x++)
-            {
-                var hits = 0;
-                for (var sy = 0; sy < ss; sy++)
-                {
-                    for (var sx = 0; sx < ss; sx++)
-                    {
-                        var p = new Vector2(x + halfInvSs + sx * invSs, y + halfInvSs + sy * invSs);
-                        if (PointInTriangle(p, a, b, c))
-                        {
-                            hits++;
-                        }
-                    }
-                }
-
-                if (hits == 0)
-                {
-                    tex.SetPixel(x, y, clear);
-                    continue;
-                }
-
-                var alpha = (byte)((hits * 255) / (ss * ss));
-                tex.SetPixel(x, y, new Color32(255, 255, 255, alpha));
-            }
-        }
-
-        tex.Apply();
-        // Pivot at (0, 1) = top-left so positioning the rect at the target
-        // screen point lands the tip on the cursor position.
-        return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0f, 1f), 100f);
-    }
-
-    private static bool PointInTriangle(Vector2 p, Vector2 a, Vector2 b, Vector2 c)
-    {
-        var d1 = Sign(p, a, b);
-        var d2 = Sign(p, b, c);
-        var d3 = Sign(p, c, a);
-        var hasNeg = d1 < 0 || d2 < 0 || d3 < 0;
-        var hasPos = d1 > 0 || d2 > 0 || d3 > 0;
-        return !(hasNeg && hasPos);
-    }
-
-    private static float Sign(Vector2 p1, Vector2 p2, Vector2 p3)
-        => (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
 }
