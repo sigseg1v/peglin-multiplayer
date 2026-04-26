@@ -10,5 +10,5 @@ public static class MultiplayerPluginInfo
     /// The Peglin game version this plugin was compiled against.
     /// Updated manually when we build against a new game version.
     /// </summary>
-    public const string COMPILED_GAME_VERSION = "2.0.7";
+    public const string COMPILED_GAME_VERSION = "2.0.10";
 }

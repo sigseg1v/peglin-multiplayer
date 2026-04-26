@@ -111,7 +111,7 @@ public static class ShopRelicSyncState
                 }
 
                 var purchasableRelic = new PurchasableRelic(relicAsset, rm, mult);
-                item.Initialize(purchasableRelic, sm, phc);
+                item.Initialize(purchasableRelic, sm, phc, rm);
 
                 if (rewired != null)
                 {
