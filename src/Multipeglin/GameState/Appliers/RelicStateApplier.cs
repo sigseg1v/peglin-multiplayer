@@ -160,6 +160,16 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
             var perBattle = perBattleField?.GetValue(rm) as IDictionary<RelicEffect, int>;
             var perRun = perRunField?.GetValue(rm) as IDictionary<RelicEffect, int>;
 
+            // Static "is this effect stackable/countable?" tables. Only relics with
+            // entries in these dicts ever show a count number on their icon. Writing
+            // to the per-X dicts for unrelated effects causes RelicIcon to display
+            // a "0" stack count next to non-stackable relics like Roundreloquence.
+            var perBattleStaticField = AccessTools.Field(typeof(RelicManager), "relicUsesPerBattleCounts");
+            var perBattleStatic = perBattleStaticField?.GetValue(null) as IDictionary<RelicEffect, int>;
+            var hasCountdown = RelicManager.relicCountdownValues;
+            var hasPerShot = RelicManager.relicUsesPerShotCounts;
+            var hasPerRun = RelicManager.relicUsesPerRunCounts;
+
             var ownedField = AccessTools.Field(typeof(RelicManager), "_ownedRelics");
             var owned = ownedField?.GetValue(rm) as IDictionary<RelicEffect, Relic>;
 
@@ -171,34 +181,38 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
                 // Skip relics the client doesn't actually own yet
                 if (owned == null || !owned.ContainsKey(effect)) continue;
 
-                // Prefer the public setter if it exists (SetRemainingCountdownForRelic)
-                bool wrote = false;
-                try
+                bool wroteCountdown = false;
+                if (hasCountdown != null && hasCountdown.ContainsKey(effect))
                 {
-                    var setter = AccessTools.Method(typeof(RelicManager), "SetRemainingCountdownForRelic");
-                    if (setter != null)
+                    try
                     {
-                        setter.Invoke(rm, new object[] { effect, entry.RemainingCountdown });
-                        wrote = true;
+                        var setter = AccessTools.Method(typeof(RelicManager), "SetRemainingCountdownForRelic");
+                        if (setter != null)
+                        {
+                            setter.Invoke(rm, new object[] { effect, entry.RemainingCountdown });
+                            wroteCountdown = true;
+                        }
+                    }
+                    catch { }
+
+                    if (!wroteCountdown && countdowns != null)
+                    {
+                        countdowns[effect] = entry.RemainingCountdown;
+                        wroteCountdown = true;
                     }
                 }
-                catch { }
 
-                // Fallback: write the dict directly via reflection
-                if (!wrote && countdowns != null)
-                {
-                    countdowns[effect] = entry.RemainingCountdown;
-                    wrote = true;
-                }
+                // Per-shot / per-battle / per-run counters: only write for effects
+                // that the game actually tracks counters for. Otherwise the UI will
+                // show a stale "0" badge on non-stackable relics.
+                if (perShot != null && hasPerShot != null && hasPerShot.ContainsKey(effect))
+                    perShot[effect] = entry.RemainingUsesPerShot;
+                if (perBattle != null && perBattleStatic != null && perBattleStatic.ContainsKey(effect))
+                    perBattle[effect] = entry.RemainingUsesPerBattle;
+                if (perRun != null && hasPerRun != null && hasPerRun.ContainsKey(effect))
+                    perRun[effect] = entry.RemainingUsesPerRun;
 
-                // Per-shot / per-battle / per-run counters: no public setter exists,
-                // so always write the dicts directly. These drive "X / Y" displays
-                // for relics like Tipped Pegs, Dive Reload, etc.
-                if (perShot != null) perShot[effect] = entry.RemainingUsesPerShot;
-                if (perBattle != null) perBattle[effect] = entry.RemainingUsesPerBattle;
-                if (perRun != null) perRun[effect] = entry.RemainingUsesPerRun;
-
-                if (wrote)
+                if (wroteCountdown)
                 {
                     try
                     {
