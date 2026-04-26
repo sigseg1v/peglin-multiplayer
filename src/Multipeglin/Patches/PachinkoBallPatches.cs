@@ -61,7 +61,9 @@ internal static class PachinkoBallPatches
                             targetGuid = enemyId.GetGuid(targetMgr.currentTarget);
                         }
                     }
-                    catch { }
+                    catch
+                    {
+                    }
 
                     sender.Send(new Events.Network.Coop.ShootRequestEvent
                     {
@@ -76,8 +78,12 @@ internal static class PachinkoBallPatches
                     var pmField = HarmonyLib.AccessTools.Field(typeof(PachinkoBall), "_predictionManager");
                     var pm = pmField?.GetValue(__instance) as PredictionManager;
                     try
-                    { pm?.PlayerFired(); }
-                    catch { }
+                    {
+                        pm?.PlayerFired();
+                    }
+                    catch
+                    {
+                    }
 
                     MultiplayerPlugin.Logger?.LogInfo(
                         $"[ClientPatches] Fire intercepted → ShootRequest: aim=({aimVec.x:F2},{aimVec.y:F2}), target={targetGuid ?? "auto"}");

@@ -96,7 +96,9 @@ internal static class PlayerHealthControllerPatches
                     setMethod.Invoke(healthVar, new object[] { 0f });
                 }
             }
-            catch { }
+            catch
+            {
+            }
 
             // Also clamp the active player's stored CoopPlayerState so TurnManager
             // reads exactly 0 (not a negative) when deciding to skip this slot.

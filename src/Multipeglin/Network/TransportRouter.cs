@@ -71,7 +71,9 @@ public class TransportRouter : INetworkTransport, ISteamTransport
         }
 
         try
-        { _active?.Stop(); }
+        {
+            _active?.Stop();
+        }
         catch (Exception ex) { Log?.LogWarning($"[Router] Prev transport stop failed: {ex.Message}"); }
 
         _active = _lite;
@@ -86,7 +88,9 @@ public class TransportRouter : INetworkTransport, ISteamTransport
         }
 
         try
-        { _active?.Stop(); }
+        {
+            _active?.Stop();
+        }
         catch (Exception ex) { Log?.LogWarning($"[Router] Prev transport stop failed: {ex.Message}"); }
 
         _active = _steam;

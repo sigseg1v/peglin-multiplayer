@@ -126,7 +126,9 @@ internal static class DeckManagerPatches
                             }
                         }
                     }
-                    catch { }
+                    catch
+                    {
+                    }
                 }
 
                 if (upgradeableIndices.Count == 0)

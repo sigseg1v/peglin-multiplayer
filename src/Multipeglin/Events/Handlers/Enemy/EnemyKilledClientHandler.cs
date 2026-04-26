@@ -29,7 +29,9 @@ public sealed class EnemyKilledClientHandler : IClientHandler<EnemyKilledEvent>
                     var method = HarmonyLib.AccessTools.Method(typeof(global::Battle.Enemies.Enemy), "UpdateHealthBar");
                     method?.Invoke(enemy, null);
                 }
-                catch { }
+                catch
+                {
+                }
                 // Don't unregister GUID here — let the state sync handle cleanup
                 // Don't invoke OnEnemyKilled — it has side effects that kill wrong enemies
                 // when multiple enemies share the same locKey

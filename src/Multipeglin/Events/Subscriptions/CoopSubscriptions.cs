@@ -953,7 +953,9 @@ public sealed class CoopSubscriptions
             // Push updated AllDecks to client immediately so the client
             // sees its own deck rather than waiting for the next heartbeat.
             try
-            { _syncService.SyncAll("TurnSwap"); }
+            {
+                _syncService.SyncAll("TurnSwap");
+            }
             catch (Exception syncEx) { _log.LogWarning($"[CoopSubs] TurnSwap SyncAll failed: {syncEx.Message}"); }
 
             _log.LogInfo($"[CoopSubs] Swapped to player slot {_turnManager.CurrentPlayerSlot}, " +
@@ -1107,7 +1109,9 @@ public sealed class CoopSubscriptions
         if (bc != null)
         {
             try
-            { _bcUpdater.ResetShotTallies(bc); }
+            {
+                _bcUpdater.ResetShotTallies(bc);
+            }
             catch (Exception ex) { _log.LogWarning($"[CoopSubs] Skip: tally reset failed: {ex.Message}"); }
 
             // Destroy the aim ball and zero the remaining counter so physics
@@ -1528,7 +1532,9 @@ public sealed class CoopSubscriptions
             BroadcastTurnChange();
 
             try
-            { _syncService.SyncAll("DisconnectTurnSwap"); }
+            {
+                _syncService.SyncAll("DisconnectTurnSwap");
+            }
             catch (Exception syncEx) { _log.LogWarning($"[CoopSubs] Disconnect SyncAll failed: {syncEx.Message}"); }
 
             _log.LogInfo($"[CoopSubs] Disconnect during turn: swapped to slot {nextSlot}, " +

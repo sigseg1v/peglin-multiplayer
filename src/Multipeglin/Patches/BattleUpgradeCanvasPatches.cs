@@ -122,8 +122,12 @@ internal static class BattleUpgradeCanvasPatches
             if (stateField != null && stateField.FieldType.IsEnum)
             {
                 try
-                { stateField.SetValue(__instance, System.Enum.Parse(stateField.FieldType, "RELIC")); }
-                catch { }
+                {
+                    stateField.SetValue(__instance, System.Enum.Parse(stateField.FieldType, "RELIC"));
+                }
+                catch
+                {
+                }
             }
 
             rarityField?.SetValue(__instance, rarity);

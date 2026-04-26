@@ -85,7 +85,9 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
                         }
                     }
                 }
-                catch { }
+                catch
+                {
+                }
             }
 
             // Capture post-battle navigation state (child node choices)
@@ -296,7 +298,9 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
                 _wasNavigating = true;
             }
         }
-        catch { }
+        catch
+        {
+        }
     }
 
     private List<MapNodeEntry> CaptureMapNodes()

@@ -247,7 +247,9 @@ public sealed class MirrorEventCompleteClientHandler : IClientHandler<MirrorEven
                 }
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         return false;
     }

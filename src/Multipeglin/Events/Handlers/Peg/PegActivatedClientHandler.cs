@@ -75,7 +75,9 @@ public sealed class PegActivatedClientHandler : IClientHandler<PegActivatedEvent
                         overlay.CollectCoins();
                     }
                 }
-                catch { }
+                catch
+                {
+                }
 
                 // Mark as cleared
                 var clearedField = AccessTools.Field(typeof(global::Peg), "_cleared");

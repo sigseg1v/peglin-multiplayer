@@ -216,8 +216,12 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     {
                         var pegDisabled = false;
                         try
-                        { pegDisabled = peg.IsDisabled(); }
-                        catch { }
+                        {
+                            pegDisabled = peg.IsDisabled();
+                        }
+                        catch
+                        {
+                        }
 
                         var stateMatchesHost = pegDisabled == entry.IsDestroyed && bombPeg.HitCount == entry.HitCount;
                         if (!stateMatchesHost)
@@ -366,8 +370,13 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         clone.gameObject.SetActive(true);
                         peg = clone;
                         try
-                        { pm.AddPeg(peg); }
-                        catch { clientPegs.Add(peg); }
+                        {
+                            pm.AddPeg(peg);
+                        }
+                        catch
+                        {
+                            clientPegs.Add(peg);
+                        }
 
                         repositioned++;
                     }
@@ -456,13 +465,19 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                             g2p?.Remove(staleGuid);
                             p2g?.Remove(bomb);
                         }
-                        catch { }
+                        catch
+                        {
+                        }
                     }
 
                     clientBombs.RemoveAt(i);
                     try
-                    { UnityEngine.Object.Destroy(bomb.gameObject); }
-                    catch { }
+                    {
+                        UnityEngine.Object.Destroy(bomb.gameObject);
+                    }
+                    catch
+                    {
+                    }
 
                     staleBombsRemoved++;
                     extrasRemoved++;
@@ -520,8 +535,12 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
                         var dis = false;
                         try
-                        { dis = b.IsDisabled(); }
-                        catch { }
+                        {
+                            dis = b.IsDisabled();
+                        }
+                        catch
+                        {
+                        }
 
                         var guid = _pegId.GetGuid(b) ?? "none";
                         _log.LogInfo($"[PegboardApplier] CLIENT_BOMB[{i}] guid={guid} " +
@@ -1196,8 +1215,12 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
         var clientPopped = false;
         try
-        { clientPopped = peg.IsDisabled(); }
-        catch { }
+        {
+            clientPopped = peg.IsDisabled();
+        }
+        catch
+        {
+        }
 
         // Handle cleared/popped pegs.
         // The host keeps popped pegs visible as the "destroyed dot" sprite until
@@ -1223,8 +1246,12 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     // isn't authoritative.
                     LongPegVisualHelper.ApplyHitVisual(longPegCleared);
                     try
-                    { longPegCleared.RemoveIfCleared(); }
-                    catch { }
+                    {
+                        longPegCleared.RemoveIfCleared();
+                    }
+                    catch
+                    {
+                    }
                     // RemoveIfCleared early-returns for VINE/SPINFECTION/MAX_HP peg
                     // types (used by SpiritOfRadia boss), leaving the collider enabled.
                     // Host disables it via LongPeg.Update after _beingHit time
@@ -1237,7 +1264,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                             longPegCleared.SetActiveStatus(active: false);
                         }
                     }
-                    catch { }
+                    catch
+                    {
+                    }
                 }
                 else
                 {
@@ -1253,7 +1282,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
                 cleared++;
             }
-            catch { }
+            catch
+            {
+            }
         }
 
         // Handle destroyed pegs
@@ -1264,8 +1295,13 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 if (peg.gameObject.activeSelf)
                 {
                     try
-                    { peg.DestroyPeg(peg.pegType); }
-                    catch { peg.gameObject.SetActive(false); }
+                    {
+                        peg.DestroyPeg(peg.pegType);
+                    }
+                    catch
+                    {
+                        peg.gameObject.SetActive(false);
+                    }
                 }
                 else
                 {
@@ -1310,8 +1346,12 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 }
 
                 try
-                { peg.Reset(false); }
-                catch { }
+                {
+                    peg.Reset(false);
+                }
+                catch
+                {
+                }
 
                 ForceRendererVisible(peg);
 
@@ -1324,8 +1364,12 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 {
                     clearedField?.SetValue(peg, entry.WasPreviouslyCleared);
                     try
-                    { peg.Reset(false); }
-                    catch { }
+                    {
+                        peg.Reset(false);
+                    }
+                    catch
+                    {
+                    }
                 }
             }
         }
@@ -1369,8 +1413,12 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 }
 
                 try
-                { longPeg.HardReset(); }
-                catch { }
+                {
+                    longPeg.HardReset();
+                }
+                catch
+                {
+                }
 
                 _log.LogInfo($"[PegboardApplier] LongPeg hit-state normalized: guid={entry.Guid} " +
                     $"wasHit={isHit} wasBeingHit={beingHit} → {targetType} at " +
@@ -1471,7 +1519,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     peg.ApplySlimeToPeg(targetSlime);
                 }
             }
-            catch { }
+            catch
+            {
+            }
         }
 
         // Sync gold coins: add missing or collect consumed
@@ -1482,8 +1532,12 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 for (var c = currentCoins; c < entry.CoinCount; c++)
                 {
                     try
-                    { peg.AddCoin(false); }
-                    catch { }
+                    {
+                        peg.AddCoin(false);
+                    }
+                    catch
+                    {
+                    }
                 }
             }
             else if (currentCoins > entry.CoinCount && currentCoins > 0)
@@ -1499,7 +1553,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         overlay.CollectCoins(toCollect);
                     }
                 }
-                catch { }
+                catch
+                {
+                }
             }
         }
 
@@ -1510,8 +1566,12 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             if (diff != 0)
             {
                 try
-                { peg.AddBuff(diff); }
-                catch { }
+                {
+                    peg.AddBuff(diff);
+                }
+                catch
+                {
+                }
             }
         }
 
@@ -1526,7 +1586,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     var animator = bomb.GetComponent<Animator>();
                     animator?.SetInteger("NumHits", entry.HitCount);
                 }
-                catch { }
+                catch
+                {
+                }
             }
         }
 
@@ -1549,8 +1611,12 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 {
                     // Apply shielding if not already shielded
                     try
-                    { peg.ApplyShielding(claimed: false, startupShield: false); }
-                    catch { }
+                    {
+                        peg.ApplyShielding(claimed: false, startupShield: false);
+                    }
+                    catch
+                    {
+                    }
 
                     overlay = overlayField?.GetValue(peg) as Battle.PegBehaviour.PegShieldOverlay;
                 }
@@ -1568,7 +1634,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         var rend = overlay.GetComponent<UnityEngine.SpriteRenderer>();
                         rend?.enabled = entry.ShieldHitCount < entry.ShieldHitLimit;
                     }
-                    catch { }
+                    catch
+                    {
+                    }
                 }
             }
             else if (peg.shielded)
@@ -1583,7 +1651,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 shieldedField?.SetValue(peg, false);
             }
         }
-        catch { }
+        catch
+        {
+        }
     }
 
     private static bool HasMovementComponent(Peg peg)
@@ -1653,7 +1723,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     overlay.CollectCoins();
                 }
             }
-            catch { }
+            catch
+            {
+            }
 
             var clearedField = HarmonyLib.AccessTools.Field(typeof(Peg), "_cleared");
             clearedField?.SetValue(peg, true);
@@ -1671,7 +1743,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 peg.gameObject.SetActive(false);
             }
         }
-        catch { }
+        catch
+        {
+        }
     }
 
     private void ForceSpecialPegSpriteIfNeeded(Peg peg, Peg.PegType targetType)
@@ -1731,7 +1805,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 holder?.SetActive(true);
             }
         }
-        catch { }
+        catch
+        {
+        }
     }
 
     private void ForceRendererVisible(Peg peg)
@@ -1778,7 +1854,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 }
             }
         }
-        catch { }
+        catch
+        {
+        }
     }
 
     private void LogActualPegState(List<Peg> pegs, List<Bomb> bombs, List<BouncerPeg> bouncers)
@@ -1793,8 +1871,12 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
             var disabled = false;
             try
-            { disabled = peg.IsDisabled(); }
-            catch { }
+            {
+                disabled = peg.IsDisabled();
+            }
+            catch
+            {
+            }
 
             if (disabled)
             {
@@ -1828,8 +1910,12 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
                 var disabled = false;
                 try
-                { disabled = bomb.IsDisabled(); }
-                catch { }
+                {
+                    disabled = bomb.IsDisabled();
+                }
+                catch
+                {
+                }
 
                 if (disabled)
                 {
@@ -1852,8 +1938,12 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
                 var disabled = false;
                 try
-                { disabled = bouncer.IsDisabled(); }
-                catch { }
+                {
+                    disabled = bouncer.IsDisabled();
+                }
+                catch
+                {
+                }
 
                 if (disabled)
                 {

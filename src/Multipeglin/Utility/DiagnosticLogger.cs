@@ -52,7 +52,9 @@ public static class DiagnosticLogger
                     Log?.LogInfo($"  Relics: {relicDict?.Count ?? 0} owned");
                 }
             }
-            catch { }
+            catch
+            {
+            }
 
             // Deck
             try
@@ -60,7 +62,9 @@ public static class DiagnosticLogger
                 var completeDeck = DeckManager.completeDeck;
                 Log?.LogInfo($"  CompleteDeck: {completeDeck?.Count ?? 0} orbs");
             }
-            catch { }
+            catch
+            {
+            }
 
             // Asset loading cache
             try
@@ -68,7 +72,9 @@ public static class DiagnosticLogger
                 var cache = Loading.AssetLoading.Instance?.EnemyPrefabs;
                 Log?.LogInfo($"  EnemyPrefabCache: {cache?.Count ?? -1} entries");
             }
-            catch { }
+            catch
+            {
+            }
 
             if (scene != "Battle")
             {
@@ -162,6 +168,9 @@ public static class DiagnosticLogger
             var f = AccessTools.Field(typeof(Enemy), "_maxHealth");
             return f != null ? (float)f.GetValue(e) : -1;
         }
-        catch { return -1; }
+        catch
+        {
+            return -1;
+        }
     }
 }

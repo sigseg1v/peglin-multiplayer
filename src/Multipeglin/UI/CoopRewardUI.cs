@@ -271,7 +271,10 @@ public class CoopRewardUI : MonoBehaviour
                     }
                 }
             }
-            catch { /* localization not available, use as-is */ }
+            catch
+            {
+                /* localization not available, use as-is */
+            }
 
             var btn = CreateChoiceButton(
                 _buttonContainer.transform,
@@ -717,7 +720,9 @@ public class CoopRewardUI : MonoBehaviour
                         {
                             Patches.MultiplayerClientPatches.AllowRelicSync = true;
                             try
-                            { relicMgrs[0].AddRelic(relic); }
+                            {
+                                relicMgrs[0].AddRelic(relic);
+                            }
                             finally { Patches.MultiplayerClientPatches.AllowRelicSync = false; }
                         }
 
@@ -775,7 +780,9 @@ public class CoopRewardUI : MonoBehaviour
                         {
                             Patches.MultiplayerClientPatches.AllowRelicSync = true;
                             try
-                            { clientRelicMgrs[0].AddRelic(relic); }
+                            {
+                                clientRelicMgrs[0].AddRelic(relic);
+                            }
                             finally { Patches.MultiplayerClientPatches.AllowRelicSync = false; }
 
                             Log?.LogInfo($"[CoopRewardUI] Client added relic locally: {relic.effect}");

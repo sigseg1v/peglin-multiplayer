@@ -377,7 +377,9 @@ internal static class BattleControllerPatches
                     }
                 }
             }
-            catch { }
+            catch
+            {
+            }
 
             // Use the real PachinkoBall.Fire() so all internal state (collision layers,
             // wall bounce tracking, shot timeout, etc.) is set up correctly.
@@ -646,7 +648,9 @@ internal static class BattleControllerPatches
                                 }
                             }
                         }
-                        catch { }
+                        catch
+                        {
+                        }
                     }
 
                     MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Recovery: loaded {loaded} enemy prefabs (cache={cache.Count})");
@@ -905,7 +909,9 @@ internal static class BattleControllerPatches
                 clearReg.Dispatch(new Events.Network.Coop.PendingDamagePreviewEvent());
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         try
         {

@@ -134,8 +134,12 @@ public class MultiplayerUI : MonoBehaviour
             if (_steamTransport != null)
             {
                 try
-                { _currentAppId = SteamUtils.GetAppID(); }
-                catch { }
+                {
+                    _currentAppId = SteamUtils.GetAppID();
+                }
+                catch
+                {
+                }
 
                 Log?.LogInfo($"[Steam] Friend filter using appId={_currentAppId.m_AppId}");
             }
@@ -164,7 +168,9 @@ public class MultiplayerUI : MonoBehaviour
                         LocalPlayerName = SteamFriends.GetPersonaName();
                     }
                 }
-                catch { }
+                catch
+                {
+                }
             }
 
             if (string.IsNullOrEmpty(LocalPlayerName))
@@ -649,14 +655,20 @@ public class MultiplayerUI : MonoBehaviour
 
         uint appId = 0;
         try
-        { appId = SteamUtils.GetAppID().m_AppId; }
-        catch { }
+        {
+            appId = SteamUtils.GetAppID().m_AppId;
+        }
+        catch
+        {
+        }
 
         var joinUrl = $"steam://joinlobby/{appId}/{lobbyId.m_SteamID}/{SteamUser.GetSteamID().m_SteamID}";
 
         var overlayEnabled = false;
         try
-        { overlayEnabled = SteamUtils.IsOverlayEnabled(); }
+        {
+            overlayEnabled = SteamUtils.IsOverlayEnabled();
+        }
         catch (Exception ex) { Log?.LogWarning($"[Invite] IsOverlayEnabled threw: {ex.Message}"); }
 
         Log?.LogInfo($"[Invite] appId={appId} lobby={lobbyId.m_SteamID} overlayEnabled={overlayEnabled} joinUrl={joinUrl}");
@@ -680,7 +692,9 @@ public class MultiplayerUI : MonoBehaviour
         // copy the join URL to clipboard and flash confirmation so the host can paste it
         // to a friend manually via Steam chat.
         try
-        { GUIUtility.systemCopyBuffer = joinUrl; }
+        {
+            GUIUtility.systemCopyBuffer = joinUrl;
+        }
         catch (Exception ex) { Log?.LogWarning($"[Invite] Clipboard copy failed: {ex.Message}"); }
 
         _inviteCopiedFlashUntil = Time.unscaledTime + 3f;
@@ -935,15 +949,23 @@ public class MultiplayerUI : MonoBehaviour
                 var lobbyId = _steamTransport.HostedLobbyId;
                 var overlayEnabled = false;
                 try
-                { overlayEnabled = SteamUtils.IsOverlayEnabled(); }
-                catch { }
+                {
+                    overlayEnabled = SteamUtils.IsOverlayEnabled();
+                }
+                catch
+                {
+                }
 
                 if (lobbyId.IsValid() && !overlayEnabled)
                 {
                     uint appId = 0;
                     try
-                    { appId = SteamUtils.GetAppID().m_AppId; }
-                    catch { }
+                    {
+                        appId = SteamUtils.GetAppID().m_AppId;
+                    }
+                    catch
+                    {
+                    }
 
                     _lobbyJoinLinkText.text =
                         $"steam://joinlobby/{appId}/{lobbyId.m_SteamID}/{SteamUser.GetSteamID().m_SteamID}";
@@ -1364,7 +1386,9 @@ public class MultiplayerUI : MonoBehaviour
                 }
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         ShowConfirmDialog(
             $"{inviterName} invited you to a Multipeglin lobby.\nJoin them?",
@@ -1642,7 +1666,9 @@ public class MultiplayerUI : MonoBehaviour
             Destroy(_errorPanel);
             _errorPanel = null;
             try
-            { onAccept?.Invoke(); }
+            {
+                onAccept?.Invoke();
+            }
             catch (Exception ex) { Log?.LogError($"ConfirmDialog onAccept threw: {ex}"); }
         });
 
@@ -1658,7 +1684,9 @@ public class MultiplayerUI : MonoBehaviour
             Destroy(_errorPanel);
             _errorPanel = null;
             try
-            { onDecline?.Invoke(); }
+            {
+                onDecline?.Invoke();
+            }
             catch (Exception ex) { Log?.LogError($"ConfirmDialog onDecline threw: {ex}"); }
         });
     }

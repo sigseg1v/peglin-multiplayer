@@ -64,8 +64,12 @@ public sealed class RunStatsSnapshotClientHandler : IClientHandler<RunStatsSnaps
             // Prevent the native Stopwatch from adding live-client time on top
             // of the host's final elapsed counter.
             try
-            { stats.runTimerSw.Reset(); }
-            catch { }
+            {
+                stats.runTimerSw.Reset();
+            }
+            catch
+            {
+            }
 
             stats.visitedRooms = new Queue<RoomType>();
             if (e.VisitedRooms != null)

@@ -46,8 +46,12 @@ public sealed class PegHitClientHandler : IClientHandler<PegHitEvent>
                 {
                     bomb.HitCount = e.HitCount;
                     try
-                    { bomb.GetComponent<Animator>()?.SetInteger("NumHits", e.HitCount); }
-                    catch { }
+                    {
+                        bomb.GetComponent<Animator>()?.SetInteger("NumHits", e.HitCount);
+                    }
+                    catch
+                    {
+                    }
                 }
             }
 
@@ -63,7 +67,9 @@ public sealed class PegHitClientHandler : IClientHandler<PegHitEvent>
                         overlay.CollectCoins(overlay.NumCoins - e.CoinCount);
                     }
                 }
-                catch { }
+                catch
+                {
+                }
             }
 
             // Shield overlay hit count (e.g. after a successful block).
@@ -84,10 +90,14 @@ public sealed class PegHitClientHandler : IClientHandler<PegHitEvent>
                             var rend = shield.GetComponent<SpriteRenderer>();
                             rend?.enabled = e.ShieldHitCount < e.ShieldHitLimit;
                         }
-                        catch { }
+                        catch
+                        {
+                        }
                     }
                 }
-                catch { }
+                catch
+                {
+                }
             }
         }
         catch (Exception ex)

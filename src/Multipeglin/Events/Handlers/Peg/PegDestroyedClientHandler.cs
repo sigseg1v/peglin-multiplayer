@@ -29,8 +29,13 @@ public sealed class PegDestroyedClientHandler : IClientHandler<PegDestroyedEvent
             if (peg != null && peg.gameObject.activeSelf && peg.pegType != global::Peg.PegType.DESTROYED)
             {
                 try
-                { peg.DestroyPeg(peg.pegType); }
-                catch { peg.gameObject.SetActive(false); }
+                {
+                    peg.DestroyPeg(peg.pegType);
+                }
+                catch
+                {
+                    peg.gameObject.SetActive(false);
+                }
             }
         }
         catch (Exception e)

@@ -493,7 +493,9 @@ public static class RunStatisticsDetailsInitializePatch
                 }
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         return null;
     }
@@ -529,7 +531,9 @@ public static class RunStatisticsDetailsInitializePatch
                 }
             }
         }
-        catch { }
+        catch
+        {
+        }
     }
 
     private static void RemoveStatLinesWithLabelPrefix(Transform parent, string prefix)

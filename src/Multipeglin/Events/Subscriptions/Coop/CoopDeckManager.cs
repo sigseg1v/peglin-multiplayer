@@ -127,7 +127,9 @@ internal sealed class CoopDeckManager : ICoopDeckManager
             if (relicMgr != null)
             {
                 try
-                { relicMgr.ResetBattleRelics(); }
+                {
+                    relicMgr.ResetBattleRelics();
+                }
                 catch (Exception rex) { _log.LogWarning($"[CoopSubs] ResetBattleRelics for slot {slot} failed: {rex.Message}"); }
             }
 

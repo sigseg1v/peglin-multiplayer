@@ -54,6 +54,8 @@ internal static class TargetingManagerPatches
                 });
             }
         }
-        catch { }
+        catch
+        {
+        }
     }
 }

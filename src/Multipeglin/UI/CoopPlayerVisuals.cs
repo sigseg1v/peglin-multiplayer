@@ -81,7 +81,9 @@ public class CoopPlayerVisuals : MonoBehaviour
                 mgr.ShowTooltipStatusEffect(EffectType, WorldAnchor, new Vector3(1f, -1f), isOnPlayer: true);
                 _tooltipShowing = true;
             }
-            catch { }
+            catch
+            {
+            }
         }
 
         public void OnPointerExit(PointerEventData eventData)
@@ -92,8 +94,12 @@ public class CoopPlayerVisuals : MonoBehaviour
             }
 
             try
-            { TooltipManager.Instance?.HideTooltip(); }
-            catch { }
+            {
+                TooltipManager.Instance?.HideTooltip();
+            }
+            catch
+            {
+            }
 
             _tooltipShowing = false;
         }
@@ -103,8 +109,12 @@ public class CoopPlayerVisuals : MonoBehaviour
             if (_tooltipShowing)
             {
                 try
-                { TooltipManager.Instance?.HideTooltip(); }
-                catch { }
+                {
+                    TooltipManager.Instance?.HideTooltip();
+                }
+                catch
+                {
+                }
 
                 _tooltipShowing = false;
             }
@@ -310,7 +320,9 @@ public class CoopPlayerVisuals : MonoBehaviour
                     }
                 }
             }
-            catch { }
+            catch
+            {
+            }
 
             // Read live health from the PlayerHealthController singleton for the
             // currently active slot. CoopPlayerState.CurrentHealth only refreshes
@@ -326,7 +338,9 @@ public class CoopPlayerVisuals : MonoBehaviour
                     liveMaxHp = hpCtrl.MaxHealth;
                 }
             }
-            catch { }
+            catch
+            {
+            }
 
             var summaries = new List<CoopPlayerSummary>();
             foreach (var kvp in coopState.PlayerStates)
@@ -530,7 +544,9 @@ public class CoopPlayerVisuals : MonoBehaviour
                 }
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         return _gameFont;
     }
@@ -572,7 +588,9 @@ public class CoopPlayerVisuals : MonoBehaviour
                 }
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         return _numberFont ?? GetGameFont();
     }
@@ -639,12 +657,20 @@ public class CoopPlayerVisuals : MonoBehaviour
         tmpText.alignment = TextAlignmentOptions.Center;
         tmpText.color = textColor;
         try
-        { tmpText.outlineWidth = 0.3f; }
-        catch { }
+        {
+            tmpText.outlineWidth = 0.3f;
+        }
+        catch
+        {
+        }
 
         try
-        { tmpText.outlineColor = Color.black; }
-        catch { }
+        {
+            tmpText.outlineColor = Color.black;
+        }
+        catch
+        {
+        }
 
         tmpText.enableWordWrapping = false;
         tmpText.overflowMode = TextOverflowModes.Overflow;
@@ -703,8 +729,12 @@ public class CoopPlayerVisuals : MonoBehaviour
                 new Color(0, 0, 0, 0),
                 out var arrowText);
             try
-            { arrowText.outlineWidth = 0.4f; }
-            catch { }
+            {
+                arrowText.outlineWidth = 0.4f;
+            }
+            catch
+            {
+            }
 
             arrowPanel.SetActive(false); // only visible for active player
 
@@ -914,7 +944,9 @@ public class CoopPlayerVisuals : MonoBehaviour
                 return all[0];
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         return null;
     }
@@ -942,7 +974,9 @@ public class CoopPlayerVisuals : MonoBehaviour
             _playerRef.transform.localScale = Vector3.Lerp(
                 _playerRef.transform.localScale, Vector3.one * localScale, Time.deltaTime * 5f);
         }
-        catch { }
+        catch
+        {
+        }
 
         // Update host label (attached to _playerRef = main position).
         if (_hostLabel != null)
@@ -1140,7 +1174,9 @@ public class CoopPlayerVisuals : MonoBehaviour
                         Destroy(kvp.Value.Root);
                     }
                 }
-                catch { }
+                catch
+                {
+                }
 
                 _removeScratch.Add(kvp.Key);
             }
@@ -1272,12 +1308,20 @@ public class CoopPlayerVisuals : MonoBehaviour
             // not be initialized on a freshly-created TMP_Text, throwing NRE from
             // SetOutlineThickness. Wrap separately so the rest of the icon survives.
             try
-            { tmp.outlineWidth = 0.35f; }
-            catch { }
+            {
+                tmp.outlineWidth = 0.35f;
+            }
+            catch
+            {
+            }
 
             try
-            { tmp.outlineColor = Color.black; }
-            catch { }
+            {
+                tmp.outlineColor = Color.black;
+            }
+            catch
+            {
+            }
 
             tmp.enableWordWrapping = false;
             tmp.overflowMode = TextOverflowModes.Overflow;
@@ -1340,7 +1384,9 @@ public class CoopPlayerVisuals : MonoBehaviour
                 ui.horizontalContainer.gameObject.SetActive(false);
             }
         }
-        catch { }
+        catch
+        {
+        }
     }
 
     /// <summary>
@@ -1375,7 +1421,9 @@ public class CoopPlayerVisuals : MonoBehaviour
                 _statusEffectData = all[0];
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         return _statusEffectData;
     }
@@ -1459,7 +1507,9 @@ public class CoopPlayerVisuals : MonoBehaviour
                 Destroy(v.SpriteClone);
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         DestroyPanels(v);
     }
@@ -1473,7 +1523,9 @@ public class CoopPlayerVisuals : MonoBehaviour
                 Destroy(v.NamePanel);
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         try
         {
@@ -1482,7 +1534,9 @@ public class CoopPlayerVisuals : MonoBehaviour
                 Destroy(v.HpPanel);
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         try
         {
@@ -1491,7 +1545,9 @@ public class CoopPlayerVisuals : MonoBehaviour
                 Destroy(v.ArrowPanel);
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         try
         {
@@ -1500,7 +1556,9 @@ public class CoopPlayerVisuals : MonoBehaviour
                 Destroy(v.StatusIconContainer);
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         v.StatusIcons?.Clear();
     }
@@ -1810,7 +1868,9 @@ public class CoopPlayerVisuals : MonoBehaviour
                 }
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         return null;
     }
@@ -1838,7 +1898,9 @@ public class CoopPlayerVisuals : MonoBehaviour
                 }
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         return null;
     }
@@ -1882,7 +1944,10 @@ public class CoopPlayerVisuals : MonoBehaviour
                     var spriteHandle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<Sprite>(addr);
                     sprite = spriteHandle.WaitForCompletion();
                 }
-                catch { sprite = null; }
+                catch
+                {
+                    sprite = null;
+                }
 
                 if (sprite != null)
                 {
@@ -1905,7 +1970,9 @@ public class CoopPlayerVisuals : MonoBehaviour
                         }
                     }
                 }
-                catch { }
+                catch
+                {
+                }
             }
         }
         catch (Exception ex)

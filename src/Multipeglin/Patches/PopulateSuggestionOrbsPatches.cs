@@ -135,7 +135,10 @@ internal static class PopulateSuggestionOrbsPatches
                     hookup?.LastSelected = addOrbButtons[0].gameObject;
                 }
             }
-            catch { /* selection focus is non-critical */ }
+            catch
+            {
+                /* selection focus is non-critical */
+            }
 
             MultiplayerPlugin.Logger?.LogInfo(
                 $"[CoopOrbReward] Populated {num} per-slot orbs for slot {mySlot}: {string.Join(",", nameList)}");

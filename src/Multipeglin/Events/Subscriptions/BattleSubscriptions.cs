@@ -150,7 +150,9 @@ public sealed class BattleEventSubscriptions
                 }
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         _registry.Dispatch(new ShotCompleteEvent());
     }
@@ -210,7 +212,9 @@ public sealed class BattleEventSubscriptions
                 rigged = (int)(_bombsRiggedField?.GetValue(bc) ?? 0);
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         _registry.Dispatch(new BombThrownEvent { RegularCount = regular, RiggedCount = rigged });
     }

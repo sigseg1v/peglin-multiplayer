@@ -217,7 +217,9 @@ public class CoopStateManager
                             displayName = translated;
                         }
                     }
-                    catch { }
+                    catch
+                    {
+                    }
 
                     var description = relic.locKey ?? string.Empty;
                     try
@@ -228,7 +230,9 @@ public class CoopStateManager
                             description = translated;
                         }
                     }
-                    catch { }
+                    catch
+                    {
+                    }
 
                     choices.Add(new Snapshots.RelicEntry
                     {

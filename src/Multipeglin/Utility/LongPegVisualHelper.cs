@@ -66,6 +66,8 @@ public static class LongPegVisualHelper
                 }
             }
         }
-        catch { }
+        catch
+        {
+        }
     }
 }

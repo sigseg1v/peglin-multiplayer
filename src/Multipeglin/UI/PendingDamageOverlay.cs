@@ -159,7 +159,9 @@ public sealed class PendingDamageOverlay : MonoBehaviour
             services?.TryResolve(out enemyId);
             em = FindObjectOfType<EnemyManager>();
         }
-        catch { }
+        catch
+        {
+        }
 
         foreach (var kvp in _playerData)
         {
@@ -264,7 +266,9 @@ public sealed class PendingDamageOverlay : MonoBehaviour
         {
             MultiplayerPlugin.Services?.TryResolve(out enemyId);
         }
-        catch { }
+        catch
+        {
+        }
 
         if (enemyId == null)
         {
@@ -383,7 +387,9 @@ public sealed class PendingDamageOverlay : MonoBehaviour
                 }
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         return _gameFont;
     }

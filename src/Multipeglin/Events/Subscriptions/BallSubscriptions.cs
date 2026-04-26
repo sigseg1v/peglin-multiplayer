@@ -69,7 +69,9 @@ public sealed class BallSubscriptions
                 }
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         _log.LogInfo($"[BallSub] ShotFired: aim=({aimVector.x:F2},{aimVector.y:F2}), orb={orbName}, spawn=({spawnX:F1},{spawnY:F1})");
         _registry.Dispatch(new ShotFiredEvent

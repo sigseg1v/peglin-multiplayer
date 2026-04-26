@@ -32,8 +32,12 @@ public sealed class TargetSelectClientHandler : IClientHandler<TargetSelectEvent
             if (_currentClientTarget != null)
             {
                 try
-                { _currentClientTarget.ToggleTargetedUI(on: false); }
-                catch { }
+                {
+                    _currentClientTarget.ToggleTargetedUI(on: false);
+                }
+                catch
+                {
+                }
 
                 _currentClientTarget = null;
             }
@@ -73,8 +77,12 @@ public sealed class TargetSelectClientHandler : IClientHandler<TargetSelectEvent
         if (_currentClientTarget != null)
         {
             try
-            { _currentClientTarget.ToggleTargetedUI(on: false); }
-            catch { }
+            {
+                _currentClientTarget.ToggleTargetedUI(on: false);
+            }
+            catch
+            {
+            }
 
             _currentClientTarget = null;
         }

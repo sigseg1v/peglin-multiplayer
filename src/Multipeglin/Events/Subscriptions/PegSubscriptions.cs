@@ -54,7 +54,9 @@ public sealed class PegSubscriptions
                     hitCount = bomb.HitCount;
                 }
             }
-            catch { }
+            catch
+            {
+            }
 
             try
             {
@@ -65,7 +67,9 @@ public sealed class PegSubscriptions
                     coinCount = overlay.NumCoins;
                 }
             }
-            catch { }
+            catch
+            {
+            }
 
             try
             {
@@ -77,7 +81,9 @@ public sealed class PegSubscriptions
                     shieldLimit = shield.hitLimit;
                 }
             }
-            catch { }
+            catch
+            {
+            }
         }
 
         _registry.Dispatch(new PegHitEvent

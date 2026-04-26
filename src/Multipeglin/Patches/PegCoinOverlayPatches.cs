@@ -49,6 +49,8 @@ internal static class PegCoinOverlayPatches
             MultiplayerPlugin.Logger?.LogInfo(
                 $"[Relic] GOLD_ADDS_TO_DAMAGE triggered on peg '{pegName}' (+1 peg tally)");
         }
-        catch { }
+        catch
+        {
+        }
     }
 }

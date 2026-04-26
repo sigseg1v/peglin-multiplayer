@@ -1078,7 +1078,9 @@ public class GameStateApplyService
                                 clientPegs++;
                             }
                         }
-                        catch { }
+                        catch
+                        {
+                        }
                     }
                 }
                 // Include bombs in client count
@@ -1100,7 +1102,9 @@ public class GameStateApplyService
                                 clientPegs++;
                             }
                         }
-                        catch { }
+                        catch
+                        {
+                        }
                     }
                 }
                 // Host count: not destroyed AND not popped (same criteria as client)
@@ -1195,7 +1199,9 @@ public class GameStateApplyService
                         bc.RemoveClearedPegs();
                     }
                 }
-                catch { }
+                catch
+                {
+                }
 
                 _navigationTriggered = true;
                 _log.LogInfo($"[ApplyService] Navigation triggered: {navTypes?.Count ?? 0} child nodes");

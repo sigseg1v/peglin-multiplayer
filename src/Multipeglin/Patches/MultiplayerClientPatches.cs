@@ -167,7 +167,9 @@ public static class MultiplayerClientPatches
             // empty until something else triggers it. The host hits this path naturally
             // via GameInit; on the client we have to do it explicitly.
             try
-            { rm.SetupInternalRelicPools(); }
+            {
+                rm.SetupInternalRelicPools();
+            }
             catch (Exception sx) { MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] SetupInternalRelicPools failed: {sx.Message}"); }
 
             MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Called RelicManager.PopulateRelicPools({chosenClass}) + SetupInternalRelicPools");
@@ -333,8 +335,12 @@ public static class MultiplayerClientPatches
                     var pmField = HarmonyLib.AccessTools.Field(typeof(PachinkoBall), "_predictionManager");
                     var pm = pmField?.GetValue(ball) as PredictionManager;
                     try
-                    { pm?.PlayerFired(); }
-                    catch { }
+                    {
+                        pm?.PlayerFired();
+                    }
+                    catch
+                    {
+                    }
                 }
 
                 var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
@@ -347,7 +353,9 @@ public static class MultiplayerClientPatches
                     }
                 }
             }
-            catch { }
+            catch
+            {
+            }
 
             UnityEngine.Object.Destroy(_clientBallGO);
             _clientBallGO = null;
@@ -472,7 +480,9 @@ public static class MultiplayerClientPatches
 
                     // Arm the ball — this enables TrajectorySimulation and prediction line
                     try
-                    { ball.Arm(); }
+                    {
+                        ball.Arm();
+                    }
                     catch (System.Exception armEx)
                     {
                         MultiplayerPlugin.Logger?.LogWarning(
@@ -568,7 +578,9 @@ public static class MultiplayerClientPatches
                 }
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         return false;
     }
@@ -607,7 +619,9 @@ public static class MultiplayerClientPatches
                 }
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         return false;
     }
@@ -647,7 +661,9 @@ public static class MultiplayerClientPatches
                     targetGuid = enemyId.GetGuid(targetMgr.currentTarget);
                 }
             }
-            catch { }
+            catch
+            {
+            }
 
             var services = MultiplayerPlugin.Services;
             if (services?.TryResolve<Network.IMessageSender>(out var sender) == true)
@@ -852,7 +868,10 @@ public static class MultiplayerClientPatches
 
             return picked.Count == 0 ? "<unknown>" : string.Join(" > ", picked);
         }
-        catch { return "<stacktrace-failed>"; }
+        catch
+        {
+            return "<stacktrace-failed>";
+        }
     }
 
     internal static IEnumerator EmptyEnumerator() { yield break; }
@@ -981,15 +1000,21 @@ public static class MultiplayerClientPatches
                     SlotIndex = shot.SlotIndex,
                 });
             }
-            catch { }
+            catch
+            {
+            }
 
             // Fire peglin throw animation on host (AttackStartedClientHandler does
             // the same on spectating clients). PeglinBattleAnimationController
             // subscribes to OnAttackPerformed, not OnPeglinAttackAnimationRequested —
             // the latter has no subscribers and won't drive OnFirePoint.
             try
-            { Battle.Attacks.AttackManager.OnAttackPerformed?.Invoke("attack"); }
-            catch { }
+            {
+                Battle.Attacks.AttackManager.OnAttackPerformed?.Invoke("attack");
+            }
+            catch
+            {
+            }
 
             // Arm ClientAttackProjectile on host to fly the sprite when OnFirePoint fires.
             var cap = Multipeglin.GameState.ClientAttackProjectile.Instance;
@@ -1059,11 +1084,17 @@ public static class MultiplayerClientPatches
                             SlotIndex = shot.SlotIndex,
                         });
                     }
-                    catch { }
+                    catch
+                    {
+                    }
 
                     try
-                    { Battle.Attacks.AttackManager.OnAttackPerformed?.Invoke("attack"); }
-                    catch { }
+                    {
+                        Battle.Attacks.AttackManager.OnAttackPerformed?.Invoke("attack");
+                    }
+                    catch
+                    {
+                    }
 
                     if (cap != null && !string.IsNullOrEmpty(reverseGuid))
                     {
@@ -1137,7 +1168,9 @@ public static class MultiplayerClientPatches
         if (am != null)
         {
             try
-            { am.AttackAnimationEnded(); }
+            {
+                am.AttackAnimationEnded();
+            }
             catch
             {
                 var isAttackingField = AccessTools.Field(typeof(Battle.Attacks.AttackManager), "_isAttacking");
@@ -1340,8 +1373,13 @@ public static class MultiplayerClientPatches
 
         float targetSlot;
         try
-        { targetSlot = em.GetSlotIndexForEnemy(target, out var _); }
-        catch { return result; }
+        {
+            targetSlot = em.GetSlotIndexForEnemy(target, out var _);
+        }
+        catch
+        {
+            return result;
+        }
 
         var candidates = new System.Collections.Generic.List<(Battle.Enemies.Enemy e, float slot)>();
         foreach (var e in em.Enemies)
@@ -1353,8 +1391,13 @@ public static class MultiplayerClientPatches
 
             float slot;
             try
-            { slot = em.GetSlotIndexForEnemy(e, out var _); }
-            catch { continue; }
+            {
+                slot = em.GetSlotIndexForEnemy(e, out var _);
+            }
+            catch
+            {
+                continue;
+            }
 
             if (slot > targetSlot)
             {
@@ -1561,7 +1604,10 @@ public static class MultiplayerClientPatches
             var s3 = (int)t.GetField("s3", flags).GetValue(boxed);
             return $"{s0},{s1},{s2},{s3}";
         }
-        catch { return null; }
+        catch
+        {
+            return null;
+        }
     }
 
     internal static Random.State? DeserializeRandomState(string s)
@@ -1590,7 +1636,10 @@ public static class MultiplayerClientPatches
             t.GetField("s3", flags).SetValue(boxed, int.Parse(parts[3]));
             return (Random.State)boxed;
         }
-        catch { return null; }
+        catch
+        {
+            return null;
+        }
     }
 
     // =========================================================================
@@ -1853,7 +1902,9 @@ public static class MultiplayerClientPatches
                 }
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         return owned;
     }

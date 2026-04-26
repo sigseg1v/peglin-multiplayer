@@ -122,8 +122,12 @@ public static class MultiplayerSession
                     Log?.LogWarning($"[Session] Failed to load MainMenu: {ex.Message}");
                     // Last resort fallback
                     try
-                    { SceneManager.LoadScene("MainMenu"); }
-                    catch { }
+                    {
+                        SceneManager.LoadScene("MainMenu");
+                    }
+                    catch
+                    {
+                    }
                 }
             }
 

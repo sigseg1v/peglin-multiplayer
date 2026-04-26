@@ -69,7 +69,9 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
                 var updateMethod = AccessTools.Method(typeof(PlayerHealthController), "UpdateHealthBar");
                 updateMethod?.Invoke(ctrl, null);
             }
-            catch { }
+            catch
+            {
+            }
         }
 
         _log.LogInfo($"[PlayerApplier] Health set to {snapshot.CurrentHealth}/{snapshot.MaxHealth}");
@@ -123,7 +125,9 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
                 Time.timeScale = snapshot.IsSpedUp ? snapshot.SpeedupLevel : 1f;
             }
         }
-        catch { }
+        catch
+        {
+        }
     }
 
     /// <summary>

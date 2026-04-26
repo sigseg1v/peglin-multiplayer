@@ -138,7 +138,9 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                         }
                     }
                 }
-                catch { }
+                catch
+                {
+                }
             }
 
             // Store the host's pre-map-generation RNG state for later restoration
@@ -602,7 +604,9 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                     return direct;
                 }
             }
-            catch { }
+            catch
+            {
+            }
         }
         catch (Exception ex)
         {
@@ -739,7 +743,9 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                         node.GenerateIcon();
                     }
                 }
-                catch { }
+                catch
+                {
+                }
 
                 nodesApplied++;
             }
@@ -866,7 +872,9 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                         }
                     }
                 }
-                catch { }
+                catch
+                {
+                }
 
                 return null;
             }

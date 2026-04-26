@@ -360,7 +360,10 @@ public class ClientAttackProjectile : MonoBehaviour
                 ForcePerPeg = forcePerPeg,
             };
         }
-        catch { result = null; }
+        catch
+        {
+            result = null;
+        }
 
         _shotCache[key] = result;
         return result;

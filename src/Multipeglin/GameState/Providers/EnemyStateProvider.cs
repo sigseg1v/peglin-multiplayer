@@ -108,7 +108,9 @@ public class EnemyStateProvider : IGameStateProvider<EnemyStateSnapshot>
                                 }
                             }
                         }
-                        catch { }
+                        catch
+                        {
+                        }
 
                         // Shield barricade (ShieldKnight etc). BarricadeEnemy is a separate
                         // Enemy instance wired via ShieldEnemy._shield — not in EnemyManager.Enemies,
@@ -129,7 +131,9 @@ public class EnemyStateProvider : IGameStateProvider<EnemyStateSnapshot>
                                 entry.ShieldActive = shield.gameObject.activeInHierarchy;
                             }
                         }
-                        catch { }
+                        catch
+                        {
+                        }
 
                         // Status effects
                         try
@@ -156,7 +160,9 @@ public class EnemyStateProvider : IGameStateProvider<EnemyStateSnapshot>
                                 }
                             }
                         }
-                        catch { }
+                        catch
+                        {
+                        }
 
                         snapshot.Enemies.Add(entry);
                         var effectStr = entry.StatusEffects?.Count > 0

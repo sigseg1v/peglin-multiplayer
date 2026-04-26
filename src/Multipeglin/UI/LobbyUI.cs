@@ -665,7 +665,9 @@ public static class LobbyUI
         if (services.TryResolve<ISteamTransport>(out var steam))
         {
             try
-            { steam.CloseLobbyOnStart(); }
+            {
+                steam.CloseLobbyOnStart();
+            }
             catch (Exception ex) { MultiplayerPlugin.Logger?.LogWarning($"[Lobby] CloseLobbyOnStart failed: {ex.Message}"); }
         }
 

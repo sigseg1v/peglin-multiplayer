@@ -156,7 +156,9 @@ public class SceneWatcher : MonoBehaviour
                 StartCoroutine(DelayedInject());
             }
         }
-        catch { }
+        catch
+        {
+        }
     }
 
     private System.Collections.IEnumerator DelayedInject()
@@ -198,8 +200,12 @@ public static class PauseMenuQuitToMenuPatch
 
         MultiplayerPlugin.Logger?.LogInfo("[PauseMenu] QuitToMenu in multiplayer — disconnecting");
         try
-        { __instance.Resume(); }
-        catch { }
+        {
+            __instance.Resume();
+        }
+        catch
+        {
+        }
 
         MultiplayerSession.DisconnectAndReset("Returned to main menu");
         return false;

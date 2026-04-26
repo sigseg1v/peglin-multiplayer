@@ -67,6 +67,8 @@ internal static class StandardUIResponseButtonPatches
                 }
             }
         }
-        catch { }
+        catch
+        {
+        }
     }
 }

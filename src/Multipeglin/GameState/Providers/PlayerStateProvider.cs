@@ -48,7 +48,9 @@ public class PlayerStateProvider : IGameStateProvider<PlayerStateSnapshot>
                     snapshot.Gold = (int)(goldProp?.GetValue(cm) ?? 0);
                 }
             }
-            catch { }
+            catch
+            {
+            }
 
             // Status effects
             var statusCtrl = UnityEngine.Object.FindObjectOfType<Battle.StatusEffects.PlayerStatusEffectController>();
@@ -77,7 +79,9 @@ public class PlayerStateProvider : IGameStateProvider<PlayerStateSnapshot>
                         }
                     }
                 }
-                catch { }
+                catch
+                {
+                }
             }
 
             // Speed state
@@ -95,7 +99,9 @@ public class PlayerStateProvider : IGameStateProvider<PlayerStateSnapshot>
                     snapshot.SpeedupLevel = SettingsManager.Instance.SpeedupLevel;
                 }
             }
-            catch { }
+            catch
+            {
+            }
 
             return snapshot;
         }

@@ -35,7 +35,9 @@ internal static class AttackManagerPatches
                 LastAttackTargetGuid = enemyId?.GetGuid(target);
             }
         }
-        catch { }
+        catch
+        {
+        }
     }
 
     [HarmonyPatch(typeof(Battle.Attacks.AttackManager), "Attack")]

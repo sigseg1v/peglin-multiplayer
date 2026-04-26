@@ -36,6 +36,8 @@ internal static class LongPegPatches
                 __instance.RemoveIfCleared();
             }
         }
-        catch { }
+        catch
+        {
+        }
     }
 }

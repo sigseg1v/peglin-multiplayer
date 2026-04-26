@@ -66,8 +66,12 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                 if (!destroyed)
                 {
                     try
-                    { cleared = peg.IsDisabled(); }
-                    catch { }
+                    {
+                        cleared = peg.IsDisabled();
+                    }
+                    catch
+                    {
+                    }
                     // LongPeg-specific: capture the _hit flag (host's "half-hit gray
                     // state during shot") separately from cleared. When _hit=true and
                     // collider is still enabled, the client should render gray without
@@ -81,7 +85,9 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                             var hitField = HarmonyLib.AccessTools.Field(typeof(LongPeg), "_hit");
                             isLongPegHit = (bool)(hitField?.GetValue(peg) ?? false);
                         }
-                        catch { }
+                        catch
+                        {
+                        }
                     }
                     // _cleared flag tracks "was this peg ever cleared this battle" — controls
                     // the previously-cleared background visual (dot/different color after refresh).
@@ -90,7 +96,9 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                         var clearedField = HarmonyLib.AccessTools.Field(typeof(Peg), "_cleared");
                         wasPreviouslyCleared = (bool)(clearedField?.GetValue(peg) ?? false);
                     }
-                    catch { }
+                    catch
+                    {
+                    }
                 }
 
                 var entry = new PegEntry
@@ -154,15 +162,21 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     if (!destroyed)
                     {
                         try
-                        { cleared = bomb.IsDisabled(); }
-                        catch { }
+                        {
+                            cleared = bomb.IsDisabled();
+                        }
+                        catch
+                        {
+                        }
 
                         try
                         {
                             var clearedField = HarmonyLib.AccessTools.Field(typeof(Peg), "_cleared");
                             wasPreviouslyCleared = (bool)(clearedField?.GetValue(bomb) ?? false);
                         }
-                        catch { }
+                        catch
+                        {
+                        }
                     }
 
                     var bombEntry = new PegEntry
@@ -217,15 +231,21 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     if (!destroyed)
                     {
                         try
-                        { cleared = bouncer.IsDisabled(); }
-                        catch { }
+                        {
+                            cleared = bouncer.IsDisabled();
+                        }
+                        catch
+                        {
+                        }
 
                         try
                         {
                             var clearedField = HarmonyLib.AccessTools.Field(typeof(Peg), "_cleared");
                             wasPreviouslyCleared = (bool)(clearedField?.GetValue(bouncer) ?? false);
                         }
-                        catch { }
+                        catch
+                        {
+                        }
                     }
 
                     var bouncerEntry = new PegEntry
@@ -335,7 +355,9 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                 entry.ShieldHitLimit = overlay.hitLimit;
             }
         }
-        catch { }
+        catch
+        {
+        }
     }
 
     /// <summary>
@@ -364,7 +386,9 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                 entry.LpmParentPosY = lpm.transform.position.y;
             }
         }
-        catch { }
+        catch
+        {
+        }
     }
 
     /// <summary>
@@ -406,6 +430,8 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
 
             entry.HasLpm = hasLpm;
         }
-        catch { }
+        catch
+        {
+        }
     }
 }

@@ -86,7 +86,9 @@ public class LiteNetTransport : INetworkTransport, INetEventListener
                     reason = disconnectInfo.AdditionalData.GetString();
                 }
             }
-            catch { }
+            catch
+            {
+            }
 
             OnConnectionRejected?.Invoke(reason);
         }
@@ -108,7 +110,9 @@ public class LiteNetTransport : INetworkTransport, INetEventListener
         // Check connection key (version match)
         string key;
         try
-        { key = request.Data.GetString(); }
+        {
+            key = request.Data.GetString();
+        }
         catch
         {
             request.Reject();

@@ -307,7 +307,9 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                     var scrollAnim = HarmonyLib.AccessTools.Field(typeof(Battle.EnemyInfoManager), "_scrollAnim")?.GetValue(eim) as UnityEngine.Animator;
                     scrollAnim?.SetTrigger(UnityEngine.Animator.StringToHash("RollUp"));
                 }
-                catch { }
+                catch
+                {
+                }
 
                 if (oldCount > 0)
                 {
@@ -385,7 +387,9 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                         mask.rectTransform.sizeDelta = sd;
                     }
                 }
-                catch { }
+                catch
+                {
+                }
             }
 
             // Update the "+N" indicator
@@ -644,7 +648,9 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                         enemiesList.Add(enemy);
                     }
                 }
-                catch { }
+                catch
+                {
+                }
             }
 
             // Set HP AFTER AddEnemy/Initialize — Initialize resets HP to max
@@ -798,7 +804,9 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                 }
             }
         }
-        catch { }
+        catch
+        {
+        }
     }
 
     private static void StopWalkAnim(Enemy enemy)
@@ -833,7 +841,9 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                 }
             }
         }
-        catch { }
+        catch
+        {
+        }
     }
 
     private static void SetMaxHealth(Enemy enemy, float maxHealth)
@@ -965,7 +975,9 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             var method = AccessTools.Method(typeof(Enemy), "UpdateHealthBar");
             method?.Invoke(enemy, null);
         }
-        catch { }
+        catch
+        {
+        }
     }
 
     /// <summary>
@@ -1008,8 +1020,12 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                     var removed = effects[i];
                     removed.Intensity = 0;
                     try
-                    { ui?.UpdateStatusEffect(removed); }
-                    catch { }
+                    {
+                        ui?.UpdateStatusEffect(removed);
+                    }
+                    catch
+                    {
+                    }
 
                     effects.RemoveAt(i);
                 }
@@ -1051,8 +1067,12 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             if (hasUiData)
             {
                 try
-                { ui.UpdateStatusEffects(enemy.StatusEffects); }
-                catch { }
+                {
+                    ui.UpdateStatusEffects(enemy.StatusEffects);
+                }
+                catch
+                {
+                }
             }
             else if (ui != null)
             {

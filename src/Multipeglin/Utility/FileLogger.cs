@@ -81,7 +81,10 @@ public sealed class FileLogger : IDisposable
             var digits = instance.Substring(i);
             return string.IsNullOrEmpty(digits) ? baseTag : "CLIENT" + digits;
         }
-        catch { return baseTag; }
+        catch
+        {
+            return baseTag;
+        }
     }
 
     public void Log(LogLevel level, string message)

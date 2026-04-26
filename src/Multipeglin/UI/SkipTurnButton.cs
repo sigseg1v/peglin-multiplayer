@@ -122,7 +122,9 @@ public sealed class SkipTurnButton : MonoBehaviour
                 }
             }
         }
-        catch { }
+        catch
+        {
+        }
     }
 
     private void Build()

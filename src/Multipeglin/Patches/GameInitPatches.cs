@@ -303,12 +303,16 @@ internal static class GameInitPatches
                                     clientRelicMgrs[0].AddRelic(relic);
                                     MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Client slot {player.SlotIndex}: added starting class relic {relic.effect} ({relic.locKey})");
                                 }
-                                catch { }
+                                catch
+                                {
+                                }
                                 finally { AllowRelicSync = false; }
                             }
                         }
                     }
-                    catch { }
+                    catch
+                    {
+                    }
                 }
             }
         }
@@ -368,7 +372,10 @@ internal static class GameInitPatches
                                         displayName = relic.englishDisplayName ?? relic.locKey ?? "Unknown";
                                     }
                                 }
-                                catch { displayName = relic.englishDisplayName ?? relic.locKey ?? "Unknown"; }
+                                catch
+                                {
+                                    displayName = relic.englishDisplayName ?? relic.locKey ?? "Unknown";
+                                }
 
                                 var description = string.Empty;
                                 try
@@ -379,7 +386,10 @@ internal static class GameInitPatches
                                         description = relic.locKey ?? string.Empty;
                                     }
                                 }
-                                catch { description = relic.locKey ?? string.Empty; }
+                                catch
+                                {
+                                    description = relic.locKey ?? string.Empty;
+                                }
 
                                 choices.Add(new GameState.Snapshots.RelicEntry
                                 {
@@ -423,7 +433,10 @@ internal static class GameInitPatches
                                     displayName2 = relic.englishDisplayName ?? relic.locKey ?? "Unknown";
                                 }
                             }
-                            catch { displayName2 = relic.englishDisplayName ?? relic.locKey ?? "Unknown"; }
+                            catch
+                            {
+                                displayName2 = relic.englishDisplayName ?? relic.locKey ?? "Unknown";
+                            }
 
                             var description2 = string.Empty;
                             try
@@ -434,7 +447,10 @@ internal static class GameInitPatches
                                     description2 = relic.locKey ?? string.Empty;
                                 }
                             }
-                            catch { description2 = relic.locKey ?? string.Empty; }
+                            catch
+                            {
+                                description2 = relic.locKey ?? string.Empty;
+                            }
 
                             hostChoices.Add(new GameState.Snapshots.RelicEntry
                             {

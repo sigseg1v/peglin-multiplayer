@@ -292,7 +292,9 @@ public class ClientBallRenderer : MonoBehaviour
                 }
             }
         }
-        catch { }
+        catch
+        {
+        }
     }
 
     private static GameObject FindOrbPrefab(string cleanName)
@@ -449,7 +451,9 @@ public class ClientBallRenderer : MonoBehaviour
                 _aimingRenderer.sortingLayerID = anyRenderer.sortingLayerID;
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         _aimingRenderer.sprite = CreateCircleSprite();
         _aimingRenderer.color = Color.white;

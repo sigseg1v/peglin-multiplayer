@@ -89,7 +89,9 @@ internal static class MapControllerPatches
             var curtain = UnityEngine.Object.FindObjectOfType<PeglinUI.FadeCurtain>();
             curtain?.FadeOut();
         }
-        catch { }
+        catch
+        {
+        }
 
         return false;
     }
@@ -160,7 +162,9 @@ internal static class MapControllerPatches
                     MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Host MapController.Start done — sent immediate map sync with node types");
                 }
             }
-            catch { }
+            catch
+            {
+            }
             // Swallow Start exceptions on host so Unity doesn't mark the MC broken.
             return null;
         }
@@ -185,7 +189,9 @@ internal static class MapControllerPatches
                 applySvc.ReapplyLastMapState();
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] MapController.Start finished on client — re-applied host node types");
         return null; // Swallow exceptions on client
@@ -235,7 +241,9 @@ internal static class MapControllerPatches
                         player.transform.position = prevNode.transform.position;
                     }
                 }
-                catch { }
+                catch
+                {
+                }
 
                 AccessTools.Method(typeof(Map.MapController), "IntroCameraPan")?.Invoke(__instance, null);
                 return false;

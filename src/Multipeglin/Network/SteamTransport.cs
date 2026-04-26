@@ -173,7 +173,9 @@ public class SteamTransport : ISteamTransport
             var copy = new byte[read];
             Buffer.BlockCopy(_recvBuffer, 0, copy, 0, (int)read);
             try
-            { OnDataReceived?.Invoke(peerId, copy); }
+            {
+                OnDataReceived?.Invoke(peerId, copy);
+            }
             catch (Exception ex) { Log?.LogError($"[Steam] OnDataReceived handler threw: {ex}"); }
         }
     }
@@ -192,8 +194,12 @@ public class SteamTransport : ISteamTransport
             foreach (var sid in _cSteamIdByPeerId.Values)
             {
                 try
-                { SteamNetworking.CloseP2PSessionWithUser(sid); }
-                catch { }
+                {
+                    SteamNetworking.CloseP2PSessionWithUser(sid);
+                }
+                catch
+                {
+                }
             }
 
             _peerIdByCSteamId.Clear();
@@ -203,16 +209,24 @@ public class SteamTransport : ISteamTransport
             if (_lobbyId.IsValid())
             {
                 try
-                { SteamMatchmaking.LeaveLobby(_lobbyId); }
-                catch { }
+                {
+                    SteamMatchmaking.LeaveLobby(_lobbyId);
+                }
+                catch
+                {
+                }
             }
 
             _lobbyId = CSteamID.Nil;
             _hostSteamId = CSteamID.Nil;
 
             try
-            { SteamFriends.SetRichPresence("connect", string.Empty); }
-            catch { }
+            {
+                SteamFriends.SetRichPresence("connect", string.Empty);
+            }
+            catch
+            {
+            }
 
             DisposeSessionCallbacks();
             Log?.LogInfo("[Steam] Transport stopped");
@@ -333,7 +347,9 @@ public class SteamTransport : ISteamTransport
 
         Log?.LogInfo($"[Steam] Lobby entered, host={_hostSteamId.m_SteamID}");
         try
-        { OnClientConnected?.Invoke(HOST_PEER_ID); }
+        {
+            OnClientConnected?.Invoke(HOST_PEER_ID);
+        }
         catch (Exception ex) { Log?.LogError($"[Steam] OnClientConnected handler threw: {ex}"); }
     }
 
@@ -369,8 +385,12 @@ public class SteamTransport : ISteamTransport
             {
                 Log?.LogWarning($"[Steam] Lobby full — refusing {member.m_SteamID} ({current}/{NetworkConfig.MaxClients})");
                 try
-                { SteamNetworking.CloseP2PSessionWithUser(member); }
-                catch { }
+                {
+                    SteamNetworking.CloseP2PSessionWithUser(member);
+                }
+                catch
+                {
+                }
             }
             else
             {
@@ -396,7 +416,9 @@ public class SteamTransport : ISteamTransport
 
         Log?.LogInfo($"[Steam] Incoming invite to lobby {evt.m_steamIDLobby.m_SteamID} — awaiting user confirmation");
         try
-        { OnIncomingInvite?.Invoke(evt.m_steamIDLobby); }
+        {
+            OnIncomingInvite?.Invoke(evt.m_steamIDLobby);
+        }
         catch (Exception ex) { Log?.LogError($"[Steam] OnIncomingInvite handler threw: {ex}"); }
     }
 
@@ -407,8 +429,12 @@ public class SteamTransport : ISteamTransport
         {
             Log?.LogWarning($"[Steam] Refusing P2P from non-member {sender.m_SteamID}");
             try
-            { SteamNetworking.CloseP2PSessionWithUser(sender); }
-            catch { }
+            {
+                SteamNetworking.CloseP2PSessionWithUser(sender);
+            }
+            catch
+            {
+            }
 
             return;
         }
@@ -417,8 +443,12 @@ public class SteamTransport : ISteamTransport
         {
             Log?.LogWarning($"[Steam] Refusing P2P from {sender.m_SteamID}: lobby full");
             try
-            { SteamNetworking.CloseP2PSessionWithUser(sender); }
-            catch { }
+            {
+                SteamNetworking.CloseP2PSessionWithUser(sender);
+            }
+            catch
+            {
+            }
 
             return;
         }
@@ -434,7 +464,9 @@ public class SteamTransport : ISteamTransport
             var peerId = GetOrAssignPeerId(sender);
             Log?.LogInfo($"[Steam] Accepted P2P session: {sender.m_SteamID} -> peerId {peerId}");
             try
-            { OnClientConnected?.Invoke(peerId); }
+            {
+                OnClientConnected?.Invoke(peerId);
+            }
             catch (Exception ex) { Log?.LogError($"[Steam] OnClientConnected handler threw: {ex}"); }
         }
     }
@@ -455,14 +487,20 @@ public class SteamTransport : ISteamTransport
         }
 
         try
-        { SteamNetworking.CloseP2PSessionWithUser(sid); }
-        catch { }
+        {
+            SteamNetworking.CloseP2PSessionWithUser(sid);
+        }
+        catch
+        {
+        }
 
         _peerIdByCSteamId.Remove(sid);
         _cSteamIdByPeerId.Remove(peerId);
         Log?.LogInfo($"[Steam] Peer left: {sid.m_SteamID} (peerId {peerId})");
         try
-        { OnDisconnected?.Invoke(peerId); }
+        {
+            OnDisconnected?.Invoke(peerId);
+        }
         catch (Exception ex) { Log?.LogError($"[Steam] OnDisconnected handler threw: {ex}"); }
     }
 
@@ -542,24 +580,44 @@ public class SteamTransport : ISteamTransport
     private void DisposeSessionCallbacks()
     {
         try
-        { _cbLobbyCreated?.Dispose(); }
-        catch { }
+        {
+            _cbLobbyCreated?.Dispose();
+        }
+        catch
+        {
+        }
 
         try
-        { _cbLobbyEnter?.Dispose(); }
-        catch { }
+        {
+            _cbLobbyEnter?.Dispose();
+        }
+        catch
+        {
+        }
 
         try
-        { _cbLobbyChat?.Dispose(); }
-        catch { }
+        {
+            _cbLobbyChat?.Dispose();
+        }
+        catch
+        {
+        }
 
         try
-        { _cbSessionRequest?.Dispose(); }
-        catch { }
+        {
+            _cbSessionRequest?.Dispose();
+        }
+        catch
+        {
+        }
 
         try
-        { _cbSessionFail?.Dispose(); }
-        catch { }
+        {
+            _cbSessionFail?.Dispose();
+        }
+        catch
+        {
+        }
 
         _cbLobbyCreated = null;
         _cbLobbyEnter = null;

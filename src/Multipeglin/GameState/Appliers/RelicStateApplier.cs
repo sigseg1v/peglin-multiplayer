@@ -205,7 +205,9 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
                             wroteCountdown = true;
                         }
                     }
-                    catch { }
+                    catch
+                    {
+                    }
 
                     if (!wroteCountdown && countdowns != null)
                     {
@@ -238,7 +240,9 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
                     {
                         RelicManager.OnCountdownDecremented?.Invoke(owned[effect], entry.RemainingCountdown);
                     }
-                    catch { }
+                    catch
+                    {
+                    }
 
                     updated++;
                 }
@@ -376,7 +380,9 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
                     atk.SoftInit(deckManager, rm, cruciballManager);
                     count++;
                 }
-                catch { }
+                catch
+                {
+                }
             }
 
             // Also re-init orbs in the complete deck (they're GameObjects,
@@ -398,7 +404,9 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
                             atk.SoftInit(deckManager, rm, cruciballManager);
                             count++;
                         }
-                        catch { }
+                        catch
+                        {
+                        }
                     }
                 }
             }
