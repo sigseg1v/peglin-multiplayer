@@ -77,7 +77,8 @@ public sealed class TurnChangeClientHandler : IClientHandler<TurnChangeEvent>
         try
         {
             var bc = Object.FindObjectOfType<BattleCtrl>();
-            if (bc != null) bc.NumShotsDiscarded = 0;
+            if (bc != null)
+                bc.NumShotsDiscarded = 0;
 
             var btn = Object.FindObjectOfType<global::UI.OrbDisplay.OrbDiscardButton>();
             if (btn != null)
@@ -127,7 +128,8 @@ public sealed class TurnChangeClientHandler : IClientHandler<TurnChangeEvent>
         try
         {
             var tm = Object.FindObjectOfType<global::Battle.TargetingManager>();
-            if (tm == null) return;
+            if (tm == null)
+                return;
 
             if (enable)
             {

@@ -17,13 +17,16 @@ public sealed class SkipTurnRequestClientHandler : IClientHandler<SkipTurnReques
         try
         {
             var services = MultiplayerPlugin.Services;
-            if (services == null) return;
-            if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting) return;
+            if (services == null)
+                return;
+            if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting)
+                return;
 
             var registry = services.TryResolve<IGameEventRegistry>(out var reg) ? reg : null;
             var senderPeerId = (registry as GameEventRegistry)?.CurrentSenderPeerId ?? -1;
 
-            if (!services.TryResolve<PlayerRegistry>(out var playerRegistry)) return;
+            if (!services.TryResolve<PlayerRegistry>(out var playerRegistry))
+                return;
             var slot = playerRegistry.GetSlotByPeerId(senderPeerId);
             if (slot == null)
             {

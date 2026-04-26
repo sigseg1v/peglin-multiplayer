@@ -23,12 +23,14 @@ public class RelicStateProvider : IGameStateProvider<RelicStateSnapshot>
             // RelicManager is a ScriptableObject - FindObjectOfType won't find it
             var rms = Resources.FindObjectsOfTypeAll<RelicManager>();
             var rm = rms.Length > 0 ? rms[0] : null;
-            if (rm == null) return snapshot;
+            if (rm == null)
+                return snapshot;
 
             // _ownedRelics is a Dictionary<RelicEffect, Relic>
             var ownedField = AccessTools.Field(typeof(RelicManager), "_ownedRelics");
             var owned = ownedField?.GetValue(rm) as IDictionary<RelicEffect, Relic>;
-            if (owned == null) return snapshot;
+            if (owned == null)
+                return snapshot;
 
             // Countdown / per-shot / per-battle / per-run counters. RelicManager
             // tracks each in its own dict; we capture all four so the client can
@@ -45,7 +47,8 @@ public class RelicStateProvider : IGameStateProvider<RelicStateSnapshot>
             foreach (var kvp in owned)
             {
                 var relic = kvp.Value;
-                if (relic == null) continue;
+                if (relic == null)
+                    continue;
 
                 int countdown = 0, ps = 0, pb = 0, pr = 0;
                 countdowns?.TryGetValue(kvp.Key, out countdown);

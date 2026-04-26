@@ -12,7 +12,8 @@ public sealed class RewardChoicesClientHandler : IClientHandler<RewardChoicesEve
     public void Handle(RewardChoicesEvent networkEvent)
     {
         var services = MultiplayerPlugin.Services;
-        if (services == null) return;
+        if (services == null)
+            return;
 
         // Host→client event: host must never apply this to itself, and a forged
         // copy from another peer would otherwise pop a reward UI on this client.
@@ -20,10 +21,12 @@ public sealed class RewardChoicesClientHandler : IClientHandler<RewardChoicesEve
             return;
 
         int mySlot = CoopSlotHelper.GetLocalSlotIndex(services);
-        if (mySlot < 0) return;
+        if (mySlot < 0)
+            return;
 
         // Only process if this event targets our slot
-        if (networkEvent.TargetSlotIndex != mySlot) return;
+        if (networkEvent.TargetSlotIndex != mySlot)
+            return;
 
         MultiplayerPlugin.Logger?.LogInfo(
             $"[CoopReward] Received {networkEvent.Options?.Count ?? 0} reward options for slot {networkEvent.TargetSlotIndex}");

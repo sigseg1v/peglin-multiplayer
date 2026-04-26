@@ -12,14 +12,16 @@ public sealed class PlayerHealedClientHandler : IClientHandler<PlayerHealedEvent
         try
         {
             // During native post-battle rewards, the client's health is managed locally.
-            if (Coop.CoopRewardState.ClientInNativeRewardPhase) return;
+            if (Coop.CoopRewardState.ClientInNativeRewardPhase)
+                return;
 
             // Only fire the heal delegate when the heal targeted *this* player. Otherwise
             // every client (and host) sees subscribers react to heals that weren't for them.
             if (networkEvent.TargetSlotIndex >= 0)
             {
                 int mySlot = CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
-                if (mySlot >= 0 && networkEvent.TargetSlotIndex != mySlot) return;
+                if (mySlot >= 0 && networkEvent.TargetSlotIndex != mySlot)
+                    return;
             }
 
             PlayerHealthController.OnPlayerHealed?.Invoke(networkEvent.Amount);

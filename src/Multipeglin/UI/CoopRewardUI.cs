@@ -129,7 +129,8 @@ public class CoopRewardUI : MonoBehaviour
     {
         try
         {
-            if (_overlayPanel == null) return;
+            if (_overlayPanel == null)
+                return;
 
             // Hide overlay on scene changes:
             // 1. When entering Battle (previous reward phase is over)
@@ -153,9 +154,12 @@ public class CoopRewardUI : MonoBehaviour
 
             // Only active in multiplayer
             var services = MultiplayerPlugin.Services;
-            if (services == null) return;
-            if (!services.TryResolve<IMultiplayerMode>(out var mode)) return;
-            if (!mode.IsHosting && !mode.IsSpectating) return;
+            if (services == null)
+                return;
+            if (!services.TryResolve<IMultiplayerMode>(out var mode))
+                return;
+            if (!mode.IsHosting && !mode.IsSpectating)
+                return;
 
             // Check if all choices are complete -- hide overlay
             if (CoopRewardState.AllChoicesComplete)
@@ -425,8 +429,10 @@ public class CoopRewardUI : MonoBehaviour
     /// </summary>
     private void TickHostForceContinue()
     {
-        if (_currentState != DisplayState.Waiting) return;
-        if (_hostWaitingStartTime < 0f || _hostWaitingPhaseKey == null) return;
+        if (_currentState != DisplayState.Waiting)
+            return;
+        if (_hostWaitingStartTime < 0f || _hostWaitingPhaseKey == null)
+            return;
 
         // Re-validate the phase: clients may have completed naturally meanwhile
         // (in which case AllChoicesComplete will hide the overlay on the next tick).
@@ -437,8 +443,10 @@ public class CoopRewardUI : MonoBehaviour
             return;
         }
 
-        if (_forceContinueButton != null) return;
-        if (Time.unscaledTime - _hostWaitingStartTime < ForceContinueDelaySeconds) return;
+        if (_forceContinueButton != null)
+            return;
+        if (Time.unscaledTime - _hostWaitingStartTime < ForceContinueDelaySeconds)
+            return;
 
         _forceContinueButton = CreateForceContinueButton();
     }
@@ -491,12 +499,24 @@ public class CoopRewardUI : MonoBehaviour
         {
             switch (phase)
             {
-                case "shop":           ForceContinueShop();          break;
-                case "treasure":       ForceContinueTreasure();      break;
-                case "peg_minigame":   ForceContinuePegMinigame();   break;
-                case "text_scenario":  ForceContinueTextScenario();  break;
-                case "post_battle":    ForceContinuePostBattle();    break;
-                case "starting_relic": ForceContinueStartingRelic(); break;
+                case "shop":
+                    ForceContinueShop();
+                    break;
+                case "treasure":
+                    ForceContinueTreasure();
+                    break;
+                case "peg_minigame":
+                    ForceContinuePegMinigame();
+                    break;
+                case "text_scenario":
+                    ForceContinueTextScenario();
+                    break;
+                case "post_battle":
+                    ForceContinuePostBattle();
+                    break;
+                case "starting_relic":
+                    ForceContinueStartingRelic();
+                    break;
                 default:
                     Log?.LogWarning($"[CoopRewardUI] Force Continue: unknown phase '{phase}'");
                     break;
@@ -633,7 +653,8 @@ public class CoopRewardUI : MonoBehaviour
                         if (relicMgrs != null && relicMgrs.Length > 0)
                         {
                             Patches.MultiplayerClientPatches.AllowRelicSync = true;
-                            try { relicMgrs[0].AddRelic(relic); }
+                            try
+                            { relicMgrs[0].AddRelic(relic); }
                             finally { Patches.MultiplayerClientPatches.AllowRelicSync = false; }
                         }
                         Log?.LogInfo($"[CoopRewardUI] Host added relic: {relic.effect} ({relic.locKey})");
@@ -683,7 +704,8 @@ public class CoopRewardUI : MonoBehaviour
                         if ((int)relic.effect == relicEffect)
                         {
                             Patches.MultiplayerClientPatches.AllowRelicSync = true;
-                            try { clientRelicMgrs[0].AddRelic(relic); }
+                            try
+                            { clientRelicMgrs[0].AddRelic(relic); }
                             finally { Patches.MultiplayerClientPatches.AllowRelicSync = false; }
                             Log?.LogInfo($"[CoopRewardUI] Client added relic locally: {relic.effect}");
                             break;
@@ -796,7 +818,8 @@ public class CoopRewardUI : MonoBehaviour
     {
         foreach (var btn in _buttons)
         {
-            if (btn != null) Destroy(btn);
+            if (btn != null)
+                Destroy(btn);
         }
         _buttons.Clear();
     }
@@ -805,13 +828,20 @@ public class CoopRewardUI : MonoBehaviour
     {
         switch (type)
         {
-            case "relic":       return new Color(0.25f, 0.2f, 0.45f);
-            case "orb_upgrade": return new Color(0.2f, 0.35f, 0.5f);
-            case "orb_add":     return new Color(0.2f, 0.4f, 0.3f);
-            case "heal":        return new Color(0.4f, 0.25f, 0.25f);
-            case "max_hp":      return new Color(0.45f, 0.2f, 0.3f);
-            case "skip":        return new Color(0.3f, 0.3f, 0.2f);
-            default:            return new Color(0.25f, 0.25f, 0.25f);
+            case "relic":
+                return new Color(0.25f, 0.2f, 0.45f);
+            case "orb_upgrade":
+                return new Color(0.2f, 0.35f, 0.5f);
+            case "orb_add":
+                return new Color(0.2f, 0.4f, 0.3f);
+            case "heal":
+                return new Color(0.4f, 0.25f, 0.25f);
+            case "max_hp":
+                return new Color(0.45f, 0.2f, 0.3f);
+            case "skip":
+                return new Color(0.3f, 0.3f, 0.2f);
+            default:
+                return new Color(0.25f, 0.25f, 0.25f);
         }
     }
 

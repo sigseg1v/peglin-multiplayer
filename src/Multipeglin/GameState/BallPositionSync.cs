@@ -25,7 +25,8 @@ public class BallPositionSync : MonoBehaviour
     private void Start()
     {
         var services = MultiplayerPlugin.Services;
-        if (services == null) return;
+        if (services == null)
+            return;
         services.TryResolve(out _registry);
         services.TryResolve(out _mode);
         services.TryResolve(out _transport);
@@ -34,8 +35,10 @@ public class BallPositionSync : MonoBehaviour
 
     private void Update()
     {
-        if (_registry == null || _mode == null || _transport == null) return;
-        if (!_mode.IsHosting || !_transport.IsConnected) return;
+        if (_registry == null || _mode == null || _transport == null)
+            return;
+        if (!_mode.IsHosting || !_transport.IsConnected)
+            return;
 
         var state = BattleController.CurrentBattleState;
 
@@ -48,14 +51,18 @@ public class BallPositionSync : MonoBehaviour
         if (state != BattleController.BattleState.AWAITING_SHOT && !(isNav && !navBallFired))
             return;
 
-        if (_turnManager != null && _turnManager.CurrentPlayerSlot > 0) return;
-        if (Time.time - _lastAimSendTime < AimSendInterval) return;
+        if (_turnManager != null && _turnManager.CurrentPlayerSlot > 0)
+            return;
+        if (Time.time - _lastAimSendTime < AimSendInterval)
+            return;
         _lastAimSendTime = Time.time;
 
         var ball = FindActiveBall();
-        if (ball == null) return;
+        if (ball == null)
+            return;
         var aimVec = ball.aimVector;
-        if (aimVec == Vector2.zero) return;
+        if (aimVec == Vector2.zero)
+            return;
 
         var pos = ball.transform.position;
         _registry.Dispatch(new AimUpdateEvent
@@ -71,7 +78,8 @@ public class BallPositionSync : MonoBehaviour
     {
         foreach (var ball in FindObjectsOfType<PachinkoBall>())
         {
-            if (!ball.IsDummy) return ball;
+            if (!ball.IsDummy)
+                return ball;
         }
         return null;
     }

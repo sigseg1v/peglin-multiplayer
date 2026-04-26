@@ -21,15 +21,18 @@ public sealed class MirrorEventCompleteClientHandler : IClientHandler<MirrorEven
         try
         {
             var services = MultiplayerPlugin.Services;
-            if (services == null) return;
+            if (services == null)
+                return;
 
-            if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting) return;
+            if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting)
+                return;
 
             // Identify the sending client
             var eventRegistry = services.TryResolve<IGameEventRegistry>(out var reg) ? reg : null;
             var senderPeerId = (eventRegistry as GameEventRegistry)?.CurrentSenderPeerId ?? -1;
 
-            if (!services.TryResolve<PlayerRegistry>(out var registry)) return;
+            if (!services.TryResolve<PlayerRegistry>(out var registry))
+                return;
             var slot = registry.GetSlotByPeerId(senderPeerId);
             if (slot == null)
             {
@@ -41,7 +44,8 @@ public sealed class MirrorEventCompleteClientHandler : IClientHandler<MirrorEven
             MultiplayerPlugin.Logger?.LogInfo(
                 $"[MirrorEventComplete] Player '{slot.PlayerName}' (slot {slot.SlotIndex}) chose: action={e.Action}");
 
-            if (!services.TryResolve<CoopStateManager>(out var coopState)) return;
+            if (!services.TryResolve<CoopStateManager>(out var coopState))
+                return;
             var playerState = coopState.GetPlayerState(slot.SlotIndex);
             if (playerState == null)
             {
@@ -155,7 +159,8 @@ public sealed class MirrorEventCompleteClientHandler : IClientHandler<MirrorEven
             {
                 foreach (var orbPrefab in mirrorPool.AvailableOrbs)
                 {
-                    if (orbPrefab == null) continue;
+                    if (orbPrefab == null)
+                        continue;
                     var attack = orbPrefab.GetComponent<Attack>();
                     playerState.CompleteDeck.Add(new SerializedOrb
                     {
@@ -176,7 +181,8 @@ public sealed class MirrorEventCompleteClientHandler : IClientHandler<MirrorEven
                 {
                     foreach (var orbGo in hostDeck)
                     {
-                        if (orbGo == null) continue;
+                        if (orbGo == null)
+                            continue;
                         var attack = orbGo.GetComponent<Attack>();
                         // Add orbs that aren't already in the client's deck
                         // (the host's deck post-mirror has only the replacement orbs + CannotBeRemoved)

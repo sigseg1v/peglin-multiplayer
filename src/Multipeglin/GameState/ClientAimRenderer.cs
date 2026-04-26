@@ -22,8 +22,10 @@ public class ClientAimRenderer : MonoBehaviour
 
     private void OnDestroy()
     {
-        if (Instance == this) Instance = null;
-        if (_lineObject != null) Destroy(_lineObject);
+        if (Instance == this)
+            Instance = null;
+        if (_lineObject != null)
+            Destroy(_lineObject);
     }
 
     public void UpdateAim(float aimX, float aimY, float spawnX, float spawnY)

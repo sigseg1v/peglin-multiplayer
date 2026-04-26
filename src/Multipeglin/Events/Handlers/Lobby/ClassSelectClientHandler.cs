@@ -15,11 +15,15 @@ public sealed class ClassSelectClientHandler : IClientHandler<ClassSelectEvent>
         // This fires on the HOST when receiving from a client.
         // The host's GameEventRegistry.HandleIncoming is called for client→host events.
         var services = MultiplayerPlugin.Services;
-        if (services == null) return;
+        if (services == null)
+            return;
 
-        if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting) return;
-        if (!services.TryResolve<PlayerRegistry>(out var registry)) return;
-        if (!services.TryResolve<Events.IGameEventRegistry>(out var eventRegistry)) return;
+        if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting)
+            return;
+        if (!services.TryResolve<PlayerRegistry>(out var registry))
+            return;
+        if (!services.TryResolve<Events.IGameEventRegistry>(out var eventRegistry))
+            return;
 
         var senderPeerId = (eventRegistry as Events.GameEventRegistry)?.CurrentSenderPeerId ?? -1;
         var slot = registry.GetSlotByPeerId(senderPeerId);

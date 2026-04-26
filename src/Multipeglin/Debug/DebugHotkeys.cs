@@ -24,10 +24,13 @@ public sealed class DebugHotkeys : MonoBehaviour
 
     private void Update()
     {
-        if (!_enabled) return;
-        if (!Input.GetKeyDown(KeyCode.F10)) return;
+        if (!_enabled)
+            return;
+        if (!Input.GetKeyDown(KeyCode.F10))
+            return;
 
-        if (MultiplayerPlugin.Services == null) return;
+        if (MultiplayerPlugin.Services == null)
+            return;
         if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting)
         {
             MultiplayerPlugin.Logger?.LogInfo("[DebugHotkeys] F10 ignored — not hosting");
@@ -45,7 +48,8 @@ public sealed class DebugHotkeys : MonoBehaviour
         int killed = 0;
         foreach (var enemy in snapshot)
         {
-            if (enemy == null) continue;
+            if (enemy == null)
+                continue;
             try
             {
                 enemy.Damage(99999L, screenshake: false, audioScale: 0f, damageMod: 1f,

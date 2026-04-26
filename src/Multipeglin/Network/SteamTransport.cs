@@ -54,7 +54,8 @@ public class SteamTransport : ISteamTransport
 
     public SteamTransport()
     {
-        if (!SteamManager.Initialized) return;
+        if (!SteamManager.Initialized)
+            return;
         try
         {
             _mySteamId = SteamUser.GetSteamID();
@@ -132,7 +133,8 @@ public class SteamTransport : ISteamTransport
 
     public void PollEvents()
     {
-        if (!_started) return;
+        if (!_started)
+            return;
 
         while (SteamNetworking.IsP2PPacketAvailable(out uint size, 0))
         {
@@ -151,21 +153,25 @@ public class SteamTransport : ISteamTransport
             int peerId = GetOrAssignPeerId(sender);
             var copy = new byte[read];
             Buffer.BlockCopy(_recvBuffer, 0, copy, 0, (int)read);
-            try { OnDataReceived?.Invoke(peerId, copy); }
+            try
+            { OnDataReceived?.Invoke(peerId, copy); }
             catch (Exception ex) { Log?.LogError($"[Steam] OnDataReceived handler threw: {ex}"); }
         }
     }
 
     public void Stop()
     {
-        if (!_started) return;
+        if (!_started)
+            return;
         _started = false;
 
         try
         {
             foreach (var sid in _cSteamIdByPeerId.Values)
             {
-                try { SteamNetworking.CloseP2PSessionWithUser(sid); } catch { }
+                try
+                { SteamNetworking.CloseP2PSessionWithUser(sid); }
+                catch { }
             }
             _peerIdByCSteamId.Clear();
             _cSteamIdByPeerId.Clear();
@@ -173,12 +179,16 @@ public class SteamTransport : ISteamTransport
 
             if (_lobbyId.IsValid())
             {
-                try { SteamMatchmaking.LeaveLobby(_lobbyId); } catch { }
+                try
+                { SteamMatchmaking.LeaveLobby(_lobbyId); }
+                catch { }
             }
             _lobbyId = CSteamID.Nil;
             _hostSteamId = CSteamID.Nil;
 
-            try { SteamFriends.SetRichPresence("connect", string.Empty); } catch { }
+            try
+            { SteamFriends.SetRichPresence("connect", string.Empty); }
+            catch { }
 
             DisposeSessionCallbacks();
             Log?.LogInfo("[Steam] Transport stopped");
@@ -191,7 +201,8 @@ public class SteamTransport : ISteamTransport
 
     public void CloseLobbyOnStart()
     {
-        if (!_isHost || !_lobbyId.IsValid()) return;
+        if (!_isHost || !_lobbyId.IsValid())
+            return;
         try
         {
             SteamMatchmaking.SetLobbyData(_lobbyId, KEY_STATE, "closed");
@@ -241,7 +252,8 @@ public class SteamTransport : ISteamTransport
             return;
         }
 
-        if (_isHost) return;
+        if (_isHost)
+            return;
 
         _lobbyId = lobby;
 
@@ -291,13 +303,15 @@ public class SteamTransport : ISteamTransport
         SendP2P(_hostSteamId, new[] { HELLO_BYTE });
 
         Log?.LogInfo($"[Steam] Lobby entered, host={_hostSteamId.m_SteamID}");
-        try { OnClientConnected?.Invoke(HOST_PEER_ID); }
+        try
+        { OnClientConnected?.Invoke(HOST_PEER_ID); }
         catch (Exception ex) { Log?.LogError($"[Steam] OnClientConnected handler threw: {ex}"); }
     }
 
     private void OnLobbyChatUpdate(LobbyChatUpdate_t evt)
     {
-        if (!_lobbyId.IsValid() || evt.m_ulSteamIDLobby != _lobbyId.m_SteamID) return;
+        if (!_lobbyId.IsValid() || evt.m_ulSteamIDLobby != _lobbyId.m_SteamID)
+            return;
 
         var member = new CSteamID(evt.m_ulSteamIDUserChanged);
         var change = (EChatMemberStateChange)evt.m_rgfChatMemberStateChange;
@@ -314,12 +328,15 @@ public class SteamTransport : ISteamTransport
 
         if (_isHost && (change & EChatMemberStateChange.k_EChatMemberStateChangeEntered) != 0)
         {
-            if (member == _mySteamId) return;
+            if (member == _mySteamId)
+                return;
             int current = _peerIdByCSteamId.Count;
             if (current >= NetworkConfig.MaxClients)
             {
                 Log?.LogWarning($"[Steam] Lobby full — refusing {member.m_SteamID} ({current}/{NetworkConfig.MaxClients})");
-                try { SteamNetworking.CloseP2PSessionWithUser(member); } catch { }
+                try
+                { SteamNetworking.CloseP2PSessionWithUser(member); }
+                catch { }
             }
             else
             {
@@ -343,7 +360,8 @@ public class SteamTransport : ISteamTransport
             return;
         }
         Log?.LogInfo($"[Steam] Incoming invite to lobby {evt.m_steamIDLobby.m_SteamID} — awaiting user confirmation");
-        try { OnIncomingInvite?.Invoke(evt.m_steamIDLobby); }
+        try
+        { OnIncomingInvite?.Invoke(evt.m_steamIDLobby); }
         catch (Exception ex) { Log?.LogError($"[Steam] OnIncomingInvite handler threw: {ex}"); }
     }
 
@@ -353,14 +371,18 @@ public class SteamTransport : ISteamTransport
         if (!IsLobbyMember(sender))
         {
             Log?.LogWarning($"[Steam] Refusing P2P from non-member {sender.m_SteamID}");
-            try { SteamNetworking.CloseP2PSessionWithUser(sender); } catch { }
+            try
+            { SteamNetworking.CloseP2PSessionWithUser(sender); }
+            catch { }
             return;
         }
 
         if (_isHost && !_peerIdByCSteamId.ContainsKey(sender) && _peerIdByCSteamId.Count >= NetworkConfig.MaxClients)
         {
             Log?.LogWarning($"[Steam] Refusing P2P from {sender.m_SteamID}: lobby full");
-            try { SteamNetworking.CloseP2PSessionWithUser(sender); } catch { }
+            try
+            { SteamNetworking.CloseP2PSessionWithUser(sender); }
+            catch { }
             return;
         }
 
@@ -374,7 +396,8 @@ public class SteamTransport : ISteamTransport
         {
             int peerId = GetOrAssignPeerId(sender);
             Log?.LogInfo($"[Steam] Accepted P2P session: {sender.m_SteamID} -> peerId {peerId}");
-            try { OnClientConnected?.Invoke(peerId); }
+            try
+            { OnClientConnected?.Invoke(peerId); }
             catch (Exception ex) { Log?.LogError($"[Steam] OnClientConnected handler threw: {ex}"); }
         }
     }
@@ -389,18 +412,23 @@ public class SteamTransport : ISteamTransport
 
     private void HandlePeerLeft(CSteamID sid)
     {
-        if (!_peerIdByCSteamId.TryGetValue(sid, out int peerId)) return;
-        try { SteamNetworking.CloseP2PSessionWithUser(sid); } catch { }
+        if (!_peerIdByCSteamId.TryGetValue(sid, out int peerId))
+            return;
+        try
+        { SteamNetworking.CloseP2PSessionWithUser(sid); }
+        catch { }
         _peerIdByCSteamId.Remove(sid);
         _cSteamIdByPeerId.Remove(peerId);
         Log?.LogInfo($"[Steam] Peer left: {sid.m_SteamID} (peerId {peerId})");
-        try { OnDisconnected?.Invoke(peerId); }
+        try
+        { OnDisconnected?.Invoke(peerId); }
         catch (Exception ex) { Log?.LogError($"[Steam] OnDisconnected handler threw: {ex}"); }
     }
 
     private int GetOrAssignPeerId(CSteamID sid)
     {
-        if (_peerIdByCSteamId.TryGetValue(sid, out int id)) return id;
+        if (_peerIdByCSteamId.TryGetValue(sid, out int id))
+            return id;
         id = _nextPeerId++;
         _peerIdByCSteamId[sid] = id;
         _cSteamIdByPeerId[id] = sid;
@@ -409,11 +437,13 @@ public class SteamTransport : ISteamTransport
 
     private bool IsLobbyMember(CSteamID sid)
     {
-        if (!_lobbyId.IsValid()) return false;
+        if (!_lobbyId.IsValid())
+            return false;
         int count = SteamMatchmaking.GetNumLobbyMembers(_lobbyId);
         for (int i = 0; i < count; i++)
         {
-            if (SteamMatchmaking.GetLobbyMemberByIndex(_lobbyId, i) == sid) return true;
+            if (SteamMatchmaking.GetLobbyMemberByIndex(_lobbyId, i) == sid)
+                return true;
         }
         return false;
     }
@@ -428,20 +458,35 @@ public class SteamTransport : ISteamTransport
 
     private void EnsureSessionCallbacks()
     {
-        if (_cbLobbyCreated == null) _cbLobbyCreated = Callback<LobbyCreated_t>.Create(OnLobbyCreated);
-        if (_cbLobbyEnter == null) _cbLobbyEnter = Callback<LobbyEnter_t>.Create(OnLobbyEnter);
-        if (_cbLobbyChat == null) _cbLobbyChat = Callback<LobbyChatUpdate_t>.Create(OnLobbyChatUpdate);
-        if (_cbSessionRequest == null) _cbSessionRequest = Callback<P2PSessionRequest_t>.Create(OnP2PSessionRequest);
-        if (_cbSessionFail == null) _cbSessionFail = Callback<P2PSessionConnectFail_t>.Create(OnP2PSessionConnectFail);
+        if (_cbLobbyCreated == null)
+            _cbLobbyCreated = Callback<LobbyCreated_t>.Create(OnLobbyCreated);
+        if (_cbLobbyEnter == null)
+            _cbLobbyEnter = Callback<LobbyEnter_t>.Create(OnLobbyEnter);
+        if (_cbLobbyChat == null)
+            _cbLobbyChat = Callback<LobbyChatUpdate_t>.Create(OnLobbyChatUpdate);
+        if (_cbSessionRequest == null)
+            _cbSessionRequest = Callback<P2PSessionRequest_t>.Create(OnP2PSessionRequest);
+        if (_cbSessionFail == null)
+            _cbSessionFail = Callback<P2PSessionConnectFail_t>.Create(OnP2PSessionConnectFail);
     }
 
     private void DisposeSessionCallbacks()
     {
-        try { _cbLobbyCreated?.Dispose(); } catch { }
-        try { _cbLobbyEnter?.Dispose(); } catch { }
-        try { _cbLobbyChat?.Dispose(); } catch { }
-        try { _cbSessionRequest?.Dispose(); } catch { }
-        try { _cbSessionFail?.Dispose(); } catch { }
+        try
+        { _cbLobbyCreated?.Dispose(); }
+        catch { }
+        try
+        { _cbLobbyEnter?.Dispose(); }
+        catch { }
+        try
+        { _cbLobbyChat?.Dispose(); }
+        catch { }
+        try
+        { _cbSessionRequest?.Dispose(); }
+        catch { }
+        try
+        { _cbSessionFail?.Dispose(); }
+        catch { }
         _cbLobbyCreated = null;
         _cbLobbyEnter = null;
         _cbLobbyChat = null;

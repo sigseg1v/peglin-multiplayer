@@ -13,7 +13,8 @@ public sealed class DeckStateSnapshotClientHandler : IClientHandler<DeckStateSna
         try
         {
             // In coop mode, each player has their own deck — don't overwrite
-            if (UI.LobbyUI.GameStartReceived) return;
+            if (UI.LobbyUI.GameStartReceived)
+                return;
 
             var mode = MultiplayerPlugin.Services?.Resolve<IMultiplayerMode>();
             if (mode?.ClientMode == ClientMode.Mirror)

@@ -56,17 +56,21 @@ public class MainThreadDispatcher : MonoBehaviour
 
         float interval = shotActive ? 1f : 2f;
         _heartbeatTimer += Time.unscaledDeltaTime;
-        if (_heartbeatTimer < interval) return;
+        if (_heartbeatTimer < interval)
+            return;
         _heartbeatTimer = 0f;
 
         // Resolve hosting status each tick — no stale references
         try
         {
             var services = MultiplayerPlugin.Services;
-            if (services == null) return;
+            if (services == null)
+                return;
 
-            if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting) return;
-            if (!services.TryResolve<IGameStateSyncService>(out var sync)) return;
+            if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting)
+                return;
+            if (!services.TryResolve<IGameStateSyncService>(out var sync))
+                return;
 
             _heartbeatCount++;
             var tag = shotActive ? $"HEARTBEAT#{_heartbeatCount}(shot)" : $"HEARTBEAT#{_heartbeatCount}";

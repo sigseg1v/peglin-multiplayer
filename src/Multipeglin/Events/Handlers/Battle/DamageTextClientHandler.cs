@@ -12,10 +12,12 @@ public sealed class DamageTextClientHandler : IClientHandler<DamageTextEvent>
         try
         {
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
-            if (mode == null || !mode.IsSpectating) return;
+            if (mode == null || !mode.IsSpectating)
+                return;
 
             var dcd = UnityEngine.Object.FindObjectOfType<DamageCountDisplay>();
-            if (dcd == null) return;
+            if (dcd == null)
+                return;
 
             var pos = new Vector2(e.PosX, e.PosY);
             var color = new Color(e.R, e.G, e.B, e.A);

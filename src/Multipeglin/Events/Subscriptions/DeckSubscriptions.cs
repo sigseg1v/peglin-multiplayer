@@ -42,7 +42,8 @@ public sealed class DeckSubscriptions
 
     private void OnBallDrawn(GameObject ball)
     {
-        if (!IsHosting) return;
+        if (!IsHosting)
+            return;
         _registry.Dispatch(new BallDrawnEvent
         {
             OrbName = _orbIdentifier.GetId(ball),
@@ -52,7 +53,8 @@ public sealed class DeckSubscriptions
 
     private void OnBallUsed(GameObject ball)
     {
-        if (!IsHosting) return;
+        if (!IsHosting)
+            return;
         _registry.Dispatch(new BallUsedEvent
         {
             OrbName = _orbIdentifier.GetId(ball)
@@ -61,7 +63,8 @@ public sealed class DeckSubscriptions
 
     private void OnBallUpgraded(GameObject previous, GameObject post)
     {
-        if (!IsHosting) return;
+        if (!IsHosting)
+            return;
         _registry.Dispatch(new BallUpgradedEvent
         {
             PreviousOrbName = _orbIdentifier.GetId(previous),
@@ -72,7 +75,8 @@ public sealed class DeckSubscriptions
 
     private void OnDeckShuffled(int deckSize)
     {
-        if (!IsHosting) return;
+        if (!IsHosting)
+            return;
         _registry.Dispatch(new DeckShuffledEvent { DeckSize = deckSize });
     }
 }

@@ -65,8 +65,10 @@ public static class MultiplayerClientPatches
     {
         get
         {
-            if (MultiplayerPlugin.Services == null) return false;
-            if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode)) return false;
+            if (MultiplayerPlugin.Services == null)
+                return false;
+            if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode))
+                return false;
             return mode.IsSpectating;
         }
     }
@@ -75,8 +77,10 @@ public static class MultiplayerClientPatches
     {
         get
         {
-            if (MultiplayerPlugin.Services == null) return false;
-            if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode)) return false;
+            if (MultiplayerPlugin.Services == null)
+                return false;
+            if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode))
+                return false;
             return mode.IsHosting;
         }
     }
@@ -148,9 +152,12 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool TutorialManager_ShouldPopupTutorial_Prefix(ref bool __result)
     {
-        if (MultiplayerPlugin.Services == null) return true;
-        if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode)) return true;
-        if (!mode.IsHosting && !mode.IsSpectating) return true;
+        if (MultiplayerPlugin.Services == null)
+            return true;
+        if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode))
+            return true;
+        if (!mode.IsHosting && !mode.IsSpectating)
+            return true;
 
         __result = false;
         return false;
@@ -170,9 +177,12 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool PlayButton_SwitchToRunConfigCanvas_Prefix(PeglinUI.MainMenu.PlayButton __instance)
     {
-        if (MultiplayerPlugin.Services == null) return true;
-        if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode)) return true;
-        if (!mode.IsHosting && !mode.IsSpectating) return true;
+        if (MultiplayerPlugin.Services == null)
+            return true;
+        if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode))
+            return true;
+        if (!mode.IsHosting && !mode.IsSpectating)
+            return true;
 
         // In multiplayer, skip character select and go straight to game start
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Skipping character select — class chosen in lobby");
@@ -211,7 +221,8 @@ public static class MultiplayerClientPatches
             // (e.g. PegMinigame "?" room with no bouncers) since the available list is
             // empty until something else triggers it. The host hits this path naturally
             // via GameInit; on the client we have to do it explicitly.
-            try { rm.SetupInternalRelicPools(); }
+            try
+            { rm.SetupInternalRelicPools(); }
             catch (Exception sx) { MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] SetupInternalRelicPools failed: {sx.Message}"); }
             MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Called RelicManager.PopulateRelicPools({chosenClass}) + SetupInternalRelicPools");
         }
@@ -334,7 +345,8 @@ public static class MultiplayerClientPatches
     [HarmonyPostfix]
     public static void SpeedupIndicator_Start_Postfix(PeglinUI.SpeedupIndicator __instance)
     {
-        if (!ShouldSuppressClientLogic) return;
+        if (!ShouldSuppressClientLogic)
+            return;
 
         // The SpeedupIndicator Image shows the arrow icon — keep it.
         // Find and hide the key prompt child (the "F" label).
@@ -342,9 +354,11 @@ public static class MultiplayerClientPatches
         foreach (var img in __instance.GetComponentsInChildren<UnityEngine.UI.Image>(true))
         {
             // Skip the main indicator image (the arrow)
-            if (img.gameObject == __instance.gameObject) continue;
+            if (img.gameObject == __instance.gameObject)
+                continue;
             // Skip the speed text's parent
-            if (img.GetComponentInChildren<TMPro.TextMeshProUGUI>() == __instance.Text) continue;
+            if (img.GetComponentInChildren<TMPro.TextMeshProUGUI>() == __instance.Text)
+                continue;
             // Disable other child images (key prompt icon)
             img.gameObject.SetActive(false);
         }
@@ -374,7 +388,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool BattleController_Update_Prefix(BattleController __instance)
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
 
         bool isMyTurn = Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn;
         bool shotSent = ClientShotSentThisTurn;
@@ -513,7 +528,9 @@ public static class MultiplayerClientPatches
                 {
                     var pmField = HarmonyLib.AccessTools.Field(typeof(PachinkoBall), "_predictionManager");
                     var pm = pmField?.GetValue(ball) as PredictionManager;
-                    try { pm?.PlayerFired(); } catch { }
+                    try
+                    { pm?.PlayerFired(); }
+                    catch { }
                 }
 
                 var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
@@ -528,7 +545,8 @@ public static class MultiplayerClientPatches
             UnityEngine.Object.Destroy(_clientBallGO);
             _clientBallGO = null;
         }
-        if (_clientTrajectoryGO != null) { UnityEngine.Object.Destroy(_clientTrajectoryGO); _clientTrajectoryGO = null; }
+        if (_clientTrajectoryGO != null)
+        { UnityEngine.Object.Destroy(_clientTrajectoryGO); _clientTrajectoryGO = null; }
         _clientTrajectoryLR = null;
         _clientBallInitialized = false;
         _clientBallRetryCount = 0;
@@ -560,7 +578,8 @@ public static class MultiplayerClientPatches
             if (spawnPos == UnityEngine.Vector2.zero)
             {
                 var player = UnityEngine.GameObject.FindGameObjectWithTag("Player");
-                if (player != null) spawnPos = (UnityEngine.Vector2)player.transform.position;
+                if (player != null)
+                    spawnPos = (UnityEngine.Vector2)player.transform.position;
             }
 
             try
@@ -601,10 +620,12 @@ public static class MultiplayerClientPatches
                 _clientFireForce = ball != null ? ball.FireForce : 400f;
                 _clientBallMass = rb != null ? rb.mass : 1f;
                 _clientGravityScale = ball != null ? ball.GravityScale : 1.2f;
-                if (_clientGravityScale < 0) _clientGravityScale = -_clientGravityScale;
+                if (_clientGravityScale < 0)
+                    _clientGravityScale = -_clientGravityScale;
 
                 // Disable physics so ball doesn't fall
-                if (rb != null) rb.simulated = false;
+                if (rb != null)
+                    rb.simulated = false;
 
                 // Set as BattleController._activePachinkoBall so the native prediction
                 // system can find it. Init + Arm set up PredictionManager for the aimer line.
@@ -621,7 +642,9 @@ public static class MultiplayerClientPatches
                     ball.InitializeMembers();
 
                     // Arm the ball — this enables TrajectorySimulation and prediction line
-                    try { ball.Arm(); } catch (System.Exception armEx)
+                    try
+                    { ball.Arm(); }
+                    catch (System.Exception armEx)
                     {
                         MultiplayerPlugin.Logger?.LogWarning(
                             $"[ClientAim] Arm() failed (non-fatal): {armEx.GetType().Name}: " +
@@ -684,8 +707,10 @@ public static class MultiplayerClientPatches
     private static bool IsPointerOverInteractiveUI()
     {
         var es = UnityEngine.EventSystems.EventSystem.current;
-        if (es == null) return false;
-        if (!es.IsPointerOverGameObject()) return false;
+        if (es == null)
+            return false;
+        if (!es.IsPointerOverGameObject())
+            return false;
 
         try
         {
@@ -698,8 +723,10 @@ public static class MultiplayerClientPatches
             for (int i = 0; i < _uiRaycastBuf.Count; i++)
             {
                 var go = _uiRaycastBuf[i].gameObject;
-                if (go == null) continue;
-                if (go.GetComponentInParent<UnityEngine.UI.Button>() != null) return true;
+                if (go == null)
+                    continue;
+                if (go.GetComponentInParent<UnityEngine.UI.Button>() != null)
+                    return true;
             }
         }
         catch { }
@@ -717,11 +744,13 @@ public static class MultiplayerClientPatches
         try
         {
             var cam = UnityEngine.Camera.main;
-            if (cam == null) return;
+            if (cam == null)
+                return;
             var ballPos = _clientBallGO.transform.position;
             var worldMouse = cam.ScreenToWorldPoint(UnityEngine.Input.mousePosition);
             var aim = ((UnityEngine.Vector2)(worldMouse - ballPos)).normalized;
-            if (aim.sqrMagnitude < 0.0001f) return;
+            if (aim.sqrMagnitude < 0.0001f)
+                return;
 
             string targetGuid = null;
             try
@@ -763,12 +792,15 @@ public static class MultiplayerClientPatches
     /// </summary>
     private static void SendClientAimUpdate()
     {
-        if (_clientBallGO == null) return;
+        if (_clientBallGO == null)
+            return;
         var ball = _clientBallGO.GetComponent<PachinkoBall>();
-        if (ball == null) return;
+        if (ball == null)
+            return;
 
         var aimVec = ball.aimVector;
-        if (aimVec == UnityEngine.Vector2.zero) return;
+        if (aimVec == UnityEngine.Vector2.zero)
+            return;
 
         var pos = ball.transform.position;
         var services = MultiplayerPlugin.Services;
@@ -821,8 +853,10 @@ public static class MultiplayerClientPatches
     [HarmonyPostfix]
     public static void BattleController_Update_Postfix()
     {
-        if (!IsHosting) return;
-        if (!UI.LobbyUI.GameStartReceived) return;
+        if (!IsHosting)
+            return;
+        if (!UI.LobbyUI.GameStartReceived)
+            return;
 
         // Track fired ball position to diagnose collision issues
         if (_firedBallGO != null && _firedBallLogCount < 5)
@@ -849,7 +883,8 @@ public static class MultiplayerClientPatches
         }
 
         // Only process when BattleController is in AWAITING_SHOT
-        if (BattleController.CurrentBattleState != BattleController.BattleState.AWAITING_SHOT) return;
+        if (BattleController.CurrentBattleState != BattleController.BattleState.AWAITING_SHOT)
+            return;
 
         // Handle pending discard request from client before checking for shots
         if (Events.Handlers.Coop.OrbDiscardRequestClientHandler.PendingDiscard)
@@ -865,7 +900,8 @@ public static class MultiplayerClientPatches
                 var activeBallField = HarmonyLib.AccessTools.Field(typeof(BattleController), "_activePachinkoBall");
                 var ballGO = activeBallField?.GetValue(bc) as UnityEngine.GameObject;
                 bool wasInactive = ballGO != null && !ballGO.activeInHierarchy;
-                if (wasInactive) ballGO.SetActive(true);
+                if (wasInactive)
+                    ballGO.SetActive(true);
 
                 // Clear populatingDisplayOrb — the previous discard's DrawBall may have
                 // started a DeckInfoManager animation that hasn't finished yet. This flag
@@ -912,7 +948,8 @@ public static class MultiplayerClientPatches
         }
 
         var pending = Events.Handlers.Coop.ShootRequestClientHandler.PeekPendingShot();
-        if (pending == null) return;
+        if (pending == null)
+            return;
 
         // Verify the pending shot is for the currently active player slot.
         // In coop, turns rotate between players — a stale shot from a previous
@@ -935,7 +972,8 @@ public static class MultiplayerClientPatches
             // fires when the animation completes, setting state to AIMING. Scanning
             // for AIMING balls would miss it during the animation.
             var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
-            if (bc == null) return;
+            if (bc == null)
+                return;
 
             var activeBallField = HarmonyLib.AccessTools.Field(typeof(BattleController), "_activePachinkoBall");
             var activeBallGO = activeBallField?.GetValue(bc) as UnityEngine.GameObject;
@@ -1100,14 +1138,17 @@ public static class MultiplayerClientPatches
     [HarmonyPostfix]
     public static void BattleController_DrawBall_Postfix()
     {
-        if (!UI.LobbyUI.GameStartReceived) return;
+        if (!UI.LobbyUI.GameStartReceived)
+            return;
 
         var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
-        if (bc == null) return;
+        if (bc == null)
+            return;
 
         var activeBallField = HarmonyLib.AccessTools.Field(typeof(BattleController), "_activePachinkoBall");
         var ballGO = activeBallField?.GetValue(bc) as UnityEngine.GameObject;
-        if (ballGO == null) return;
+        if (ballGO == null)
+            return;
 
         // On the host during a client's turn, hide the ball so the host
         // can't see the aimer or interact with it.
@@ -1148,13 +1189,17 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool BattleController_AttemptOrbDiscard_Prefix()
     {
-        if (!UI.LobbyUI.GameStartReceived) return true;
+        if (!UI.LobbyUI.GameStartReceived)
+            return true;
 
         // Block on client — discards are handled via OrbDiscardRequestEvent to host
-        if (ShouldSuppressClientLogic) return false;
+        if (ShouldSuppressClientLogic)
+            return false;
 
-        if (!IsHosting) return true;
-        if (_executingPendingDiscard) return true; // bypass for programmatic discard
+        if (!IsHosting)
+            return true;
+        if (_executingPendingDiscard)
+            return true; // bypass for programmatic discard
 
         var services = MultiplayerPlugin.Services;
         if (services?.TryResolve<GameState.TurnManager>(out var tm) == true
@@ -1193,10 +1238,12 @@ public static class MultiplayerClientPatches
     public static void GameInit_Start_Postfix(GameInit __instance)
     {
         // Only run when hosting or in coop mode
-        if (!UI.LobbyUI.GameStartReceived) return;
+        if (!UI.LobbyUI.GameStartReceived)
+            return;
 
         var services = MultiplayerPlugin.Services;
-        if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true) return;
+        if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true)
+            return;
 
         // Clear stale reward/relic-selection state from any previous run. Without this,
         // flags like HostHasChosenRelic and the various *PhaseActive bools persist from
@@ -1272,10 +1319,12 @@ public static class MultiplayerClientPatches
             // Only on first initialization — skip if player already has state.
             foreach (var player in gameStartEvent.FinalPlayers)
             {
-                if (player.IsHost) continue;
+                if (player.IsHost)
+                    continue;
 
                 var playerState = coopState.GetPlayerState(player.SlotIndex);
-                if (playerState == null) continue;
+                if (playerState == null)
+                    continue;
 
                 // Skip if player already has initialized state (re-capture, not re-init)
                 if (playerState.IsInitialized && playerState.CompleteDeck.Count > 0)
@@ -1313,7 +1362,8 @@ public static class MultiplayerClientPatches
                     playerState.CompleteDeck.Clear();
                     foreach (var orb in loadout.StartingOrbs)
                     {
-                        if (orb == null) continue;
+                        if (orb == null)
+                            continue;
                         playerState.CompleteDeck.Add(new GameState.SerializedOrb
                         {
                             PrefabName = orb.name,
@@ -1333,7 +1383,8 @@ public static class MultiplayerClientPatches
                     playerState.OwnedRelics.Clear();
                     foreach (var relic in loadout.StartingRelics)
                     {
-                        if (relic == null) continue;
+                        if (relic == null)
+                            continue;
                         playerState.OwnedRelics.Add(new GameState.SerializedRelic
                         {
                             Effect = (int)relic.effect,
@@ -1422,7 +1473,8 @@ public static class MultiplayerClientPatches
                         {
                             foreach (var relic in loadout.StartingRelics)
                             {
-                                if (relic == null) continue;
+                                if (relic == null)
+                                    continue;
                                 try
                                 {
                                     AllowRelicSync = true;
@@ -1449,7 +1501,8 @@ public static class MultiplayerClientPatches
             if (gameStartEvent?.FinalPlayers != null)
             {
                 foreach (var p in gameStartEvent.FinalPlayers)
-                    if (!p.IsHost) nonHostCount++;
+                    if (!p.IsHost)
+                        nonHostCount++;
             }
             Events.Handlers.Coop.CoopRewardState.HostRelicSelectionActive = true;
             Events.Handlers.Coop.CoopRewardState.HostHasChosenRelic = false;
@@ -1468,7 +1521,8 @@ public static class MultiplayerClientPatches
                     var rm = relicMgrs[0];
                     foreach (var player in gameStartEvent.FinalPlayers)
                     {
-                        if (player.IsHost) continue;
+                        if (player.IsHost)
+                            continue;
 
                         var choices = new System.Collections.Generic.List<GameState.Snapshots.RelicEntry>();
                         try
@@ -1620,8 +1674,10 @@ public static class MultiplayerClientPatches
     public static bool GameInit_LoadMapScene_Prefix()
     {
         // Only intercept during coop relic selection
-        if (!Events.Handlers.Coop.CoopRewardState.HostRelicSelectionActive) return true;
-        if (!IsHosting) return true;
+        if (!Events.Handlers.Coop.CoopRewardState.HostRelicSelectionActive)
+            return true;
+        if (!IsHosting)
+            return true;
 
         // Host has chosen their relic -- mark it
         Events.Handlers.Coop.CoopRewardState.HostHasChosenRelic = true;
@@ -1666,7 +1722,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool PeglinSceneLoader_LoadScene_Prefix(PeglinSceneLoader.Scene scene)
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
 
         if (AllowNextSceneLoad)
         {
@@ -1695,7 +1752,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static void BattleController_Awake_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return;
+        if (!ShouldSuppressClientLogic)
+            return;
 
         // 1. Destroy pre-instanced pegs
         var preData = StaticGameData.preInstancedPegboardData;
@@ -1753,8 +1811,10 @@ public static class MultiplayerClientPatches
     [HarmonyFinalizer]
     public static Exception BattleController_Awake_Finalizer(Exception __exception)
     {
-        if (__exception == null) return null;
-        if (!ShouldSuppressClientLogic) return __exception;
+        if (__exception == null)
+            return null;
+        if (!ShouldSuppressClientLogic)
+            return __exception;
 
         MultiplayerPlugin.Logger?.LogError($"[ClientPatches] BattleController.Awake CRASHED on client (swallowed):\n" +
             $"  {__exception.GetType().Name}: {__exception.Message}\n{__exception.StackTrace}");
@@ -1775,12 +1835,14 @@ public static class MultiplayerClientPatches
                     {
                         try
                         {
-                            if (spawn?.spawnData?.enemyAssetReference == null) continue;
+                            if (spawn?.spawnData?.enemyAssetReference == null)
+                                continue;
                             var key = spawn.spawnData.enemyAssetReference.RuntimeKey.ToString();
                             if (!cache.ContainsKey(key))
                             {
                                 var go = spawn.spawnData.enemyAssetReference.LoadAssetAsync<GameObject>().WaitForCompletion();
-                                if (go != null) { cache[key] = go; loaded++; }
+                                if (go != null)
+                                { cache[key] = go; loaded++; }
                             }
                         }
                         catch { }
@@ -1817,7 +1879,8 @@ public static class MultiplayerClientPatches
     [HarmonyPostfix]
     public static void MapController_CreateMapDataLists_Postfix()
     {
-        if (!ShouldSuppressClientLogic) return;
+        if (!ShouldSuppressClientLogic)
+            return;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] CreateMapDataLists ran on client (lists unused, prevents NRE)");
     }
 
@@ -1826,7 +1889,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool MapController_PostProcessMap_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         return false;
     }
 
@@ -1835,7 +1899,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool MapController_SeedMapContents_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         return false;
     }
 
@@ -1855,7 +1920,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool MapController_LoadSceneFromMapData_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked LoadSceneFromMapData — host will send transitions");
 
         // Clear fade curtain — the game started a fade-to-black before we blocked the load
@@ -1887,7 +1953,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool MapController_ResolveNode_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked MapController.ResolveNode (client — scene handled by NodeActivatedClientHandler)");
         return false;
     }
@@ -1906,7 +1973,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool EnemyManager_AddStarterEnemies_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked AddStarterEnemies — host will send enemies");
         return false;
     }
@@ -1919,7 +1987,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool EnemyInfoManager_Initialize_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked EnemyInfoManager.Initialize — host will send upcoming enemies");
         return false;
     }
@@ -1936,7 +2005,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool Enemy_ApplyStatusEffect_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         return AllowStatusEffectSync; // only allow when the applier is syncing
     }
 
@@ -1971,7 +2041,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool PegManager_CreateSpecialPegs_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         return false;
     }
 
@@ -1982,7 +2053,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool PegManager_ShuffleCritPegs_Prefix()
     {
-        if (ShouldSuppressClientLogic) return false;
+        if (ShouldSuppressClientLogic)
+            return false;
         if (IsHosting)
             MultiplayerPlugin.Logger?.LogInfo(
                 $"[PegShuffleHost] ShuffleCritPegs caller={DescribeShuffleCaller()}");
@@ -2003,7 +2075,8 @@ public static class MultiplayerClientPatches
             for (int i = 0; i < trace.FrameCount && picked.Count < 3; i++)
             {
                 var m = trace.GetFrame(i)?.GetMethod();
-                if (m == null) continue;
+                if (m == null)
+                    continue;
                 var t = m.DeclaringType?.FullName ?? "?";
                 // Skip Harmony-generated wrappers and this patch class
                 if (t.StartsWith("HarmonyLib") || t.StartsWith("System.") ||
@@ -2021,7 +2094,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool PegManager_CreateRefreshPegs_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         return false;
     }
 
@@ -2036,13 +2110,16 @@ public static class MultiplayerClientPatches
     [HarmonyPostfix]
     public static void LongPeg_SetActiveStatus_Postfix(LongPeg __instance, bool active)
     {
-        if (active) return;
-        if (!IsHosting) return;
+        if (active)
+            return;
+        if (!IsHosting)
+            return;
         try
         {
             var clearedField = HarmonyLib.AccessTools.Field(typeof(global::Peg), "_cleared");
             bool isCleared = (bool)(clearedField?.GetValue(__instance) ?? false);
-            if (isCleared) __instance.RemoveIfCleared();
+            if (isCleared)
+                __instance.RemoveIfCleared();
         }
         catch { }
     }
@@ -2059,7 +2136,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool PegManager_FailSafeCreateRefreshPegs_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         return false;
     }
 
@@ -2068,7 +2146,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool PegManager_ResetPegs_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         return false;
     }
 
@@ -2077,7 +2156,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool PegManager_ApplyShieldToRegularPegs_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         return false;
     }
 
@@ -2091,7 +2171,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool RandomPegField_TurnComplete_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         return false;
     }
 
@@ -2105,9 +2186,11 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool DeckManager_DrawBall_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         // In coop, allow deck operations during client's turn
-        if (UI.LobbyUI.GameStartReceived && Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn) return true;
+        if (UI.LobbyUI.GameStartReceived && Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn)
+            return true;
         return false;
     }
 
@@ -2121,9 +2204,11 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool DeckManager_ShuffleBattleDeck_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         // In coop, allow deck operations during client's turn
-        if (UI.LobbyUI.GameStartReceived && Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn) return true;
+        if (UI.LobbyUI.GameStartReceived && Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn)
+            return true;
         return false;
     }
 
@@ -2133,9 +2218,11 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool BattleController_ResetField_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         // In coop, allow field reset during client's turn
-        if (UI.LobbyUI.GameStartReceived && Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn) return true;
+        if (UI.LobbyUI.GameStartReceived && Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn)
+            return true;
         return false;
     }
 
@@ -2185,7 +2272,8 @@ public static class MultiplayerClientPatches
             return null;
         }
 
-        if (!ShouldSuppressClientLogic) return __exception;
+        if (!ShouldSuppressClientLogic)
+            return __exception;
 
         // CLIENT: re-apply host node types (Start set them to NONE via blocked GenerateRoomType)
         MapControllerStartCompleted = true;
@@ -2225,7 +2313,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool MapController_IntroFade_Prefix(Map.MapController __instance)
     {
-        if (!IsHosting) return true;
+        if (!IsHosting)
+            return true;
         try
         {
             var curtainGO = GameObject.FindGameObjectWithTag("Curtain");
@@ -2259,21 +2348,24 @@ public static class MultiplayerClientPatches
     [HarmonyPostfix]
     public static void MapController_IntroFade_Postfix()
     {
-        if (IsHosting) MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Intro: IntroFade entered");
+        if (IsHosting)
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Intro: IntroFade entered");
     }
 
     [HarmonyPatch(typeof(Map.MapController), "IntroCameraPan")]
     [HarmonyPostfix]
     public static void MapController_IntroCameraPan_Postfix()
     {
-        if (IsHosting) MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Intro: IntroCameraPan entered");
+        if (IsHosting)
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Intro: IntroCameraPan entered");
     }
 
     [HarmonyPatch(typeof(Map.MapController), "PostFadeInit")]
     [HarmonyPostfix]
     public static void MapController_PostFadeInit_Postfix()
     {
-        if (IsHosting) MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Intro: PostFadeInit entered");
+        if (IsHosting)
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Intro: PostFadeInit entered");
     }
 
     // =========================================================================
@@ -2289,7 +2381,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool MapNode_GenerateRoomType_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         return false;
     }
 
@@ -2302,7 +2395,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool MapNode_GenerateIcon_Prefix(MapNode __instance)
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         return __instance.RoomType != RoomType.NONE;
     }
 
@@ -2315,7 +2409,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool DeckInfoManager_StartShuffleAnimation_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked StartShuffleAnimation on client — host controls deck visuals");
         return false;
     }
@@ -2329,7 +2424,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool BattleController_AddInitialCoinsToBoard_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked AddInitialCoinsToBoard — host will send gold state");
         return false;
     }
@@ -2342,9 +2438,12 @@ public static class MultiplayerClientPatches
     [HarmonyPostfix]
     public static void DamageCountDisplay_CreateText_Postfix(string textOrLocKey, UnityEngine.Vector2 position, UnityEngine.Color color)
     {
-        if (!IsHosting) return;
-        if (MultiplayerPlugin.Services == null) return;
-        if (!MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out var registry)) return;
+        if (!IsHosting)
+            return;
+        if (MultiplayerPlugin.Services == null)
+            return;
+        if (!MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out var registry))
+            return;
 
         registry.Dispatch(new Multipeglin.Events.Network.Battle.DamageTextEvent
         {
@@ -2365,7 +2464,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool DamageCountDisplay_DisplayDamage_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         return false;
     }
 
@@ -2386,15 +2486,19 @@ public static class MultiplayerClientPatches
         global::Battle.Enemies.Enemy.EnemyDamageSource damageSource,
         float damageMod)
     {
-        if (!IsHosting) return;
-        if (MultiplayerPlugin.Services == null) return;
-        if (!MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out var registry)) return;
+        if (!IsHosting)
+            return;
+        if (MultiplayerPlugin.Services == null)
+            return;
+        if (!MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out var registry))
+            return;
 
         var exampleField = typeof(global::Battle.Enemies.Enemy).GetField(
             "_exampleFloatingText",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         var example = exampleField?.GetValue(__instance) as FloatingText;
-        if (example == null) return;
+        if (example == null)
+            return;
         var pos = example.transform.position;
 
         var text = DamageCountDisplay.FormatDamageNumberAsString(damage);
@@ -2427,9 +2531,12 @@ public static class MultiplayerClientPatches
     public static void RegularPeg_ConvertPegToType_Prefix(RegularPeg __instance, Peg.PegType type, out string __state)
     {
         __state = null;
-        if (type != Peg.PegType.BOMB) return;
-        if (MultiplayerPlugin.Services == null) return;
-        if (!MultiplayerPlugin.Services.TryResolve<Multipeglin.Utility.PegIdentifier>(out var pegId)) return;
+        if (type != Peg.PegType.BOMB)
+            return;
+        if (MultiplayerPlugin.Services == null)
+            return;
+        if (!MultiplayerPlugin.Services.TryResolve<Multipeglin.Utility.PegIdentifier>(out var pegId))
+            return;
 
         // Use GetOrAssignGuid so that even if this peg was never captured (e.g. dynamically
         // spawned by a relic/orb behaviour) we still have a stable GUID to hand to the bomb.
@@ -2440,10 +2547,14 @@ public static class MultiplayerClientPatches
     [HarmonyPostfix]
     public static void RegularPeg_ConvertPegToType_Postfix(RegularPeg __instance, Peg.PegType type, GameObject __result, string __state)
     {
-        if (type != Peg.PegType.BOMB || __result == null || __result == __instance.gameObject) return;
-        if (string.IsNullOrEmpty(__state)) return;
-        if (MultiplayerPlugin.Services == null) return;
-        if (!MultiplayerPlugin.Services.TryResolve<Multipeglin.Utility.PegIdentifier>(out var pegId)) return;
+        if (type != Peg.PegType.BOMB || __result == null || __result == __instance.gameObject)
+            return;
+        if (string.IsNullOrEmpty(__state))
+            return;
+        if (MultiplayerPlugin.Services == null)
+            return;
+        if (!MultiplayerPlugin.Services.TryResolve<Multipeglin.Utility.PegIdentifier>(out var pegId))
+            return;
 
         var newBomb = __result.GetComponent<Peg>();
         if (newBomb == null)
@@ -2509,16 +2620,20 @@ public static class MultiplayerClientPatches
     public static void PegCoinOverlay_TriggerCoinCollected_GoldLog(
         Battle.PegBehaviour.PegCoinOverlay __instance)
     {
-        if (!IsHosting) return;
+        if (!IsHosting)
+            return;
         try
         {
             if (BattleController.CurrentBattleState != BattleController.BattleState.AWAITING_SHOT_COMPLETION)
                 return;
             var pegField = AccessTools.Field(typeof(Battle.PegBehaviour.PegCoinOverlay), "_peg");
             var peg = pegField?.GetValue(__instance) as Peg;
-            if (peg == null) return;
-            if (peg.relicManager == null) return;
-            if (!peg.relicManager.RelicEffectActive(Relics.RelicEffect.GOLD_ADDS_TO_DAMAGE)) return;
+            if (peg == null)
+                return;
+            if (peg.relicManager == null)
+                return;
+            if (!peg.relicManager.RelicEffectActive(Relics.RelicEffect.GOLD_ADDS_TO_DAMAGE))
+                return;
             string pegName = peg.gameObject != null ? peg.gameObject.name : "?";
             MultiplayerPlugin.Logger?.LogInfo(
                 $"[Relic] GOLD_ADDS_TO_DAMAGE triggered on peg '{pegName}' (+1 peg tally)");
@@ -2539,16 +2654,22 @@ public static class MultiplayerClientPatches
     [HarmonyPostfix]
     public static void BattleController_HandlePegActivated_Postfix(BattleController __instance)
     {
-        if (!IsHosting) return;
-        if (!UI.LobbyUI.GameStartReceived) return;
+        if (!IsHosting)
+            return;
+        if (!UI.LobbyUI.GameStartReceived)
+            return;
 
         try
         {
             var services = MultiplayerPlugin.Services;
-            if (services == null) return;
-            if (!services.TryResolve<GameState.CoopStateManager>(out var coopState)) return;
-            if (coopState.TotalPlayerCount < 2) return;
-            if (!services.TryResolve<IGameEventRegistry>(out var registry)) return;
+            if (services == null)
+                return;
+            if (!services.TryResolve<GameState.CoopStateManager>(out var coopState))
+                return;
+            if (coopState.TotalPlayerCount < 2)
+                return;
+            if (!services.TryResolve<IGameEventRegistry>(out var registry))
+                return;
 
             int activeSlot = coopState.ActivePlayerSlot;
 
@@ -2566,10 +2687,12 @@ public static class MultiplayerClientPatches
             // Compute running damage via AttackManager
             var amField = AccessTools.Field(typeof(BattleController), "_attackManager");
             var am = amField?.GetValue(__instance) as Battle.Attacks.AttackManager;
-            if (am == null) return;
+            if (am == null)
+                return;
 
             long currentDamage = am.GetCurrentDamage(pegTally, dmgMult, dmgBonus, critCount);
-            if (currentDamage <= 0 && am.isHeal) return; // heal orbs — no damage preview
+            if (currentDamage <= 0 && am.isHeal)
+                return; // heal orbs — no damage preview
 
             // Get target and AoE status
             bool isAoE = false;
@@ -2655,8 +2778,10 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool BattleController_DoAttack_Prefix(BattleController __instance)
     {
-        if (!IsHosting) return true;
-        if (!UI.LobbyUI.GameStartReceived) return true;
+        if (!IsHosting)
+            return true;
+        if (!UI.LobbyUI.GameStartReceived)
+            return true;
 
         // Clear the pending damage overlay — the attack is now resolving
         try
@@ -2675,13 +2800,16 @@ public static class MultiplayerClientPatches
             // the target, then apply damage on impact. Clients receive one
             // AttackStartedEvent per shot and mirror the visual via ClientAttackProjectile.
             var allShots = Events.Subscriptions.CoopSubscriptions.ConsumeNonHostShotData();
-            if (allShots == null || allShots.Count == 0) return true;
+            if (allShots == null || allShots.Count == 0)
+                return true;
 
             var services = MultiplayerPlugin.Services;
-            if (services?.TryResolve<Utility.EnemyIdentifier>(out var enemyId) != true) return true;
+            if (services?.TryResolve<Utility.EnemyIdentifier>(out var enemyId) != true)
+                return true;
 
             var em = UnityEngine.Object.FindObjectOfType<EnemyManager>();
-            if (em == null) return true;
+            if (em == null)
+                return true;
 
             // Hold the ATTACKING state while the sequence plays. AttackManager.IsAttacking()
             // is polled by BattleController.Update; without this the state machine would
@@ -2738,7 +2866,8 @@ public static class MultiplayerClientPatches
 
         foreach (var shot in shots)
         {
-            if (shot.IsHeal || shot.Damage <= 0) continue;
+            if (shot.IsHeal || shot.Damage <= 0)
+                continue;
 
             // Resolve targets (reuse existing targeting/pierce/raycast logic).
             Battle.Enemies.Enemy primaryTarget = null;
@@ -2747,8 +2876,10 @@ public static class MultiplayerClientPatches
             if (shot.IsAoE)
             {
                 foreach (var e in em.Enemies)
-                    if (e != null && e.CurrentHealth > 0f) targets.Add(e);
-                if (targets.Count == 0) continue;
+                    if (e != null && e.CurrentHealth > 0f)
+                        targets.Add(e);
+                if (targets.Count == 0)
+                    continue;
                 primaryTarget = targets[0];
             }
             else
@@ -2757,7 +2888,8 @@ public static class MultiplayerClientPatches
                     primaryTarget = enemyId.Find(shot.TargetEnemyGuid);
                 if (primaryTarget == null || primaryTarget.CurrentHealth <= 0f)
                     primaryTarget = em.GetFarthestEnemyFromPlayer();
-                if (primaryTarget == null) continue;
+                if (primaryTarget == null)
+                    continue;
 
                 int pierceCount = GetOrbPierceCount(shot.OrbPrefabName);
                 targets.Add(primaryTarget);
@@ -2817,7 +2949,9 @@ public static class MultiplayerClientPatches
             // the same on spectating clients). PeglinBattleAnimationController
             // subscribes to OnAttackPerformed, not OnPeglinAttackAnimationRequested —
             // the latter has no subscribers and won't drive OnFirePoint.
-            try { Battle.Attacks.AttackManager.OnAttackPerformed?.Invoke("attack"); } catch { }
+            try
+            { Battle.Attacks.AttackManager.OnAttackPerformed?.Invoke("attack"); }
+            catch { }
 
             // Arm ClientAttackProjectile on host to fly the sprite when OnFirePoint fires.
             var cap = Multipeglin.GameState.ClientAttackProjectile.Instance;
@@ -2840,7 +2974,8 @@ public static class MultiplayerClientPatches
             {
                 foreach (var t in targets)
                 {
-                    if (t == null || t.CurrentHealth <= 0f) continue;
+                    if (t == null || t.CurrentHealth <= 0f)
+                        continue;
                     var src = shot.IsAoE
                         ? Battle.Enemies.Enemy.EnemyDamageSource.AOE
                         : Battle.Enemies.Enemy.EnemyDamageSource.TargetedAttack;
@@ -2883,7 +3018,9 @@ public static class MultiplayerClientPatches
                     }
                     catch { }
 
-                    try { Battle.Attacks.AttackManager.OnAttackPerformed?.Invoke("attack"); } catch { }
+                    try
+                    { Battle.Attacks.AttackManager.OnAttackPerformed?.Invoke("attack"); }
+                    catch { }
 
                     if (cap != null && !string.IsNullOrEmpty(reverseGuid))
                         cap.SetupAttack(reverseGuid, shot.NumPegsHit, shot.CriticalHitCount > 0, shot.OrbPrefabName);
@@ -2903,7 +3040,8 @@ public static class MultiplayerClientPatches
                     {
                         foreach (var rt in reverseTargets)
                         {
-                            if (rt == null || rt.CurrentHealth <= 0f) continue;
+                            if (rt == null || rt.CurrentHealth <= 0f)
+                                continue;
                             rt.Damage(shot.Damage, screenshake: false, 0.25f, 1f,
                                 unblockable: false, Battle.Enemies.Enemy.EnemyDamageSource.TargetedAttack);
                         }
@@ -2945,7 +3083,8 @@ public static class MultiplayerClientPatches
         // Release the ATTACKING state so BattleController.Update advances out of it.
         if (am != null)
         {
-            try { am.AttackAnimationEnded(); }
+            try
+            { am.AttackAnimationEnded(); }
             catch
             {
                 var isAttackingField = AccessTools.Field(typeof(Battle.Attacks.AttackManager), "_isAttacking");
@@ -2968,12 +3107,15 @@ public static class MultiplayerClientPatches
         Battle.Enemies.Enemy enemy,
         System.Collections.Generic.List<(Battle.StatusEffects.StatusEffectType Type, int Intensity)> effects)
     {
-        if (effects == null || effects.Count == 0) return;
-        if (enemy == null || enemy.CurrentHealth <= 0f) return;
+        if (effects == null || effects.Count == 0)
+            return;
+        if (enemy == null || enemy.CurrentHealth <= 0f)
+            return;
 
         foreach (var (type, intensity) in effects)
         {
-            if (type == Battle.StatusEffects.StatusEffectType.None) continue;
+            if (type == Battle.StatusEffects.StatusEffectType.None)
+                continue;
             try
             {
                 enemy.ApplyStatusEffect(
@@ -3003,9 +3145,12 @@ public static class MultiplayerClientPatches
         Battle.Enemies.Enemy primaryTarget,
         System.Collections.Generic.List<Battle.Enemies.Enemy> targets)
     {
-        if (em == null || shot == null || primaryTarget == null) return;
-        if (shot.IsAoE) return;
-        if (!shot.HasTargetedSplash && !shot.HasTargetedHitAll) return;
+        if (em == null || shot == null || primaryTarget == null)
+            return;
+        if (shot.IsAoE)
+            return;
+        if (!shot.HasTargetedSplash && !shot.HasTargetedHitAll)
+            return;
 
         try
         {
@@ -3013,8 +3158,10 @@ public static class MultiplayerClientPatches
             {
                 foreach (var e in em.Enemies)
                 {
-                    if (e == null || e.CurrentHealth <= 0f) continue;
-                    if (!targets.Contains(e)) targets.Add(e);
+                    if (e == null || e.CurrentHealth <= 0f)
+                        continue;
+                    if (!targets.Contains(e))
+                        targets.Add(e);
                 }
                 return;
             }
@@ -3023,11 +3170,14 @@ public static class MultiplayerClientPatches
             int slotIdx = em.GetSlotIndexForEnemy(primaryTarget, out isStationary);
             var slotType = em.GetSlotForEnemy(primaryTarget);
             var splash = em.GetSplashRangeEnemies(slotIdx, slotType, 1, Battle.Attacks.AoeAttack.AoeType.SIDE);
-            if (splash == null) return;
+            if (splash == null)
+                return;
             foreach (var e in splash)
             {
-                if (e == null || e.CurrentHealth <= 0f) continue;
-                if (!targets.Contains(e)) targets.Add(e);
+                if (e == null || e.CurrentHealth <= 0f)
+                    continue;
+                if (!targets.Contains(e))
+                    targets.Add(e);
             }
         }
         catch (System.Exception ex)
@@ -3043,8 +3193,10 @@ public static class MultiplayerClientPatches
     /// </summary>
     private static int GetOrbPierceCount(string orbPrefabName)
     {
-        if (string.IsNullOrEmpty(orbPrefabName)) return 0;
-        if (_orbPierceCache.TryGetValue(orbPrefabName, out int cached)) return cached;
+        if (string.IsNullOrEmpty(orbPrefabName))
+            return 0;
+        if (_orbPierceCache.TryGetValue(orbPrefabName, out int cached))
+            return cached;
 
         int result = 0;
         try
@@ -3091,18 +3243,23 @@ public static class MultiplayerClientPatches
         EnemyManager em, Battle.Enemies.Enemy target, int count)
     {
         var result = new System.Collections.Generic.List<Battle.Enemies.Enemy>();
-        if (em == null || target == null || count <= 0) return result;
+        if (em == null || target == null || count <= 0)
+            return result;
 
         float targetSlot;
-        try { targetSlot = em.GetSlotIndexForEnemy(target, out bool _); }
+        try
+        { targetSlot = em.GetSlotIndexForEnemy(target, out bool _); }
         catch { return result; }
 
         var candidates = new System.Collections.Generic.List<(Battle.Enemies.Enemy e, float slot)>();
         foreach (var e in em.Enemies)
         {
-            if (e == null || e == target || e.CurrentHealth <= 0f) continue;
+            if (e == null || e == target || e.CurrentHealth <= 0f)
+                continue;
             float slot;
-            try { slot = em.GetSlotIndexForEnemy(e, out bool _); } catch { continue; }
+            try
+            { slot = em.GetSlotIndexForEnemy(e, out bool _); }
+            catch { continue; }
             if (slot > targetSlot)
                 candidates.Add((e, slot));
         }
@@ -3126,8 +3283,10 @@ public static class MultiplayerClientPatches
 
     private static OrbShotInfo GetOrbShotInfo(string orbPrefabName)
     {
-        if (string.IsNullOrEmpty(orbPrefabName)) return default;
-        if (_orbShotInfoCache.TryGetValue(orbPrefabName, out var cached)) return cached;
+        if (string.IsNullOrEmpty(orbPrefabName))
+            return default;
+        if (_orbShotInfoCache.TryGetValue(orbPrefabName, out var cached))
+            return cached;
 
         var info = default(OrbShotInfo);
         try
@@ -3168,7 +3327,8 @@ public static class MultiplayerClientPatches
         BattleController bc, EnemyManager em, Battle.Enemies.Enemy declaredTarget,
         string orbPrefabName, int pierceCount)
     {
-        if (bc == null || em == null || declaredTarget == null) return null;
+        if (bc == null || em == null || declaredTarget == null)
+            return null;
 
         var info = GetOrbShotInfo(orbPrefabName);
         if (info.Valid && info.ShotType == Battle.Attacks.ShotBehavior.ShotType.PINPOINT)
@@ -3176,14 +3336,16 @@ public static class MultiplayerClientPatches
 
         var playerField = AccessTools.Field(typeof(BattleController), "_playerTransform");
         var playerTransform = playerField?.GetValue(bc) as UnityEngine.Transform;
-        if (playerTransform == null) return null;
+        if (playerTransform == null)
+            return null;
 
         var offsetField = AccessTools.Field(typeof(BattleController), "_playerTransformOffset");
         var offset = (UnityEngine.Vector3)(offsetField?.GetValue(bc) ?? new UnityEngine.Vector3(1f, 0.5f, 0f));
         UnityEngine.Vector2 origin = (UnityEngine.Vector2)(playerTransform.position + offset);
 
         UnityEngine.Vector2 aim = ((UnityEngine.Vector2)declaredTarget.transform.position - origin).normalized;
-        if (aim.sqrMagnitude < 0.0001f) return null;
+        if (aim.sqrMagnitude < 0.0001f)
+            return null;
 
         UnityEngine.Vector2 perp = UnityEngine.Vector3.Cross(aim, UnityEngine.Vector3.back).normalized;
         const float lateralOffset = 0.08f;
@@ -3196,26 +3358,33 @@ public static class MultiplayerClientPatches
         var byEnemy = new System.Collections.Generic.Dictionary<Battle.Enemies.Enemy, float>();
         foreach (var h in hits)
         {
-            if (h.collider == null) continue;
-            if (!h.collider.TryGetComponent<Battle.Enemies.Enemy>(out var e)) continue;
-            if (e == null || e.CurrentHealth <= 0f) continue;
-            if (byEnemy.ContainsKey(e)) continue;
+            if (h.collider == null)
+                continue;
+            if (!h.collider.TryGetComponent<Battle.Enemies.Enemy>(out var e))
+                continue;
+            if (e == null || e.CurrentHealth <= 0f)
+                continue;
+            if (byEnemy.ContainsKey(e))
+                continue;
             // Mirror ShotBehavior filter: when canAimUp match flying==flying;
             // when !canAimUp (ground-only aim) skip flying enemies entirely.
             bool flyingOk = canAimUp
                 ? declaredTarget.IsFlying == e.IsFlying
                 : !e.IsFlying;
-            if (!flyingOk) continue;
+            if (!flyingOk)
+                continue;
             byEnemy[e] = h.distance;
         }
 
-        if (byEnemy.Count == 0) return null;
+        if (byEnemy.Count == 0)
+            return null;
 
         var ordered = new System.Collections.Generic.List<Battle.Enemies.Enemy>(byEnemy.Keys);
         ordered.Sort((a, b) => byEnemy[a].CompareTo(byEnemy[b]));
 
         int keep = System.Math.Max(1, pierceCount + 1);
-        if (ordered.Count > keep) ordered.RemoveRange(keep, ordered.Count - keep);
+        if (ordered.Count > keep)
+            ordered.RemoveRange(keep, ordered.Count - keep);
         return ordered;
     }
 
@@ -3244,7 +3413,8 @@ public static class MultiplayerClientPatches
     public static void AttackManager_Attack_Postfix(Battle.Attacks.AttackManager __instance, Battle.Enemies.Enemy target,
         int numPegsHitThisShot, int criticalHitCount)
     {
-        if (!IsHosting) return;
+        if (!IsHosting)
+            return;
         try
         {
             var attackField = HarmonyLib.AccessTools.Field(typeof(Battle.Attacks.AttackManager), "_attack");
@@ -3275,19 +3445,26 @@ public static class MultiplayerClientPatches
     [HarmonyPostfix]
     public static void Animator_SetTrigger_Postfix(UnityEngine.Animator __instance, string name)
     {
-        if (!IsHosting) return;
-        if (__instance == null) return;
+        if (!IsHosting)
+            return;
+        if (__instance == null)
+            return;
 
         // Only sync enemy animators (check if this animator belongs to an Enemy)
         var enemy = __instance.GetComponentInParent<Battle.Enemies.Enemy>();
-        if (enemy == null) return;
+        if (enemy == null)
+            return;
 
-        if (MultiplayerPlugin.Services == null) return;
-        if (!MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out var registry)) return;
-        if (!MultiplayerPlugin.Services.TryResolve<Multipeglin.Utility.EnemyIdentifier>(out var enemyId)) return;
+        if (MultiplayerPlugin.Services == null)
+            return;
+        if (!MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out var registry))
+            return;
+        if (!MultiplayerPlugin.Services.TryResolve<Multipeglin.Utility.EnemyIdentifier>(out var enemyId))
+            return;
 
         var guid = enemyId.GetGuid(enemy);
-        if (string.IsNullOrEmpty(guid)) return;
+        if (string.IsNullOrEmpty(guid))
+            return;
 
         registry.Dispatch(new Multipeglin.Events.Network.Battle.AnimationSyncEvent
         {
@@ -3304,18 +3481,25 @@ public static class MultiplayerClientPatches
     [HarmonyPostfix]
     public static void Animator_SetBool_Postfix(UnityEngine.Animator __instance, string name, bool value)
     {
-        if (!IsHosting) return;
-        if (__instance == null) return;
+        if (!IsHosting)
+            return;
+        if (__instance == null)
+            return;
 
         var enemy = __instance.GetComponentInParent<Battle.Enemies.Enemy>();
-        if (enemy == null) return;
+        if (enemy == null)
+            return;
 
-        if (MultiplayerPlugin.Services == null) return;
-        if (!MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out var registry)) return;
-        if (!MultiplayerPlugin.Services.TryResolve<Multipeglin.Utility.EnemyIdentifier>(out var enemyId)) return;
+        if (MultiplayerPlugin.Services == null)
+            return;
+        if (!MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out var registry))
+            return;
+        if (!MultiplayerPlugin.Services.TryResolve<Multipeglin.Utility.EnemyIdentifier>(out var enemyId))
+            return;
 
         var guid = enemyId.GetGuid(enemy);
-        if (string.IsNullOrEmpty(guid)) return;
+        if (string.IsNullOrEmpty(guid))
+            return;
 
         registry.Dispatch(new Multipeglin.Events.Network.Battle.AnimationSyncEvent
         {
@@ -3402,13 +3586,17 @@ public static class MultiplayerClientPatches
     [HarmonyPostfix]
     public static void MapController_Awake_Postfix(MapController __instance)
     {
-        if (IsHosting) return;
-        if (!ShouldSuppressClientLogic) return;
-        if (__instance == null) return;
+        if (IsHosting)
+            return;
+        if (!ShouldSuppressClientLogic)
+            return;
+        if (__instance == null)
+            return;
         // Only the surviving instance (the new scene's MC) should apply cached state —
         // the self-destruct path in the original Awake leaves the stale GO pending
         // destruction; skip it to avoid mutating doomed nodes.
-        if (MapController.instance != __instance) return;
+        if (MapController.instance != __instance)
+            return;
 
         GameState.Appliers.MapStateApplier.ApplyCachedOnAwake(__instance, MultiplayerPlugin.Logger);
     }
@@ -3480,7 +3668,9 @@ public static class MultiplayerClientPatches
                     // _predictionManager.PlayerFired() but we're blocking Fire().
                     var pmField = HarmonyLib.AccessTools.Field(typeof(PachinkoBall), "_predictionManager");
                     var pm = pmField?.GetValue(__instance) as PredictionManager;
-                    try { pm?.PlayerFired(); } catch { }
+                    try
+                    { pm?.PlayerFired(); }
+                    catch { }
 
                     MultiplayerPlugin.Logger?.LogInfo(
                         $"[ClientPatches] Fire intercepted → ShootRequest: aim=({aimVec.x:F2},{aimVec.y:F2}), target={targetGuid ?? "auto"}");
@@ -3501,8 +3691,10 @@ public static class MultiplayerClientPatches
     [HarmonyPostfix]
     public static void PachinkoBall_Fire_Postfix(PachinkoBall __instance)
     {
-        if (!IsHosting) return;
-        if (__instance == null || __instance.IsDummy) return;
+        if (!IsHosting)
+            return;
+        if (__instance == null || __instance.IsDummy)
+            return;
         _firedBallGO = __instance.gameObject;
         _firedBallTimer = 0f;
         _firedBallLogCount = 0;
@@ -3516,9 +3708,12 @@ public static class MultiplayerClientPatches
     [HarmonyPostfix]
     public static void MapNode_ActivateNode_Postfix(MapNode __instance)
     {
-        if (!IsHosting) return;
-        if (MultiplayerPlugin.Services == null) return;
-        if (!MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out var registry)) return;
+        if (!IsHosting)
+            return;
+        if (MultiplayerPlugin.Services == null)
+            return;
+        if (!MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out var registry))
+            return;
 
         var pos = __instance.transform.position;
         string battleName = (__instance.MapData as MapDataBattle)?.name;
@@ -3552,18 +3747,22 @@ public static class MultiplayerClientPatches
     public static bool MapDataPegMinigameRelics_PopulateRewards_PerSlot_Prefix(
         Peglin.PegMinigame.MapDataPegMinigameRelics __instance)
     {
-        if (!ShouldSuppressClientLogic) return true;
-        if (!AllowPegMinigameLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
+        if (!AllowPegMinigameLogic)
+            return true;
 
         try
         {
             int mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
-            if (mySlot < 0) return true;
+            if (mySlot < 0)
+                return true;
 
             var relicMgr = __instance.relicManager;
             int count = System.Math.Max(1, __instance.numberOfRewards);
             var picks = PickMultipleLocalRelics(__instance.rarity, count, relicMgr, mySlot);
-            if (picks.Count == 0) return true; // fall through to native rather than show empty
+            if (picks.Count == 0)
+                return true; // fall through to native rather than show empty
 
             var rewards = new System.Collections.Generic.List<Peglin.PegMinigame.Reward>();
             foreach (var r in picks)
@@ -3573,7 +3772,8 @@ public static class MultiplayerClientPatches
             __instance.Rewards = rewards;
 
             var names = new System.Collections.Generic.List<string>();
-            foreach (var r in picks) names.Add(r?.name ?? "<null>");
+            foreach (var r in picks)
+                names.Add(r?.name ?? "<null>");
             MultiplayerPlugin.Logger?.LogInfo(
                 $"[ClientPatch] PegMinigame relic rewards (slot {mySlot}, rarity {__instance.rarity}) = [{string.Join(",", names)}]");
             return false;
@@ -3590,18 +3790,23 @@ public static class MultiplayerClientPatches
     public static bool MapDataPegMinigameOrbs_PopulateRewards_PerSlot_Prefix(
         Peglin.PegMinigame.MapDataPegMinigameOrbs __instance)
     {
-        if (!ShouldSuppressClientLogic) return true;
-        if (!AllowPegMinigameLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
+        if (!AllowPegMinigameLogic)
+            return true;
 
         try
         {
             int mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
-            if (mySlot < 0) return true;
+            if (mySlot < 0)
+                return true;
 
             var deckMgr = __instance.deckManager;
-            if (deckMgr == null) return true;
+            if (deckMgr == null)
+                return true;
             var pool = deckMgr.GetRandomOrbPool();
-            if (pool == null || pool.Count == 0) return true;
+            if (pool == null || pool.Count == 0)
+                return true;
 
             // Stable order so the slot-keyed RNG produces consistent picks.
             var sorted = new System.Collections.Generic.List<UnityEngine.GameObject>(pool);
@@ -3620,9 +3825,12 @@ public static class MultiplayerClientPatches
             for (int i = 0; i < take; i++)
             {
                 int j = i + rng.Next(0, sorted.Count - i);
-                var tmp = sorted[i]; sorted[i] = sorted[j]; sorted[j] = tmp;
+                var tmp = sorted[i];
+                sorted[i] = sorted[j];
+                sorted[j] = tmp;
                 var orb = sorted[i];
-                if (orb == null) continue;
+                if (orb == null)
+                    continue;
 
                 // Replicate native Act-based upgrade logic.
                 var chosen = orb;
@@ -3657,8 +3865,10 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool PegMinigameManager_CreateOrb_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
-        if (AllowPegMinigameLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
+        if (AllowPegMinigameLogic)
+            return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked PegMinigameManager.CreateOrb (spectating)");
         return false;
     }
@@ -3667,8 +3877,10 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool PegMinigameManager_PrepareNavigationOrbForFiring_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
-        if (AllowPegMinigameLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
+        if (AllowPegMinigameLogic)
+            return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked PegMinigameManager.PrepareNavigationOrbForFiring (spectating)");
         return false;
     }
@@ -3677,8 +3889,10 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool PegMinigameManager_HandleRewardSlotTriggerActivated_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
-        if (AllowPegMinigameLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
+        if (AllowPegMinigameLogic)
+            return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked PegMinigameManager.HandleRewardSlotTriggerActivated (spectating)");
         return false;
     }
@@ -3688,7 +3902,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool PegMinigameManager_HandleNavigationSlotTriggerActivated_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         return false;
     }
 
@@ -3762,11 +3977,14 @@ public static class MultiplayerClientPatches
         MapDataPegMinigame ____mapData,
         int __state)
     {
-        if (__state < 0) return; // no reward was selected
-        if (type == PeglinUI.PostBattle.UpgradeOption.UpgradeType.INSPECT_ORB_FOR_UPGRADE) return;
+        if (__state < 0)
+            return; // no reward was selected
+        if (type == PeglinUI.PostBattle.UpgradeOption.UpgradeType.INSPECT_ORB_FOR_UPGRADE)
+            return;
 
         var services = MultiplayerPlugin.Services;
-        if (services == null) return;
+        if (services == null)
+            return;
 
         // CLIENT: send completion event to host
         if (ShouldSuppressClientLogic && AllowPegMinigameLogic)
@@ -3844,15 +4062,21 @@ public static class MultiplayerClientPatches
     [HarmonyPostfix]
     public static void DeckManager_UpgradeSpecificOrb_SharePostfix(GameObject toUpgrade, GameObject __result)
     {
-        if (!IsHosting) return;
-        if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != "TextScenario") return;
-        if (__result == null) return;
+        if (!IsHosting)
+            return;
+        if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != "TextScenario")
+            return;
+        if (__result == null)
+            return;
         // When TextScenarioPhaseActive, clients handle their own dialogue — don't double-apply
-        if (Events.Handlers.Coop.CoopRewardState.TextScenarioPhaseActive) return;
+        if (Events.Handlers.Coop.CoopRewardState.TextScenarioPhaseActive)
+            return;
 
         var services = MultiplayerPlugin.Services;
-        if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true) return;
-        if (coopState.TotalPlayerCount < 2) return;
+        if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true)
+            return;
+        if (coopState.TotalPlayerCount < 2)
+            return;
 
         try
         {
@@ -3861,7 +4085,8 @@ public static class MultiplayerClientPatches
 
             foreach (var kvp in coopState.PlayerStates)
             {
-                if (kvp.Key == coopState.ActivePlayerSlot) continue;
+                if (kvp.Key == coopState.ActivePlayerSlot)
+                    continue;
 
                 // Find upgradeable orbs in this player's deck
                 var upgradeableIndices = new System.Collections.Generic.List<int>();
@@ -3929,15 +4154,21 @@ public static class MultiplayerClientPatches
     [HarmonyPostfix]
     public static void RelicManager_AddRelic_SharePostfix(Relics.Relic relic)
     {
-        if (!IsHosting) return;
-        if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != "TextScenario") return;
-        if (relic == null) return;
+        if (!IsHosting)
+            return;
+        if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != "TextScenario")
+            return;
+        if (relic == null)
+            return;
         // When TextScenarioPhaseActive, clients handle their own dialogue — don't double-apply
-        if (Events.Handlers.Coop.CoopRewardState.TextScenarioPhaseActive) return;
+        if (Events.Handlers.Coop.CoopRewardState.TextScenarioPhaseActive)
+            return;
 
         var services = MultiplayerPlugin.Services;
-        if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true) return;
-        if (coopState.TotalPlayerCount < 2) return;
+        if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true)
+            return;
+        if (coopState.TotalPlayerCount < 2)
+            return;
 
         try
         {
@@ -3946,15 +4177,18 @@ public static class MultiplayerClientPatches
 
             foreach (var kvp in coopState.PlayerStates)
             {
-                if (kvp.Key == coopState.ActivePlayerSlot) continue;
+                if (kvp.Key == coopState.ActivePlayerSlot)
+                    continue;
 
                 // Check if player already has this relic
                 bool alreadyOwns = false;
                 foreach (var r in kvp.Value.OwnedRelics)
                 {
-                    if (r.Effect == (int)relic.effect) { alreadyOwns = true; break; }
+                    if (r.Effect == (int)relic.effect)
+                    { alreadyOwns = true; break; }
                 }
-                if (alreadyOwns) continue;
+                if (alreadyOwns)
+                    continue;
 
                 kvp.Value.OwnedRelics.Add(new GameState.SerializedRelic
                 {
@@ -3996,9 +4230,11 @@ public static class MultiplayerClientPatches
     {
         try
         {
-            if (string.IsNullOrEmpty(s)) return null;
+            if (string.IsNullOrEmpty(s))
+                return null;
             var parts = s.Split(',');
-            if (parts.Length != 4) return null;
+            if (parts.Length != 4)
+                return null;
             Random.InitState(0);
             var state = Random.state;
             var t = typeof(Random.State);
@@ -4027,8 +4263,10 @@ public static class MultiplayerClientPatches
     [HarmonyPostfix]
     public static void BattleController_Awake_Postfix()
     {
-        if (!IsHosting) return;
-        if (!UI.LobbyUI.GameStartReceived) return;
+        if (!IsHosting)
+            return;
+        if (!UI.LobbyUI.GameStartReceived)
+            return;
 
         var coopSubs = CoopSubscriptions.Instance;
         if (coopSubs == null)
@@ -4064,8 +4302,10 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool ChestScenarioController_OpenChest_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
-        if (AllowTreasureLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
+        if (AllowTreasureLogic)
+            return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked ChestScenarioController.OpenChest on client");
         return false;
     }
@@ -4074,13 +4314,20 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool RelicManager_AddRelic_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
-        if (AllowRelicSync) return true;
-        if (AllowNativeRewardLogic) return true;
-        if (AllowShopLogic) return true;
-        if (AllowTreasureLogic) return true;
-        if (AllowPegMinigameLogic) return true;
-        if (AllowTextScenarioLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
+        if (AllowRelicSync)
+            return true;
+        if (AllowNativeRewardLogic)
+            return true;
+        if (AllowShopLogic)
+            return true;
+        if (AllowTreasureLogic)
+            return true;
+        if (AllowPegMinigameLogic)
+            return true;
+        if (AllowTextScenarioLogic)
+            return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked RelicManager.AddRelic on client");
         return false;
     }
@@ -4089,8 +4336,10 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool RelicManager_RemoveRelic_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
-        if (AllowRelicSync) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
+        if (AllowRelicSync)
+            return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked RelicManager.RemoveRelic on client");
         return false;
     }
@@ -4099,8 +4348,10 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool RelicManager_RemoveRelicByEffect_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
-        if (AllowRelicSync) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
+        if (AllowRelicSync)
+            return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked RelicManager.RemoveRelic(RelicEffect) on client");
         return false;
     }
@@ -4109,7 +4360,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool Enemy_Damage_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         return false;
     }
 
@@ -4117,7 +4369,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool AttackManager_Attack_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked AttackManager.Attack on client");
         return false;
     }
@@ -4126,14 +4379,17 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool DeckManager_ShuffleCompleteDeck_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
-        if (UI.LobbyUI.GameStartReceived && Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
+        if (UI.LobbyUI.GameStartReceived && Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn)
+            return true;
         // TextScenario dialogues (Mirror Duplicate, Helpful Spirits, etc.) call
         // DeckManager.DialoguePopulate* helpers that internally call ShuffleCompleteDeck
         // to pick which orbs to offer. Blocking it here leaves shuffledDeck empty,
         // the dialogue's randomOrbN variables never populate, and the UI softlocks
         // because no orb-choice buttons appear.
-        if (AllowTextScenarioLogic) return true;
+        if (AllowTextScenarioLogic)
+            return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DeckManager.ShuffleCompleteDeck on client");
         return false;
     }
@@ -4142,10 +4398,14 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool PlayerHealthController_Damage_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
-        if (AllowNativeRewardLogic) return true;
-        if (AllowShopLogic) return true;
-        if (AllowTextScenarioLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
+        if (AllowNativeRewardLogic)
+            return true;
+        if (AllowShopLogic)
+            return true;
+        if (AllowTextScenarioLogic)
+            return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked PlayerHealthController.Damage on client");
         return false;
     }
@@ -4158,22 +4418,28 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool PlayerHealthController_CheckForDeathAndUpdateBar_Prefix(PlayerHealthController __instance)
     {
-        if (!IsHosting || !UI.LobbyUI.GameStartReceived) return true;
+        if (!IsHosting || !UI.LobbyUI.GameStartReceived)
+            return true;
 
         var services = MultiplayerPlugin.Services;
-        if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true) return true;
-        if (coopState.TotalPlayerCount < 2) return true;
+        if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true)
+            return true;
+        if (coopState.TotalPlayerCount < 2)
+            return true;
 
         // If health is still above 0, let the normal update run (just updates the bar)
         var healthField = HarmonyLib.AccessTools.Field(typeof(PlayerHealthController), "_playerHealth");
         var healthVar = healthField?.GetValue(__instance);
-        if (healthVar == null) return true;
+        if (healthVar == null)
+            return true;
 
         var valueProp = healthVar.GetType().GetProperty("Value");
-        if (valueProp == null) return true;
+        if (valueProp == null)
+            return true;
         float hp = (float)valueProp.GetValue(healthVar);
 
-        if (hp > 0f) return true; // not dead, let normal flow update the bar
+        if (hp > 0f)
+            return true; // not dead, let normal flow update the bar
 
         // Active player is dead. Only allow game over if ALL players are dead.
         if (!coopState.AllPlayersDead)
@@ -4223,12 +4489,16 @@ public static class MultiplayerClientPatches
     public static void PlayerHealthController_Heal_Prefix(PlayerHealthController __instance, ref object[] __state)
     {
         __state = null;
-        if (!IsHosting) return;
+        if (!IsHosting)
+            return;
 
         var services = MultiplayerPlugin.Services;
-        if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true) return;
-        if (coopState.TotalPlayerCount < 2) return;
-        if (coopState.ActivePlayerSlot == 0) return; // heal is for the host itself — let VFX play
+        if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true)
+            return;
+        if (coopState.TotalPlayerCount < 2)
+            return;
+        if (coopState.ActivePlayerSlot == 0)
+            return; // heal is for the host itself — let VFX play
 
         try
         {
@@ -4257,7 +4527,8 @@ public static class MultiplayerClientPatches
     [HarmonyPostfix]
     public static void PlayerHealthController_Heal_Postfix(PlayerHealthController __instance, object[] __state)
     {
-        if (__state == null) return;
+        if (__state == null)
+            return;
         try
         {
             var floatingTextField = __state[0] as System.Reflection.FieldInfo;
@@ -4292,14 +4563,18 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool BattleController_TriggerVictory_Prefix()
     {
-        if (!IsHosting) return true;
+        if (!IsHosting)
+            return true;
 
         var services = MultiplayerPlugin.Services;
-        if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true) return true;
-        if (coopState.TotalPlayerCount < 2) return true;
+        if (services?.TryResolve<GameState.CoopStateManager>(out var coopState) != true)
+            return true;
+        if (coopState.TotalPlayerCount < 2)
+            return true;
 
         var phc = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
-        if (phc == null) return true;
+        if (phc == null)
+            return true;
 
         // Case A: everyone is dead — drive the defeat flow and skip native victory.
         // The PHC.CheckForDeathAndUpdateBar prefix lets it through when AllPlayersDead.
@@ -4334,7 +4609,8 @@ public static class MultiplayerClientPatches
                 }
 
                 var hostState = coopState.GetPlayerState(0);
-                if (hostState != null) hostState.CurrentHealth = 1;
+                if (hostState != null)
+                    hostState.CurrentHealth = 1;
 
                 MultiplayerPlugin.Logger?.LogInfo(
                     "[ClientPatches] TriggerVictory: host was dead but others alive — revived host PHC to 1 HP so victory fires");
@@ -4360,9 +4636,12 @@ public static class MultiplayerClientPatches
     {
         try
         {
-            if (MultiplayerPlugin.Services == null) return;
-            if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode)) return;
-            if (!mode.IsHosting && !mode.IsSpectating) return;
+            if (MultiplayerPlugin.Services == null)
+                return;
+            if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode))
+                return;
+            if (!mode.IsHosting && !mode.IsSpectating)
+                return;
 
             var healthTextField = HarmonyLib.AccessTools.Field(typeof(PlayerHealthController), "_healthText");
             if (healthTextField?.GetValue(__instance) is UnityEngine.Component healthText && healthText != null)
@@ -4387,12 +4666,18 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool CurrencyManager_AddGold_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
-        if (AllowCurrencySync) return true;
-        if (AllowNativeRewardLogic) return true;
-        if (AllowShopLogic) return true;
-        if (AllowTreasureLogic) return true;
-        if (AllowTextScenarioLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
+        if (AllowCurrencySync)
+            return true;
+        if (AllowNativeRewardLogic)
+            return true;
+        if (AllowShopLogic)
+            return true;
+        if (AllowTreasureLogic)
+            return true;
+        if (AllowTextScenarioLogic)
+            return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked CurrencyManager.AddGold on client");
         return false;
     }
@@ -4401,11 +4686,16 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool CurrencyManager_RemoveGold_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
-        if (AllowCurrencySync) return true;
-        if (AllowNativeRewardLogic) return true;
-        if (AllowShopLogic) return true;
-        if (AllowTextScenarioLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
+        if (AllowCurrencySync)
+            return true;
+        if (AllowNativeRewardLogic)
+            return true;
+        if (AllowShopLogic)
+            return true;
+        if (AllowTextScenarioLogic)
+            return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked CurrencyManager.RemoveGold on client");
         return false;
     }
@@ -4420,10 +4710,14 @@ public static class MultiplayerClientPatches
     [HarmonyPostfix]
     public static void CurrencyManager_RemoveGold_Postfix(int amount)
     {
-        if (!ShouldSuppressClientLogic) return;
-        if (!AllowNativeRewardLogic) return;
-        if (AllowCurrencySync) return;
-        if (amount <= 0) return;
+        if (!ShouldSuppressClientLogic)
+            return;
+        if (!AllowNativeRewardLogic)
+            return;
+        if (AllowCurrencySync)
+            return;
+        if (amount <= 0)
+            return;
         try
         {
             var services = MultiplayerPlugin.Services;
@@ -4472,11 +4766,16 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool DeckManager_AddOrbToDeck_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
-        if (AllowNativeRewardLogic) return true;
-        if (AllowShopLogic) return true;
-        if (AllowPegMinigameLogic) return true;
-        if (AllowTextScenarioLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
+        if (AllowNativeRewardLogic)
+            return true;
+        if (AllowShopLogic)
+            return true;
+        if (AllowPegMinigameLogic)
+            return true;
+        if (AllowTextScenarioLogic)
+            return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DeckManager.AddOrbToDeck on client");
         return false;
     }
@@ -4485,7 +4784,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool DeckManager_RemoveOrbFromBattleDeck_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked DeckManager.RemoveOrbFromBattleDeck on client");
         return false;
     }
@@ -4503,10 +4803,12 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool PostBattleController_StartNavigation_Prefix(Battle.PostBattleController __instance)
     {
-        if (!UI.LobbyUI.GameStartReceived) return true; // not coop
+        if (!UI.LobbyUI.GameStartReceived)
+            return true; // not coop
 
         var services = MultiplayerPlugin.Services;
-        if (services == null) return true;
+        if (services == null)
+            return true;
 
         if (IsHosting)
         {
@@ -4605,7 +4907,8 @@ public static class MultiplayerClientPatches
         {
             foreach (var orbGO in completeDeck)
             {
-                if (orbGO == null) continue;
+                if (orbGO == null)
+                    continue;
                 var attack = orbGO.GetComponent<Battle.Attacks.Attack>();
                 evt.CompleteDeck.Add(new Events.Network.Coop.PostBattleOrbEntry
                 {
@@ -4644,9 +4947,12 @@ public static class MultiplayerClientPatches
         BattleController ____battleController,
         int ____inhaleSlot)
     {
-        if (!IsHosting) return true;
-        if (!UI.LobbyUI.GameStartReceived) return true;
-        if (Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn) return true;
+        if (!IsHosting)
+            return true;
+        if (!UI.LobbyUI.GameStartReceived)
+            return true;
+        if (Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn)
+            return true;
 
         // Client's turn — skip multiplier + fire pit damage from host's Weighted Chip.
         // Still handle inhale zone (separate relic) if applicable.
@@ -4673,9 +4979,12 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool PredictionManager_Predict_Prefix()
     {
-        if (!IsHosting) return true;
-        if (!UI.LobbyUI.GameStartReceived) return true;
-        if (Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn) return true;
+        if (!IsHosting)
+            return true;
+        if (!UI.LobbyUI.GameStartReceived)
+            return true;
+        if (Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn)
+            return true;
         // Allow prediction during non-battle phases (navigation, post-battle, map).
         // The turn system only tracks battle turns — outside active combat the host
         // should always see the aimer (e.g. navigation orb after victory).
@@ -4691,10 +5000,14 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool PredictionManager_SetLineRendererStatus_Prefix(bool status)
     {
-        if (!status) return true; // Always allow disabling
-        if (!IsHosting) return true;
-        if (!UI.LobbyUI.GameStartReceived) return true;
-        if (Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn) return true;
+        if (!status)
+            return true; // Always allow disabling
+        if (!IsHosting)
+            return true;
+        if (!UI.LobbyUI.GameStartReceived)
+            return true;
+        if (Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn)
+            return true;
         var state = BattleController.CurrentBattleState;
         if (state == BattleController.BattleState.NAVIGATION
             || state == BattleController.BattleState.AWAITING_POST_BATTLE_CONTROLLER
@@ -4715,9 +5028,12 @@ public static class MultiplayerClientPatches
     [HarmonyPostfix]
     public static void TargetingManager_SetEnemyAsTarget_Postfix(Battle.Enemies.Enemy enemy)
     {
-        if (!ShouldSuppressClientLogic) return;
-        if (!UI.LobbyUI.GameStartReceived) return;
-        if (!Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn) return;
+        if (!ShouldSuppressClientLogic)
+            return;
+        if (!UI.LobbyUI.GameStartReceived)
+            return;
+        if (!Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn)
+            return;
 
         try
         {
@@ -4844,7 +5160,8 @@ public static class MultiplayerClientPatches
     /// </summary>
     private static void CaptureAndSendTextScenarioState()
     {
-        if (Events.Handlers.Coop.CoopRewardState.ClientTextScenarioChoiceSent) return;
+        if (Events.Handlers.Coop.CoopRewardState.ClientTextScenarioChoiceSent)
+            return;
 
         try
         {
@@ -4860,7 +5177,8 @@ public static class MultiplayerClientPatches
             {
                 foreach (var orbGo in DeckManager.completeDeck)
                 {
-                    if (orbGo == null) continue;
+                    if (orbGo == null)
+                        continue;
                     var attack = orbGo.GetComponent<Battle.Attacks.Attack>();
                     var prefabName = orbGo.name.Replace("(Clone)", "").Trim();
                     string guid = orbId?.GetGuid(orbGo);
@@ -4893,14 +5211,17 @@ public static class MultiplayerClientPatches
             var ownedRelicsField = HarmonyLib.AccessTools.Field(typeof(Relics.RelicManager), "_ownedRelics");
             foreach (var rm in relicManagers)
             {
-                if (rm == null) continue;
+                if (rm == null)
+                    continue;
                 var ownedDict = ownedRelicsField?.GetValue(rm)
                     as System.Collections.Generic.Dictionary<Relics.RelicEffect, Relics.Relic>;
-                if (ownedDict == null) continue;
+                if (ownedDict == null)
+                    continue;
                 foreach (var kvp in ownedDict)
                 {
                     var relic = kvp.Value;
-                    if (relic == null) continue;
+                    if (relic == null)
+                        continue;
                     evt.Relics.Add(new GameState.SerializedRelic
                     {
                         Effect = (int)relic.effect,
@@ -4939,8 +5260,10 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool StandardUIResponseButton_OnClick_Prefix()
     {
-        if (!ShouldSuppressClientLogic) return true;
-        if (AllowTextScenarioLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
+        if (AllowTextScenarioLogic)
+            return true;
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked StandardUIResponseButton.OnClick (spectating)");
         return false;
     }
@@ -4990,16 +5313,19 @@ public static class MultiplayerClientPatches
     [HarmonyPostfix]
     public static void StandardUIResponseButton_OnSelect_Postfix(StandardUIResponseButton __instance)
     {
-        if (!IsHosting) return;
+        if (!IsHosting)
+            return;
 
         try
         {
             // Find this button's index in its parent menu panel
             var dialogueUI = UnityEngine.Object.FindObjectOfType<StandardDialogueUI>();
-            if (dialogueUI == null) return;
+            if (dialogueUI == null)
+                return;
 
             var menuPanel = dialogueUI.conversationUIElements?.defaultMenuPanel;
-            if (menuPanel?.buttons == null) return;
+            if (menuPanel?.buttons == null)
+                return;
 
             for (int i = 0; i < menuPanel.buttons.Length; i++)
             {
@@ -5027,7 +5353,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool ShopManager_SetUpRelicOffer_Prefix(Scenarios.Shop.ShopManager __instance)
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
         try
         {
             ShopRelicSyncState.CurrentShopManager = __instance;
@@ -5069,8 +5396,10 @@ public static class MultiplayerClientPatches
     [HarmonyPostfix]
     public static void ShopManager_PurchaseItem_Postfix(Scenarios.Shop.IPurchasableItem item)
     {
-        if (!ShouldSuppressClientLogic) return;
-        if (!AllowShopLogic) return;
+        if (!ShouldSuppressClientLogic)
+            return;
+        if (!AllowShopLogic)
+            return;
 
         try
         {
@@ -5135,7 +5464,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool ShopManager_CloseStore_Prefix(Scenarios.Shop.ShopManager __instance)
     {
-        if (!UI.LobbyUI.GameStartReceived) return true; // Not in coop
+        if (!UI.LobbyUI.GameStartReceived)
+            return true; // Not in coop
 
         if (ShouldSuppressClientLogic)
         {
@@ -5233,7 +5563,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool ChestScenarioController_Skip_Prefix(Scenarios.ChestScenarioController __instance)
     {
-        if (!UI.LobbyUI.GameStartReceived) return true; // Not in coop
+        if (!UI.LobbyUI.GameStartReceived)
+            return true; // Not in coop
 
         if (ShouldSuppressClientLogic)
         {
@@ -5303,7 +5634,8 @@ public static class MultiplayerClientPatches
     [HarmonyPostfix]
     public static void BattleUpgradeCanvas_AcceptRelic_Postfix(Relics.Relic relic)
     {
-        if (!ShouldSuppressClientLogic) return;
+        if (!ShouldSuppressClientLogic)
+            return;
 
         // Track boss/rare relic choice during post-battle native reward phase
         if (AllowNativeRewardLogic)
@@ -5315,8 +5647,10 @@ public static class MultiplayerClientPatches
         }
 
         // Treasure-specific flow
-        if (!AllowTreasureLogic) return;
-        if (Events.Handlers.Coop.CoopRewardState.ClientTreasureChoiceSent) return;
+        if (!AllowTreasureLogic)
+            return;
+        if (Events.Handlers.Coop.CoopRewardState.ClientTreasureChoiceSent)
+            return;
 
         try
         {
@@ -5368,7 +5702,8 @@ public static class MultiplayerClientPatches
     [HarmonyPrefix]
     public static bool StatusEffectIconManager_UpdateStatusEffects_Prefix()
     {
-        if (!GameState.CoopStateManager.SuppressStatusEffectUI) return true;
+        if (!GameState.CoopStateManager.SuppressStatusEffectUI)
+            return true;
         return false; // Skip the UI update — effects are still in the list for gameplay
     }
 
@@ -5393,7 +5728,8 @@ public static class MultiplayerClientPatches
     public static bool BattleController_ThrowAllBombs_Prefix(
         BattleController __instance, ref IEnumerator __result)
     {
-        if (!ShouldSuppressClientLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
 
         _bombsRegularField?.SetValue(__instance, 0);
         _bombsRiggedField?.SetValue(__instance, 0);
@@ -5425,7 +5761,8 @@ public static class MultiplayerClientPatches
     private static System.Collections.Generic.HashSet<int> GetOwnedEffects(Relics.RelicManager rm)
     {
         var owned = new System.Collections.Generic.HashSet<int>();
-        if (rm == null) return owned;
+        if (rm == null)
+            return owned;
         try
         {
             var ownedField = AccessTools.Field(typeof(Relics.RelicManager), "_ownedRelics");
@@ -5433,7 +5770,8 @@ public static class MultiplayerClientPatches
                 as System.Collections.Generic.Dictionary<Relics.RelicEffect, Relics.Relic>;
             if (dict != null)
             {
-                foreach (var k in dict.Keys) owned.Add((int)k);
+                foreach (var k in dict.Keys)
+                    owned.Add((int)k);
             }
         }
         catch { }
@@ -5455,9 +5793,12 @@ public static class MultiplayerClientPatches
             var candidates = new System.Collections.Generic.List<Relics.Relic>();
             foreach (var r in all)
             {
-                if (r == null) continue;
-                if (r.globalRarity != rarity) continue;
-                if (owned.Contains((int)r.effect)) continue;
+                if (r == null)
+                    continue;
+                if (r.globalRarity != rarity)
+                    continue;
+                if (owned.Contains((int)r.effect))
+                    continue;
                 candidates.Add(r);
             }
             if (candidates.Count == 0)
@@ -5465,12 +5806,15 @@ public static class MultiplayerClientPatches
                 // Fallback: allow any rarity if pool empty
                 foreach (var r in all)
                 {
-                    if (r == null) continue;
-                    if (owned.Contains((int)r.effect)) continue;
+                    if (r == null)
+                        continue;
+                    if (owned.Contains((int)r.effect))
+                        continue;
                     candidates.Add(r);
                 }
             }
-            if (candidates.Count == 0) return null;
+            if (candidates.Count == 0)
+                return null;
             // Stable order so the slot-keyed RNG produces consistent results across runs.
             candidates.Sort((a, b) => string.CompareOrdinal(a?.name, b?.name));
             int pick;
@@ -5502,27 +5846,34 @@ public static class MultiplayerClientPatches
         var picked = new System.Collections.Generic.List<Relics.Relic>();
         try
         {
-            if (count <= 0) return picked;
+            if (count <= 0)
+                return picked;
             var owned = GetOwnedEffects(rm);
             var all = UnityEngine.Resources.FindObjectsOfTypeAll<Relics.Relic>();
             var candidates = new System.Collections.Generic.List<Relics.Relic>();
             foreach (var r in all)
             {
-                if (r == null) continue;
-                if (r.globalRarity != rarity) continue;
-                if (owned.Contains((int)r.effect)) continue;
+                if (r == null)
+                    continue;
+                if (r.globalRarity != rarity)
+                    continue;
+                if (owned.Contains((int)r.effect))
+                    continue;
                 candidates.Add(r);
             }
             if (candidates.Count == 0)
             {
                 foreach (var r in all)
                 {
-                    if (r == null) continue;
-                    if (owned.Contains((int)r.effect)) continue;
+                    if (r == null)
+                        continue;
+                    if (owned.Contains((int)r.effect))
+                        continue;
                     candidates.Add(r);
                 }
             }
-            if (candidates.Count == 0) return picked;
+            if (candidates.Count == 0)
+                return picked;
             candidates.Sort((a, b) => string.CompareOrdinal(a?.name, b?.name));
 
             int seed = unchecked(((StaticGameData.currentSeed ?? "").GetHashCode()
@@ -5551,11 +5902,13 @@ public static class MultiplayerClientPatches
     /// <summary>Find a Relic ScriptableObject by name. Returns null if not loaded.</summary>
     private static Relics.Relic FindRelicByName(string name)
     {
-        if (string.IsNullOrEmpty(name)) return null;
+        if (string.IsNullOrEmpty(name))
+            return null;
         var all = UnityEngine.Resources.FindObjectsOfTypeAll<Relics.Relic>();
         foreach (var r in all)
         {
-            if (r != null && r.name == name) return r;
+            if (r != null && r.name == name)
+                return r;
         }
         return null;
     }
@@ -5580,8 +5933,10 @@ public static class MultiplayerClientPatches
         //      slot-keyed local roll. Native code uses _relicManager.GetMultipleRelicsOffOfQueue
         //      which produces identical first-N relics on every client because the seeded
         //      queue never advances on clients (host runs all battles).
-        if (!ShouldSuppressClientLogic) return true;
-        if (!AllowTreasureLogic && !AllowNativeRewardLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
+        if (!AllowTreasureLogic && !AllowNativeRewardLogic)
+            return true;
 
         try
         {
@@ -5595,14 +5950,16 @@ public static class MultiplayerClientPatches
             var mainOptions = mainOptionsField?.GetValue(__instance) as GameObject;
             var relicPanel = relicPanelField?.GetValue(__instance) as GameObject;
             var relicManager = relicManagerField?.GetValue(__instance) as Relics.RelicManager;
-            if (relicPanel == null) return true; // fall through
+            if (relicPanel == null)
+                return true; // fall through
 
             mainOptions?.SetActive(false);
             relicPanel.SetActive(true);
 
             if (stateField != null && stateField.FieldType.IsEnum)
             {
-                try { stateField.SetValue(__instance, System.Enum.Parse(stateField.FieldType, "RELIC")); }
+                try
+                { stateField.SetValue(__instance, System.Enum.Parse(stateField.FieldType, "RELIC")); }
                 catch { }
             }
             rarityField?.SetValue(__instance, rarity);
@@ -5621,12 +5978,14 @@ public static class MultiplayerClientPatches
                     && Events.Handlers.Coop.CoopRewardState.PerSlotTreasureRelics.TryGetValue(mySlot, out var hostRelicName))
                 {
                     relic = FindRelicByName(hostRelicName);
-                    if (relic == null) source = "host(missing prefab, fallback)";
+                    if (relic == null)
+                        source = "host(missing prefab, fallback)";
                 }
                 if (relic == null)
                 {
                     relic = PickRandomLocalRelic(rarity, relicManager, mySlot);
-                    if (source == "host") source = "local-slot-keyed";
+                    if (source == "host")
+                        source = "local-slot-keyed";
                 }
                 for (int i = 0; i < icons.Length; i++)
                 {
@@ -5650,8 +6009,10 @@ public static class MultiplayerClientPatches
             // Non-treasure (post-battle) path: replicate native count logic and do a
             // slot-keyed multi-pick.
             int num = 1;
-            if (rarity == Relics.RelicRarity.BOSS) num = 3;
-            else if (rarity == Relics.RelicRarity.RARE) num = 2;
+            if (rarity == Relics.RelicRarity.BOSS)
+                num = 3;
+            else if (rarity == Relics.RelicRarity.RARE)
+                num = 2;
 
             if (rarity == Relics.RelicRarity.BOSS)
             {
@@ -5660,10 +6021,13 @@ public static class MultiplayerClientPatches
             }
 
             var mapDataBattle = StaticGameData.dataToLoad as MapDataBattle;
-            if (mapDataBattle != null && mapDataBattle.name == "MimicMinibossMapData") num++;
+            if (mapDataBattle != null && mapDataBattle.name == "MimicMinibossMapData")
+                num++;
             // Side-effect-bearing relic checks must run so usage counters tick correctly.
-            if (relicManager != null && relicManager.AttemptUseRelic(Relics.RelicEffect.ADDITIONAL_ORB_RELIC_OPTIONS)) num++;
-            if (relicManager != null && relicManager.AttemptUseRelic(Relics.RelicEffect.ADDITIONAL_PEGLIN_CHOICES)) num++;
+            if (relicManager != null && relicManager.AttemptUseRelic(Relics.RelicEffect.ADDITIONAL_ORB_RELIC_OPTIONS))
+                num++;
+            if (relicManager != null && relicManager.AttemptUseRelic(Relics.RelicEffect.ADDITIONAL_PEGLIN_CHOICES))
+                num++;
 
             int slotForRng = mySlot >= 0 ? mySlot : 0;
             var picks = PickMultipleLocalRelics(rarity, num, relicManager, slotForRng);
@@ -5682,7 +6046,8 @@ public static class MultiplayerClientPatches
             }
 
             var pickNames = new System.Collections.Generic.List<string>();
-            foreach (var p in picks) pickNames.Add(p?.name ?? "<null>");
+            foreach (var p in picks)
+                pickNames.Add(p?.name ?? "<null>");
             MultiplayerPlugin.Logger?.LogInfo(
                 $"[ClientPatch] Post-battle relic grant slot={mySlot} rarity={rarity} count={picks.Count} relics=[{string.Join(",", pickNames)}]");
             return false;
@@ -5714,10 +6079,12 @@ public static class MultiplayerClientPatches
         try
         {
             var services = MultiplayerPlugin.Services;
-            if (services == null) return true;
+            if (services == null)
+                return true;
 
             int mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(services);
-            if (mySlot < 0) return true;
+            if (mySlot < 0)
+                return true;
 
             if (!Events.Handlers.Coop.CoopRewardState.PerSlotOrbChoices.TryGetValue(mySlot, out var nameList)
                 || nameList == null || nameList.Count == 0)
@@ -5732,7 +6099,8 @@ public static class MultiplayerClientPatches
             var deckMgr = __instance.deckManager;
             var relicMgr = __instance.relicManager;
             var cruciballMgr = __instance.cruciballManager;
-            if (addOrbButtons == null || addOrbButtons.Length == 0 || deckMgr == null) return true;
+            if (addOrbButtons == null || addOrbButtons.Length == 0 || deckMgr == null)
+                return true;
 
             var prefabs = ResolveOrbPrefabsByName(nameList, deckMgr);
             if (prefabs.Count == 0)
@@ -5750,18 +6118,22 @@ public static class MultiplayerClientPatches
             {
                 foreach (var b in potentialDownButtons)
                 {
-                    if (b != null && b.gameObject.activeInHierarchy) { selectOnDown = b; break; }
+                    if (b != null && b.gameObject.activeInHierarchy)
+                    { selectOnDown = b; break; }
                 }
             }
             for (int j = 0; j < addOrbButtons.Length; j++)
             {
                 bool active = j < num;
                 addOrbButtons[j].gameObject.SetActive(active);
-                if (!active) continue;
+                if (!active)
+                    continue;
                 var btn = addOrbButtons[j].GetComponent<UnityEngine.UI.Button>();
-                if (btn == null) continue;
+                if (btn == null)
+                    continue;
                 var nav = btn.navigation;
-                if (j > 0) nav.selectOnLeft = addOrbButtons[j - 1].GetComponent<UnityEngine.UI.Button>();
+                if (j > 0)
+                    nav.selectOnLeft = addOrbButtons[j - 1].GetComponent<UnityEngine.UI.Button>();
                 if (j + 1 < num && j < addOrbButtons.Length - 1)
                     nav.selectOnRight = addOrbButtons[j + 1].GetComponent<UnityEngine.UI.Button>();
                 nav.selectOnDown = selectOnDown;
@@ -5773,7 +6145,8 @@ public static class MultiplayerClientPatches
             {
                 var prefab = prefabs[m];
                 var attack = prefab.GetComponent<Battle.Attacks.Attack>();
-                if (attack != null) attack.SoftInit(deckMgr, relicMgr, cruciballMgr);
+                if (attack != null)
+                    attack.SoftInit(deckMgr, relicMgr, cruciballMgr);
                 var opt = addOrbButtons[m];
                 opt.SpecifiedOrb = prefab;
                 opt.upgradeType = PeglinUI.PostBattle.UpgradeOption.UpgradeType.INSPECT_NEW_ORB;
@@ -5818,23 +6191,29 @@ public static class MultiplayerClientPatches
             GameObject found = null;
             foreach (var pool in allPools)
             {
-                if (pool == null) continue;
+                if (pool == null)
+                    continue;
                 foreach (var go in pool)
                 {
-                    if (go != null && go.name == name) { found = go; break; }
+                    if (go != null && go.name == name)
+                    { found = go; break; }
                 }
-                if (found != null) break;
+                if (found != null)
+                    break;
             }
             if (found == null)
             {
                 // Fall back: scan all loaded Attack prefabs for a name match.
                 foreach (var attack in Resources.FindObjectsOfTypeAll<Battle.Attacks.Attack>())
                 {
-                    if (attack == null || attack.gameObject == null) continue;
-                    if (attack.gameObject.name == name) { found = attack.gameObject; break; }
+                    if (attack == null || attack.gameObject == null)
+                        continue;
+                    if (attack.gameObject.name == name)
+                    { found = attack.gameObject; break; }
                 }
             }
-            if (found != null) result.Add(found);
+            if (found != null)
+                result.Add(found);
         }
         return result;
     }
@@ -5850,8 +6229,10 @@ public static class MultiplayerClientPatches
         Scenarios.TextScenarioInteractions __instance,
         Relics.RelicRarity rarity)
     {
-        if (!ShouldSuppressClientLogic) return true;
-        if (!AllowTextScenarioLogic) return true;
+        if (!ShouldSuppressClientLogic)
+            return true;
+        if (!AllowTextScenarioLogic)
+            return true;
 
         try
         {
@@ -5862,7 +6243,8 @@ public static class MultiplayerClientPatches
             var relicPanel = relicPanelField?.GetValue(__instance) as GameObject;
             var skipButton = skipButtonField?.GetValue(__instance) as UnityEngine.UI.Button;
             var relicManager = rmField?.GetValue(__instance) as Relics.RelicManager;
-            if (relicPanel == null) return true;
+            if (relicPanel == null)
+                return true;
 
             relicPanel.SetActive(true);
 
@@ -5954,8 +6336,10 @@ public static class MultiplayerClientPatches
     [HarmonyPostfix]
     public static void Act4BossPegBoardFrameManager_RegisterCallbacks_Postfix()
     {
-        if (!IsHosting) return;
-        if (_spiritRadiaHostSubscribed) return;
+        if (!IsHosting)
+            return;
+        if (_spiritRadiaHostSubscribed)
+            return;
         _spiritRadiaHostSubscribed = true;
 
         global::Battle.Enemies.SpiritOfRadiaBoss.PreTransitionStarted += DispatchPreTransition;
@@ -5967,8 +6351,10 @@ public static class MultiplayerClientPatches
     {
         try
         {
-            if (MultiplayerPlugin.Services == null) return;
-            if (!MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out var registry)) return;
+            if (MultiplayerPlugin.Services == null)
+                return;
+            if (!MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out var registry))
+                return;
             MultiplayerPlugin.Logger?.LogInfo("[SpiritOfRadia] Host: dispatching Step=1 (pre-transition)");
             registry.Dispatch(new Multipeglin.Events.Network.Battle.SpiritOfRadiaPhaseTransitionEvent { Step = 1 });
         }
@@ -5982,8 +6368,10 @@ public static class MultiplayerClientPatches
     {
         try
         {
-            if (MultiplayerPlugin.Services == null) return;
-            if (!MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out var registry)) return;
+            if (MultiplayerPlugin.Services == null)
+                return;
+            if (!MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out var registry))
+                return;
             MultiplayerPlugin.Logger?.LogInfo("[SpiritOfRadia] Host: dispatching Step=2 (main transition)");
             registry.Dispatch(new Multipeglin.Events.Network.Battle.SpiritOfRadiaPhaseTransitionEvent { Step = 2 });
         }

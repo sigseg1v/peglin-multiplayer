@@ -110,7 +110,8 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
         try
         {
             var tsm = TimescaleManager.Instance;
-            if (tsm == null) return;
+            if (tsm == null)
+                return;
 
             if (tsm.isSpedUp != snapshot.IsSpedUp)
             {
@@ -158,8 +159,10 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
                 foreach (var entry in snapshot.StatusEffects)
                 {
                     var effectType = (Battle.StatusEffects.StatusEffectType)entry.EffectType;
-                    if (effectType == Battle.StatusEffects.StatusEffectType.None) continue;
-                    if (entry.Intensity <= 0) continue;
+                    if (effectType == Battle.StatusEffects.StatusEffectType.None)
+                        continue;
+                    if (entry.Intensity <= 0)
+                        continue;
                     effects.Add(new Battle.StatusEffects.StatusEffect(effectType, entry.Intensity));
                 }
             }

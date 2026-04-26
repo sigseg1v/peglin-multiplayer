@@ -28,7 +28,8 @@ public sealed class BombThrownClientHandler : IClientHandler<BombThrownEvent>
             BattleController.OnBombThrown?.Invoke();
 
             int total = networkEvent.RegularCount + networkEvent.RiggedCount;
-            if (total <= 0) return;
+            if (total <= 0)
+                return;
 
             // Use MainThreadDispatcher to start a coroutine for spawning visual bombs
             var dispatcher = MainThreadDispatcher.Instance;
@@ -63,14 +64,16 @@ public sealed class BombThrownClientHandler : IClientHandler<BombThrownEvent>
 
         // Find BattleController for prefabs and player position
         var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
-        if (bc == null) yield break;
+        if (bc == null)
+            yield break;
 
         var bombPrefab = _bombPrefabField?.GetValue(bc) as GameObject;
         var riggedPrefab = _riggedBombPrefabField?.GetValue(bc) as GameObject;
         var playerTransform = _playerTransformField?.GetValue(bc) as Transform;
         var playerOffset = _playerOffsetField != null ? (Vector3)_playerOffsetField.GetValue(bc) : Vector3.zero;
 
-        if (playerTransform == null || bombPrefab == null) yield break;
+        if (playerTransform == null || bombPrefab == null)
+            yield break;
 
         Vector3 spawnPos = playerTransform.position + playerOffset;
         var wait = new WaitForSeconds(0.02f);

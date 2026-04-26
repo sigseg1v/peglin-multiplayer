@@ -13,7 +13,8 @@ public sealed class AnimationSyncClientHandler : IClientHandler<AnimationSyncEve
         try
         {
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
-            if (mode == null || !mode.IsSpectating) return;
+            if (mode == null || !mode.IsSpectating)
+                return;
 
             // Find the entity by GUID — try enemy first, then peg
             Animator animator = null;
@@ -32,7 +33,8 @@ public sealed class AnimationSyncClientHandler : IClientHandler<AnimationSyncEve
                     animator = peg.GetComponentInChildren<Animator>();
             }
 
-            if (animator == null) return;
+            if (animator == null)
+                return;
 
             switch (e.ParamType)
             {

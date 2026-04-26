@@ -49,7 +49,8 @@ public class PlayerRegistry
 
     public PlayerSlot GetSlotByPeerId(int peerId)
     {
-        if (peerId == -1) return GetHostSlot();
+        if (peerId == -1)
+            return GetHostSlot();
         return _slotsByPeerId.TryGetValue(peerId, out var slot) ? slot : null;
     }
 

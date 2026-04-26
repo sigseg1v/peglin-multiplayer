@@ -26,7 +26,8 @@ public static class DebugForceLevel
 
     private static void Parse()
     {
-        if (_parsed) return;
+        if (_parsed)
+            return;
         _parsed = true;
 
         var val = Environment.GetEnvironmentVariable("PEGLIN_MULTI_DEBUG_FORCE_LEVEL");
@@ -68,7 +69,8 @@ public static class DebugForceLevel
     public static void GameInit_Start_Prefix()
     {
         Parse();
-        if (string.IsNullOrEmpty(_forcedSeed)) return;
+        if (string.IsNullOrEmpty(_forcedSeed))
+            return;
 
         StaticGameData.currentSeed = _forcedSeed;
         MultiplayerPlugin.Logger?.LogInfo($"[DebugForceLevel] Set StaticGameData.currentSeed = '{_forcedSeed}'");
@@ -79,7 +81,8 @@ public static class DebugForceLevel
     public static void GameInit_LoadMapScene_Prefix(LoadMapData ___LoadData)
     {
         Parse();
-        if (_forcedScene == null || ___LoadData == null) return;
+        if (_forcedScene == null || ___LoadData == null)
+            return;
 
         ___LoadData.SceneToLoad = _forcedScene.Value;
 

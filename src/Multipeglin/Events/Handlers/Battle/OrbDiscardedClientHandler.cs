@@ -50,7 +50,8 @@ public sealed class OrbDiscardedClientHandler : IClientHandler<OrbDiscardedEvent
         try
         {
             var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
-            if (dms == null || dms.Length == 0) return;
+            if (dms == null || dms.Length == 0)
+                return;
             var dm = dms[0];
 
             var shuffledField = AccessTools.Field(typeof(DeckManager), "shuffledDeck");

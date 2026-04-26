@@ -20,7 +20,8 @@ public class OrbIdentifier
 
     public string GetOrAssignGuid(GameObject orb)
     {
-        if (orb == null) return "null";
+        if (orb == null)
+            return "null";
 
         if (_orbToGuid.TryGetValue(orb, out var existing))
             return existing;
@@ -33,7 +34,8 @@ public class OrbIdentifier
 
     public void Register(GameObject orb, string guid)
     {
-        if (orb == null || string.IsNullOrEmpty(guid)) return;
+        if (orb == null || string.IsNullOrEmpty(guid))
+            return;
 
         if (_guidToOrb.TryGetValue(guid, out var old) && old != orb)
             _orbToGuid.Remove(old);
@@ -46,7 +48,8 @@ public class OrbIdentifier
 
     public GameObject Find(string guid)
     {
-        if (string.IsNullOrEmpty(guid)) return null;
+        if (string.IsNullOrEmpty(guid))
+            return null;
         if (_guidToOrb.TryGetValue(guid, out var orb) && orb != null)
             return orb;
         if (orb == null && _guidToOrb.ContainsKey(guid))
@@ -56,14 +59,16 @@ public class OrbIdentifier
 
     public string GetGuid(GameObject orb)
     {
-        if (orb == null) return null;
+        if (orb == null)
+            return null;
         return _orbToGuid.TryGetValue(orb, out var guid) ? guid : null;
     }
 
     /// <summary>Backward-compatible name-based ID for orbs (used in events).</summary>
     public string GetId(GameObject ball)
     {
-        if (ball == null) return "unknown";
+        if (ball == null)
+            return "unknown";
         var attack = ball.GetComponent<Attack>();
         if (attack != null && !string.IsNullOrEmpty(attack.locNameString))
             return attack.locNameString;
@@ -72,7 +77,8 @@ public class OrbIdentifier
 
     public int GetLevel(GameObject ball)
     {
-        if (ball == null) return 0;
+        if (ball == null)
+            return 0;
         var attack = ball.GetComponent<Attack>();
         return attack?.Level ?? 0;
     }

@@ -132,7 +132,8 @@ public sealed class StateSyncSubscriptions
 
     private void SafeSync(string trigger, Action action)
     {
-        if (!_mode.IsHosting) return;
+        if (!_mode.IsHosting)
+            return;
         try
         {
             action();

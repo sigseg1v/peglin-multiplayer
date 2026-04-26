@@ -32,8 +32,10 @@ public static class RunSummaryOnEnablePatch
         try
         {
             var services = MultiplayerPlugin.Services;
-            if (services == null) return;
-            if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting) return;
+            if (services == null)
+                return;
+            if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting)
+                return;
 
             var stats = StaticGameData.CurrentRunStats;
             if (stats == null)
@@ -66,7 +68,8 @@ public static class RunSummaryOnEnablePatch
     private static List<PerPlayerStats> BuildPerPlayerStats(IServiceContainer services)
     {
         var result = new List<PerPlayerStats>();
-        if (!services.TryResolve<CoopStateManager>(out var coop)) return result;
+        if (!services.TryResolve<CoopStateManager>(out var coop))
+            return result;
 
         foreach (var kvp in coop.PlayerStates.OrderBy(p => p.Key))
         {
@@ -85,7 +88,8 @@ public static class RunSummaryOnEnablePatch
             };
 
             if (state.OwnedRelics != null)
-                foreach (var r in state.OwnedRelics) entry.Relics.Add(r.Effect);
+                foreach (var r in state.OwnedRelics)
+                    entry.Relics.Add(r.Effect);
 
             if (state.CompleteDeck != null)
                 foreach (var o in state.CompleteDeck)
@@ -121,14 +125,20 @@ public static class RunSummaryOnEnablePatch
             Players = players,
         };
 
-        if (stats.visitedRooms != null) ev.VisitedRooms = stats.visitedRooms.Select(r => (int)r).ToList();
-        if (stats.visitedBosses != null) ev.VisitedBosses = stats.visitedBosses.Select(b => (int)b).ToList();
-        if (stats.relics != null) ev.Relics = stats.relics.Select(r => (int)r).ToList();
-        if (stats.challenges != null) ev.Challenges = stats.challenges.Select(c => (int)c).ToList();
+        if (stats.visitedRooms != null)
+            ev.VisitedRooms = stats.visitedRooms.Select(r => (int)r).ToList();
+        if (stats.visitedBosses != null)
+            ev.VisitedBosses = stats.visitedBosses.Select(b => (int)b).ToList();
+        if (stats.relics != null)
+            ev.Relics = stats.relics.Select(r => (int)r).ToList();
+        if (stats.challenges != null)
+            ev.Challenges = stats.challenges.Select(c => (int)c).ToList();
 
         // Pack enum-indexed dicts into dense arrays so the wire format is stable.
         var statusMax = 0;
-        foreach (var v in Enum.GetValues(typeof(StatusEffectType))) if ((int)v > statusMax) statusMax = (int)v;
+        foreach (var v in Enum.GetValues(typeof(StatusEffectType)))
+            if ((int)v > statusMax)
+                statusMax = (int)v;
         ev.StatusEffectStacks = Enumerable.Repeat(0, statusMax + 1).ToList();
         if (stats.stacksPerStatusEffect != null)
             foreach (var kv in stats.stacksPerStatusEffect)
@@ -136,7 +146,9 @@ public static class RunSummaryOnEnablePatch
                     ev.StatusEffectStacks[(int)kv.Key] = kv.Value;
 
         var slimeMax = 0;
-        foreach (var v in Enum.GetValues(typeof(global::Peg.SlimeType))) if ((int)v > slimeMax) slimeMax = (int)v;
+        foreach (var v in Enum.GetValues(typeof(global::Peg.SlimeType)))
+            if ((int)v > slimeMax)
+                slimeMax = (int)v;
         ev.SlimePegCounts = Enumerable.Repeat(0, slimeMax + 1).ToList();
         if (stats.slimePegsPerSlimeType != null)
             foreach (var kv in stats.slimePegsPerSlimeType)
@@ -201,13 +213,16 @@ public static class RunStatisticsDetailsInitializePatch
         try
         {
             var players = RunStatsSnapshotClientHandler.LatestPerPlayerStats;
-            if (players == null || players.Count == 0) return;
+            if (players == null || players.Count == 0)
+                return;
 
             // Keep pages ordered by slot index so page 1 is always host.
             var ordered = players.OrderBy(p => p.SlotIndex).ToList();
 
-            if (CurrentPageIndex < 0) CurrentPageIndex = 0;
-            if (CurrentPageIndex >= ordered.Count) CurrentPageIndex = ordered.Count - 1;
+            if (CurrentPageIndex < 0)
+                CurrentPageIndex = 0;
+            if (CurrentPageIndex >= ordered.Count)
+                CurrentPageIndex = ordered.Count - 1;
 
             var current = ordered[CurrentPageIndex];
             RenderPerPlayerPage(__instance, stats, current, CurrentPageIndex, ordered.Count);
@@ -276,7 +291,8 @@ public static class RunStatisticsDetailsInitializePatch
             var list = new List<GameObject>();
             foreach (var orb in player.Orbs)
             {
-                if (string.IsNullOrEmpty(orb.PrefabName)) continue;
+                if (string.IsNullOrEmpty(orb.PrefabName))
+                    continue;
                 var orbGO = Loading.AssetLoading.Instance?.GetOrbPrefab(orb.PrefabName);
                 if (orbGO == null)
                 {
@@ -284,7 +300,8 @@ public static class RunStatisticsDetailsInitializePatch
                     continue;
                 }
                 var icon = UnityEngine.Object.Instantiate(orbPrefab, orbsParent).GetComponent<PeglinUI.LoadoutManager.LoadoutIcon>();
-                if (icon == null) continue;
+                if (icon == null)
+                    continue;
                 icon.InitializeOrb(orbGO, Mathf.Clamp(orb.Level, 0, 2));
                 ForceIconUnlocked(icon, orbGO, null);
                 list.Add(icon.gameObject);
@@ -313,7 +330,8 @@ public static class RunStatisticsDetailsInitializePatch
                     continue;
                 }
                 var icon = UnityEngine.Object.Instantiate(relicPrefab, relicsParent).GetComponent<PeglinUI.LoadoutManager.LoadoutIcon>();
-                if (icon == null) continue;
+                if (icon == null)
+                    continue;
                 icon.InitializeRelic(relic);
                 ForceIconUnlocked(icon, null, relic);
                 list.Add(icon.gameObject);
@@ -351,9 +369,11 @@ public static class RunStatisticsDetailsInitializePatch
                 var components = icon.image.GetComponents<Component>();
                 foreach (var comp in components)
                 {
-                    if (comp == null) continue;
+                    if (comp == null)
+                        continue;
                     var t = comp.GetType();
-                    if (t.Name != "UIEffect") continue;
+                    if (t.Name != "UIEffect")
+                        continue;
                     var prop = t.GetProperty("colorFactor");
                     if (prop != null && prop.CanWrite)
                     {
@@ -380,10 +400,12 @@ public static class RunStatisticsDetailsInitializePatch
         try
         {
             var classInfos = inst.classInfos;
-            if (classInfos == null) return null;
+            if (classInfos == null)
+                return null;
             foreach (var ci in classInfos)
             {
-                if ((int)ci.characterClass == chosenClass) return ci.classNameLocKey;
+                if ((int)ci.characterClass == chosenClass)
+                    return ci.classNameLocKey;
             }
         }
         catch { }
@@ -395,14 +417,17 @@ public static class RunStatisticsDetailsInitializePatch
         try
         {
             string label = I2.Loc.LocalizationManager.GetTranslation(labelLocKey);
-            if (string.IsNullOrEmpty(label)) return;
+            if (string.IsNullOrEmpty(label))
+                return;
 
             foreach (Transform child in parent)
             {
                 var sl = child.GetComponent<StatsLine>();
-                if (sl == null) continue;
+                if (sl == null)
+                    continue;
                 var texts = child.GetComponentsInChildren<TMPro.TextMeshProUGUI>(true);
-                if (texts == null || texts.Length < 2) continue;
+                if (texts == null || texts.Length < 2)
+                    continue;
                 if (texts[0].text == label)
                 {
                     texts[1].text = newValue;
@@ -422,7 +447,8 @@ public static class RunStatisticsDetailsInitializePatch
             if (texts != null && texts.Length > 0 && texts[0].text != null && texts[0].text.StartsWith(prefix))
                 toRemove.Add(child.gameObject);
         }
-        foreach (var go in toRemove) UnityEngine.Object.DestroyImmediate(go);
+        foreach (var go in toRemove)
+            UnityEngine.Object.DestroyImmediate(go);
     }
 
     private static void RestripeRows(Transform parent)
@@ -431,7 +457,8 @@ public static class RunStatisticsDetailsInitializePatch
         foreach (Transform child in parent)
         {
             var img = child.GetComponentInChildren<UnityEngine.UI.Image>();
-            if (img != null) img.enabled = i != 0;
+            if (img != null)
+                img.enabled = i != 0;
             i = 1 - i;
         }
     }
@@ -451,7 +478,8 @@ public static class RunSummaryLoadMainMenuPatch
         try
         {
             var players = RunStatsSnapshotClientHandler.LatestPerPlayerStats;
-            if (players == null || players.Count <= 1) return true;
+            if (players == null || players.Count <= 1)
+                return true;
 
             int next = RunStatisticsDetailsInitializePatch.CurrentPageIndex + 1;
             if (next >= players.Count)

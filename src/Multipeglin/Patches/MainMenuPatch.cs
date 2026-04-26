@@ -20,7 +20,8 @@ public static class MenuButtonInjector
         try
         {
             // Already injected and still alive
-            if (_multiplayerButton != null && _multiplayerButton) return;
+            if (_multiplayerButton != null && _multiplayerButton)
+                return;
 
             // Check if a previous injection left a button (e.g. from Harmony + SceneWatcher both firing)
             var existing = GameObject.Find("MultiplayerButton");
@@ -170,12 +171,17 @@ public static class PauseMenuQuitToMenuPatch
     public static bool Prefix(PauseMenu __instance)
     {
         var services = MultiplayerPlugin.Services;
-        if (services == null) return true;
-        if (!services.TryResolve<IMultiplayerMode>(out var mode)) return true;
-        if (!mode.IsSpectating && !mode.IsHosting) return true;
+        if (services == null)
+            return true;
+        if (!services.TryResolve<IMultiplayerMode>(out var mode))
+            return true;
+        if (!mode.IsSpectating && !mode.IsHosting)
+            return true;
 
         MultiplayerPlugin.Logger?.LogInfo("[PauseMenu] QuitToMenu in multiplayer — disconnecting");
-        try { __instance.Resume(); } catch { }
+        try
+        { __instance.Resume(); }
+        catch { }
         MultiplayerSession.DisconnectAndReset("Returned to main menu");
         return false;
     }

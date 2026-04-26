@@ -103,7 +103,8 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
         try
         {
             var seeded = StaticGameData.seededNodeData;
-            if (seeded == null) return;
+            if (seeded == null)
+                return;
 
             if (seeded is Map.SeededTextScenarioNodeData textNode)
             {
@@ -164,14 +165,17 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
             }
 
             var sm = UnityEngine.Object.FindObjectOfType<Scenarios.Shop.ShopManager>();
-            if (sm == null) return;
+            if (sm == null)
+                return;
 
             var purchasableField = AccessTools.Field(typeof(Scenarios.Shop.ShopManager), "_purchasableRelics");
             var arr = purchasableField?.GetValue(sm) as System.Array;
-            if (arr == null) return;
+            if (arr == null)
+                return;
 
             var relicField = AccessTools.Field(typeof(Scenarios.Shop.PurchasableRelic), "_relic");
-            if (relicField == null) return;
+            if (relicField == null)
+                return;
 
             var effects = new List<int>();
             bool anyNull = false;
@@ -181,10 +185,13 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
                 if (entry is Scenarios.Shop.PurchasableRelic pr)
                 {
                     var relic = relicField.GetValue(pr) as Relics.Relic;
-                    if (relic != null) effects.Add((int)relic.effect);
-                    else anyNull = true;
+                    if (relic != null)
+                        effects.Add((int)relic.effect);
+                    else
+                        anyNull = true;
                 }
-                else anyNull = true;
+                else
+                    anyNull = true;
             }
             if (effects.Count > 0)
             {
@@ -223,7 +230,8 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
         {
             var stateField = AccessTools.Field(typeof(Battle.BattleController), "_battleState");
             var bc = UnityEngine.Object.FindObjectOfType<Battle.BattleController>();
-            if (bc == null || stateField == null) return;
+            if (bc == null || stateField == null)
+                return;
 
             var state = (Battle.BattleController.BattleState)stateField.GetValue(bc);
             bool isNav = state == Battle.BattleController.BattleState.AWAITING_POST_BATTLE_CONTROLLER
@@ -270,19 +278,23 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
         try
         {
             var mc = UnityEngine.Object.FindObjectOfType<Map.MapController>();
-            if (mc == null) return nodes;
+            if (mc == null)
+                return nodes;
 
             // Access _nodes field via reflection
             var nodesField = AccessTools.Field(typeof(Map.MapController), "_nodes");
-            if (nodesField == null) return nodes;
+            if (nodesField == null)
+                return nodes;
 
             var mapNodes = nodesField.GetValue(mc) as MapNode[];
-            if (mapNodes == null) return nodes;
+            if (mapNodes == null)
+                return nodes;
 
             for (int i = 0; i < mapNodes.Length; i++)
             {
                 var node = mapNodes[i];
-                if (node == null) continue;
+                if (node == null)
+                    continue;
 
                 var roomStatusField = AccessTools.Field(typeof(MapNode), "_roomStatus");
                 var roomState = roomStatusField?.GetValue(node);

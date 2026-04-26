@@ -68,10 +68,12 @@ public class TextScenarioStateProvider
         {
             // Find the StandardDialogueUI in the scene
             var dialogueUI = UnityEngine.Object.FindObjectOfType<StandardDialogueUI>();
-            if (dialogueUI == null) return;
+            if (dialogueUI == null)
+                return;
 
             var uiElements = dialogueUI.conversationUIElements;
-            if (uiElements == null) return;
+            if (uiElements == null)
+                return;
 
             // Read NPC subtitle text
             var npcPanel = uiElements.defaultNPCSubtitlePanel;
@@ -112,7 +114,8 @@ public class TextScenarioStateProvider
 
     private static bool IsMirrorScenario(string scenarioName)
     {
-        if (string.IsNullOrEmpty(scenarioName)) return false;
+        if (string.IsNullOrEmpty(scenarioName))
+            return false;
         // The mirror event scenario name — check common patterns
         return scenarioName.IndexOf("Mirror", StringComparison.OrdinalIgnoreCase) >= 0;
     }

@@ -213,7 +213,8 @@ public static class ServiceRegistration
         var playerRegistry = container.Resolve<PlayerRegistry>();
         transport.OnDisconnected += peerId =>
         {
-            if (!transport.IsHost) return;
+            if (!transport.IsHost)
+                return;
 
             var slot = playerRegistry.GetSlotByPeerId(peerId);
             if (slot == null)

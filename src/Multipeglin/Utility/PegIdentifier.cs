@@ -24,7 +24,8 @@ public class PegIdentifier
     /// </summary>
     public string GetOrAssignGuid(Peg peg)
     {
-        if (peg == null) return "null";
+        if (peg == null)
+            return "null";
 
         if (_pegToGuid.TryGetValue(peg, out var existing))
             return existing;
@@ -41,7 +42,8 @@ public class PegIdentifier
     /// </summary>
     public void Register(Peg peg, string guid)
     {
-        if (peg == null || string.IsNullOrEmpty(guid)) return;
+        if (peg == null || string.IsNullOrEmpty(guid))
+            return;
 
         if (_guidToPeg.TryGetValue(guid, out var oldPeg) && oldPeg != peg)
             _pegToGuid.Remove(oldPeg);
@@ -58,7 +60,8 @@ public class PegIdentifier
     /// </summary>
     public Peg Find(string guid)
     {
-        if (string.IsNullOrEmpty(guid)) return null;
+        if (string.IsNullOrEmpty(guid))
+            return null;
 
         if (_guidToPeg.TryGetValue(guid, out var peg) && peg != null)
             return peg;
@@ -72,7 +75,8 @@ public class PegIdentifier
     /// <summary>Get GUID for a peg, or null if not registered.</summary>
     public string GetGuid(Peg peg)
     {
-        if (peg == null) return null;
+        if (peg == null)
+            return null;
         return _pegToGuid.TryGetValue(peg, out var guid) ? guid : null;
     }
 

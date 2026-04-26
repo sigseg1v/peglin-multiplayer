@@ -32,7 +32,8 @@ public sealed class MapSubscriptions
 
     private void OnNodeSelected(string mapName, int floor, int cruciballLevel)
     {
-        if (!IsHosting) return;
+        if (!IsHosting)
+            return;
         _registry.Dispatch(new NodeSelectedEvent
         {
             MapName = mapName,

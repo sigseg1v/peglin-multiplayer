@@ -13,7 +13,8 @@ public sealed class RelicStateSnapshotClientHandler : IClientHandler<RelicStateS
         try
         {
             // In coop mode, each player has their own relics — don't overwrite
-            if (UI.LobbyUI.GameStartReceived) return;
+            if (UI.LobbyUI.GameStartReceived)
+                return;
 
             var mode = MultiplayerPlugin.Services?.Resolve<IMultiplayerMode>();
             if (mode?.ClientMode == ClientMode.Mirror)

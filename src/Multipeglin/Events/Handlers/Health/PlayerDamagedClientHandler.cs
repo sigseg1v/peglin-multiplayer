@@ -14,10 +14,12 @@ public sealed class PlayerDamagedClientHandler : IClientHandler<PlayerDamagedEve
         try
         {
             // During native post-battle rewards, the client's health is managed locally.
-            if (Coop.CoopRewardState.ClientInNativeRewardPhase) return;
+            if (Coop.CoopRewardState.ClientInNativeRewardPhase)
+                return;
 
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
-            if (mode == null || !mode.IsSpectating) return;
+            if (mode == null || !mode.IsSpectating)
+                return;
 
             // Set health directly from host data
             var ctrl = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
@@ -28,8 +30,10 @@ public sealed class PlayerDamagedClientHandler : IClientHandler<PlayerDamagedEve
                 var healthVar = healthField?.GetValue(ctrl) as FloatVariable;
                 var maxHealthVar = maxHealthField?.GetValue(ctrl) as FloatVariable;
 
-                if (maxHealthVar != null) maxHealthVar.Set(e.MaxHealth);
-                if (healthVar != null) healthVar.Set(e.RemainingHealth);
+                if (maxHealthVar != null)
+                    maxHealthVar.Set(e.MaxHealth);
+                if (healthVar != null)
+                    healthVar.Set(e.RemainingHealth);
             }
 
             // Fire the event for UI animations (health bar shake, flash, etc.)

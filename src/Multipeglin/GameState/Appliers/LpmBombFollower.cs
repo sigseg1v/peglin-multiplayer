@@ -23,7 +23,8 @@ public class LpmBombFollower : MonoBehaviour
 
     private void LateUpdate()
     {
-        if (LpmParent == null) return;
+        if (LpmParent == null)
+            return;
         var target = LpmParent.position + LocalOffset;
         target.z = transform.position.z;
         if (_rb != null)

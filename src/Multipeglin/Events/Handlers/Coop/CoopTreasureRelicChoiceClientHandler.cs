@@ -13,7 +13,8 @@ public sealed class CoopTreasureRelicChoiceClientHandler : IClientHandler<CoopTr
     public void Handle(CoopTreasureRelicChoiceEvent networkEvent)
     {
         var services = MultiplayerPlugin.Services;
-        if (services == null) return;
+        if (services == null)
+            return;
 
         // Host→client event: host must never apply this to itself, and a forged
         // copy from another peer would otherwise poison this client's reward UI.
@@ -21,8 +22,10 @@ public sealed class CoopTreasureRelicChoiceClientHandler : IClientHandler<CoopTr
             return;
 
         int mySlot = CoopSlotHelper.GetLocalSlotIndex(services);
-        if (mySlot < 0) return;
-        if (networkEvent.TargetSlotIndex != mySlot) return;
+        if (mySlot < 0)
+            return;
+        if (networkEvent.TargetSlotIndex != mySlot)
+            return;
 
         CoopRewardState.PerSlotTreasureRelics[mySlot] = networkEvent.RelicName;
         MultiplayerPlugin.Logger?.LogInfo(

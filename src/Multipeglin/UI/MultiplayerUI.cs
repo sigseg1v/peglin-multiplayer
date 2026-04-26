@@ -133,7 +133,9 @@ public class MultiplayerUI : MonoBehaviour
             _steamTransport = (_router != null && _router.HasSteam) ? _router : null;
             if (_steamTransport != null)
             {
-                try { _currentAppId = SteamUtils.GetAppID(); } catch { }
+                try
+                { _currentAppId = SteamUtils.GetAppID(); }
+                catch { }
                 Log?.LogInfo($"[Steam] Friend filter using appId={_currentAppId.m_AppId}");
             }
 
@@ -220,30 +222,38 @@ public class MultiplayerUI : MonoBehaviour
                 if (isSpectatingScene)
                 {
                     // Transparent top banner — game board visible behind it
-                    if (_spectatorBanner == null) CreateSpectatorBanner();
+                    if (_spectatorBanner == null)
+                        CreateSpectatorBanner();
                     _spectatorBanner.SetActive(true);
                     _spectatorBannerText.text = waitMsg;
-                    if (_waitingPanel != null) _waitingPanel.SetActive(false);
+                    if (_waitingPanel != null)
+                        _waitingPanel.SetActive(false);
                 }
                 else
                 {
                     // Dark fullscreen overlay for non-spectatable scenes
-                    if (_waitingPanel == null) CreateWaitingPanel();
+                    if (_waitingPanel == null)
+                        CreateWaitingPanel();
                     _waitingPanel.SetActive(true);
                     _waitingText.text = waitMsg;
-                    if (_spectatorBanner != null) _spectatorBanner.SetActive(false);
+                    if (_spectatorBanner != null)
+                        _spectatorBanner.SetActive(false);
                 }
             }
             else
             {
-                if (_waitingPanel != null) _waitingPanel.SetActive(false);
-                if (_spectatorBanner != null) _spectatorBanner.SetActive(false);
+                if (_waitingPanel != null)
+                    _waitingPanel.SetActive(false);
+                if (_spectatorBanner != null)
+                    _spectatorBanner.SetActive(false);
             }
         }
         else
         {
-            if (_waitingPanel != null) _waitingPanel.SetActive(false);
-            if (_spectatorBanner != null) _spectatorBanner.SetActive(false);
+            if (_waitingPanel != null)
+                _waitingPanel.SetActive(false);
+            if (_spectatorBanner != null)
+                _spectatorBanner.SetActive(false);
         }
 
         // Coop turn indicator — shown during Battle for both host and client
@@ -255,7 +265,8 @@ public class MultiplayerUI : MonoBehaviour
         // Transport event cleanup happens via transport.Stop() on disconnect.
         // Lambda subscriptions can't be directly unsubscribed, but the transport
         // is shared and lives for the plugin lifetime alongside this UI.
-        if (_canvasObj != null) Destroy(_canvasObj);
+        if (_canvasObj != null)
+            Destroy(_canvasObj);
     }
 
     // --- Canvas ---
@@ -542,11 +553,15 @@ public class MultiplayerUI : MonoBehaviour
         }
 
         uint appId = 0;
-        try { appId = SteamUtils.GetAppID().m_AppId; } catch { }
+        try
+        { appId = SteamUtils.GetAppID().m_AppId; }
+        catch { }
         string joinUrl = $"steam://joinlobby/{appId}/{lobbyId.m_SteamID}/{SteamUser.GetSteamID().m_SteamID}";
 
         bool overlayEnabled = false;
-        try { overlayEnabled = SteamUtils.IsOverlayEnabled(); } catch (Exception ex) { Log?.LogWarning($"[Invite] IsOverlayEnabled threw: {ex.Message}"); }
+        try
+        { overlayEnabled = SteamUtils.IsOverlayEnabled(); }
+        catch (Exception ex) { Log?.LogWarning($"[Invite] IsOverlayEnabled threw: {ex.Message}"); }
         Log?.LogInfo($"[Invite] appId={appId} lobby={lobbyId.m_SteamID} overlayEnabled={overlayEnabled} joinUrl={joinUrl}");
 
         if (overlayEnabled)
@@ -566,7 +581,9 @@ public class MultiplayerUI : MonoBehaviour
         // Overlay unavailable (common under Proton when game wasn't launched via Steam):
         // copy the join URL to clipboard and flash confirmation so the host can paste it
         // to a friend manually via Steam chat.
-        try { GUIUtility.systemCopyBuffer = joinUrl; } catch (Exception ex) { Log?.LogWarning($"[Invite] Clipboard copy failed: {ex.Message}"); }
+        try
+        { GUIUtility.systemCopyBuffer = joinUrl; }
+        catch (Exception ex) { Log?.LogWarning($"[Invite] Clipboard copy failed: {ex.Message}"); }
         _inviteCopiedFlashUntil = Time.unscaledTime + 3f;
     }
 
@@ -650,7 +667,8 @@ public class MultiplayerUI : MonoBehaviour
 
     private void PopulateFriendList()
     {
-        if (_friendListContent == null) return;
+        if (_friendListContent == null)
+            return;
 
         // Clear existing rows
         for (int i = _friendListContent.transform.childCount - 1; i >= 0; i--)
@@ -663,9 +681,12 @@ public class MultiplayerUI : MonoBehaviour
             for (int i = 0; i < total; i++)
             {
                 var fid = SteamFriends.GetFriendByIndex(i, EFriendFlags.k_EFriendFlagImmediate);
-                if (!SteamFriends.GetFriendGamePlayed(fid, out FriendGameInfo_t info)) continue;
-                if (info.m_gameID.AppID() != _currentAppId) continue;
-                if (!info.m_steamIDLobby.IsValid()) continue;
+                if (!SteamFriends.GetFriendGamePlayed(fid, out FriendGameInfo_t info))
+                    continue;
+                if (info.m_gameID.AppID() != _currentAppId)
+                    continue;
+                if (!info.m_steamIDLobby.IsValid())
+                    continue;
 
                 var name = SteamFriends.GetFriendPersonaName(fid);
                 AddFriendRow(found, name, info.m_steamIDLobby);
@@ -719,7 +740,8 @@ public class MultiplayerUI : MonoBehaviour
 
     private void OnJoinLobbyClicked(CSteamID lobbyId)
     {
-        if (_steamTransport == null) return;
+        if (_steamTransport == null)
+            return;
         try
         {
             _router?.UseSteam();
@@ -740,7 +762,8 @@ public class MultiplayerUI : MonoBehaviour
 
     private void UpdateLobbyPanel()
     {
-        if (_lobbyStatusText == null) return;
+        if (_lobbyStatusText == null)
+            return;
 
         bool steamActive = _router != null && _router.ActiveIsSteam;
         bool flashActive = Time.unscaledTime < _inviteCopiedFlashUntil;
@@ -773,11 +796,15 @@ public class MultiplayerUI : MonoBehaviour
             {
                 var lobbyId = _steamTransport.HostedLobbyId;
                 bool overlayEnabled = false;
-                try { overlayEnabled = SteamUtils.IsOverlayEnabled(); } catch { }
+                try
+                { overlayEnabled = SteamUtils.IsOverlayEnabled(); }
+                catch { }
                 if (lobbyId.IsValid() && !overlayEnabled)
                 {
                     uint appId = 0;
-                    try { appId = SteamUtils.GetAppID().m_AppId; } catch { }
+                    try
+                    { appId = SteamUtils.GetAppID().m_AppId; }
+                    catch { }
                     _lobbyJoinLinkText.text =
                         $"steam://joinlobby/{appId}/{lobbyId.m_SteamID}/{SteamUser.GetSteamID().m_SteamID}";
                     show = true;
@@ -980,7 +1007,8 @@ public class MultiplayerUI : MonoBehaviour
         _hostPanel.SetActive(false);
         _joinPanel.SetActive(false);
         _lobbyPanel.SetActive(false);
-        if (_friendListPanel != null) _friendListPanel.SetActive(false);
+        if (_friendListPanel != null)
+            _friendListPanel.SetActive(false);
     }
 
     private void ShowLobby()
@@ -989,7 +1017,8 @@ public class MultiplayerUI : MonoBehaviour
         _hostPanel.SetActive(false);
         _joinPanel.SetActive(false);
         _lobbyPanel.SetActive(true);
-        if (_friendListPanel != null) _friendListPanel.SetActive(false);
+        if (_friendListPanel != null)
+            _friendListPanel.SetActive(false);
         // Hide the waiting panel (MapStateApplier shows it for MainMenu)
         if (_waitingPanel != null)
             _waitingPanel.SetActive(false);
@@ -1027,8 +1056,10 @@ public class MultiplayerUI : MonoBehaviour
 
     private void ToggleOverlay()
     {
-        if (_overlayVisible) HideOverlay();
-        else ShowOverlay();
+        if (_overlayVisible)
+            HideOverlay();
+        else
+            ShowOverlay();
     }
 
     public static void ToggleOverlayStatic()
@@ -1052,7 +1083,8 @@ public class MultiplayerUI : MonoBehaviour
         _hostPanel.SetActive(false);
         _joinPanel.SetActive(true);
         _lobbyPanel.SetActive(false);
-        if (_friendListPanel != null) _friendListPanel.SetActive(false);
+        if (_friendListPanel != null)
+            _friendListPanel.SetActive(false);
         _statusText.text = _lastConnectionStatus;
     }
 
@@ -1153,7 +1185,8 @@ public class MultiplayerUI : MonoBehaviour
             if (owner.IsValid())
             {
                 var name = SteamFriends.GetFriendPersonaName(owner);
-                if (!string.IsNullOrEmpty(name)) inviterName = name;
+                if (!string.IsNullOrEmpty(name))
+                    inviterName = name;
             }
         }
         catch { }
@@ -1269,8 +1302,10 @@ public class MultiplayerUI : MonoBehaviour
                 }
                 catch (Exception ex) { Log?.LogWarning($"[Lobby] Rebroadcast after disconnect failed: {ex.Message}"); }
             };
-            if (dispatcher != null) dispatcher.Enqueue(rebroadcast);
-            else rebroadcast();
+            if (dispatcher != null)
+                dispatcher.Enqueue(rebroadcast);
+            else
+                rebroadcast();
             return;
         }
 
@@ -1397,7 +1432,9 @@ public class MultiplayerUI : MonoBehaviour
         {
             Destroy(_errorPanel);
             _errorPanel = null;
-            try { onAccept?.Invoke(); } catch (Exception ex) { Log?.LogError($"ConfirmDialog onAccept threw: {ex}"); }
+            try
+            { onAccept?.Invoke(); }
+            catch (Exception ex) { Log?.LogError($"ConfirmDialog onAccept threw: {ex}"); }
         });
 
         var declineBtn = CreateButton(box.transform, "DeclineBtn", "Decline",
@@ -1406,7 +1443,9 @@ public class MultiplayerUI : MonoBehaviour
         {
             Destroy(_errorPanel);
             _errorPanel = null;
-            try { onDecline?.Invoke(); } catch (Exception ex) { Log?.LogError($"ConfirmDialog onDecline threw: {ex}"); }
+            try
+            { onDecline?.Invoke(); }
+            catch (Exception ex) { Log?.LogError($"ConfirmDialog onDecline threw: {ex}"); }
         });
     }
 

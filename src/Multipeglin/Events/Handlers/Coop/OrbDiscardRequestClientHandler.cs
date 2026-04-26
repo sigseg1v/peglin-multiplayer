@@ -18,13 +18,18 @@ public sealed class OrbDiscardRequestClientHandler : IClientHandler<OrbDiscardRe
     public void Handle(OrbDiscardRequestEvent networkEvent)
     {
         var services = MultiplayerPlugin.Services;
-        if (services == null) return;
+        if (services == null)
+            return;
 
         // Only the host processes discard requests
-        if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting) return;
-        if (!services.TryResolve<TurnManager>(out var turnManager)) return;
-        if (!services.TryResolve<PlayerRegistry>(out var registry)) return;
-        if (!services.TryResolve<IGameEventRegistry>(out var eventRegistry)) return;
+        if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting)
+            return;
+        if (!services.TryResolve<TurnManager>(out var turnManager))
+            return;
+        if (!services.TryResolve<PlayerRegistry>(out var registry))
+            return;
+        if (!services.TryResolve<IGameEventRegistry>(out var eventRegistry))
+            return;
 
         var senderPeerId = (eventRegistry as GameEventRegistry)?.CurrentSenderPeerId ?? -1;
         var senderSlot = registry.GetSlotByPeerId(senderPeerId);

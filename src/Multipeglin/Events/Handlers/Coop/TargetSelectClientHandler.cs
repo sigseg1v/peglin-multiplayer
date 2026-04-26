@@ -24,24 +24,30 @@ public sealed class TargetSelectClientHandler : IClientHandler<TargetSelectEvent
         try
         {
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
-            if (mode == null || !mode.IsHosting) return;
+            if (mode == null || !mode.IsHosting)
+                return;
 
             // Clear previous highlight
             if (_currentClientTarget != null)
             {
-                try { _currentClientTarget.ToggleTargetedUI(on: false); } catch { }
+                try
+                { _currentClientTarget.ToggleTargetedUI(on: false); }
+                catch { }
                 _currentClientTarget = null;
             }
 
             CurrentClientTargetGuid = networkEvent.TargetEnemyGuid;
 
-            if (string.IsNullOrEmpty(networkEvent.TargetEnemyGuid)) return;
+            if (string.IsNullOrEmpty(networkEvent.TargetEnemyGuid))
+                return;
 
             var enemyId = MultiplayerPlugin.Services?.TryResolve<EnemyIdentifier>(out var eid) == true ? eid : null;
-            if (enemyId == null) return;
+            if (enemyId == null)
+                return;
 
             var enemy = enemyId.Find(networkEvent.TargetEnemyGuid);
-            if (enemy == null || enemy.CurrentHealth <= 0f) return;
+            if (enemy == null || enemy.CurrentHealth <= 0f)
+                return;
 
             // Show targeting UI on the client's selected enemy
             enemy.ToggleTargetedUI(on: true);
@@ -58,7 +64,9 @@ public sealed class TargetSelectClientHandler : IClientHandler<TargetSelectEvent
     {
         if (_currentClientTarget != null)
         {
-            try { _currentClientTarget.ToggleTargetedUI(on: false); } catch { }
+            try
+            { _currentClientTarget.ToggleTargetedUI(on: false); }
+            catch { }
             _currentClientTarget = null;
         }
         CurrentClientTargetGuid = null;

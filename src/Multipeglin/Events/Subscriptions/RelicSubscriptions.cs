@@ -36,7 +36,8 @@ public sealed class RelicSubscriptions
 
     private void OnRelicAdded(Relic relic)
     {
-        if (!IsHosting) return;
+        if (!IsHosting)
+            return;
         _registry.Dispatch(new RelicAddedEvent
         {
             RelicEffect = (int)relic.effect,
@@ -46,13 +47,15 @@ public sealed class RelicSubscriptions
 
     private void OnRelicRemoved(Relic relic)
     {
-        if (!IsHosting) return;
+        if (!IsHosting)
+            return;
         _registry.Dispatch(new RelicRemovedEvent { RelicEffect = (int)relic.effect });
     }
 
     private void OnRelicUsed(Relic relic)
     {
-        if (!IsHosting) return;
+        if (!IsHosting)
+            return;
         _registry.Dispatch(new RelicUsedEvent { RelicEffect = (int)relic.effect });
     }
 }

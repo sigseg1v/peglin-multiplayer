@@ -127,7 +127,8 @@ public class TurnManager
     public void MarkShotFired()
     {
         var slot = CurrentPlayerSlot;
-        if (slot < 0) return;
+        if (slot < 0)
+            return;
 
         var state = _coopState.GetPlayerState(slot);
         if (state != null)
@@ -199,7 +200,8 @@ public class TurnManager
     /// </summary>
     public bool IsLocalPlayerTurn(bool isHost)
     {
-        if (Phase != TurnPhase.PLAYER_AIMING) return false;
+        if (Phase != TurnPhase.PLAYER_AIMING)
+            return false;
         return isHost && CurrentPlayerSlot == 0;
     }
 
@@ -291,7 +293,8 @@ public class TurnManager
     public string GetCurrentPlayerName()
     {
         var slot = CurrentPlayerSlot;
-        if (slot < 0) return "";
+        if (slot < 0)
+            return "";
         var state = _coopState.GetPlayerState(slot);
         return state?.PlayerName ?? $"Player {slot}";
     }

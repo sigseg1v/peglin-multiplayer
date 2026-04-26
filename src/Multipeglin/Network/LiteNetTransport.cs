@@ -95,7 +95,8 @@ public class LiteNetTransport : INetworkTransport, INetEventListener
     {
         // Check connection key (version match)
         string key;
-        try { key = request.Data.GetString(); }
+        try
+        { key = request.Data.GetString(); }
         catch { request.Reject(); return; }
 
         if (key != NetworkConfig.ConnectionKey)

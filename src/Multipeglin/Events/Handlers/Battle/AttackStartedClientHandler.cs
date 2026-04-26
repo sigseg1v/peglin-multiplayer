@@ -33,13 +33,15 @@ public sealed class AttackStartedClientHandler : IClientHandler<AttackStartedEve
 
     private static void StartPlaybackIfNeeded()
     {
-        if (_playbackRunning) return;
+        if (_playbackRunning)
+            return;
         var runner = ClientAttackProjectile.Instance;
         if (runner == null)
         {
             // No MonoBehaviour available to host the coroutine — fall back to
             // one-shot handling so we don't lose the event entirely.
-            if (_queue.Count > 0) PlayOneImmediate(_queue.Dequeue());
+            if (_queue.Count > 0)
+                PlayOneImmediate(_queue.Dequeue());
             return;
         }
         _playbackRunning = true;

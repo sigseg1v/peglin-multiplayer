@@ -22,12 +22,15 @@ public sealed class PegHitClientHandler : IClientHandler<PegHitEvent>
         try
         {
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
-            if (mode == null || !mode.IsSpectating) return;
-            if (string.IsNullOrEmpty(e.PegGuid)) return;
+            if (mode == null || !mode.IsSpectating)
+                return;
+            if (string.IsNullOrEmpty(e.PegGuid))
+                return;
 
             var pegId = MultiplayerPlugin.Services?.TryResolve<PegIdentifier>(out var p) == true ? p : null;
             var peg = pegId?.Find(e.PegGuid);
-            if (peg == null || !peg.gameObject.activeSelf) return;
+            if (peg == null || !peg.gameObject.activeSelf)
+                return;
 
             // Bomb hit count → animator NumHits.
             if (e.HitCount >= 0 && peg is Bomb bomb)
@@ -35,7 +38,8 @@ public sealed class PegHitClientHandler : IClientHandler<PegHitEvent>
                 if (bomb.HitCount != e.HitCount)
                 {
                     bomb.HitCount = e.HitCount;
-                    try { bomb.GetComponent<Animator>()?.SetInteger("NumHits", e.HitCount); }
+                    try
+                    { bomb.GetComponent<Animator>()?.SetInteger("NumHits", e.HitCount); }
                     catch { }
                 }
             }
@@ -71,7 +75,8 @@ public sealed class PegHitClientHandler : IClientHandler<PegHitEvent>
                             var anim = shield.GetComponent<Animator>();
                             anim?.SetInteger(Animator.StringToHash("HitCount"), e.ShieldHitCount);
                             var rend = shield.GetComponent<SpriteRenderer>();
-                            if (rend != null) rend.enabled = e.ShieldHitCount < e.ShieldHitLimit;
+                            if (rend != null)
+                                rend.enabled = e.ShieldHitCount < e.ShieldHitLimit;
                         }
                         catch { }
                     }

@@ -17,7 +17,8 @@ public sealed class GameStartClientHandler : IClientHandler<GameStartEvent>
         try
         {
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
-            if (mode == null || !mode.IsSpectating) return;
+            if (mode == null || !mode.IsSpectating)
+                return;
 
             MultiplayerPlugin.Logger?.LogInfo($"[GameStart] Received game start with {networkEvent.FinalPlayers?.Count ?? 0} players");
 

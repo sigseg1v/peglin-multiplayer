@@ -12,7 +12,8 @@ public sealed class PegDestroyedClientHandler : IClientHandler<PegDestroyedEvent
         try
         {
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
-            if (mode == null || !mode.IsSpectating) return;
+            if (mode == null || !mode.IsSpectating)
+                return;
 
             // Find the actual peg on the client by GUID
             global::Peg peg = null;
@@ -25,7 +26,8 @@ public sealed class PegDestroyedClientHandler : IClientHandler<PegDestroyedEvent
             // Destroy the peg visually
             if (peg != null && peg.gameObject.activeSelf && peg.pegType != global::Peg.PegType.DESTROYED)
             {
-                try { peg.DestroyPeg(peg.pegType); }
+                try
+                { peg.DestroyPeg(peg.pegType); }
                 catch { peg.gameObject.SetActive(false); }
             }
         }

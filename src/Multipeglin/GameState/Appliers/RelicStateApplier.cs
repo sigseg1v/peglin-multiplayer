@@ -149,7 +149,8 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
     {
         try
         {
-            if (snapshot.OwnedRelics == null) return;
+            if (snapshot.OwnedRelics == null)
+                return;
 
             var countdownField = AccessTools.Field(typeof(RelicManager), "_relicRemainingCountdowns");
             var perShotField = AccessTools.Field(typeof(RelicManager), "_relicRemainingUsesPerShot");
@@ -179,7 +180,8 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
                 var effect = (RelicEffect)entry.Effect;
 
                 // Skip relics the client doesn't actually own yet
-                if (owned == null || !owned.ContainsKey(effect)) continue;
+                if (owned == null || !owned.ContainsKey(effect))
+                    continue;
 
                 bool wroteCountdown = false;
                 if (hasCountdown != null && hasCountdown.ContainsKey(effect))
@@ -286,11 +288,13 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
         try
         {
             var relicUI = UnityEngine.Object.FindObjectOfType<RelicUI>();
-            if (relicUI == null) return;
+            if (relicUI == null)
+                return;
 
             var iconsField = AccessTools.Field(typeof(RelicUI), "icons");
             var icons = iconsField?.GetValue(relicUI) as Dictionary<RelicEffect, RelicIcon>;
-            if (icons == null) return;
+            if (icons == null)
+                return;
 
             int refreshed = 0;
             foreach (var kvp in owned)
@@ -347,7 +351,8 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
             {
                 foreach (var orbGo in DeckManager.completeDeck)
                 {
-                    if (orbGo == null) continue;
+                    if (orbGo == null)
+                        continue;
                     var atk = orbGo.GetComponent<Attack>();
                     if (atk != null)
                     {

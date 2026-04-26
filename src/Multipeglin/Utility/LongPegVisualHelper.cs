@@ -21,7 +21,8 @@ public static class LongPegVisualHelper
 {
     public static void ApplyHitVisual(LongPeg peg)
     {
-        if (peg == null) return;
+        if (peg == null)
+            return;
         try
         {
             var hitField = AccessTools.Field(typeof(LongPeg), "_hit");
@@ -36,7 +37,8 @@ public static class LongPegVisualHelper
             clearedField?.SetValue(peg, true);
 
             var renderer = rendererField?.GetValue(peg) as MeshRenderer;
-            if (renderer == null) return;
+            if (renderer == null)
+                return;
 
             var poppedTrigger = poppedTriggerField?.GetValue(peg) as Collider2D;
             bool useDestroyed = poppedTrigger != null && poppedTrigger.enabled;

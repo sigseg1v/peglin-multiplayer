@@ -68,7 +68,8 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
     /// </summary>
     public static MapDataBattle TryGetCachedBattle(string name)
     {
-        if (string.IsNullOrEmpty(name)) return null;
+        if (string.IsNullOrEmpty(name))
+            return null;
         _battleCache.TryGetValue(name, out var b);
         return b;
     }
@@ -385,7 +386,8 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                     if (!changed && prev != null)
                     {
                         for (int i = 0; i < prev.Count; i++)
-                            if (prev[i] != snapshot.SeededShopRelicEffects[i]) { changed = true; break; }
+                            if (prev[i] != snapshot.SeededShopRelicEffects[i])
+                            { changed = true; break; }
                     }
                     if (changed)
                     {
@@ -488,11 +490,13 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         try
         {
             var mc = UnityEngine.Object.FindObjectOfType<MapController>();
-            if (mc == null) return;
+            if (mc == null)
+                return;
 
             void Add(System.Collections.IList list)
             {
-                if (list == null) return;
+                if (list == null)
+                    return;
                 foreach (var obj in list)
                 {
                     if (obj is MapDataBattle b && !string.IsNullOrEmpty(b.name))
@@ -636,13 +640,16 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
     {
         try
         {
-            if (mc == null) return;
+            if (mc == null)
+                return;
             var sceneName = mc.gameObject.scene.name;
-            if (!_mapStateCache.TryGetValue(sceneName, out var cached) || cached == null) return;
+            if (!_mapStateCache.TryGetValue(sceneName, out var cached) || cached == null)
+                return;
 
             var nodesField = AccessTools.Field(typeof(MapController), "_nodes");
             var clientNodes = nodesField?.GetValue(mc) as MapNode[];
-            if (clientNodes == null || clientNodes.Length == 0) return;
+            if (clientNodes == null || clientNodes.Length == 0)
+                return;
 
             var roomStatusField = AccessTools.Field(typeof(MapNode), "_roomStatus");
             var bossIndexField = AccessTools.Field(typeof(MapNode), "_selectedBossIndex");
@@ -651,14 +658,17 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             int nodesApplied = 0;
             foreach (var entry in cached.Nodes)
             {
-                if (entry.Index < 0 || entry.Index >= clientNodes.Length) continue;
+                if (entry.Index < 0 || entry.Index >= clientNodes.Length)
+                    continue;
                 var node = clientNodes[entry.Index];
-                if (node == null) continue;
+                if (node == null)
+                    continue;
 
                 var type = (RoomType)entry.RoomType;
                 var state = entry.RoomState >= 0 ? (RoomState)entry.RoomState : RoomState.UPCOMING;
                 var currentState = (RoomState)(roomStatusField?.GetValue(node) ?? RoomState.UPCOMING);
-                if (node.RoomType == type && currentState == state) continue;
+                if (node.RoomType == type && currentState == state)
+                    continue;
 
                 node.RoomType = type;
                 if (entry.SelectedBossIndex >= 0 && bossIndexField != null)
@@ -697,11 +707,14 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                     float closestDist = float.MaxValue;
                     foreach (var node in clientNodes)
                     {
-                        if (node == null) continue;
+                        if (node == null)
+                            continue;
                         float d = Vector3.SqrMagnitude(node.transform.position - target);
-                        if (d < closestDist) { closestDist = d; closest = node; }
+                        if (d < closestDist)
+                        { closestDist = d; closest = node; }
                     }
-                    if (closest != null) prevNodeField?.SetValue(mc, closest);
+                    if (closest != null)
+                        prevNodeField?.SetValue(mc, closest);
                 }
             }
 
@@ -720,12 +733,15 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
     /// </summary>
     public void ApplyNavigationSlots(List<int> childNodeTypes)
     {
-        if (childNodeTypes == null || childNodeTypes.Count == 0) return;
+        if (childNodeTypes == null || childNodeTypes.Count == 0)
+            return;
 
         // Compute a hash so we only configure once per set of child types
         int hash = childNodeTypes.Count;
-        foreach (var t in childNodeTypes) hash = hash * 31 + t;
-        if (_navigationSlotsConfigured && hash == _lastNavigationHash) return;
+        foreach (var t in childNodeTypes)
+            hash = hash * 31 + t;
+        if (_navigationSlotsConfigured && hash == _lastNavigationHash)
+            return;
 
         try
         {
@@ -767,7 +783,8 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                         if (node != null && node.RoomType == rt)
                         {
                             var icon = node.activeIcon;
-                            if (icon != null) return icon;
+                            if (icon != null)
+                                return icon;
                         }
                     }
                 }
@@ -979,7 +996,8 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         {
             var playerField = AccessTools.Field(typeof(MapController), "_player");
             var player = playerField?.GetValue(mc) as GameObject;
-            if (player == null) return;
+            if (player == null)
+                return;
 
             Vector3 targetPos;
 
@@ -1000,7 +1018,8 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                         break;
                     }
                 }
-                if (targetNode == null) return;
+                if (targetNode == null)
+                    return;
                 targetPos = targetNode.transform.position;
             }
 
@@ -1016,9 +1035,11 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             float closestDist = float.MaxValue;
             foreach (var node in clientNodes)
             {
-                if (node == null) continue;
+                if (node == null)
+                    continue;
                 float d = Vector3.SqrMagnitude(node.transform.position - targetPos);
-                if (d < closestDist) { closestDist = d; closest = node; }
+                if (d < closestDist)
+                { closestDist = d; closest = node; }
             }
             if (closest != null)
                 prevNodeField?.SetValue(mc, closest);

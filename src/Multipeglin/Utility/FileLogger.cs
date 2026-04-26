@@ -56,14 +56,17 @@ public sealed class FileLogger : IDisposable
 
     private static string AnnotateClientTag(string baseTag)
     {
-        if (baseTag != "CLIENT") return baseTag;
+        if (baseTag != "CLIENT")
+            return baseTag;
         try
         {
             var instance = Environment.GetEnvironmentVariable("MULTIPEGLIN_INSTANCE");
-            if (string.IsNullOrEmpty(instance)) return baseTag;
+            if (string.IsNullOrEmpty(instance))
+                return baseTag;
             // Extract a trailing numeric suffix (e.g. PEGLIN3 -> "3").
             int i = instance.Length;
-            while (i > 0 && char.IsDigit(instance[i - 1])) i--;
+            while (i > 0 && char.IsDigit(instance[i - 1]))
+                i--;
             var digits = instance.Substring(i);
             return string.IsNullOrEmpty(digits) ? baseTag : "CLIENT" + digits;
         }

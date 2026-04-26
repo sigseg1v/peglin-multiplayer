@@ -45,10 +45,12 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
             for (int i = 0; i < pegs.Count; i++)
             {
                 var peg = pegs[i];
-                if (peg == null) continue;
+                if (peg == null)
+                    continue;
 
                 bool isBombInstance = peg is Bomb;
-                if (isBombInstance) allPegsBombCount++;
+                if (isBombInstance)
+                    allPegsBombCount++;
 
                 var guid = _pegId.GetOrAssignGuid(peg);
                 var pt = (int)peg.pegType;
@@ -61,7 +63,9 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                 bool isLongPegHit = false;
                 if (!destroyed)
                 {
-                    try { cleared = peg.IsDisabled(); } catch { }
+                    try
+                    { cleared = peg.IsDisabled(); }
+                    catch { }
                     // LongPeg-specific: capture the _hit flag (host's "half-hit gray
                     // state during shot") separately from cleared. When _hit=true and
                     // collider is still enabled, the client should render gray without
@@ -112,9 +116,12 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
 
                 if (peg.gameObject.activeSelf && !destroyed)
                 {
-                    if (isBombInstance) snapshot.BombPegCount++;
-                    else if ((pt & 0x2) != 0) snapshot.CritPegCount++;
-                    else if ((pt & 0x8) != 0) snapshot.ResetPegCount++;
+                    if (isBombInstance)
+                        snapshot.BombPegCount++;
+                    else if ((pt & 0x2) != 0)
+                        snapshot.CritPegCount++;
+                    else if ((pt & 0x8) != 0)
+                        snapshot.ResetPegCount++;
                 }
             }
 
@@ -126,7 +133,8 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                 for (int i = 0; i < bombs.Count; i++)
                 {
                     var bomb = bombs[i];
-                    if (bomb == null) continue;
+                    if (bomb == null)
+                        continue;
 
                     var guid = _pegId.GetOrAssignGuid(bomb);
                     var pt = (int)bomb.pegType;
@@ -135,7 +143,9 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     bool wasPreviouslyCleared = false;
                     if (!destroyed)
                     {
-                        try { cleared = bomb.IsDisabled(); } catch { }
+                        try
+                        { cleared = bomb.IsDisabled(); }
+                        catch { }
                         try
                         {
                             var clearedField = HarmonyLib.AccessTools.Field(typeof(Peg), "_cleared");
@@ -181,7 +191,8 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                 for (int i = 0; i < bouncers.Count; i++)
                 {
                     var bouncer = bouncers[i];
-                    if (bouncer == null) continue;
+                    if (bouncer == null)
+                        continue;
 
                     var guid = _pegId.GetOrAssignGuid(bouncer);
                     var pt = (int)bouncer.pegType;
@@ -190,7 +201,9 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     bool wasPreviouslyCleared = false;
                     if (!destroyed)
                     {
-                        try { cleared = bouncer.IsDisabled(); } catch { }
+                        try
+                        { cleared = bouncer.IsDisabled(); }
+                        catch { }
                         try
                         {
                             var clearedField = HarmonyLib.AccessTools.Field(typeof(Peg), "_cleared");
@@ -239,10 +252,12 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
 
                     foreach (var vine in vines)
                     {
-                        if (vine == null) continue;
+                        if (vine == null)
+                            continue;
                         var peg1 = peg1Field?.GetValue(vine) as Peg;
                         var peg2 = peg2Field?.GetValue(vine) as Peg;
-                        if (peg1 == null || peg2 == null) continue;
+                        if (peg1 == null || peg2 == null)
+                            continue;
 
                         var guid1 = _pegId.GetGuid(peg1);
                         var guid2 = _pegId.GetGuid(peg2);
@@ -283,7 +298,8 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
     {
         try
         {
-            if (!peg.shielded) return;
+            if (!peg.shielded)
+                return;
             entry.IsShielded = true;
             var overlayField = HarmonyLib.AccessTools.Field(typeof(Peg), "PegShieldOverlayInstance");
             var overlay = overlayField?.GetValue(peg) as Battle.PegBehaviour.PegShieldOverlay;

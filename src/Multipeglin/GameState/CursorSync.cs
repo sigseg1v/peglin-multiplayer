@@ -31,7 +31,8 @@ public class CursorSync : MonoBehaviour
     private void Start()
     {
         var services = MultiplayerPlugin.Services;
-        if (services == null) return;
+        if (services == null)
+            return;
         services.TryResolve(out _sender);
         services.TryResolve(out _mode);
         services.TryResolve(out _registry);
@@ -40,14 +41,19 @@ public class CursorSync : MonoBehaviour
 
     private void Update()
     {
-        if (_sender == null || _mode == null || _transport == null) return;
-        if (!_transport.IsConnected) return;
-        if (!_mode.IsHosting && !_mode.IsSpectating) return;
+        if (_sender == null || _mode == null || _transport == null)
+            return;
+        if (!_transport.IsConnected)
+            return;
+        if (!_mode.IsHosting && !_mode.IsSpectating)
+            return;
 
         var cam = Camera.main;
-        if (cam == null) return;
+        if (cam == null)
+            return;
 
-        if (Time.unscaledTime - _lastSendTime < SendInterval) return;
+        if (Time.unscaledTime - _lastSendTime < SendInterval)
+            return;
 
         Vector3 screenPos = Input.mousePosition;
         // Guard against mouse outside the window — Input.mousePosition clamps
@@ -63,7 +69,8 @@ public class CursorSync : MonoBehaviour
             return;
 
         int slot = LocalSlotIndex();
-        if (slot < 0) return;
+        if (slot < 0)
+            return;
 
         _sender.Send(new CursorPositionEvent
         {
@@ -79,7 +86,8 @@ public class CursorSync : MonoBehaviour
 
     private int LocalSlotIndex()
     {
-        if (_mode.IsHosting) return 0;
+        if (_mode.IsHosting)
+            return 0;
         return _registry?.LocalSlot?.SlotIndex ?? -1;
     }
 }

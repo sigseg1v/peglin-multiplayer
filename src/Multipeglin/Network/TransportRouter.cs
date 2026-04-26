@@ -34,7 +34,8 @@ public class TransportRouter : INetworkTransport, ISteamTransport
         _lite.OnDisconnected += p => OnDisconnected?.Invoke(p);
         _lite.OnConnectionRejected += r => OnConnectionRejected?.Invoke(r);
 
-        if (steam != null) AttachSteam(steam);
+        if (steam != null)
+            AttachSteam(steam);
     }
 
     /// <summary>
@@ -44,7 +45,8 @@ public class TransportRouter : INetworkTransport, ISteamTransport
     /// </summary>
     public void AttachSteam(SteamTransport steam)
     {
-        if (steam == null || _steam != null) return;
+        if (steam == null || _steam != null)
+            return;
         _steam = steam;
         _steam.OnDataReceived += (p, d) => OnDataReceived?.Invoke(p, d);
         _steam.OnClientConnected += p => OnClientConnected?.Invoke(p);
@@ -55,16 +57,22 @@ public class TransportRouter : INetworkTransport, ISteamTransport
 
     public void UseLite()
     {
-        if (_active == _lite) return;
-        try { _active?.Stop(); } catch (Exception ex) { Log?.LogWarning($"[Router] Prev transport stop failed: {ex.Message}"); }
+        if (_active == _lite)
+            return;
+        try
+        { _active?.Stop(); }
+        catch (Exception ex) { Log?.LogWarning($"[Router] Prev transport stop failed: {ex.Message}"); }
         _active = _lite;
         Log?.LogInfo("[Router] Active transport = LiteNet");
     }
 
     public void UseSteam()
     {
-        if (_steam == null || _active == _steam) return;
-        try { _active?.Stop(); } catch (Exception ex) { Log?.LogWarning($"[Router] Prev transport stop failed: {ex.Message}"); }
+        if (_steam == null || _active == _steam)
+            return;
+        try
+        { _active?.Stop(); }
+        catch (Exception ex) { Log?.LogWarning($"[Router] Prev transport stop failed: {ex.Message}"); }
         _active = _steam;
         Log?.LogInfo("[Router] Active transport = Steam");
     }

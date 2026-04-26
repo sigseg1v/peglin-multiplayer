@@ -36,26 +36,31 @@ public sealed class PegSubscriptions
 
     private void OnPegHit(Peg.PegType pegType, Peg peg)
     {
-        if (!IsHosting) return;
+        if (!IsHosting)
+            return;
         var pos = peg != null ? peg.transform.position : UnityEngine.Vector3.zero;
         var pegId = MultiplayerPlugin.Services?.TryResolve<PegIdentifier>(out var p) == true ? p : null;
 
         int hitCount = -1, coinCount = -1, shieldHits = -1, shieldLimit = -1;
         if (peg != null)
         {
-            try { if (peg is Bomb bomb) hitCount = bomb.HitCount; } catch { }
+            try
+            { if (peg is Bomb bomb) hitCount = bomb.HitCount; }
+            catch { }
             try
             {
                 var overlayField = HarmonyLib.AccessTools.Field(typeof(Peg), "PegCoinOverlayInstance");
                 var overlay = overlayField?.GetValue(peg) as Battle.PegBehaviour.PegCoinOverlay;
-                if (overlay != null) coinCount = overlay.NumCoins;
+                if (overlay != null)
+                    coinCount = overlay.NumCoins;
             }
             catch { }
             try
             {
                 var overlayField = HarmonyLib.AccessTools.Field(typeof(Peg), "PegShieldOverlayInstance");
                 var shield = overlayField?.GetValue(peg) as Battle.PegBehaviour.PegShieldOverlay;
-                if (shield != null) { shieldHits = shield.hitCount; shieldLimit = shield.hitLimit; }
+                if (shield != null)
+                { shieldHits = shield.hitCount; shieldLimit = shield.hitLimit; }
             }
             catch { }
         }
@@ -75,7 +80,8 @@ public sealed class PegSubscriptions
 
     private void OnPegActivated(Peg.PegType pegType, Peg peg)
     {
-        if (!IsHosting) return;
+        if (!IsHosting)
+            return;
         var pos = peg != null ? peg.transform.position : UnityEngine.Vector3.zero;
         var pegId = MultiplayerPlugin.Services?.TryResolve<PegIdentifier>(out var p) == true ? p : null;
         _registry.Dispatch(new PegActivatedEvent
@@ -89,7 +95,8 @@ public sealed class PegSubscriptions
 
     private void OnPegDestroyed(Peg.PegType pegType, Peg peg)
     {
-        if (!IsHosting) return;
+        if (!IsHosting)
+            return;
         var pos = peg != null ? peg.transform.position : UnityEngine.Vector3.zero;
         var pegId = MultiplayerPlugin.Services?.TryResolve<PegIdentifier>(out var p) == true ? p : null;
         _registry.Dispatch(new PegDestroyedEvent

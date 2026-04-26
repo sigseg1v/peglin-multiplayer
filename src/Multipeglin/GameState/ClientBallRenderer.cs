@@ -93,13 +93,15 @@ public class ClientBallRenderer : MonoBehaviour
     {
         // Leaving aiming → flight. The snapshot will spawn the actual flight
         // visual. Hide the aiming orb so it doesn't double with the spawn.
-        if (_aimingBall != null) _aimingBall.SetActive(false);
+        if (_aimingBall != null)
+            _aimingBall.SetActive(false);
         _isAiming = false;
 
         // Clear any stale flight visuals from a previous shot that never got
         // cleaned up (e.g. because the host dropped their "empty snapshot" tick).
         foreach (var v in _flightBalls.Values)
-            if (v?.GameObject != null) Destroy(v.GameObject);
+            if (v?.GameObject != null)
+                Destroy(v.GameObject);
         _flightBalls.Clear();
     }
 
@@ -109,7 +111,8 @@ public class ClientBallRenderer : MonoBehaviour
 
     public void ApplyBallSnapshot(BallStateSnapshot snap)
     {
-        if (snap == null) return;
+        if (snap == null)
+            return;
 
         // Hide the aiming visual while flight balls exist.
         if (snap.Balls != null && snap.Balls.Count > 0 && _aimingBall != null && _aimingBall.activeSelf)
@@ -123,7 +126,8 @@ public class ClientBallRenderer : MonoBehaviour
         {
             foreach (var entry in snap.Balls)
             {
-                if (string.IsNullOrEmpty(entry.Guid)) continue;
+                if (string.IsNullOrEmpty(entry.Guid))
+                    continue;
                 seen.Add(entry.Guid);
 
                 if (!_flightBalls.TryGetValue(entry.Guid, out var v))
@@ -149,7 +153,8 @@ public class ClientBallRenderer : MonoBehaviour
                     v.HasReceivedPosition = true;
                     if (v.GameObject != null)
                         v.GameObject.transform.position = new Vector3(entry.PosX, entry.PosY, -1f);
-                    if (v.Trail != null) v.Trail.Clear();
+                    if (v.Trail != null)
+                        v.Trail.Clear();
                 }
             }
         }
@@ -159,7 +164,8 @@ public class ClientBallRenderer : MonoBehaviour
         {
             var toRemove = new List<string>();
             foreach (var kvp in _flightBalls)
-                if (!seen.Contains(kvp.Key)) toRemove.Add(kvp.Key);
+                if (!seen.Contains(kvp.Key))
+                    toRemove.Add(kvp.Key);
             foreach (var guid in toRemove)
             {
                 if (_flightBalls.TryGetValue(guid, out var v) && v.GameObject != null)
@@ -209,7 +215,8 @@ public class ClientBallRenderer : MonoBehaviour
     private void ApplyOrbSprite(SpriteRenderer target, GameObject targetGO, string orbName,
         float scaleFactor, bool wantTrail, TrailRenderer existingTrail = null)
     {
-        if (target == null) return;
+        if (target == null)
+            return;
         try
         {
             string cleanName = orbName?.Replace("(Clone)", "").Trim();
@@ -253,11 +260,13 @@ public class ClientBallRenderer : MonoBehaviour
 
     private static GameObject FindOrbPrefab(string cleanName)
     {
-        if (string.IsNullOrEmpty(cleanName)) return null;
+        if (string.IsNullOrEmpty(cleanName))
+            return null;
 
         var loader = Loading.AssetLoading.Instance;
         var orbGo = loader?.GetOrbPrefab(cleanName);
-        if (orbGo != null) return orbGo;
+        if (orbGo != null)
+            return orbGo;
 
         if (cleanName == "NavigationOrb")
         {
@@ -266,7 +275,8 @@ public class ClientBallRenderer : MonoBehaviour
             {
                 var navField = HarmonyLib.AccessTools.Field(typeof(Battle.BattleController), "_navigationOrb");
                 orbGo = navField?.GetValue(bc) as GameObject;
-                if (orbGo != null) return orbGo;
+                if (orbGo != null)
+                    return orbGo;
             }
         }
 
@@ -285,7 +295,8 @@ public class ClientBallRenderer : MonoBehaviour
 
     private static void CopyTrailSettings(TrailRenderer dst, TrailRenderer src)
     {
-        if (dst == null) return;
+        if (dst == null)
+            return;
         if (src == null)
         {
             dst.emitting = true;
@@ -310,7 +321,8 @@ public class ClientBallRenderer : MonoBehaviour
         dst.sortingOrder = src.sortingOrder + 1;
         dst.autodestruct = false;
         dst.emitting = true;
-        if (src.sharedMaterial != null) dst.sharedMaterial = src.sharedMaterial;
+        if (src.sharedMaterial != null)
+            dst.sharedMaterial = src.sharedMaterial;
     }
 
     // =========================================================================
@@ -329,14 +341,17 @@ public class ClientBallRenderer : MonoBehaviour
             }
         }
 
-        if (_flightBalls.Count == 0) return;
+        if (_flightBalls.Count == 0)
+            return;
 
         foreach (var v in _flightBalls.Values)
         {
-            if (v?.GameObject == null || !v.HasReceivedPosition) continue;
+            if (v?.GameObject == null || !v.HasReceivedPosition)
+                continue;
 
             float dt = Time.time - v.LastUpdateTime;
-            if (dt > 0.25f) dt = 0.25f;
+            if (dt > 0.25f)
+                dt = 0.25f;
 
             var predicted = v.TargetPos + v.Velocity * dt;
             predicted.y += -9.81f * dt * dt * 0.5f;
@@ -354,7 +369,8 @@ public class ClientBallRenderer : MonoBehaviour
 
     private void EnsureAimingBall()
     {
-        if (_aimingBall != null) return;
+        if (_aimingBall != null)
+            return;
         _aimingBall = new GameObject("ClientBall_Aiming");
         _aimingBall.hideFlags = HideFlags.HideAndDontSave;
         DontDestroyOnLoad(_aimingBall);
@@ -386,11 +402,11 @@ public class ClientBallRenderer : MonoBehaviour
         float radius = center - 1;
 
         for (int y = 0; y < size; y++)
-        for (int x = 0; x < size; x++)
-        {
-            float dist = Vector2.Distance(new Vector2(x, y), new Vector2(center, center));
-            tex.SetPixel(x, y, dist <= radius ? Color.white : Color.clear);
-        }
+            for (int x = 0; x < size; x++)
+            {
+                float dist = Vector2.Distance(new Vector2(x, y), new Vector2(center, center));
+                tex.SetPixel(x, y, dist <= radius ? Color.white : Color.clear);
+            }
         tex.Apply();
         return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size);
     }

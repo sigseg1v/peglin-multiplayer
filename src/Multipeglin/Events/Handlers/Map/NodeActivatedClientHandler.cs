@@ -22,7 +22,8 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
         try
         {
             var mode = MultiplayerPlugin.Services?.Resolve<IMultiplayerMode>();
-            if (mode == null || !mode.IsSpectating) return;
+            if (mode == null || !mode.IsSpectating)
+                return;
 
             log?.LogInfo($"[NodeActivated] Host battle={e.BattleName} at ({e.PosX:F1},{e.PosY:F1})");
 

@@ -28,7 +28,8 @@ public static class MirrorEventUI
 
     public static void Show()
     {
-        if (_isActive) return;
+        if (_isActive)
+            return;
         _isActive = true;
         CreateChoiceUI();
     }
@@ -47,7 +48,8 @@ public static class MirrorEventUI
 
     private static void CreateChoiceUI()
     {
-        if (_canvasObj != null) UnityEngine.Object.Destroy(_canvasObj);
+        if (_canvasObj != null)
+            UnityEngine.Object.Destroy(_canvasObj);
 
         _canvasObj = new GameObject("MirrorEventCanvas");
         UnityEngine.Object.DontDestroyOnLoad(_canvasObj);
@@ -111,7 +113,8 @@ public static class MirrorEventUI
     private static void OnRemoveOneClicked()
     {
         MultiplayerPlugin.Logger?.LogInfo("[MirrorEventUI] Remove One clicked — showing orb grid");
-        if (_choicePanel != null) _choicePanel.SetActive(false);
+        if (_choicePanel != null)
+            _choicePanel.SetActive(false);
         ShowOrbGrid();
     }
 
@@ -140,7 +143,8 @@ public static class MirrorEventUI
 
     private static void ShowOrbGrid()
     {
-        if (_orbGridPanel != null) UnityEngine.Object.Destroy(_orbGridPanel);
+        if (_orbGridPanel != null)
+            UnityEngine.Object.Destroy(_orbGridPanel);
 
         _orbGridPanel = new GameObject("OrbGridPanel");
         _orbGridPanel.transform.SetParent(_canvasObj.transform, false);
@@ -199,10 +203,12 @@ public static class MirrorEventUI
             for (int i = 0; i < deck.Count; i++)
             {
                 var orbGo = deck[i];
-                if (orbGo == null) continue;
+                if (orbGo == null)
+                    continue;
 
                 // Skip CannotBeRemoved orbs
-                if (orbGo.GetComponent<CannotBeRemoved>() != null) continue;
+                if (orbGo.GetComponent<CannotBeRemoved>() != null)
+                    continue;
 
                 var attack = orbGo.GetComponent<Attack>();
                 var orbName = attack != null ? attack.GetNameWithLevel() : orbGo.name;

@@ -111,7 +111,8 @@ public static class LobbyUI
     public static void ApplyLobbyState(LobbyStateEvent state)
     {
         _latestLobbyState = state;
-        if (state != null) _hostCruciballLevel = state.CruciballLevel;
+        if (state != null)
+            _hostCruciballLevel = state.CruciballLevel;
     }
 
     /// <summary>Called by GameStartClientHandler when host starts the game.</summary>
@@ -160,8 +161,10 @@ public static class LobbyUI
         {
             // Host builds lobby state from PlayerRegistry
             var services = MultiplayerPlugin.Services;
-            if (services == null) return;
-            if (!services.TryResolve<PlayerRegistry>(out var registry)) return;
+            if (services == null)
+                return;
+            if (!services.TryResolve<PlayerRegistry>(out var registry))
+                return;
 
             players = new List<LobbyPlayerEntry>();
             foreach (var slot in registry.GetAllSlots())
@@ -257,7 +260,8 @@ public static class LobbyUI
             var modVer = row.IsLocalPlayer ? localModVer : (entry.ModVersion ?? "?");
             var versionTag = $"Peglin {gameVer} (mod {modVer})";
             bool versionMatch = versionTag == localVersionTag;
-            if (!versionMatch) hasVersionMismatch = true;
+            if (!versionMatch)
+                hasVersionMismatch = true;
             row.VersionText.text = versionTag;
             row.VersionText.color = versionMatch
                 ? new Color(0.53f, 1f, 0.53f)
@@ -294,7 +298,8 @@ public static class LobbyUI
                 {
                     var allReady = true;
                     foreach (var p in players)
-                        if (!p.IsHost && !p.IsReady) { allReady = false; break; }
+                        if (!p.IsHost && !p.IsReady)
+                        { allReady = false; break; }
                     var hasClients = players.Count > 1;
                     _startButton.interactable = allReady && hasClients;
                     _startButtonText.text = "Start Game";
@@ -449,9 +454,11 @@ public static class LobbyUI
     /// </summary>
     private static void OffsetArrowLabel(Button btn)
     {
-        if (btn == null) return;
+        if (btn == null)
+            return;
         var label = btn.GetComponentInChildren<TextMeshProUGUI>();
-        if (label == null) return;
+        if (label == null)
+            return;
         var r = label.rectTransform;
         r.offsetMin = new Vector2(r.offsetMin.x, r.offsetMin.y - 3f);
         r.offsetMax = new Vector2(r.offsetMax.x, r.offsetMax.y - 3f);
@@ -459,23 +466,30 @@ public static class LobbyUI
 
     private static void UpdateCruciballRow(bool isHost)
     {
-        if (_cruciballValueText == null) return;
+        if (_cruciballValueText == null)
+            return;
         _cruciballValueText.text = _hostCruciballLevel.ToString();
         // Client never sees the arrows — display is read-only.
-        if (_cruciballLeftBtn != null) _cruciballLeftBtn.gameObject.SetActive(isHost);
-        if (_cruciballRightBtn != null) _cruciballRightBtn.gameObject.SetActive(isHost);
+        if (_cruciballLeftBtn != null)
+            _cruciballLeftBtn.gameObject.SetActive(isHost);
+        if (_cruciballRightBtn != null)
+            _cruciballRightBtn.gameObject.SetActive(isHost);
     }
 
     private static void OnCruciballArrow(int direction)
     {
-        if (!_isHost) return;
+        if (!_isHost)
+            return;
         var next = _hostCruciballLevel + direction;
-        if (next < 0) next = 20;
-        if (next > 20) next = 0;
+        if (next < 0)
+            next = 20;
+        if (next > 20)
+            next = 0;
         _hostCruciballLevel = next;
 
         var services = MultiplayerPlugin.Services;
-        if (services == null) return;
+        if (services == null)
+            return;
         if (services.TryResolve<PlayerRegistry>(out var registry) && services.TryResolve<IGameEventRegistry>(out var er))
             LobbyHelper.BroadcastLobbyState(registry, er);
     }
@@ -485,7 +499,8 @@ public static class LobbyUI
         _localChosenClass = (_localChosenClass + direction + ClassNames.Length) % ClassNames.Length;
 
         var services = MultiplayerPlugin.Services;
-        if (services == null) return;
+        if (services == null)
+            return;
 
         if (_isHost)
         {
@@ -493,7 +508,8 @@ public static class LobbyUI
             if (services.TryResolve<PlayerRegistry>(out var registry))
             {
                 var hostSlot = registry.GetHostSlot();
-                if (hostSlot != null) hostSlot.ChosenClass = _localChosenClass;
+                if (hostSlot != null)
+                    hostSlot.ChosenClass = _localChosenClass;
             }
             if (services.TryResolve<PlayerRegistry>(out var reg2) && services.TryResolve<IGameEventRegistry>(out var er))
                 LobbyHelper.BroadcastLobbyState(reg2, er);
@@ -520,11 +536,15 @@ public static class LobbyUI
     private static void OnStartClicked()
     {
         var services = MultiplayerPlugin.Services;
-        if (services == null) return;
-        if (!services.TryResolve<PlayerRegistry>(out var registry)) return;
-        if (!services.TryResolve<IGameEventRegistry>(out var eventRegistry)) return;
+        if (services == null)
+            return;
+        if (!services.TryResolve<PlayerRegistry>(out var registry))
+            return;
+        if (!services.TryResolve<IGameEventRegistry>(out var eventRegistry))
+            return;
 
-        if (!registry.AllClientsReady) return;
+        if (!registry.AllClientsReady)
+            return;
 
         // Build final player list
         var finalPlayers = new List<LobbyPlayerEntry>();
@@ -544,7 +564,8 @@ public static class LobbyUI
         // Close the Steam lobby (if any) so late joiners can't enter mid-run.
         if (services.TryResolve<ISteamTransport>(out var steam))
         {
-            try { steam.CloseLobbyOnStart(); }
+            try
+            { steam.CloseLobbyOnStart(); }
             catch (Exception ex) { MultiplayerPlugin.Logger?.LogWarning($"[Lobby] CloseLobbyOnStart failed: {ex.Message}"); }
         }
 

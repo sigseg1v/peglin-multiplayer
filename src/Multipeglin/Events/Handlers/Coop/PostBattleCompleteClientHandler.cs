@@ -20,15 +20,18 @@ public sealed class PostBattleCompleteClientHandler : IClientHandler<PostBattleC
         try
         {
             var services = MultiplayerPlugin.Services;
-            if (services == null) return;
+            if (services == null)
+                return;
 
-            if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting) return;
+            if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting)
+                return;
 
             // Identify the sending client by peer ID
             var eventRegistry = services.TryResolve<IGameEventRegistry>(out var reg) ? reg : null;
             var senderPeerId = (eventRegistry as GameEventRegistry)?.CurrentSenderPeerId ?? -1;
 
-            if (!services.TryResolve<PlayerRegistry>(out var registry)) return;
+            if (!services.TryResolve<PlayerRegistry>(out var registry))
+                return;
             var slot = registry.GetSlotByPeerId(senderPeerId);
             if (slot == null)
             {
@@ -42,7 +45,8 @@ public sealed class PostBattleCompleteClientHandler : IClientHandler<PostBattleC
                 $"HP={networkEvent.CurrentHealth}/{networkEvent.MaxHealth} Gold={networkEvent.Gold} Deck={networkEvent.CompleteDeck?.Count ?? 0}");
 
             // Update CoopPlayerState with the client's post-reward state
-            if (!services.TryResolve<CoopStateManager>(out var coopState)) return;
+            if (!services.TryResolve<CoopStateManager>(out var coopState))
+                return;
             var playerState = coopState.GetPlayerState(slot.SlotIndex);
             if (playerState == null)
             {

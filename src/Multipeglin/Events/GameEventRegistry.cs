@@ -49,7 +49,8 @@ public class GameEventRegistry : IGameEventRegistry
         {
             var networkEvent = (TNetworkEvent)obj;
             var result = serverHandler.Handle(networkEvent);
-            if (result == null) return;
+            if (result == null)
+                return;
             var data = _serializer.Serialize(result);
             _transport.Broadcast(data);
         };
@@ -135,7 +136,8 @@ public class GameEventRegistry : IGameEventRegistry
 
     private static string Truncate(string s, int maxLen)
     {
-        if (string.IsNullOrEmpty(s)) return "(empty)";
+        if (string.IsNullOrEmpty(s))
+            return "(empty)";
         return s.Length <= maxLen ? s : s.Substring(0, maxLen) + "...";
     }
 }

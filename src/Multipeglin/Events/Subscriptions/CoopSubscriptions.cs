@@ -136,8 +136,10 @@ public sealed class CoopSubscriptions
     /// </summary>
     private void OnAttackStarted()
     {
-        if (!_mode.IsHosting) return;
-        if (_coopStateManager.TotalPlayerCount < 2) return;
+        if (!_mode.IsHosting)
+            return;
+        if (_coopStateManager.TotalPlayerCount < 2)
+            return;
 
         try
         {
@@ -168,20 +170,25 @@ public sealed class CoopSubscriptions
     /// </summary>
     public void DistributeDamageToNonActive(float rawDamage, string source)
     {
-        if (!_mode.IsHosting) return;
-        if (_coopStateManager.TotalPlayerCount < 2) return;
-        if (rawDamage <= 0f) return;
+        if (!_mode.IsHosting)
+            return;
+        if (_coopStateManager.TotalPlayerCount < 2)
+            return;
+        if (rawDamage <= 0f)
+            return;
 
         int activeSlot = _coopStateManager.ActivePlayerSlot;
         foreach (var state in _coopStateManager.PlayerStates.Values)
         {
-            if (state.SlotIndex == activeSlot) continue;
+            if (state.SlotIndex == activeSlot)
+                continue;
 
             float oldHp = state.CurrentHealth;
             float effectiveDamage = ApplyDefensiveBuffs(state, rawDamage);
             state.CurrentHealth = Mathf.Max(0f, state.CurrentHealth - effectiveDamage);
             float actualTaken = oldHp - state.CurrentHealth;
-            if (actualTaken > 0) state.DamageTaken += (long)actualTaken;
+            if (actualTaken > 0)
+                state.DamageTaken += (long)actualTaken;
             _log.LogInfo($"[CoopSubs] DistributeDamage({source}) slot {state.SlotIndex} ({state.PlayerName}): " +
                 $"hp {oldHp} -> {state.CurrentHealth} (raw={rawDamage}, after buffs={effectiveDamage})");
         }
@@ -195,9 +202,12 @@ public sealed class CoopSubscriptions
     /// </summary>
     public void HandleImmediateDamage(float amount)
     {
-        if (!_mode.IsHosting) return;
-        if (_coopStateManager.TotalPlayerCount < 2) return;
-        if (amount <= 0f) return;
+        if (!_mode.IsHosting)
+            return;
+        if (_coopStateManager.TotalPlayerCount < 2)
+            return;
+        if (amount <= 0f)
+            return;
 
         DistributeDamageToNonActive(amount, "OnPlayerDamaged");
         _damageDistributedSinceAttackStart += amount;
@@ -219,7 +229,8 @@ public sealed class CoopSubscriptions
                     activeState.CurrentHealth = Mathf.Max(0f, phc.CurrentHealth);
                 }
                 // Accumulate damage taken for the active slot's run-summary tally.
-                if (amount > 0) activeState.DamageTaken += (long)amount;
+                if (amount > 0)
+                    activeState.DamageTaken += (long)amount;
             }
         }
     }
@@ -231,8 +242,10 @@ public sealed class CoopSubscriptions
     /// </summary>
     private void OnTurnComplete()
     {
-        if (!_mode.IsHosting) return;
-        if (_coopStateManager.TotalPlayerCount < 2) return;
+        if (!_mode.IsHosting)
+            return;
+        if (_coopStateManager.TotalPlayerCount < 2)
+            return;
 
         try
         {
@@ -293,7 +306,8 @@ public sealed class CoopSubscriptions
                 foreach (var slot in _turnManager.TurnOrder)
                 {
                     var st = _coopStateManager.GetPlayerState(slot);
-                    if (st != null && st.CurrentHealth > 0) { nextSlot = slot; break; }
+                    if (st != null && st.CurrentHealth > 0)
+                    { nextSlot = slot; break; }
                 }
 
                 _coopStateManager.SwapToPlayer(nextSlot);
@@ -332,8 +346,10 @@ public sealed class CoopSubscriptions
     /// </summary>
     private void OnBattleStarted()
     {
-        if (!_mode.IsHosting) return;
-        if (_coopStateManager.TotalPlayerCount < 2) return;
+        if (!_mode.IsHosting)
+            return;
+        if (_coopStateManager.TotalPlayerCount < 2)
+            return;
 
         _accumulatedShotData.Clear();
         Multipeglin.UI.PendingDamageOverlay.ClearAll();
@@ -370,7 +386,8 @@ public sealed class CoopSubscriptions
             // causing the client deck UI to show the wrong number of orbs.
             foreach (var kvp in _coopStateManager.PlayerStates)
             {
-                if (kvp.Key == 0) continue; // Always skip host (slot 0)
+                if (kvp.Key == 0)
+                    continue; // Always skip host (slot 0)
                 var state = kvp.Value;
                 if (state.CompleteDeck.Count > 0)
                 {
@@ -421,8 +438,10 @@ public sealed class CoopSubscriptions
     /// </summary>
     private void OnAwaitingShot()
     {
-        if (!_mode.IsHosting) return;
-        if (_coopStateManager.TotalPlayerCount < 2) return;
+        if (!_mode.IsHosting)
+            return;
+        if (_coopStateManager.TotalPlayerCount < 2)
+            return;
 
         // After a full turn cycle (all players shot + attack + enemy turn),
         // the game naturally reaches AWAITING_SHOT. Start a new round.
@@ -559,13 +578,16 @@ public sealed class CoopSubscriptions
         {
             try
             {
-                if (savedOnBallUsed != null) DeckManager.onBallUsed = savedOnBallUsed;
-                if (savedOnDeckShuffled != null) DeckManager.onDeckShuffled = savedOnDeckShuffled;
+                if (savedOnBallUsed != null)
+                    DeckManager.onBallUsed = savedOnBallUsed;
+                if (savedOnDeckShuffled != null)
+                    DeckManager.onDeckShuffled = savedOnDeckShuffled;
             }
             catch (Exception restoreEx) { _log.LogWarning($"[CoopSubs] SwapAndRedraw ({context}): callback restore failed: {restoreEx.Message}"); }
         }
 
-        try { _syncService.SyncAll($"{context}"); }
+        try
+        { _syncService.SyncAll($"{context}"); }
         catch (Exception syncEx) { _log.LogWarning($"[CoopSubs] SwapAndRedraw ({context}): SyncAll failed: {syncEx.Message}"); }
     }
 
@@ -575,17 +597,22 @@ public sealed class CoopSubscriptions
     /// </summary>
     private void SkipActiveSlotIfDead(string reason)
     {
-        if (!_mode.IsHosting) return;
-        if (_coopStateManager.TotalPlayerCount < 2) return;
+        if (!_mode.IsHosting)
+            return;
+        if (_coopStateManager.TotalPlayerCount < 2)
+            return;
 
         int safety = 0;
         while (_turnManager.Phase == TurnPhase.PLAYER_AIMING && safety++ < 16)
         {
             int slot = _turnManager.CurrentPlayerSlot;
-            if (slot < 0) break;
+            if (slot < 0)
+                break;
             var state = _coopStateManager.GetPlayerState(slot);
-            if (state == null || !state.IsInitialized) break;
-            if (state.CurrentHealth > 0) break;
+            if (state == null || !state.IsInitialized)
+                break;
+            if (state.CurrentHealth > 0)
+                break;
 
             _log.LogInfo($"[CoopSubs] Auto-skip dead slot {slot} (hp=0) source={reason}");
             SkipCurrentTurn(slot, $"auto-skip dead ({reason})");
@@ -599,8 +626,10 @@ public sealed class CoopSubscriptions
     /// </summary>
     private void OnShotComplete()
     {
-        if (!_mode.IsHosting) return;
-        if (_coopStateManager.TotalPlayerCount < 2) return;
+        if (!_mode.IsHosting)
+            return;
+        if (_coopStateManager.TotalPlayerCount < 2)
+            return;
 
         // BattleController.OnShotComplete also fires when bomb balls finish
         // during THROW_BOMBS. By then all players have shot (Phase == ALL_DONE)
@@ -840,8 +869,10 @@ public sealed class CoopSubscriptions
                 // deck tube continues to work normally for host shots.
                 try
                 {
-                    if (savedOnBallUsed != null) DeckManager.onBallUsed = savedOnBallUsed;
-                    if (savedOnDeckShuffled != null) DeckManager.onDeckShuffled = savedOnDeckShuffled;
+                    if (savedOnBallUsed != null)
+                        DeckManager.onBallUsed = savedOnBallUsed;
+                    if (savedOnDeckShuffled != null)
+                        DeckManager.onDeckShuffled = savedOnDeckShuffled;
                 }
                 catch (Exception restoreEx) { _log.LogWarning($"[CoopSubs] Failed to restore DeckManager callbacks: {restoreEx.Message}"); }
             }
@@ -857,7 +888,8 @@ public sealed class CoopSubscriptions
 
             // Push updated AllDecks to client immediately so the client
             // sees its own deck rather than waiting for the next heartbeat.
-            try { _syncService.SyncAll("TurnSwap"); }
+            try
+            { _syncService.SyncAll("TurnSwap"); }
             catch (Exception syncEx) { _log.LogWarning($"[CoopSubs] TurnSwap SyncAll failed: {syncEx.Message}"); }
 
             _log.LogInfo($"[CoopSubs] Swapped to player slot {_turnManager.CurrentPlayerSlot}, " +
@@ -974,8 +1006,10 @@ public sealed class CoopSubscriptions
     /// </summary>
     public void SkipCurrentTurn(int requestingSlot, string source)
     {
-        if (!_mode.IsHosting) return;
-        if (_coopStateManager.TotalPlayerCount < 2) return;
+        if (!_mode.IsHosting)
+            return;
+        if (_coopStateManager.TotalPlayerCount < 2)
+            return;
 
         int activeSlot = _coopStateManager.ActivePlayerSlot;
         if (requestingSlot != activeSlot)
@@ -1051,8 +1085,10 @@ public sealed class CoopSubscriptions
     /// </summary>
     private void OnVictory()
     {
-        if (!_mode.IsHosting) return;
-        if (_coopStateManager.TotalPlayerCount < 2) return;
+        if (!_mode.IsHosting)
+            return;
+        if (_coopStateManager.TotalPlayerCount < 2)
+            return;
 
         try
         {
@@ -1083,7 +1119,8 @@ public sealed class CoopSubscriptions
 
             // Signal clients to open their native post-battle reward screen
             var services = MultiplayerPlugin.Services;
-            if (services?.TryResolve<IGameEventRegistry>(out var registry) != true) return;
+            if (services?.TryResolve<IGameEventRegistry>(out var registry) != true)
+                return;
 
             // Clear previous reward tracking state
             CoopRewardState.PendingSentRewardChoices.Clear();
@@ -1095,7 +1132,8 @@ public sealed class CoopSubscriptions
             int rewardClientCount = 0;
             foreach (var kvp in _coopStateManager.PlayerStates)
             {
-                if (kvp.Key == 0) continue; // Host picks rewards via the normal game UI
+                if (kvp.Key == 0)
+                    continue; // Host picks rewards via the normal game UI
                 rewardClientCount++;
             }
 
@@ -1166,11 +1204,14 @@ public sealed class CoopSubscriptions
         {
             int slot = kvp.Key;
             var state = kvp.Value;
-            if (state == null || !state.IsInitialized) continue;
+            if (state == null || !state.IsInitialized)
+                continue;
 
             int count = 3;
-            if (SlotHasRelic(state, RELIC_ADDITIONAL_ORB_RELIC_OPTIONS)) count++;
-            if (SlotHasRelic(state, RELIC_ADDITIONAL_PEGLIN_CHOICES)) count++;
+            if (SlotHasRelic(state, RELIC_ADDITIONAL_ORB_RELIC_OPTIONS))
+                count++;
+            if (SlotHasRelic(state, RELIC_ADDITIONAL_PEGLIN_CHOICES))
+                count++;
 
             var picked = new List<string>();
             int safety = 0;
@@ -1178,13 +1219,18 @@ public sealed class CoopSubscriptions
             {
                 List<GameObject> pool;
                 float roll = UnityEngine.Random.value;
-                if (roll <= 0.6f) pool = commonPool;
-                else if (roll <= 0.9f && uncommonPool != null && uncommonPool.Count > 0) pool = uncommonPool;
-                else if (rarePool != null && rarePool.Count > 0) pool = rarePool;
-                else pool = commonPool;
+                if (roll <= 0.6f)
+                    pool = commonPool;
+                else if (roll <= 0.9f && uncommonPool != null && uncommonPool.Count > 0)
+                    pool = uncommonPool;
+                else if (rarePool != null && rarePool.Count > 0)
+                    pool = rarePool;
+                else
+                    pool = commonPool;
 
                 var prefab = pool[UnityEngine.Random.Range(0, pool.Count)];
-                if (prefab == null) continue;
+                if (prefab == null)
+                    continue;
 
                 // Floor-based promotion to next-level prefab (mirrors native logic).
                 if (UnityEngine.Random.value < (float)(StaticGameData.totalFloorCount - 5) / 100f)
@@ -1202,14 +1248,16 @@ public sealed class CoopSubscriptions
                     }
                 }
 
-                if (picked.Contains(prefab.name)) continue;
+                if (picked.Contains(prefab.name))
+                    continue;
                 picked.Add(prefab.name);
             }
 
             CoopRewardState.PerSlotOrbChoices[slot] = picked;
             _log.LogInfo($"[CoopSubs] Per-slot orb roll slot={slot} count={picked.Count}: {string.Join(",", picked)}");
 
-            if (slot == 0) continue; // Host reads its own list locally.
+            if (slot == 0)
+                continue; // Host reads its own list locally.
             registry.Dispatch(new CoopOrbRewardChoicesEvent
             {
                 TargetSlotIndex = slot,
@@ -1220,9 +1268,11 @@ public sealed class CoopSubscriptions
 
     private static bool SlotHasRelic(CoopPlayerState state, Relics.RelicEffect effect)
     {
-        if (state?.OwnedRelics == null) return false;
+        if (state?.OwnedRelics == null)
+            return false;
         foreach (var r in state.OwnedRelics)
-            if (r != null && r.Effect == (int)effect) return true;
+            if (r != null && r.Effect == (int)effect)
+                return true;
         return false;
     }
 
@@ -1237,7 +1287,8 @@ public sealed class CoopSubscriptions
     /// </summary>
     public void HandlePlayerDisconnect(int slotIndex, string playerName)
     {
-        if (!_mode.IsHosting) return;
+        if (!_mode.IsHosting)
+            return;
 
         _log.LogInfo($"[CoopSubs] HandlePlayerDisconnect: slot {slotIndex} ({playerName}) — " +
             $"turnPhase={_turnManager.Phase}, activeSlot={_turnManager.CurrentPlayerSlot}, " +
@@ -1340,15 +1391,18 @@ public sealed class CoopSubscriptions
             {
                 try
                 {
-                    if (savedOnBallUsed != null) DeckManager.onBallUsed = savedOnBallUsed;
-                    if (savedOnDeckShuffled != null) DeckManager.onDeckShuffled = savedOnDeckShuffled;
+                    if (savedOnBallUsed != null)
+                        DeckManager.onBallUsed = savedOnBallUsed;
+                    if (savedOnDeckShuffled != null)
+                        DeckManager.onDeckShuffled = savedOnDeckShuffled;
                 }
                 catch (Exception restoreEx) { _log.LogWarning($"[CoopSubs] Disconnect: failed to restore DeckManager callbacks: {restoreEx.Message}"); }
             }
 
             BroadcastTurnChange();
 
-            try { _syncService.SyncAll("DisconnectTurnSwap"); }
+            try
+            { _syncService.SyncAll("DisconnectTurnSwap"); }
             catch (Exception syncEx) { _log.LogWarning($"[CoopSubs] Disconnect SyncAll failed: {syncEx.Message}"); }
 
             _log.LogInfo($"[CoopSubs] Disconnect during turn: swapped to slot {nextSlot}, " +
@@ -1380,7 +1434,8 @@ public sealed class CoopSubscriptions
             var relicMgr = UnityEngine.Resources.FindObjectsOfTypeAll<Relics.RelicManager>()?.FirstOrDefault();
             if (relicMgr != null)
             {
-                try { relicMgr.ResetBattleRelics(); }
+                try
+                { relicMgr.ResetBattleRelics(); }
                 catch (Exception rex) { _log.LogWarning($"[CoopSubs] ResetBattleRelics for slot {slot} failed: {rex.Message}"); }
             }
 
@@ -1412,7 +1467,8 @@ public sealed class CoopSubscriptions
         try
         {
             var dms = UnityEngine.Resources.FindObjectsOfTypeAll<DeckManager>();
-            if (dms == null || dms.Length == 0) return false;
+            if (dms == null || dms.Length == 0)
+                return false;
 
             var dm = dms[0];
             bool hasBattle = dm.battleDeck != null && dm.battleDeck.Count > 0;
@@ -1518,7 +1574,8 @@ public sealed class CoopSubscriptions
     internal static List<PlayerAttackData> ConsumeNonHostShotData()
     {
         var inst = Instance;
-        if (inst == null) return null;
+        if (inst == null)
+            return null;
 
         var result = new List<PlayerAttackData>();
         foreach (var kvp in inst._accumulatedShotData)
@@ -1552,13 +1609,15 @@ public sealed class CoopSubscriptions
     internal static List<Events.Network.Coop.PendingDamagePreviewEvent.DamageEntry> GetAccumulatedDamageEntries()
     {
         var inst = Instance;
-        if (inst == null) return null;
+        if (inst == null)
+            return null;
 
         var result = new List<Events.Network.Coop.PendingDamagePreviewEvent.DamageEntry>();
         foreach (var kvp in inst._accumulatedShotData)
         {
             var d = kvp.Value;
-            if (d.IsHeal || d.PrecomputedDamage <= 0) continue;
+            if (d.IsHeal || d.PrecomputedDamage <= 0)
+                continue;
             result.Add(new Events.Network.Coop.PendingDamagePreviewEvent.DamageEntry
             {
                 SlotIndex = kvp.Key,
@@ -1762,7 +1821,8 @@ public sealed class CoopSubscriptions
         try
         {
             var statusCtrl = UnityEngine.Object.FindObjectOfType<Battle.StatusEffects.PlayerStatusEffectController>();
-            if (statusCtrl == null) return;
+            if (statusCtrl == null)
+                return;
 
             int grantCount = 0;
             int grantShieldCount = 0;
@@ -1816,7 +1876,8 @@ public sealed class CoopSubscriptions
         try
         {
             var services = MultiplayerPlugin.Services;
-            if (services?.TryResolve<IGameEventRegistry>(out var eventRegistry) != true) return;
+            if (services?.TryResolve<IGameEventRegistry>(out var eventRegistry) != true)
+                return;
 
             eventRegistry.Dispatch(new TurnChangeEvent
             {
@@ -1906,7 +1967,8 @@ public sealed class CoopSubscriptions
     private static int GetEffectIntensity(GameState.CoopPlayerState state, int effectType)
     {
         foreach (var e in state.StatusEffects)
-            if (e.EffectType == effectType) return e.Intensity;
+            if (e.EffectType == effectType)
+                return e.Intensity;
         return 0;
     }
 
@@ -1938,7 +2000,8 @@ public sealed class CoopSubscriptions
     {
         int effectInt = (int)effect;
         foreach (var r in state.OwnedRelics)
-            if (r.Effect == effectInt) return true;
+            if (r.Effect == effectInt)
+                return true;
         return false;
     }
 }

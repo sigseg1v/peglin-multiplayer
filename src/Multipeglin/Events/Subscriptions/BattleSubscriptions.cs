@@ -67,12 +67,14 @@ public sealed class BattleEventSubscriptions
     private void OnVictory() { if (_multiplayerMode.IsHosting) _registry.Dispatch(new VictoryEvent()); }
     private void OnAttackStarted()
     {
-        if (!_multiplayerMode.IsHosting) return;
+        if (!_multiplayerMode.IsHosting)
+            return;
         // When the coop DoAttack sequencer is running, it dispatches per-slot
         // AttackStartedEvents itself. Suppress the generic delegate-driven
         // dispatch that would otherwise fire from StartAttacking() and produce
         // a duplicate visual on clients with stale cached values.
-        if (Patches.MultiplayerClientPatches.SuppressOnAttackStartedDispatch) return;
+        if (Patches.MultiplayerClientPatches.SuppressOnAttackStartedDispatch)
+            return;
         _registry.Dispatch(new AttackStartedEvent
         {
             AnimTrigger = Patches.MultiplayerClientPatches.LastAttackAnimTrigger ?? "attack",
@@ -85,7 +87,8 @@ public sealed class BattleEventSubscriptions
     private void OnTurnComplete() { if (_multiplayerMode.IsHosting) _registry.Dispatch(new TurnCompleteEvent()); }
     private void OnShotComplete()
     {
-        if (!_multiplayerMode.IsHosting) return;
+        if (!_multiplayerMode.IsHosting)
+            return;
         // Force-fade any LongPeg the host hit during this shot (collider still
         // enabled, _hit=true, gray). The native game leaves them gray indefinitely
         // unless the 0.5s _beingHit timer or the 5-bounce path fires; the user
@@ -125,7 +128,8 @@ public sealed class BattleEventSubscriptions
 
     private void OnBombThrown()
     {
-        if (!_multiplayerMode.IsHosting) return;
+        if (!_multiplayerMode.IsHosting)
+            return;
         int regular = 0, rigged = 0;
         try
         {

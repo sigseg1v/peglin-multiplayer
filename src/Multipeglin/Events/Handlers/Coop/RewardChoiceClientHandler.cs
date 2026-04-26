@@ -19,14 +19,17 @@ public sealed class RewardChoiceClientHandler : IClientHandler<RewardChoiceEvent
         try
         {
             var services = MultiplayerPlugin.Services;
-            if (services == null) return;
+            if (services == null)
+                return;
 
-            if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting) return;
+            if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting)
+                return;
 
             var eventRegistry = services.TryResolve<IGameEventRegistry>(out var reg) ? reg : null;
             var senderPeerId = (eventRegistry as GameEventRegistry)?.CurrentSenderPeerId ?? -1;
 
-            if (!services.TryResolve<PlayerRegistry>(out var registry)) return;
+            if (!services.TryResolve<PlayerRegistry>(out var registry))
+                return;
             var slot = registry.GetSlotByPeerId(senderPeerId);
             if (slot == null)
             {
@@ -99,36 +102,36 @@ public sealed class RewardChoiceClientHandler : IClientHandler<RewardChoiceEvent
         switch (option.Type)
         {
             case "heal":
-            {
-                float before = playerState.CurrentHealth;
-                float maxHp = playerState.MaxHealth;
-                playerState.CurrentHealth = Math.Min(playerState.CurrentHealth + 20f, maxHp);
-                MultiplayerPlugin.Logger?.LogInfo(
-                    $"[CoopReward] Slot {slotIndex} heal: HP {before} -> {playerState.CurrentHealth} (max {maxHp})");
-                break;
-            }
+                {
+                    float before = playerState.CurrentHealth;
+                    float maxHp = playerState.MaxHealth;
+                    playerState.CurrentHealth = Math.Min(playerState.CurrentHealth + 20f, maxHp);
+                    MultiplayerPlugin.Logger?.LogInfo(
+                        $"[CoopReward] Slot {slotIndex} heal: HP {before} -> {playerState.CurrentHealth} (max {maxHp})");
+                    break;
+                }
 
             case "max_hp":
-            {
-                float beforeMax = playerState.MaxHealth;
-                float beforeCur = playerState.CurrentHealth;
-                playerState.MaxHealth += 5f;
-                playerState.CurrentHealth += 5f;
-                MultiplayerPlugin.Logger?.LogInfo(
-                    $"[CoopReward] Slot {slotIndex} max_hp: MaxHP {beforeMax} -> {playerState.MaxHealth}, " +
-                    $"HP {beforeCur} -> {playerState.CurrentHealth}");
-                break;
-            }
+                {
+                    float beforeMax = playerState.MaxHealth;
+                    float beforeCur = playerState.CurrentHealth;
+                    playerState.MaxHealth += 5f;
+                    playerState.CurrentHealth += 5f;
+                    MultiplayerPlugin.Logger?.LogInfo(
+                        $"[CoopReward] Slot {slotIndex} max_hp: MaxHP {beforeMax} -> {playerState.MaxHealth}, " +
+                        $"HP {beforeCur} -> {playerState.CurrentHealth}");
+                    break;
+                }
 
             case "skip":
-            {
-                int beforeGold = playerState.Gold;
-                int goldReward = option.GoldReward > 0 ? option.GoldReward : 10;
-                playerState.Gold += goldReward;
-                MultiplayerPlugin.Logger?.LogInfo(
-                    $"[CoopReward] Slot {slotIndex} skip: Gold {beforeGold} -> {playerState.Gold} (+{goldReward})");
-                break;
-            }
+                {
+                    int beforeGold = playerState.Gold;
+                    int goldReward = option.GoldReward > 0 ? option.GoldReward : 10;
+                    playerState.Gold += goldReward;
+                    MultiplayerPlugin.Logger?.LogInfo(
+                        $"[CoopReward] Slot {slotIndex} skip: Gold {beforeGold} -> {playerState.Gold} (+{goldReward})");
+                    break;
+                }
 
             default:
                 MultiplayerPlugin.Logger?.LogWarning(

@@ -34,7 +34,8 @@ public sealed class RunStatsSnapshotClientHandler : IClientHandler<RunStatsSnaps
         try
         {
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
-            if (mode == null || mode.IsHosting) return;
+            if (mode == null || mode.IsHosting)
+                return;
 
             var stats = StaticGameData.CurrentRunStats ?? new RunStats();
             stats.hasWon = e.HasWon;
@@ -60,13 +61,19 @@ public sealed class RunStatsSnapshotClientHandler : IClientHandler<RunStatsSnaps
 
             // Prevent the native Stopwatch from adding live-client time on top
             // of the host's final elapsed counter.
-            try { stats.runTimerSw.Reset(); } catch { }
+            try
+            { stats.runTimerSw.Reset(); }
+            catch { }
 
             stats.visitedRooms = new Queue<RoomType>();
-            if (e.VisitedRooms != null) foreach (var r in e.VisitedRooms) stats.visitedRooms.Enqueue((RoomType)r);
+            if (e.VisitedRooms != null)
+                foreach (var r in e.VisitedRooms)
+                    stats.visitedRooms.Enqueue((RoomType)r);
 
             stats.visitedBosses = new Queue<RunStats.BossType>();
-            if (e.VisitedBosses != null) foreach (var b in e.VisitedBosses) stats.visitedBosses.Enqueue((RunStats.BossType)b);
+            if (e.VisitedBosses != null)
+                foreach (var b in e.VisitedBosses)
+                    stats.visitedBosses.Enqueue((RunStats.BossType)b);
 
             stats.relics = (e.Relics ?? new List<int>()).ConvertAll(r => (RelicEffect)r);
             stats.challenges = (e.Challenges ?? new List<int>()).ConvertAll(c => (ChallengeEffect)c);
@@ -92,7 +99,8 @@ public sealed class RunStatsSnapshotClientHandler : IClientHandler<RunStatsSnaps
             {
                 foreach (var o in e.Orbs)
                 {
-                    if (string.IsNullOrEmpty(o.Id)) continue;
+                    if (string.IsNullOrEmpty(o.Id))
+                        continue;
                     stats.orbStats[o.Id] = new RunStats.OrbPlayData
                     {
                         id = o.Id,
@@ -113,7 +121,8 @@ public sealed class RunStatsSnapshotClientHandler : IClientHandler<RunStatsSnaps
             {
                 foreach (var en in e.Enemies)
                 {
-                    if (string.IsNullOrEmpty(en.Name)) continue;
+                    if (string.IsNullOrEmpty(en.Name))
+                        continue;
                     stats.enemyData[en.Name] = new RunStats.EnemyPlayData
                     {
                         name = en.Name,

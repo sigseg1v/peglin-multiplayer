@@ -13,7 +13,8 @@ public sealed class PostBattleStartClientHandler : IClientHandler<PostBattleStar
     public void Handle(PostBattleStartEvent networkEvent)
     {
         var services = MultiplayerPlugin.Services;
-        if (services == null) return;
+        if (services == null)
+            return;
 
         // Only process on client (spectating)
         if (services.TryResolve<IMultiplayerMode>(out var mode) && mode.IsHosting)

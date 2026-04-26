@@ -25,7 +25,8 @@ public class EnemyIdentifier
     /// </summary>
     public string GetOrAssignGuid(Enemy enemy)
     {
-        if (enemy == null) return "null";
+        if (enemy == null)
+            return "null";
 
         if (_enemyToGuid.TryGetValue(enemy, out var existing))
             return existing;
@@ -42,7 +43,8 @@ public class EnemyIdentifier
     /// </summary>
     public void Register(Enemy enemy, string guid)
     {
-        if (enemy == null || string.IsNullOrEmpty(guid)) return;
+        if (enemy == null || string.IsNullOrEmpty(guid))
+            return;
 
         // Remove any stale mapping for this GUID (enemy may have been destroyed and recreated)
         if (_guidToEnemy.TryGetValue(guid, out var oldEnemy) && oldEnemy != enemy)
@@ -68,7 +70,8 @@ public class EnemyIdentifier
     /// </summary>
     public Enemy Find(string guid)
     {
-        if (string.IsNullOrEmpty(guid)) return null;
+        if (string.IsNullOrEmpty(guid))
+            return null;
 
         if (_guidToEnemy.TryGetValue(guid, out var enemy) && enemy != null)
             return enemy;
@@ -86,7 +89,8 @@ public class EnemyIdentifier
     /// </summary>
     public string GetGuid(Enemy enemy)
     {
-        if (enemy == null) return null;
+        if (enemy == null)
+            return null;
         return _enemyToGuid.TryGetValue(enemy, out var guid) ? guid : null;
     }
 
@@ -95,7 +99,8 @@ public class EnemyIdentifier
     /// </summary>
     public void Unregister(Enemy enemy)
     {
-        if (enemy == null) return;
+        if (enemy == null)
+            return;
         if (_enemyToGuid.TryGetValue(enemy, out var guid))
         {
             _enemyToGuid.Remove(enemy);
@@ -108,7 +113,8 @@ public class EnemyIdentifier
     /// </summary>
     public void Unregister(string guid)
     {
-        if (string.IsNullOrEmpty(guid)) return;
+        if (string.IsNullOrEmpty(guid))
+            return;
         if (_guidToEnemy.TryGetValue(guid, out var enemy))
         {
             _guidToEnemy.Remove(guid);

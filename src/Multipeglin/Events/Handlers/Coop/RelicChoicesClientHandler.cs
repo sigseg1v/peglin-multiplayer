@@ -12,7 +12,8 @@ public sealed class RelicChoicesClientHandler : IClientHandler<RelicChoicesEvent
     public void Handle(RelicChoicesEvent networkEvent)
     {
         var services = MultiplayerPlugin.Services;
-        if (services == null) return;
+        if (services == null)
+            return;
 
         // Host→client event: host must never apply this to itself, and a forged
         // copy from another peer would otherwise pop a relic UI on this client.
@@ -20,10 +21,12 @@ public sealed class RelicChoicesClientHandler : IClientHandler<RelicChoicesEvent
             return;
 
         int mySlot = CoopSlotHelper.GetLocalSlotIndex(services);
-        if (mySlot < 0) return;
+        if (mySlot < 0)
+            return;
 
         // Only process if this event targets our slot
-        if (networkEvent.TargetSlotIndex != mySlot) return;
+        if (networkEvent.TargetSlotIndex != mySlot)
+            return;
 
         MultiplayerPlugin.Logger?.LogInfo(
             $"[CoopReward] Received {networkEvent.Choices?.Count ?? 0} relic choices for slot {networkEvent.TargetSlotIndex}");

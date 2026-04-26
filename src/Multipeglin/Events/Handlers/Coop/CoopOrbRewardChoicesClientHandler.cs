@@ -13,7 +13,8 @@ public sealed class CoopOrbRewardChoicesClientHandler : IClientHandler<CoopOrbRe
     public void Handle(CoopOrbRewardChoicesEvent networkEvent)
     {
         var services = MultiplayerPlugin.Services;
-        if (services == null) return;
+        if (services == null)
+            return;
 
         // Host→client event: host must never apply this to itself, and a forged
         // copy from another peer would otherwise poison this client's reward UI.
@@ -21,8 +22,10 @@ public sealed class CoopOrbRewardChoicesClientHandler : IClientHandler<CoopOrbRe
             return;
 
         int mySlot = CoopSlotHelper.GetLocalSlotIndex(services);
-        if (mySlot < 0) return;
-        if (networkEvent.TargetSlotIndex != mySlot) return;
+        if (mySlot < 0)
+            return;
+        if (networkEvent.TargetSlotIndex != mySlot)
+            return;
 
         CoopRewardState.PerSlotOrbChoices[mySlot] = networkEvent.OrbPrefabNames ?? new System.Collections.Generic.List<string>();
         MultiplayerPlugin.Logger?.LogInfo(

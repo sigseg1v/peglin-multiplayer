@@ -15,10 +15,12 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
         {
             // In coop mode, BallUsed events reflect the HOST's active player's deck actions.
             // Don't pop from the client's own deck — the heartbeat sync handles deck state.
-            if (UI.LobbyUI.GameStartReceived) return;
+            if (UI.LobbyUI.GameStartReceived)
+                return;
 
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
-            if (mode == null || !mode.IsSpectating) return;
+            if (mode == null || !mode.IsSpectating)
+                return;
 
             var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
             var dm = dms.Length > 0 ? dms[0] : null;
@@ -139,7 +141,8 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
 
             // Enable the animator
             var animator = nextOrb.GetComponentInChildren<Animator>();
-            if (animator != null) animator.speed = 1f;
+            if (animator != null)
+                animator.speed = 1f;
 
             // Fire events for any listeners
             DeckInfoManager.onActiveOrbScaleStarted?.Invoke(nextOrb);

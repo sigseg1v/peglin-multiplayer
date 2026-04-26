@@ -16,10 +16,13 @@ public static class CoopSlotHelper
     /// </summary>
     public static int GetLocalSlotIndex(IServiceContainer services)
     {
-        if (services == null) return -1;
+        if (services == null)
+            return -1;
 
-        if (!services.TryResolve<PlayerRegistry>(out var registry)) return -1;
-        if (!services.TryResolve<INetworkTransport>(out var transport)) return -1;
+        if (!services.TryResolve<PlayerRegistry>(out var registry))
+            return -1;
+        if (!services.TryResolve<INetworkTransport>(out var transport))
+            return -1;
 
         if (transport.IsHost)
             return 0;

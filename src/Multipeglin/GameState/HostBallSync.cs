@@ -31,7 +31,8 @@ public class HostBallSync : MonoBehaviour
     private void Start()
     {
         var services = MultiplayerPlugin.Services;
-        if (services == null) return;
+        if (services == null)
+            return;
         services.TryResolve(out _registry);
         services.TryResolve(out _mode);
         services.TryResolve(out _ballId);
@@ -45,10 +46,13 @@ public class HostBallSync : MonoBehaviour
         if (_registry == null || _mode == null || _provider == null)
         {
             Start();
-            if (_registry == null || _mode == null || _provider == null) return;
+            if (_registry == null || _mode == null || _provider == null)
+                return;
         }
-        if (!_mode.IsHosting) return;
-        if (Time.time - _lastSendTime < SendInterval) return;
+        if (!_mode.IsHosting)
+            return;
+        if (Time.time - _lastSendTime < SendInterval)
+            return;
         _lastSendTime = Time.time;
 
         var snap = _provider.Capture();
@@ -64,6 +68,7 @@ public class HostBallSync : MonoBehaviour
         }
 
         // Periodically prune the GUID registry of destroyed balls.
-        if (!hasBalls) _ballId.PruneDestroyed();
+        if (!hasBalls)
+            _ballId.PruneDestroyed();
     }
 }

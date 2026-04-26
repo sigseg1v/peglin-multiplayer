@@ -235,9 +235,11 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
     /// </summary>
     public void ApplyActiveOrbOnly(DeckStateSnapshot snapshot)
     {
-        if (snapshot == null || string.IsNullOrEmpty(snapshot.CurrentOrb)) return;
+        if (snapshot == null || string.IsNullOrEmpty(snapshot.CurrentOrb))
+            return;
         var scene = SceneManager.GetActiveScene().name;
-        if (scene != "Battle") return;
+        if (scene != "Battle")
+            return;
 
         try
         {
@@ -265,7 +267,8 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
         try
         {
             var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
-            if (dim == null) return;
+            if (dim == null)
+                return;
 
             var currentOrbField = AccessTools.Field(typeof(DeckInfoManager), "_currentOrb");
             var currentOrb = currentOrbField?.GetValue(dim) as GameObject;
@@ -329,11 +332,13 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
 
             // Temporarily activate the orb so PachinkoBall.sprite is accessible
             bool wasActive = orbSource.activeSelf;
-            if (!wasActive) orbSource.SetActive(true);
+            if (!wasActive)
+                orbSource.SetActive(true);
 
             var previewGo = createMethod.Invoke(dim, new object[] { orbSource, 0f }) as GameObject;
 
-            if (!wasActive) orbSource.SetActive(false);
+            if (!wasActive)
+                orbSource.SetActive(false);
 
             if (previewGo == null)
             {
@@ -400,7 +405,8 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
         try
         {
             var cbr = ClientBallRenderer.Instance;
-            if (cbr == null) return;
+            if (cbr == null)
+                return;
 
             // Check if already showing via the _isAiming or _isActive flags
             var aimingField = AccessTools.Field(typeof(ClientBallRenderer), "_isAiming");
@@ -461,9 +467,11 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             bool match = true;
             for (int i = 0; i < hostDeck.Count; i++)
             {
-                if (i >= completeDeck.Count || completeDeck[i] == null) { match = false; break; }
+                if (i >= completeDeck.Count || completeDeck[i] == null)
+                { match = false; break; }
                 var name = completeDeck[i].GetComponent<Attack>()?.locNameString ?? completeDeck[i].name;
-                if (name != hostDeck[i].LocName && completeDeck[i].name != hostDeck[i].Name) { match = false; break; }
+                if (name != hostDeck[i].LocName && completeDeck[i].name != hostDeck[i].Name)
+                { match = false; break; }
             }
             if (match)
             {
@@ -504,7 +512,8 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
         // Replace the deck
         foreach (var go in completeDeck)
         {
-            if (go != null) UnityEngine.Object.Destroy(go);
+            if (go != null)
+                UnityEngine.Object.Destroy(go);
         }
         completeDeck.Clear();
         completeDeck.AddRange(newDeck);
@@ -528,11 +537,14 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             for (int i = 0; i < hostBattleDeck.Count; i++)
             {
                 var hostGuid = hostBattleDeck[i].Guid;
-                if (string.IsNullOrEmpty(hostGuid)) continue;
+                if (string.IsNullOrEmpty(hostGuid))
+                    continue;
                 var clientGuid = _orbId.GetGuid(dm.battleDeck[i]);
-                if (clientGuid != hostGuid) { guidsMatch = false; break; }
+                if (clientGuid != hostGuid)
+                { guidsMatch = false; break; }
             }
-            if (guidsMatch) return false;
+            if (guidsMatch)
+                return false;
         }
 
         int loaded = 0;
@@ -561,7 +573,8 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
 
         foreach (var go in dm.battleDeck)
         {
-            if (go != null) UnityEngine.Object.Destroy(go);
+            if (go != null)
+                UnityEngine.Object.Destroy(go);
         }
         dm.battleDeck.Clear();
         dm.battleDeck.AddRange(newBattleDeck);

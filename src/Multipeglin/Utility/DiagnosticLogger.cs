@@ -88,7 +88,8 @@ public static class DiagnosticLogger
                     for (int i = 0; i < enemies.Count; i++)
                     {
                         var e = enemies[i];
-                        if (e == null) { Log?.LogInfo($"    [{i}] NULL"); continue; }
+                        if (e == null)
+                        { Log?.LogInfo($"    [{i}] NULL"); continue; }
                         Log?.LogInfo($"    [{i}] {e.locKey} name={e.gameObject.name} hp={e.CurrentHealth}/{GetMaxHp(e):F0} " +
                             $"pos=({e.transform.position.x:F2},{e.transform.position.y:F2}) flying={e.IsFlying}");
                     }
@@ -109,7 +110,8 @@ public static class DiagnosticLogger
 
                 var allPegObjects = new List<Peg>(pm.allPegs);
                 if (bombs != null)
-                    foreach (var b in bombs) allPegObjects.Add(b);
+                    foreach (var b in bombs)
+                        allPegObjects.Add(b);
 
                 var activePegs = allPegObjects.Where(p => p != null && p.gameObject.activeSelf).ToArray();
                 var pegTypes = activePegs.GroupBy(p => p.pegType).OrderByDescending(g => g.Count());

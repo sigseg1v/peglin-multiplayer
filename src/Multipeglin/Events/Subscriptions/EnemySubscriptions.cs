@@ -62,7 +62,8 @@ public sealed class EnemySubscriptions
 
     private void OnEnemySpawned(Enemy enemy)
     {
-        if (!IsHosting) return;
+        if (!IsHosting)
+            return;
 
         // Scale enemy stats by coop player count before capturing/dispatching, so
         // the client receives the already-scaled values through the heartbeat and
@@ -101,7 +102,8 @@ public sealed class EnemySubscriptions
             3 => 2.25f,
             _ => 2.5f,
         };
-        if (hpMult == 1f) return;
+        if (hpMult == 1f)
+            return;
 
         try
         {
@@ -122,7 +124,8 @@ public sealed class EnemySubscriptions
 
     private void OnEnemyDamaged(Enemy enemy, long damage, Enemy.EnemyDamageSource source)
     {
-        if (!IsHosting) return;
+        if (!IsHosting)
+            return;
 
         // Attribute damage to the active coop player's run-summary tally.
         // During DoAttack's manual per-player replay, DamageAttributionSlotOverride is set
@@ -133,7 +136,8 @@ public sealed class EnemySubscriptions
                 ? DamageAttributionSlotOverride
                 : _coopStateManager.ActivePlayerSlot;
             var slot = _coopStateManager.GetPlayerState(attributionSlot);
-            if (slot != null) slot.DamageDealt += damage;
+            if (slot != null)
+                slot.DamageDealt += damage;
         }
 
         _registry.Dispatch(new EnemyDamagedEvent
@@ -147,7 +151,8 @@ public sealed class EnemySubscriptions
 
     private void OnEnemyDestroyed(Enemy enemy)
     {
-        if (!IsHosting) return;
+        if (!IsHosting)
+            return;
         _registry.Dispatch(new EnemyDestroyedEvent
         {
             EnemyId = _enemyIdentifier.GetId(enemy)
@@ -156,7 +161,8 @@ public sealed class EnemySubscriptions
 
     private void OnEnemyKilled(string locKey)
     {
-        if (!IsHosting) return;
+        if (!IsHosting)
+            return;
 
         // OnEnemyKilled only provides locKey, not the Enemy object.
         // Try to find the GUID by scanning enemies with this locKey that are dead/dying.
@@ -181,7 +187,8 @@ public sealed class EnemySubscriptions
 
     private void OnEnemyAttack(float damage, bool melee, Enemy enemy, PlayerHealthController.DamageSource source, bool forceMaxHPDamage)
     {
-        if (!IsHosting) return;
+        if (!IsHosting)
+            return;
         _registry.Dispatch(new EnemyAttackEvent
         {
             EnemyId = _enemyIdentifier.GetId(enemy),

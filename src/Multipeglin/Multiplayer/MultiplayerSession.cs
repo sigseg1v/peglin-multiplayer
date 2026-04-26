@@ -33,7 +33,8 @@ public static class MultiplayerSession
     /// </summary>
     public static void DisconnectAndReset(string reason = null)
     {
-        if (_disconnecting) return;
+        if (_disconnecting)
+            return;
         _disconnecting = true;
 
         try
@@ -108,7 +109,9 @@ public static class MultiplayerSession
                 {
                     Log?.LogWarning($"[Session] Failed to load MainMenu: {ex.Message}");
                     // Last resort fallback
-                    try { SceneManager.LoadScene("MainMenu"); } catch { }
+                    try
+                    { SceneManager.LoadScene("MainMenu"); }
+                    catch { }
                 }
             }
 
@@ -128,9 +131,12 @@ public static class MultiplayerSession
     {
         try
         {
-            if (!services.TryResolve<INetworkTransport>(out var transport)) return;
-            if (!transport.IsConnected) return;
-            if (!services.TryResolve<IGameEventRegistry>(out var registry)) return;
+            if (!services.TryResolve<INetworkTransport>(out var transport))
+                return;
+            if (!transport.IsConnected)
+                return;
+            if (!services.TryResolve<IGameEventRegistry>(out var registry))
+                return;
 
             registry.Dispatch(new DisconnectEvent { Reason = reason ?? "Disconnected" });
         }

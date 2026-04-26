@@ -12,7 +12,8 @@ public sealed class EnemyKilledClientHandler : IClientHandler<EnemyKilledEvent>
         try
         {
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
-            if (mode == null || !mode.IsSpectating) return;
+            if (mode == null || !mode.IsSpectating)
+                return;
 
             var enemyId = MultiplayerPlugin.Services.Resolve<EnemyIdentifier>();
             var enemy = enemyId.Find(e.EnemyId);

@@ -17,13 +17,16 @@ public sealed class PostBattleGoldSpentClientHandler : IClientHandler<PostBattle
         try
         {
             var services = MultiplayerPlugin.Services;
-            if (services == null) return;
-            if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting) return;
+            if (services == null)
+                return;
+            if (!services.TryResolve<IMultiplayerMode>(out var mode) || !mode.IsHosting)
+                return;
 
             var registry = services.TryResolve<IGameEventRegistry>(out var reg) ? reg : null;
             var senderPeerId = (registry as GameEventRegistry)?.CurrentSenderPeerId ?? -1;
 
-            if (!services.TryResolve<PlayerRegistry>(out var playerRegistry)) return;
+            if (!services.TryResolve<PlayerRegistry>(out var playerRegistry))
+                return;
             var slot = playerRegistry.GetSlotByPeerId(senderPeerId);
             if (slot == null)
             {
@@ -31,9 +34,11 @@ public sealed class PostBattleGoldSpentClientHandler : IClientHandler<PostBattle
                 return;
             }
 
-            if (!services.TryResolve<CoopStateManager>(out var coopState)) return;
+            if (!services.TryResolve<CoopStateManager>(out var coopState))
+                return;
             var playerState = coopState.GetPlayerState(slot.SlotIndex);
-            if (playerState == null) return;
+            if (playerState == null)
+                return;
 
             int before = playerState.Gold;
             playerState.Gold = Math.Max(0, playerState.Gold - e.Amount);
@@ -44,7 +49,8 @@ public sealed class PostBattleGoldSpentClientHandler : IClientHandler<PostBattle
             // MaxHP can only increase in the post-battle reward screen (Basalt
             // Toadem / MAX_HP_INC). Never let a lower client-reported value
             // regress the host's authoritative max.
-            if (e.MaxHealth > prevMaxHp) playerState.MaxHealth = e.MaxHealth;
+            if (e.MaxHealth > prevMaxHp)
+                playerState.MaxHealth = e.MaxHealth;
 
             // CurrentHealth can only increase here (Heal button). Enforce
             // monotonicity so a stale capture (e.g. client grabbed HP before

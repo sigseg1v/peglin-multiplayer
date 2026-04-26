@@ -58,7 +58,8 @@ public class ClientAttackProjectile : MonoBehaviour
 
     private void OnDestroy()
     {
-        if (Instance == this) Instance = null;
+        if (Instance == this)
+            Instance = null;
     }
 
     public void SetupAttack(string targetEnemyGuid, int numPegsHit = 0, bool isCrit = false, string orbName = null)
@@ -92,20 +93,25 @@ public class ClientAttackProjectile : MonoBehaviour
 
     private void OnFirePoint()
     {
-        if (!_waitingForFire) return;
+        if (!_waitingForFire)
+            return;
         _waitingForFire = false;
         PeglinBattleAnimationController.OnFirePoint -= OnFirePoint;
 
-        if (string.IsNullOrEmpty(_targetEnemyGuid)) { IsAttacking = false; return; }
+        if (string.IsNullOrEmpty(_targetEnemyGuid))
+        { IsAttacking = false; return; }
         var enemyId = MultiplayerPlugin.Services?.TryResolve<EnemyIdentifier>(out var eid) == true ? eid : null;
         var enemy = enemyId?.Find(_targetEnemyGuid);
-        if (enemy == null) { IsAttacking = false; return; }
+        if (enemy == null)
+        { IsAttacking = false; return; }
 
         var bc = Object.FindObjectOfType<Battle.BattleController>();
-        if (bc == null) { IsAttacking = false; return; }
+        if (bc == null)
+        { IsAttacking = false; return; }
         var playerField = AccessTools.Field(typeof(Battle.BattleController), "_playerTransform");
         var playerTransform = playerField?.GetValue(bc) as Transform;
-        if (playerTransform == null) { IsAttacking = false; return; }
+        if (playerTransform == null)
+        { IsAttacking = false; return; }
 
         StartCoroutine(LaunchProjectile(playerTransform.position, enemy));
     }
@@ -169,7 +175,8 @@ public class ClientAttackProjectile : MonoBehaviour
 
         Vector3 targetPos = targetEnemy.transform.position;
         var col = targetEnemy.GetComponentInChildren<Collider2D>();
-        if (col != null) targetPos = col.bounds.center;
+        if (col != null)
+            targetPos = col.bounds.center;
 
         Vector3 endPos = new Vector3(targetPos.x, targetPos.y, startPos.z);
 
@@ -225,7 +232,8 @@ public class ClientAttackProjectile : MonoBehaviour
         foreach (var sr in go.GetComponentsInChildren<SpriteRenderer>(includeInactive: true))
         {
             sr.enabled = true;
-            if (sr.sortingOrder < 150) sr.sortingOrder = 150;
+            if (sr.sortingOrder < 150)
+                sr.sortingOrder = 150;
         }
     }
 
@@ -235,18 +243,22 @@ public class ClientAttackProjectile : MonoBehaviour
     /// </summary>
     private static ShotParams? TryGetShotParams(string orbName, bool isCrit)
     {
-        if (string.IsNullOrEmpty(orbName)) return null;
+        if (string.IsNullOrEmpty(orbName))
+            return null;
         string key = orbName.Replace("(Clone)", "").Trim() + (isCrit ? "#crit" : "#normal");
-        if (_shotCache.TryGetValue(key, out var cached)) return cached;
+        if (_shotCache.TryGetValue(key, out var cached))
+            return cached;
 
         ShotParams? result = null;
         try
         {
             var orbGo = FindOrbPrefab(orbName);
-            if (orbGo == null) { _shotCache[key] = null; return null; }
+            if (orbGo == null)
+            { _shotCache[key] = null; return null; }
 
             var pa = orbGo.GetComponent<Battle.Attacks.ProjectileAttack>();
-            if (pa == null) { _shotCache[key] = null; return null; }
+            if (pa == null)
+            { _shotCache[key] = null; return null; }
 
             string primaryField = isCrit ? "_criticalShotPrefab" : "_shotPrefab";
             var shotGo = AccessTools.Field(typeof(Battle.Attacks.ProjectileAttack), primaryField)
@@ -256,10 +268,12 @@ public class ClientAttackProjectile : MonoBehaviour
                 shotGo = AccessTools.Field(typeof(Battle.Attacks.ProjectileAttack), "_shotPrefab")
                     ?.GetValue(pa) as GameObject;
             }
-            if (shotGo == null) { _shotCache[key] = null; return null; }
+            if (shotGo == null)
+            { _shotCache[key] = null; return null; }
 
             var sb = shotGo.GetComponent<Battle.Attacks.ShotBehavior>();
-            if (sb == null) { _shotCache[key] = null; return null; }
+            if (sb == null)
+            { _shotCache[key] = null; return null; }
 
             Vector3 minSize = (Vector3)(AccessTools.Field(typeof(Battle.Attacks.ShotBehavior), "_minSize")
                 ?.GetValue(sb) ?? DefaultMinSize);
@@ -297,7 +311,8 @@ public class ClientAttackProjectile : MonoBehaviour
 
         var loader = Loading.AssetLoading.Instance;
         var prefab = loader?.GetOrbPrefab(cleanName);
-        if (prefab != null) return prefab;
+        if (prefab != null)
+            return prefab;
 
         var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
         var dm = dms.Length > 0 ? dms[0] : null;
@@ -316,12 +331,15 @@ public class ClientAttackProjectile : MonoBehaviour
     /// <summary>Fallback when no shot prefab is available (healing, AoE orbs).</summary>
     private static bool TryCopyOrbSprite(SpriteRenderer sr, string orbName)
     {
-        if (string.IsNullOrEmpty(orbName)) return false;
+        if (string.IsNullOrEmpty(orbName))
+            return false;
         var orbGo = FindOrbPrefab(orbName);
-        if (orbGo == null) return false;
+        if (orbGo == null)
+            return false;
 
         var orbRenderer = orbGo.GetComponentInChildren<SpriteRenderer>(includeInactive: true);
-        if (orbRenderer?.sprite == null) return false;
+        if (orbRenderer?.sprite == null)
+            return false;
 
         sr.sprite = orbRenderer.sprite;
         if (orbRenderer.sharedMaterial != null)
@@ -333,11 +351,13 @@ public class ClientAttackProjectile : MonoBehaviour
     private static bool TryCopyFromBallRenderer(SpriteRenderer sr)
     {
         var cbr = ClientBallRenderer.Instance;
-        if (cbr == null) return false;
+        if (cbr == null)
+            return false;
 
         var field = AccessTools.Field(typeof(ClientBallRenderer), "_ballRenderer");
         var ballSr = field?.GetValue(cbr) as SpriteRenderer;
-        if (ballSr?.sprite == null) return false;
+        if (ballSr?.sprite == null)
+            return false;
 
         sr.sprite = ballSr.sprite;
         if (ballSr.sharedMaterial != null)

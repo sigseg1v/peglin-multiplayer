@@ -33,7 +33,8 @@ public class DeckStateProvider : IGameStateProvider<DeckStateSnapshot>
 
             var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
             var dm = dms.Length > 0 ? dms[0] : null;
-            if (dm == null) return snapshot;
+            if (dm == null)
+                return snapshot;
 
             var completeDeck = DeckManager.completeDeck;
             if (completeDeck != null)
@@ -41,7 +42,8 @@ public class DeckStateProvider : IGameStateProvider<DeckStateSnapshot>
                 for (int i = 0; i < completeDeck.Count; i++)
                 {
                     var go = completeDeck[i];
-                    if (go == null) continue;
+                    if (go == null)
+                        continue;
                     var entry = CreateOrbEntry(go);
                     entry.Guid = _orbId.GetOrAssignGuid(go);
                     entry.DeckIndex = i;
@@ -55,7 +57,8 @@ public class DeckStateProvider : IGameStateProvider<DeckStateSnapshot>
                 for (int i = 0; i < battleDeck.Count; i++)
                 {
                     var go = battleDeck[i];
-                    if (go == null) continue;
+                    if (go == null)
+                        continue;
                     var entry = CreateOrbEntry(go);
                     entry.Guid = _orbId.GetOrAssignGuid(go);
                     entry.DeckIndex = i;

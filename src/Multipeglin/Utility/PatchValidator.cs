@@ -47,15 +47,18 @@ public static class PatchValidator
             {
                 var classAttrs = type.GetCustomAttributes(typeof(HarmonyPatch), false)
                     .Cast<HarmonyPatch>().ToArray();
-                if (classAttrs.Length == 0) continue;
+                if (classAttrs.Length == 0)
+                    continue;
 
                 // Extract class-level target info
                 Type classTarget = null;
                 string classMethodName = null;
                 foreach (var a in classAttrs)
                 {
-                    if (a.info.declaringType != null) classTarget = a.info.declaringType;
-                    if (a.info.methodName != null) classMethodName = a.info.methodName;
+                    if (a.info.declaringType != null)
+                        classTarget = a.info.declaringType;
+                    if (a.info.methodName != null)
+                        classMethodName = a.info.methodName;
                 }
 
                 // If class fully specifies a target (like PlayButtonAwakePatch), check it
@@ -74,15 +77,18 @@ public static class PatchValidator
                 {
                     var methodAttrs = method.GetCustomAttributes(typeof(HarmonyPatch), false)
                         .Cast<HarmonyPatch>().ToArray();
-                    if (methodAttrs.Length == 0) continue;
+                    if (methodAttrs.Length == 0)
+                        continue;
 
                     // Merge class + method level info (method overrides class)
                     var target = classTarget;
                     var methodName = classMethodName;
                     foreach (var a in methodAttrs)
                     {
-                        if (a.info.declaringType != null) target = a.info.declaringType;
-                        if (a.info.methodName != null) methodName = a.info.methodName;
+                        if (a.info.declaringType != null)
+                            target = a.info.declaringType;
+                        if (a.info.methodName != null)
+                            methodName = a.info.methodName;
                     }
 
                     if (target != null && methodName != null)

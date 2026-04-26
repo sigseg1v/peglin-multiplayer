@@ -55,7 +55,8 @@ public class EnemyStateProvider : IGameStateProvider<EnemyStateSnapshot>
                     for (int i = 0; i < enemiesList.Count; i++)
                     {
                         var enemy = enemiesList[i];
-                        if (enemy == null) continue;
+                        if (enemy == null)
+                            continue;
 
                         // Use EnemyIdentifier for stable GUID assignment
                         var guid = _enemyId.GetOrAssignGuid(enemy);
@@ -172,7 +173,8 @@ public class EnemyStateProvider : IGameStateProvider<EnemyStateSnapshot>
                 {
                     foreach (var element in elements)
                     {
-                        if (element == null) continue;
+                        if (element == null)
+                            continue;
                         // EnemyInfoElement has an _enemy field set by SetEnemy()
                         var enemyField = AccessTools.Field(typeof(Battle.EnemyInfoElement), "_enemy");
                         var enemy = enemyField?.GetValue(element) as Battle.Enemies.Enemy;

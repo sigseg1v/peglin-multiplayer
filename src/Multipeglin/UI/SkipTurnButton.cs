@@ -31,25 +31,29 @@ public sealed class SkipTurnButton : MonoBehaviour
 
     private void OnDestroy()
     {
-        if (_canvasObj != null) Destroy(_canvasObj);
+        if (_canvasObj != null)
+            Destroy(_canvasObj);
     }
 
     private void Update()
     {
-        if (MultiplayerPlugin.Services == null) { SetVisible(false); return; }
+        if (MultiplayerPlugin.Services == null)
+        { SetVisible(false); return; }
         if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode))
         {
             SetVisible(false);
             return;
         }
-        if (!mode.IsHosting && !mode.IsSpectating) { SetVisible(false); return; }
+        if (!mode.IsHosting && !mode.IsSpectating)
+        { SetVisible(false); return; }
 
         bool myTurn;
         if (mode.IsHosting)
         {
             // Host: gate on local BattleController + TurnManager (both local authority).
             bool inBattle = BattleCtrl.CurrentBattleState == BattleCtrl.BattleState.AWAITING_SHOT;
-            if (!inBattle) { SetVisible(false); return; }
+            if (!inBattle)
+            { SetVisible(false); return; }
             if (!MultiplayerPlugin.Services.TryResolve<GameState.TurnManager>(out var tm))
             { SetVisible(false); return; }
             myTurn = tm.Phase == GameState.TurnPhase.PLAYER_AIMING && tm.CurrentPlayerSlot == 0;
@@ -69,20 +73,24 @@ public sealed class SkipTurnButton : MonoBehaviour
     {
         if (!visible)
         {
-            if (_canvasObj != null) _canvasObj.SetActive(false);
+            if (_canvasObj != null)
+                _canvasObj.SetActive(false);
             return;
         }
-        if (_canvasObj == null) Build();
+        if (_canvasObj == null)
+            Build();
         _canvasObj.SetActive(true);
     }
 
     private void TryEnsureFont()
     {
-        if (_font != null) return;
+        if (_font != null)
+            return;
         try
         {
             foreach (var tmp in FindObjectsOfType<TextMeshProUGUI>())
-                if (tmp.font != null) { _font = tmp.font; break; }
+                if (tmp.font != null)
+                { _font = tmp.font; break; }
         }
         catch { }
     }
@@ -144,7 +152,8 @@ public sealed class SkipTurnButton : MonoBehaviour
         labelObj.transform.SetParent(_buttonObj.transform, false);
         var tmp = labelObj.AddComponent<TextMeshProUGUI>();
         TryEnsureFont();
-        if (_font != null) tmp.font = _font;
+        if (_font != null)
+            tmp.font = _font;
         tmp.text = "SKIP TURN";
         tmp.fontSize = 32;
         tmp.fontStyle = FontStyles.Bold;
@@ -161,8 +170,10 @@ public sealed class SkipTurnButton : MonoBehaviour
     {
         try
         {
-            if (MultiplayerPlugin.Services == null) return;
-            if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode)) return;
+            if (MultiplayerPlugin.Services == null)
+                return;
+            if (!MultiplayerPlugin.Services.TryResolve<IMultiplayerMode>(out var mode))
+                return;
 
             if (mode.IsHosting)
             {

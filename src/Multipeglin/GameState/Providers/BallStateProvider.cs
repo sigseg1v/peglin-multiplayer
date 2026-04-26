@@ -28,11 +28,13 @@ public class BallStateProvider : IGameStateProvider<BallStateSnapshot>
         try
         {
             var balls = UnityEngine.Object.FindObjectsOfType<PachinkoBall>();
-            if (balls == null) return snap;
+            if (balls == null)
+                return snap;
 
             foreach (var ball in balls)
             {
-                if (ball == null || ball.IsDummy) continue;
+                if (ball == null || ball.IsDummy)
+                    continue;
 
                 // CoopTempOrb_host is a placeholder stuck off-screen at (-999,-999)
                 // used by the coop damage pipeline; never stream it.
@@ -42,12 +44,14 @@ public class BallStateProvider : IGameStateProvider<BallStateSnapshot>
 
                 // Skip balls parked at the off-screen position regardless of name.
                 var pos = ball.transform.position;
-                if (pos.x < -900f && pos.y < -900f) continue;
+                if (pos.x < -900f && pos.y < -900f)
+                    continue;
 
                 // Only sync balls that are actually in flight — skip WAITING/AIMING
                 // (those haven't been fired). Multiball children are spawned directly
                 // into FIRING state, so they pass.
-                if (!ball.IsFiring()) continue;
+                if (!ball.IsFiring())
+                    continue;
 
                 var guid = _ballId.GetOrAssignGuid(ball);
                 var rb = ball.GetComponent<Rigidbody2D>();

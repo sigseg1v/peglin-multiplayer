@@ -34,7 +34,8 @@ public static class ShopRelicSyncState
     /// </summary>
     public static void PopulateShopRelics(ShopManager sm, ManualLogSource log)
     {
-        if (sm == null) return;
+        if (sm == null)
+            return;
 
         var effects = LatestRelicEffects;
         if (effects == null || effects.Count == 0)
@@ -84,7 +85,8 @@ public static class ShopRelicSyncState
 
             var allRelicAssets = Resources.FindObjectsOfTypeAll<Relic>();
             int mult = rm.WandOfGreedEffectActive() ? 2 : 1;
-            if (Map.MapController.instance != null && Map.MapController.instance.Act == 4) mult *= 2;
+            if (Map.MapController.instance != null && Map.MapController.instance.Act == 4)
+                mult *= 2;
 
             int slot = 0;
             for (int i = 0; i < effects.Count; i++)
@@ -99,7 +101,8 @@ public static class ShopRelicSyncState
 
                 var go = Object.Instantiate(prefab, container.transform);
                 var item = go.GetComponent<ShopItem>();
-                if (item == null) continue;
+                if (item == null)
+                    continue;
 
                 var purchasableRelic = new PurchasableRelic(relicAsset, rm, mult);
                 item.Initialize(purchasableRelic, sm, phc);
@@ -107,7 +110,8 @@ public static class ShopRelicSyncState
                 if (rewired != null)
                 {
                     var arrow = item.GetComponentInChildren<ArrowSelection>();
-                    if (arrow != null) arrow.rewiredEventSystem = rewired;
+                    if (arrow != null)
+                        arrow.rewiredEventSystem = rewired;
                 }
 
                 if (purchasable != null && slot < purchasable.Length)
@@ -131,13 +135,15 @@ public static class ShopRelicSyncState
             for (int i = relicItems.Count - 1; i >= 0; i--)
             {
                 var item = relicItems[i];
-                if (item != null && item.gameObject != null) Object.Destroy(item.gameObject);
+                if (item != null && item.gameObject != null)
+                    Object.Destroy(item.gameObject);
             }
             relicItems.Clear();
         }
         if (purchasable != null)
         {
-            for (int i = 0; i < purchasable.Length; i++) purchasable.SetValue(null, i);
+            for (int i = 0; i < purchasable.Length; i++)
+                purchasable.SetValue(null, i);
         }
     }
 
@@ -149,7 +155,8 @@ public static class ShopRelicSyncState
     public static void RefreshDisplayedShopRelics(ManualLogSource log)
     {
         var sm = CurrentShopManager;
-        if (sm == null) return;
+        if (sm == null)
+            return;
         PopulateShopRelics(sm, log);
     }
 }

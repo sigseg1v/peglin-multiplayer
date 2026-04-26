@@ -55,7 +55,8 @@ public class RemoteCursorRenderer : MonoBehaviour
 
     private void OnDestroy()
     {
-        if (Instance == this) Instance = null;
+        if (Instance == this)
+            Instance = null;
     }
 
     /// <summary>Called by the network handler when a peer's cursor moves.</summary>
@@ -68,7 +69,8 @@ public class RemoteCursorRenderer : MonoBehaviour
         }
         v.TargetWorld = new Vector2(worldX, worldY);
         v.LastUpdateTime = Time.unscaledTime;
-        if (v.Root != null && !v.Root.activeSelf) v.Root.SetActive(true);
+        if (v.Root != null && !v.Root.activeSelf)
+            v.Root.SetActive(true);
     }
 
     /// <summary>Clear all remote cursors (e.g. on disconnect).</summary>
@@ -76,7 +78,8 @@ public class RemoteCursorRenderer : MonoBehaviour
     {
         foreach (var v in _visuals.Values)
         {
-            if (v?.Root != null) Destroy(v.Root);
+            if (v?.Root != null)
+                Destroy(v.Root);
         }
         _visuals.Clear();
     }
@@ -87,7 +90,8 @@ public class RemoteCursorRenderer : MonoBehaviour
         bool active = _mode != null && (_mode.IsHosting || _mode.IsSpectating);
         if (!active)
         {
-            if (_visuals.Count > 0) ClearAll();
+            if (_visuals.Count > 0)
+                ClearAll();
             return;
         }
 
@@ -98,21 +102,26 @@ public class RemoteCursorRenderer : MonoBehaviour
         foreach (var kv in _visuals)
         {
             var v = kv.Value;
-            if (v?.Root == null) continue;
+            if (v?.Root == null)
+                continue;
 
             // Hide stale.
             if (now - v.LastUpdateTime > StaleTimeout)
             {
-                if (v.Root.activeSelf) v.Root.SetActive(false);
+                if (v.Root.activeSelf)
+                    v.Root.SetActive(false);
                 continue;
             }
 
-            if (cam == null) continue;
+            if (cam == null)
+                continue;
 
             var targetScreen = cam.WorldToScreenPoint(new Vector3(v.TargetWorld.x, v.TargetWorld.y, 0f));
             // Behind the camera (z<0) → hide.
-            if (targetScreen.z < 0f) { v.Root.SetActive(false); continue; }
-            if (!v.Root.activeSelf) v.Root.SetActive(true);
+            if (targetScreen.z < 0f)
+            { v.Root.SetActive(false); continue; }
+            if (!v.Root.activeSelf)
+                v.Root.SetActive(true);
 
             Vector2 target2D = new Vector2(targetScreen.x, targetScreen.y);
             if (!v.Seeded)
@@ -131,7 +140,8 @@ public class RemoteCursorRenderer : MonoBehaviour
 
     private void EnsureCanvas()
     {
-        if (_canvas != null) return;
+        if (_canvas != null)
+            return;
         var go = new GameObject("RemoteCursorCanvas");
         go.hideFlags = HideFlags.HideAndDontSave;
         DontDestroyOnLoad(go);
@@ -150,7 +160,8 @@ public class RemoteCursorRenderer : MonoBehaviour
     private CursorVisual CreateVisual(int slotIndex)
     {
         EnsureCanvas();
-        if (_cursorSprite == null) _cursorSprite = BuildCursorSprite();
+        if (_cursorSprite == null)
+            _cursorSprite = BuildCursorSprite();
 
         var root = new GameObject($"RemoteCursor_Slot{slotIndex}");
         root.transform.SetParent(_canvas.transform, worldPositionStays: false);
@@ -207,12 +218,18 @@ public class RemoteCursorRenderer : MonoBehaviour
         // Stable, visually distinct palette keyed on slot index.
         switch (slot % 6)
         {
-            case 0: return new Color(1.00f, 1.00f, 1.00f);
-            case 1: return new Color(0.35f, 0.85f, 1.00f);
-            case 2: return new Color(1.00f, 0.70f, 0.30f);
-            case 3: return new Color(0.55f, 1.00f, 0.55f);
-            case 4: return new Color(1.00f, 0.55f, 0.85f);
-            default: return new Color(1.00f, 1.00f, 0.40f);
+            case 0:
+                return new Color(1.00f, 1.00f, 1.00f);
+            case 1:
+                return new Color(0.35f, 0.85f, 1.00f);
+            case 2:
+                return new Color(1.00f, 0.70f, 0.30f);
+            case 3:
+                return new Color(0.55f, 1.00f, 0.55f);
+            case 4:
+                return new Color(1.00f, 0.55f, 0.85f);
+            default:
+                return new Color(1.00f, 1.00f, 0.40f);
         }
     }
 
@@ -245,19 +262,21 @@ public class RemoteCursorRenderer : MonoBehaviour
         float invSs = 1f / ss;
         float halfInvSs = invSs * 0.5f;
         for (int y = 0; y < size; y++)
-        for (int x = 0; x < size; x++)
-        {
-            int hits = 0;
-            for (int sy = 0; sy < ss; sy++)
-            for (int sx = 0; sx < ss; sx++)
+            for (int x = 0; x < size; x++)
             {
-                var p = new Vector2(x + halfInvSs + sx * invSs, y + halfInvSs + sy * invSs);
-                if (PointInTriangle(p, a, b, c)) hits++;
+                int hits = 0;
+                for (int sy = 0; sy < ss; sy++)
+                    for (int sx = 0; sx < ss; sx++)
+                    {
+                        var p = new Vector2(x + halfInvSs + sx * invSs, y + halfInvSs + sy * invSs);
+                        if (PointInTriangle(p, a, b, c))
+                            hits++;
+                    }
+                if (hits == 0)
+                { tex.SetPixel(x, y, clear); continue; }
+                byte alpha = (byte)((hits * 255) / (ss * ss));
+                tex.SetPixel(x, y, new Color32(255, 255, 255, alpha));
             }
-            if (hits == 0) { tex.SetPixel(x, y, clear); continue; }
-            byte alpha = (byte)((hits * 255) / (ss * ss));
-            tex.SetPixel(x, y, new Color32(255, 255, 255, alpha));
-        }
 
         tex.Apply();
         // Pivot at (0, 1) = top-left so positioning the rect at the target

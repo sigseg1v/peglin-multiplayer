@@ -51,13 +51,15 @@ public sealed class PendingDamageOverlay : MonoBehaviour
 
     void OnDestroy()
     {
-        if (_instance == this) _instance = null;
+        if (_instance == this)
+            _instance = null;
         DestroyCanvas();
     }
 
     void LateUpdate()
     {
-        if (_panels.Count == 0) return;
+        if (_panels.Count == 0)
+            return;
         RepositionPanels();
     }
 
@@ -72,14 +74,16 @@ public sealed class PendingDamageOverlay : MonoBehaviour
     public static void SetPlayerDamage(int slotIndex, string playerName, long damage,
         string targetEnemyGuid, bool isAoE)
     {
-        if (_instance == null) return;
+        if (_instance == null)
+            return;
         _instance.SetPlayerDamageInternal(slotIndex, playerName, damage, targetEnemyGuid, isAoE);
     }
 
     /// <summary>Clear all overlay panels (e.g. after attack resolves).</summary>
     public static void ClearAll()
     {
-        if (_instance == null) return;
+        if (_instance == null)
+            return;
         _instance.ClearAllInternal();
     }
 
@@ -106,7 +110,8 @@ public sealed class PendingDamageOverlay : MonoBehaviour
         _playerData.Clear();
         foreach (var panel in _panels.Values)
         {
-            if (panel.Root != null) Destroy(panel.Root);
+            if (panel.Root != null)
+                Destroy(panel.Root);
         }
         _panels.Clear();
     }
@@ -136,16 +141,19 @@ public sealed class PendingDamageOverlay : MonoBehaviour
         foreach (var kvp in _playerData)
         {
             var data = kvp.Value;
-            if (data.Damage <= 0) continue;
+            if (data.Damage <= 0)
+                continue;
 
             if (data.IsAoE && em != null && enemyId != null)
             {
                 // AoE: add to every living enemy
                 foreach (var enemy in em.Enemies)
                 {
-                    if (enemy == null || enemy.CurrentHealth <= 0f) continue;
+                    if (enemy == null || enemy.CurrentHealth <= 0f)
+                        continue;
                     var guid = enemyId.GetGuid(enemy);
-                    if (string.IsNullOrEmpty(guid)) continue;
+                    if (string.IsNullOrEmpty(guid))
+                        continue;
                     enemyTotals.TryGetValue(guid, out var existing);
                     enemyTotals[guid] = existing + data.Damage;
                 }
@@ -167,7 +175,8 @@ public sealed class PendingDamageOverlay : MonoBehaviour
         }
         foreach (var guid in toRemove)
         {
-            if (_panels[guid].Root != null) Destroy(_panels[guid].Root);
+            if (_panels[guid].Root != null)
+                Destroy(_panels[guid].Root);
             _panels.Remove(guid);
         }
 
@@ -208,7 +217,8 @@ public sealed class PendingDamageOverlay : MonoBehaviour
     private void RepositionPanels()
     {
         var cam = Camera.main;
-        if (cam == null) return;
+        if (cam == null)
+            return;
 
         Utility.EnemyIdentifier enemyId = null;
         try
@@ -217,12 +227,14 @@ public sealed class PendingDamageOverlay : MonoBehaviour
         }
         catch { }
 
-        if (enemyId == null) return;
+        if (enemyId == null)
+            return;
 
         foreach (var kvp in _panels)
         {
             var panel = kvp.Value;
-            if (panel.Root == null) continue;
+            if (panel.Root == null)
+                continue;
 
             var enemy = enemyId.Find(kvp.Key);
             if (enemy == null || enemy.CurrentHealth <= 0f)
@@ -239,7 +251,8 @@ public sealed class PendingDamageOverlay : MonoBehaviour
                 continue;
             }
 
-            if (!panel.Root.activeSelf) panel.Root.SetActive(true);
+            if (!panel.Root.activeSelf)
+                panel.Root.SetActive(true);
 
             var rect = panel.Root.GetComponent<RectTransform>();
             if (rect != null && _canvasRect != null)
@@ -257,7 +270,8 @@ public sealed class PendingDamageOverlay : MonoBehaviour
 
     private void EnsureCanvas()
     {
-        if (_canvasObj != null) return;
+        if (_canvasObj != null)
+            return;
         _canvasObj = new GameObject("PendingDamageOverlayCanvas");
         DontDestroyOnLoad(_canvasObj);
         _canvas = _canvasObj.AddComponent<Canvas>();
@@ -286,7 +300,8 @@ public sealed class PendingDamageOverlay : MonoBehaviour
         tmp.raycastTarget = false;
 
         var font = GetGameFont();
-        if (font != null) tmp.font = font;
+        if (font != null)
+            tmp.font = font;
 
         // Fill the parent panel (which holds the translucent BG)
         var rect = tmp.rectTransform;
@@ -299,14 +314,16 @@ public sealed class PendingDamageOverlay : MonoBehaviour
         return tmp;
     }
 
-private static TMP_FontAsset GetGameFont()
+    private static TMP_FontAsset GetGameFont()
     {
-        if (_gameFontSearched) return _gameFont;
+        if (_gameFontSearched)
+            return _gameFont;
         _gameFontSearched = true;
         try
         {
             foreach (var tmp in FindObjectsOfType<TextMeshProUGUI>())
-                if (tmp.font != null) { _gameFont = tmp.font; break; }
+                if (tmp.font != null)
+                { _gameFont = tmp.font; break; }
         }
         catch { }
         return _gameFont;
@@ -315,7 +332,8 @@ private static TMP_FontAsset GetGameFont()
     private void DestroyCanvas()
     {
         ClearAllInternal();
-        if (_canvasObj != null) Destroy(_canvasObj);
+        if (_canvasObj != null)
+            Destroy(_canvasObj);
         _canvasObj = null;
         _canvas = null;
         _canvasRect = null;

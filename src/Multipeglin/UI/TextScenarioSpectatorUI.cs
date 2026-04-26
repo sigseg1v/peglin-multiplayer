@@ -36,8 +36,10 @@ public class TextScenarioSpectatorUI : MonoBehaviour
 
     private void OnDestroy()
     {
-        if (_instance == this) _instance = null;
-        if (_canvasObj != null) Destroy(_canvasObj);
+        if (_instance == this)
+            _instance = null;
+        if (_canvasObj != null)
+            Destroy(_canvasObj);
     }
 
     private void CreateUI()
@@ -121,17 +123,20 @@ public class TextScenarioSpectatorUI : MonoBehaviour
 
     public void Show()
     {
-        if (_canvasObj != null) _canvasObj.SetActive(true);
+        if (_canvasObj != null)
+            _canvasObj.SetActive(true);
     }
 
     public void Hide()
     {
-        if (_canvasObj != null) _canvasObj.SetActive(false);
+        if (_canvasObj != null)
+            _canvasObj.SetActive(false);
     }
 
     public void UpdateDialogue(string speakerName, string subtitleText, List<string> responses, int highlightedIndex)
     {
-        if (_canvasObj == null) return;
+        if (_canvasObj == null)
+            return;
 
         _speakerText.text = speakerName ?? "";
         _subtitleText.text = subtitleText ?? "";
@@ -142,7 +147,8 @@ public class TextScenarioSpectatorUI : MonoBehaviour
 
     private void UpdateResponses(List<string> responses, int highlightedIndex)
     {
-        if (responses == null) responses = new List<string>();
+        if (responses == null)
+            responses = new List<string>();
 
         // Rebuild response items if count changed
         while (_responseItems.Count < responses.Count)

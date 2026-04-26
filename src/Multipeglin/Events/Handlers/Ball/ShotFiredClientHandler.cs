@@ -13,7 +13,8 @@ public sealed class ShotFiredClientHandler : IClientHandler<ShotFiredEvent>
         try
         {
             var mode = MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var m) == true ? m : null;
-            if (mode == null || !mode.IsSpectating) return;
+            if (mode == null || !mode.IsSpectating)
+                return;
 
             MultiplayerPlugin.Logger?.LogInfo($"[ShotFired] orb={e.OrbName}, aim=({e.AimX:F2},{e.AimY:F2}), spawn=({e.SpawnX:F1},{e.SpawnY:F1})");
 
