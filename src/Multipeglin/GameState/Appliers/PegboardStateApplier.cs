@@ -868,7 +868,12 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
 
             var parent = p.transform.parent;
-            var parentName = parent != null ? parent.name : string.Empty;
+            // Full ancestor chain — must match PegboardStateProvider.ParentChainKey.
+            // Spirit of Radia's PegLayoutAlternator has sibling pegboardA / pegboardB
+            // with identical internal hierarchies; keying on parent.name alone caused
+            // pegs to bind to their twin in the opposite pegboard, flipping every
+            // conditional show/hide between phases.
+            var parentName = parent != null ? BuildHierarchyPath(parent) : string.Empty;
             var lp = p.transform.localPosition;
             AddTo(index.ByPos, MakePosStructKey(parentName, lp.x, lp.y), p);
             AddTo(index.BySibling, MakeSiblingStructKey(parentName, p.transform.GetSiblingIndex()), p);

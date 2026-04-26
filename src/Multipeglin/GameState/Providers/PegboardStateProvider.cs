@@ -420,7 +420,17 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
         try
         {
             var parent = peg.transform.parent;
-            entry.ParentName = parent != null ? parent.name : string.Empty;
+            // Use the full ancestor chain (joined by '/') instead of just parent.name.
+            // Spirit of Radia's PegLayoutAlternator has two sibling pegboards (pegboardA
+            // and pegboardB) whose internal hierarchies are identical — both contain a
+            // child literally named "PegSplineFollowGenerator" with the same sibling
+            // count. Keying only on parent.name made the (parent.name, siblingIndex)
+            // struct index collide between the two pegboards: a peg from the active
+            // pegboardA could bind to a peg in the inactive pegboardB (or vice versa).
+            // After misbinding, EnsureParentChainActive reactivates the wrong pegboard
+            // and IsParentHidden hides the wrong pegs — visible as "some pegs that
+            // should be hidden are showing, some that should show are hidden".
+            entry.ParentName = ParentChainKey(parent);
             var lp = peg.transform.localPosition;
             entry.LocalPosX = lp.x;
             entry.LocalPosY = lp.y;
@@ -540,6 +550,21 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
         {
             _log.LogWarning($"[PegProvider] Failed to capture spline generators: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Build a slash-joined ancestor chain for a peg's parent transform. Used as the
+    /// struct-key disambiguator so sibling pegboards with identical internal layouts
+    /// (e.g. PegLayoutAlternator's pegboardA / pegboardB) don't share keys.
+    /// </summary>
+    public static string ParentChainKey(UnityEngine.Transform parent)
+    {
+        if (parent == null)
+        {
+            return string.Empty;
+        }
+
+        return HierarchyPath(parent);
     }
 
     private static string HierarchyPath(UnityEngine.Transform t)
