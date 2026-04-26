@@ -202,6 +202,7 @@ public static class LobbyUI
         var localVersionTag = $"Peglin {localGameVer} (mod {localModVer})";
         bool hasVersionMismatch = false;
 
+        var localName = MultiplayerUI.LocalPlayerName;
         for (int i = 0; i < players.Count; i++)
         {
             var entry = players[i];
@@ -209,8 +210,17 @@ public static class LobbyUI
             row.Root.SetActive(true);
             row.SlotIndex = entry.SlotIndex;
 
-            // Determine if this row is the local player
-            row.IsLocalPlayer = isHost ? entry.IsHost : !entry.IsHost;
+            // Determine if this row is the local player. We match by name so it works with
+            // 3+ players (every non-host name is unique). Host always identifies its own row
+            // via IsHost regardless of name. As a fallback for the host, if there is no
+            // matching name, we still pick IsHost so the host UI works even if the local
+            // name is empty for some reason.
+            if (isHost)
+                row.IsLocalPlayer = entry.IsHost;
+            else if (!string.IsNullOrEmpty(localName))
+                row.IsLocalPlayer = !entry.IsHost && entry.PlayerName == localName;
+            else
+                row.IsLocalPlayer = !entry.IsHost; // legacy 2-player fallback
 
             row.NameText.text = entry.PlayerName ?? "???";
             row.NameText.color = row.IsLocalPlayer ? new Color(0.53f, 1f, 0.53f) : new Color(0.53f, 0.67f, 1f);

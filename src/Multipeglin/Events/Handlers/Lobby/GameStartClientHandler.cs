@@ -21,11 +21,24 @@ public sealed class GameStartClientHandler : IClientHandler<GameStartEvent>
 
             MultiplayerPlugin.Logger?.LogInfo($"[GameStart] Received game start with {networkEvent.FinalPlayers?.Count ?? 0} players");
 
-            // Find this client's entry in the player list and set the chosen class
+            // Find this client's entry in the player list and set the chosen class.
+            // CRITICAL: with 3+ players we must match by player name, NOT just "first non-host"
+            // (otherwise every client identifies itself as the same slot, which corrupts class
+            // assignment, starting relics, turn detection, reward routing, etc.)
             if (networkEvent.FinalPlayers != null)
             {
-                // Client is the non-host player — find our entry
-                var myEntry = networkEvent.FinalPlayers.FirstOrDefault(p => !p.IsHost);
+                var localName = UI.MultiplayerUI.LocalPlayerName;
+                LobbyPlayerEntry myEntry = null;
+                if (!string.IsNullOrEmpty(localName))
+                    myEntry = networkEvent.FinalPlayers.FirstOrDefault(p => !p.IsHost && p.PlayerName == localName);
+                if (myEntry == null)
+                {
+                    // Fallback: pick the first non-host (correct only for 2-player sessions).
+                    myEntry = networkEvent.FinalPlayers.FirstOrDefault(p => !p.IsHost);
+                    if (myEntry != null)
+                        MultiplayerPlugin.Logger?.LogWarning(
+                            $"[GameStart] Could not match local name '{localName}' to any non-host entry; falling back to first non-host (slot {myEntry.SlotIndex}). This will misroute events with 3+ players.");
+                }
                 if (myEntry != null)
                 {
                     var chosenClass = (Peglin.ClassSystem.Class)myEntry.ChosenClass;

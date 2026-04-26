@@ -44,8 +44,31 @@ public sealed class FileLogger : IDisposable
     /// <summary>
     /// Tag prepended to every log line. Initially set from MULTIPEGLIN_INSTANCE
     /// env var (e.g. "PEGLIN1"), then updated to "HOST" or "CLIENT" when role is chosen.
+    /// When set to "CLIENT", it is automatically suffixed with the instance number from
+    /// MULTIPEGLIN_INSTANCE (e.g. PEGLIN3 -> CLIENT3) so multi-client logs are distinguishable.
     /// </summary>
-    public static string RoleTag { get; set; } = "";
+    public static string RoleTag
+    {
+        get => _roleTag;
+        set => _roleTag = AnnotateClientTag(value);
+    }
+    private static string _roleTag = "";
+
+    private static string AnnotateClientTag(string baseTag)
+    {
+        if (baseTag != "CLIENT") return baseTag;
+        try
+        {
+            var instance = Environment.GetEnvironmentVariable("MULTIPEGLIN_INSTANCE");
+            if (string.IsNullOrEmpty(instance)) return baseTag;
+            // Extract a trailing numeric suffix (e.g. PEGLIN3 -> "3").
+            int i = instance.Length;
+            while (i > 0 && char.IsDigit(instance[i - 1])) i--;
+            var digits = instance.Substring(i);
+            return string.IsNullOrEmpty(digits) ? baseTag : "CLIENT" + digits;
+        }
+        catch { return baseTag; }
+    }
 
     public void Log(LogLevel level, string message)
     {
