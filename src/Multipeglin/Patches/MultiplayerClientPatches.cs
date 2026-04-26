@@ -423,17 +423,17 @@ public static class MultiplayerClientPatches
             }
 
             // Direct left-click to fire — fallback for when PachinkoBall.LateUpdate's
-            // native click→Fire path breaks. This has been observed after the second
-            // battle: Arm() throws, _predictionManager / _player / _mainCamera wiring
-            // is fragile, and the native LateUpdate never reaches Fire(). The Fire
-            // prefix's "Fire intercepted" path therefore never runs and the player is
-            // soft-locked. Polling Input here mirrors the right-click discard pattern
-            // that has always worked, and stays idempotent: Fire prefix sets
-            // ClientShotSentThisTurn first if it ever runs, so we won't double-send.
+            // native click→Fire path breaks. Observed in MirrorPlantBattle: layout has
+            // raycast-blocking sprites that make IsPointerOverGameObject() permanently
+            // true over the playfield, so PlayfieldMouseDetector.OnPointerDown never
+            // fires and Fire() is never called — soft-locks the client. Gate by
+            // IsPointerOverInteractiveUI() instead so non-button UI overlays don't
+            // block the shot, while Fire/Skip/Discard buttons still suppress it.
+            // Idempotent: Fire prefix sets ClientShotSentThisTurn first if it runs.
             if (_clientBallInitialized && _clientBallGO != null
                 && !ClientShotSentThisTurn
                 && UnityEngine.Input.GetMouseButtonDown(0)
-                && !IsPointerOverUI())
+                && !IsPointerOverInteractiveUI())
             {
                 TrySendDirectShot();
             }
@@ -667,6 +667,43 @@ public static class MultiplayerClientPatches
     {
         var es = UnityEngine.EventSystems.EventSystem.current;
         return es != null && es.IsPointerOverGameObject();
+    }
+
+    // Cached lists/PED to avoid per-frame allocations in the click hot path.
+    private static readonly System.Collections.Generic.List<UnityEngine.EventSystems.RaycastResult> _uiRaycastBuf
+        = new System.Collections.Generic.List<UnityEngine.EventSystems.RaycastResult>(8);
+
+    /// <summary>
+    /// Returns true only if the cursor is over a clickable Button (Fire/Skip/Discard
+    /// or any other UI Button). Returns false for non-interactive UI like the pegboard
+    /// frame, mirror sprites, or other layout overlays — those should NOT block the
+    /// fallback shoot path. This is the gate used for the fallback left-click → shot
+    /// in MirrorPlantBattle and similar layouts where IsPointerOverGameObject() is
+    /// permanently true even over the playfield.
+    /// </summary>
+    private static bool IsPointerOverInteractiveUI()
+    {
+        var es = UnityEngine.EventSystems.EventSystem.current;
+        if (es == null) return false;
+        if (!es.IsPointerOverGameObject()) return false;
+
+        try
+        {
+            var ped = new UnityEngine.EventSystems.PointerEventData(es)
+            {
+                position = UnityEngine.Input.mousePosition,
+            };
+            _uiRaycastBuf.Clear();
+            es.RaycastAll(ped, _uiRaycastBuf);
+            for (int i = 0; i < _uiRaycastBuf.Count; i++)
+            {
+                var go = _uiRaycastBuf[i].gameObject;
+                if (go == null) continue;
+                if (go.GetComponentInParent<UnityEngine.UI.Button>() != null) return true;
+            }
+        }
+        catch { }
+        return false;
     }
 
     /// <summary>
