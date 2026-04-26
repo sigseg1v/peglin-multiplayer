@@ -81,6 +81,17 @@ public static class CoopRewardState
     public static System.Collections.Generic.Dictionary<int, System.Collections.Generic.List<string>> PerSlotOrbChoices
         = new System.Collections.Generic.Dictionary<int, System.Collections.Generic.List<string>>();
 
+    /// <summary>
+    /// Per-slot treasure relic choices for the "?" / treasure room. Host: rolls
+    /// each slot's relic in the SetupRelicGrant Postfix and broadcasts via
+    /// CoopTreasureRelicChoiceEvent. Client: filled only for its own slot via
+    /// CoopTreasureRelicChoiceClientHandler. Read by the SetupRelicGrant patch
+    /// to override the local roll so each player sees an independently-rolled
+    /// relic instead of the same one (UnityEngine.Random shares seed).
+    /// </summary>
+    public static System.Collections.Generic.Dictionary<int, string> PerSlotTreasureRelics
+        = new System.Collections.Generic.Dictionary<int, string>();
+
     // --- Shop wait-for-all ---
 
     /// <summary>True when the shop phase is active (all players shopping).</summary>
@@ -235,6 +246,7 @@ public static class CoopRewardState
         ClientRewardChoicesReceived.Clear();
         TotalRewardClientsExpected = 0;
         PerSlotOrbChoices.Clear();
+        PerSlotTreasureRelics.Clear();
         ClientInNativeRewardPhase = false;
         HostRewardPhaseActive = false;
         HostRewardsDone = false;

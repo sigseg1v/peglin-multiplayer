@@ -198,6 +198,8 @@ public class GameStateApplyService
                 Events.Handlers.Coop.CoopRewardState.TotalTreasureClientsExpected = coopMgr2.TotalPlayerCount - 1;
                 Events.Handlers.Coop.CoopRewardState.PendingChestController = null;
                 _log.LogInfo($"[ApplyService] Treasure phase initialized — expecting {coopMgr2.TotalPlayerCount - 1} client(s)");
+
+                BroadcastPerSlotTreasureRelics(svc, coopMgr2);
             }
 
             if (isSpectating)
@@ -1154,5 +1156,109 @@ public class GameStateApplyService
             _log.LogInfo($"[ApplyService] {name} OK");
         }
         catch (Exception ex) { _log.LogError($"[ApplyService] {name} failed: {ex.Message}"); }
+    }
+
+    /// <summary>
+    /// Host-side: pre-roll a treasure-room relic for each non-host slot and dispatch
+    /// it via CoopTreasureRelicChoiceEvent. The client patch on SetupRelicGrant
+    /// reads from CoopRewardState.PerSlotTreasureRelics so each player sees a
+    /// host-authoritative, per-slot relic instead of all clients picking the same
+    /// one (UnityEngine.Random shares seed across all clients).
+    ///
+    /// Falls back gracefully on the client (slot-keyed local roll) if the event
+    /// hasn't arrived by the time the client clicks the chest.
+    /// </summary>
+    private void BroadcastPerSlotTreasureRelics(Multipeglin.DI.IServiceContainer svc, CoopStateManager coopMgr)
+    {
+        try
+        {
+            if (svc == null || coopMgr == null) return;
+            if (!svc.TryResolve<Events.IGameEventRegistry>(out var registry) || registry == null) return;
+
+            var allRelics = UnityEngine.Resources.FindObjectsOfTypeAll<Relics.Relic>();
+            if (allRelics == null || allRelics.Length == 0)
+            {
+                _log.LogWarning("[ApplyService] BroadcastPerSlotTreasureRelics: no relics loaded");
+                return;
+            }
+
+            // Use MapDataTreasure-driven rare chance, with the same offset as native
+            // game logic when MORE_TREASURE_NODES is active on this slot. We don't
+            // attempt to mirror _seededTreasureNodeData.rareRelicChanceRoll exactly —
+            // the broadcast is best-effort and the client patch can still re-pick
+            // locally if the rarity ends up wrong.
+            var mapDataTreasure = StaticGameData.dataToLoad as MapDataTreasure;
+            float baseRareChance = mapDataTreasure != null ? mapDataTreasure.rareChance : Relics.RelicManager.CHEST_RARE_CHANCE;
+
+            Events.Handlers.Coop.CoopRewardState.PerSlotTreasureRelics.Clear();
+
+            foreach (var kvp in coopMgr.PlayerStates)
+            {
+                int slot = kvp.Key;
+                var state = kvp.Value;
+                if (state == null) continue;
+
+                // Slot-keyed deterministic RNG so each slot picks differently and
+                // the same slot is reproducible across host/client.
+                int rngSeed = unchecked(((StaticGameData.currentSeed ?? "").GetHashCode() ^ (slot * 7919) ^ (StaticGameData.totalFloorCount * 104729)));
+                var sysRng = new System.Random(rngSeed);
+
+                // Determine rarity: COMMON or RARE based on the same baseRareChance.
+                bool slotHasMoreTreasure = SlotHasRelicEffect(state, Relics.RelicEffect.MORE_TREASURE_NODES);
+                float rareChance = baseRareChance + (slotHasMoreTreasure ? 0.1f : 0f);
+                bool isRare = sysRng.NextDouble() <= rareChance;
+                var rarity = isRare ? Relics.RelicRarity.RARE : Relics.RelicRarity.COMMON;
+
+                // Build candidate list filtered by this slot's owned relics.
+                var owned = new System.Collections.Generic.HashSet<int>();
+                if (state.OwnedRelics != null)
+                    foreach (var r in state.OwnedRelics)
+                        if (r != null) owned.Add(r.Effect);
+
+                var candidates = new System.Collections.Generic.List<Relics.Relic>();
+                foreach (var r in allRelics)
+                {
+                    if (r == null) continue;
+                    if (r.globalRarity != rarity) continue;
+                    if (owned.Contains((int)r.effect)) continue;
+                    candidates.Add(r);
+                }
+                if (candidates.Count == 0)
+                {
+                    foreach (var r in allRelics)
+                    {
+                        if (r == null) continue;
+                        if (owned.Contains((int)r.effect)) continue;
+                        candidates.Add(r);
+                    }
+                }
+                if (candidates.Count == 0) continue;
+                candidates.Sort((a, b) => string.CompareOrdinal(a?.name, b?.name));
+
+                var relic = candidates[sysRng.Next(0, candidates.Count)];
+                Events.Handlers.Coop.CoopRewardState.PerSlotTreasureRelics[slot] = relic.name;
+                _log.LogInfo($"[ApplyService] Per-slot treasure relic slot={slot} rarity={rarity} relic='{relic.name}'");
+
+                if (slot == 0) continue; // host reads its own list locally
+                registry.Dispatch(new Events.Network.Coop.CoopTreasureRelicChoiceEvent
+                {
+                    TargetSlotIndex = slot,
+                    RelicName = relic.name,
+                    Rarity = (int)rarity,
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[ApplyService] BroadcastPerSlotTreasureRelics failed: {ex.Message}");
+        }
+    }
+
+    private static bool SlotHasRelicEffect(CoopPlayerState state, Relics.RelicEffect effect)
+    {
+        if (state?.OwnedRelics == null) return false;
+        foreach (var r in state.OwnedRelics)
+            if (r != null && r.Effect == (int)effect) return true;
+        return false;
     }
 }

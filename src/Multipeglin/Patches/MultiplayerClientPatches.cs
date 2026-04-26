@@ -3498,6 +3498,121 @@ public static class MultiplayerClientPatches
     }
 
     // =========================================================================
+    // PEG MINIGAME PER-SLOT REWARDS — diversify reward sets across players
+    //
+    // The native PopulateRewards methods read from seeded data (relic queue or
+    // orb pool with UnityEngine.Random) which is identical across all clients
+    // because the seed is broadcast. Without this patch every player who plays
+    // the PegMinigame sees the same 3 relics or 3 orbs.
+    //
+    // We replace the rewards list with a slot-keyed deterministic pick so each
+    // player gets a different set. Only patches the client side — host plays
+    // first with native rolling (slot 0 effectively).
+    // =========================================================================
+
+    [HarmonyPatch(typeof(Peglin.PegMinigame.MapDataPegMinigameRelics), "PopulateRewards")]
+    [HarmonyPrefix]
+    public static bool MapDataPegMinigameRelics_PopulateRewards_PerSlot_Prefix(
+        Peglin.PegMinigame.MapDataPegMinigameRelics __instance)
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        if (!AllowPegMinigameLogic) return true;
+
+        try
+        {
+            int mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
+            if (mySlot < 0) return true;
+
+            var relicMgr = __instance.relicManager;
+            int count = System.Math.Max(1, __instance.numberOfRewards);
+            var picks = PickMultipleLocalRelics(__instance.rarity, count, relicMgr, mySlot);
+            if (picks.Count == 0) return true; // fall through to native rather than show empty
+
+            var rewards = new System.Collections.Generic.List<Peglin.PegMinigame.Reward>();
+            foreach (var r in picks)
+            {
+                rewards.Add(new Peglin.PegMinigame.RelicReward(r, relicMgr, __instance.relicInfoWidget));
+            }
+            __instance.Rewards = rewards;
+
+            var names = new System.Collections.Generic.List<string>();
+            foreach (var r in picks) names.Add(r?.name ?? "<null>");
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[ClientPatch] PegMinigame relic rewards (slot {mySlot}, rarity {__instance.rarity}) = [{string.Join(",", names)}]");
+            return false;
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatch] PegMinigameRelics PopulateRewards override failed: {ex.Message}");
+            return true;
+        }
+    }
+
+    [HarmonyPatch(typeof(Peglin.PegMinigame.MapDataPegMinigameOrbs), "PopulateRewards")]
+    [HarmonyPrefix]
+    public static bool MapDataPegMinigameOrbs_PopulateRewards_PerSlot_Prefix(
+        Peglin.PegMinigame.MapDataPegMinigameOrbs __instance)
+    {
+        if (!ShouldSuppressClientLogic) return true;
+        if (!AllowPegMinigameLogic) return true;
+
+        try
+        {
+            int mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
+            if (mySlot < 0) return true;
+
+            var deckMgr = __instance.deckManager;
+            if (deckMgr == null) return true;
+            var pool = deckMgr.GetRandomOrbPool();
+            if (pool == null || pool.Count == 0) return true;
+
+            // Stable order so the slot-keyed RNG produces consistent picks.
+            var sorted = new System.Collections.Generic.List<UnityEngine.GameObject>(pool);
+            sorted.Sort((a, b) => string.CompareOrdinal(a?.name, b?.name));
+
+            int count = System.Math.Max(1, __instance.numberOfRewards);
+            int take = System.Math.Min(count, sorted.Count);
+            int seed = unchecked(((StaticGameData.currentSeed ?? "").GetHashCode()
+                ^ (mySlot * 7919)
+                ^ (StaticGameData.totalFloorCount * 104729)
+                ^ 0x4F2BD17));
+            var rng = new System.Random(seed);
+
+            var rewards = new System.Collections.Generic.List<Peglin.PegMinigame.Reward>();
+            var picked = new System.Collections.Generic.List<string>();
+            for (int i = 0; i < take; i++)
+            {
+                int j = i + rng.Next(0, sorted.Count - i);
+                var tmp = sorted[i]; sorted[i] = sorted[j]; sorted[j] = tmp;
+                var orb = sorted[i];
+                if (orb == null) continue;
+
+                // Replicate native Act-based upgrade logic.
+                var chosen = orb;
+                var act = Map.MapController.instance != null ? Map.MapController.instance.Act : 0;
+                if (act > 1 && chosen.TryGetComponent<Battle.Attacks.Attack>(out var c1) && c1.NextLevelPrefab != null)
+                {
+                    chosen = c1.NextLevelPrefab;
+                    if (act > 2 && chosen.TryGetComponent<Battle.Attacks.Attack>(out var c2) && c2.NextLevelPrefab != null)
+                        chosen = c2.NextLevelPrefab;
+                }
+                rewards.Add(new Peglin.PegMinigame.OrbReward(chosen, deckMgr));
+                picked.Add(chosen.name);
+            }
+            __instance.Rewards = rewards;
+
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[ClientPatch] PegMinigame orb rewards (slot {mySlot}) = [{string.Join(",", picked)}]");
+            return false;
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatch] PegMinigameOrbs PopulateRewards override failed: {ex.Message}");
+            return true;
+        }
+    }
+
+    // =========================================================================
     // CLIENT: PEG MINIGAME SPECTATING — suppress ball creation and interaction
     // =========================================================================
 
@@ -5288,8 +5403,12 @@ public static class MultiplayerClientPatches
         return owned;
     }
 
-    /// <summary>Pick a random Relic prefab matching <paramref name="rarity"/> that isn't already owned.</summary>
-    private static Relics.Relic PickRandomLocalRelic(Relics.RelicRarity rarity, Relics.RelicManager rm)
+    /// <summary>Pick a random Relic prefab matching <paramref name="rarity"/> that isn't already owned.
+    /// When <paramref name="slotIndex"/> is non-negative, uses a slot-keyed deterministic
+    /// System.Random instead of UnityEngine.Random so each player picks a different relic
+    /// even when no host broadcast has arrived yet (UnityEngine.Random shares seed across
+    /// all clients, which causes everyone to roll the same relic).</summary>
+    private static Relics.Relic PickRandomLocalRelic(Relics.RelicRarity rarity, Relics.RelicManager rm, int slotIndex = -1)
     {
         try
         {
@@ -5315,13 +5434,93 @@ public static class MultiplayerClientPatches
                 }
             }
             if (candidates.Count == 0) return null;
-            return candidates[UnityEngine.Random.Range(0, candidates.Count)];
+            // Stable order so the slot-keyed RNG produces consistent results across runs.
+            candidates.Sort((a, b) => string.CompareOrdinal(a?.name, b?.name));
+            int pick;
+            if (slotIndex >= 0)
+            {
+                int seed = unchecked(((StaticGameData.currentSeed ?? "").GetHashCode() ^ (slotIndex * 7919) ^ ((int)rarity * 31) ^ (StaticGameData.totalFloorCount * 104729)));
+                pick = new System.Random(seed).Next(0, candidates.Count);
+            }
+            else
+            {
+                pick = UnityEngine.Random.Range(0, candidates.Count);
+            }
+            return candidates[pick];
         }
         catch (System.Exception ex)
         {
             MultiplayerPlugin.Logger?.LogWarning($"[ClientPatch] PickRandomLocalRelic failed: {ex.Message}");
             return null;
         }
+    }
+
+    /// <summary>Pick N unique relics matching <paramref name="rarity"/> the player doesn't own.
+    /// Uses slot-keyed RNG so each player sees a different set even though the underlying
+    /// seeded relic queue would otherwise produce identical first-N sequences across all
+    /// clients (the queue never advances on clients because the host runs all battles).</summary>
+    private static System.Collections.Generic.List<Relics.Relic> PickMultipleLocalRelics(
+        Relics.RelicRarity rarity, int count, Relics.RelicManager rm, int slotIndex)
+    {
+        var picked = new System.Collections.Generic.List<Relics.Relic>();
+        try
+        {
+            if (count <= 0) return picked;
+            var owned = GetOwnedEffects(rm);
+            var all = UnityEngine.Resources.FindObjectsOfTypeAll<Relics.Relic>();
+            var candidates = new System.Collections.Generic.List<Relics.Relic>();
+            foreach (var r in all)
+            {
+                if (r == null) continue;
+                if (r.globalRarity != rarity) continue;
+                if (owned.Contains((int)r.effect)) continue;
+                candidates.Add(r);
+            }
+            if (candidates.Count == 0)
+            {
+                foreach (var r in all)
+                {
+                    if (r == null) continue;
+                    if (owned.Contains((int)r.effect)) continue;
+                    candidates.Add(r);
+                }
+            }
+            if (candidates.Count == 0) return picked;
+            candidates.Sort((a, b) => string.CompareOrdinal(a?.name, b?.name));
+
+            int seed = unchecked(((StaticGameData.currentSeed ?? "").GetHashCode()
+                ^ (slotIndex * 7919)
+                ^ ((int)rarity * 31)
+                ^ (StaticGameData.totalFloorCount * 104729)));
+            var rng = new System.Random(seed);
+            // Fisher-Yates partial shuffle for the first `count` slots.
+            int take = System.Math.Min(count, candidates.Count);
+            for (int i = 0; i < take; i++)
+            {
+                int j = i + rng.Next(0, candidates.Count - i);
+                var tmp = candidates[i];
+                candidates[i] = candidates[j];
+                candidates[j] = tmp;
+                picked.Add(candidates[i]);
+            }
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatch] PickMultipleLocalRelics failed: {ex.Message}");
+        }
+        return picked;
+    }
+
+    /// <summary>Find a Relic ScriptableObject by name. Returns null if not loaded.</summary>
+    private static Relics.Relic FindRelicByName(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return null;
+        var all = UnityEngine.Resources.FindObjectsOfTypeAll<Relics.Relic>();
+        foreach (var r in all)
+        {
+            if (r != null && r.name == name) return r;
+        }
+        return null;
     }
 
     /// <summary>
@@ -5337,9 +5536,15 @@ public static class MultiplayerClientPatches
         Relics.RelicRarity rarity,
         bool isTreasure)
     {
-        // Only intercept on client AND only when the client is driving treasure UI themselves
+        // Only intercept on client. Two cases:
+        //   1) Treasure (?) room: AllowTreasureLogic gate, single relic, host-broadcast first
+        //      then slot-keyed fallback.
+        //   2) Post-battle (boss/rare/common) grant: AllowNativeRewardLogic gate, N relics,
+        //      slot-keyed local roll. Native code uses _relicManager.GetMultipleRelicsOffOfQueue
+        //      which produces identical first-N relics on every client because the seeded
+        //      queue never advances on clients (host runs all battles).
         if (!ShouldSuppressClientLogic) return true;
-        if (!AllowTreasureLogic) return true;
+        if (!AllowTreasureLogic && !AllowNativeRewardLogic) return true;
 
         try
         {
@@ -5348,6 +5553,7 @@ public static class MultiplayerClientPatches
             var stateField = AccessTools.Field(typeof(PeglinUI.PostBattle.BattleUpgradeCanvas), "_state");
             var rarityField = AccessTools.Field(typeof(PeglinUI.PostBattle.BattleUpgradeCanvas), "_relicGrantRarity");
             var relicManagerField = AccessTools.Field(typeof(PeglinUI.PostBattle.BattleUpgradeCanvas), "_relicManager");
+            var skipGoldField = AccessTools.Field(typeof(PeglinUI.PostBattle.BattleUpgradeCanvas), "_relicSkipButtonGoldContainer");
 
             var mainOptions = mainOptionsField?.GetValue(__instance) as GameObject;
             var relicPanel = relicPanelField?.GetValue(__instance) as GameObject;
@@ -5364,13 +5570,71 @@ public static class MultiplayerClientPatches
             }
             rarityField?.SetValue(__instance, rarity);
 
-            var relic = PickRandomLocalRelic(rarity, relicManager);
+            int mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
             var icons = relicPanel.GetComponentsInChildren<RelicIcon>(true);
+
+            if (isTreasure)
+            {
+                // Prefer the host-rolled per-slot relic so each client sees a different,
+                // host-authoritative pick. Fall back to slot-keyed local roll if the
+                // event hasn't arrived yet (race when client clicks chest before broadcast).
+                Relics.Relic relic = null;
+                string source = "host";
+                if (mySlot >= 0
+                    && Events.Handlers.Coop.CoopRewardState.PerSlotTreasureRelics.TryGetValue(mySlot, out var hostRelicName))
+                {
+                    relic = FindRelicByName(hostRelicName);
+                    if (relic == null) source = "host(missing prefab, fallback)";
+                }
+                if (relic == null)
+                {
+                    relic = PickRandomLocalRelic(rarity, relicManager, mySlot);
+                    if (source == "host") source = "local-slot-keyed";
+                }
+                for (int i = 0; i < icons.Length; i++)
+                {
+                    if (i == 0 && relic != null)
+                    {
+                        icons[i].SetRelic(relic);
+                        icons[i].shouldShowTooltip = false;
+                        icons[i].transform.parent.gameObject.SetActive(true);
+                    }
+                    else
+                    {
+                        icons[i].transform.parent.gameObject.SetActive(false);
+                    }
+                }
+                MultiplayerPlugin.Logger?.LogInfo(
+                    $"[ClientPatch] Treasure relic grant ({source}) slot={mySlot} relic=" +
+                    $"'{relic?.name ?? "<none>"}' rarity={rarity}");
+                return false;
+            }
+
+            // Non-treasure (post-battle) path: replicate native count logic and do a
+            // slot-keyed multi-pick.
+            int num = 1;
+            if (rarity == Relics.RelicRarity.BOSS) num = 3;
+            else if (rarity == Relics.RelicRarity.RARE) num = 2;
+
+            if (rarity == Relics.RelicRarity.BOSS)
+            {
+                var skipGold = skipGoldField?.GetValue(__instance) as GameObject;
+                skipGold?.SetActive(true);
+            }
+
+            var mapDataBattle = StaticGameData.dataToLoad as MapDataBattle;
+            if (mapDataBattle != null && mapDataBattle.name == "MimicMinibossMapData") num++;
+            // Side-effect-bearing relic checks must run so usage counters tick correctly.
+            if (relicManager != null && relicManager.AttemptUseRelic(Relics.RelicEffect.ADDITIONAL_ORB_RELIC_OPTIONS)) num++;
+            if (relicManager != null && relicManager.AttemptUseRelic(Relics.RelicEffect.ADDITIONAL_PEGLIN_CHOICES)) num++;
+
+            int slotForRng = mySlot >= 0 ? mySlot : 0;
+            var picks = PickMultipleLocalRelics(rarity, num, relicManager, slotForRng);
             for (int i = 0; i < icons.Length; i++)
             {
-                if (i == 0 && relic != null)
+                if (i < picks.Count && picks[i] != null)
                 {
-                    icons[i].SetRelic(relic);
+                    icons[i].SetRelic(picks[i]);
                     icons[i].shouldShowTooltip = false;
                     icons[i].transform.parent.gameObject.SetActive(true);
                 }
@@ -5380,10 +5644,11 @@ public static class MultiplayerClientPatches
                 }
             }
 
+            var pickNames = new System.Collections.Generic.List<string>();
+            foreach (var p in picks) pickNames.Add(p?.name ?? "<null>");
             MultiplayerPlugin.Logger?.LogInfo(
-                $"[ClientPatch] Treasure relic grant overridden to single local relic " +
-                $"'{relic?.locKey ?? "<none>"}' rarity={rarity} (isTreasure={isTreasure})");
-            return false; // Skip original
+                $"[ClientPatch] Post-battle relic grant slot={mySlot} rarity={rarity} count={picks.Count} relics=[{string.Join(",", pickNames)}]");
+            return false;
         }
         catch (System.Exception ex)
         {
@@ -5564,7 +5829,10 @@ public static class MultiplayerClientPatches
 
             relicPanel.SetActive(true);
 
-            var relic = PickRandomLocalRelic(rarity, relicManager);
+            // Slot-keyed RNG so each player picks a different relic. UnityEngine.Random
+            // shares seed across all clients, which would otherwise pick the same relic.
+            int mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
+            var relic = PickRandomLocalRelic(rarity, relicManager, mySlot);
             var icons = relicPanel.GetComponentsInChildren<RelicIcon>(true);
             for (int i = 0; i < icons.Length; i++)
             {
@@ -5581,8 +5849,8 @@ public static class MultiplayerClientPatches
             skipButton?.gameObject.SetActive(true);
 
             MultiplayerPlugin.Logger?.LogInfo(
-                $"[ClientPatch] TextScenario OfferRelic overridden to single local relic " +
-                $"'{relic?.locKey ?? "<none>"}' rarity={rarity}");
+                $"[ClientPatch] TextScenario OfferRelic slot={mySlot} relic=" +
+                $"'{relic?.name ?? "<none>"}' rarity={rarity}");
             return false;
         }
         catch (System.Exception ex)
