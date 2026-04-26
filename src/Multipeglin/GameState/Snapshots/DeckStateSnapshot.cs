@@ -24,6 +24,14 @@ public class DeckStateSnapshot
 
     public string CurrentOrb { get; set; }
 
+    /// <summary>
+    /// GUID of the active orb (bc.activePachinkoBall) if it's tracked by OrbIdentifier.
+    /// Used by the client to dedupe the deck tube against the active preview when the
+    /// host's shuffledDeck transiently still holds a reference to the same instance.
+    /// May be null/empty when host can't resolve a GUID; clients fall back to name-only.
+    /// </summary>
+    public string CurrentOrbGuid { get; set; }
+
     public int CurrentOrbLevel { get; set; }
 
     public int DeckSize { get; set; }

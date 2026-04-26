@@ -103,6 +103,7 @@ public class DeckStateProvider : IGameStateProvider<DeckStateSnapshot>
                 if (bc?.activePachinkoBall != null)
                 {
                     snapshot.CurrentOrb = bc.activePachinkoBall.name;
+                    snapshot.CurrentOrbGuid = _orbId.GetGuid(bc.activePachinkoBall);
                     var atk = bc.activePachinkoBall.GetComponent<Attack>();
                     snapshot.CurrentOrbLevel = atk?.Level ?? 1;
                 }

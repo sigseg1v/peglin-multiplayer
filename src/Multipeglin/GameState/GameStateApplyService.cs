@@ -31,6 +31,10 @@ public class GameStateApplyService
     private readonly EnemyStateApplier _enemyApplier;
     private readonly PegboardStateApplier _pegboardApplier;
     private readonly DeckStateApplier _deckApplier;
+
+    /// <summary>Exposed so handlers can drive the active-orb preview directly between heartbeats.</summary>
+    public DeckStateApplier DeckApplier => _deckApplier;
+
     private readonly RelicStateApplier _relicApplier;
     private readonly EnemyIdentifier _enemyId;
     private readonly PegIdentifier _pegId;

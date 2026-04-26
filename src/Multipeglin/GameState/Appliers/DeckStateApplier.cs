@@ -76,6 +76,17 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                         for (var i = snapshot.ShuffledOrder.Count - 1; i >= 0; i--)
                         {
                             var entry = snapshot.ShuffledOrder[i];
+
+                            // Skip entries whose GUID matches the active orb's GUID. The host's
+                            // shuffledDeck shouldn't contain the active orb, but during transient
+                            // host-side states (mid-DrawBall, post-shuffle) it occasionally does,
+                            // which produces a duplicate orb at the top of the client's deck tube
+                            // alongside the active preview.
+                            if (!string.IsNullOrEmpty(snapshot.CurrentOrbGuid) && entry == snapshot.CurrentOrbGuid)
+                            {
+                                continue;
+                            }
+
                             GameObject match = null;
 
                             // Try GUID lookup first (active player path sends 12-char hex GUIDs)
@@ -229,6 +240,13 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                 EnsureDeckUIShowsActiveOrb(dm, snapshot.CurrentOrb);
                 EnsureAimerOrbShown(snapshot.CurrentOrb);
             }
+            else if (scene == "Battle")
+            {
+                // Active player has no drawn orb (between turns / not their turn).
+                // The previous turn's preview must NOT linger in the active slot —
+                // otherwise the next player sees a stale orb until their own turn fires.
+                ClearActiveOrbDisplay();
+            }
 
             // === Post-apply verification === (logs the deck dump only if mismatched)
             VerifyDeckState(dm, snapshot);
@@ -278,6 +296,63 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
     /// the CurrentOrb name. This fixes the off-by-one bug where we were popping the
     /// next-to-draw orb instead of showing the currently-drawn orb.
     /// </summary>
+    /// <summary>
+    /// Destroy any orb currently sitting in the DeckInfoManager active preview slot.
+    /// Safe to call when no orb is present. Used both by the heartbeat else-branch
+    /// (between-turns clear) and externally by handlers that need to wipe stale state.
+    /// </summary>
+    public void ClearActiveOrbDisplay()
+    {
+        try
+        {
+            var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
+            if (dim == null)
+            {
+                return;
+            }
+
+            var currentOrbField = AccessTools.Field(typeof(DeckInfoManager), "_currentOrb");
+            var currentOrb = currentOrbField?.GetValue(dim) as GameObject;
+            if (currentOrb != null)
+            {
+                UnityEngine.Object.Destroy(currentOrb);
+                currentOrbField.SetValue(dim, null);
+            }
+
+            var nextOrbField = AccessTools.Field(typeof(DeckInfoManager), "_nextOrb");
+            nextOrbField?.SetValue(dim, null);
+
+            DeckInfoManager.populatingDisplayOrb = false;
+            DeckInfoManager.animating = false;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[DeckApplier] ClearActiveOrbDisplay failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// External entry point so handlers (e.g. OrbDiscardedClientHandler) can refresh
+    /// the active orb preview immediately, without waiting for the heartbeat.
+    /// </summary>
+    public void RefreshActiveOrbDisplay(string activeOrbName)
+    {
+        if (string.IsNullOrEmpty(activeOrbName))
+        {
+            ClearActiveOrbDisplay();
+            return;
+        }
+
+        var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
+        var dm = dms.Length > 0 ? dms[0] : null;
+        if (dm == null)
+        {
+            return;
+        }
+
+        EnsureDeckUIShowsActiveOrb(dm, activeOrbName);
+    }
+
     private void EnsureDeckUIShowsActiveOrb(DeckManager dm, string activeOrbName)
     {
         try
@@ -344,7 +419,9 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             }
 
             // Create a preview sprite using the same method as RebuildDeckInfoDisplay
-            var createMethod = AccessTools.Method(typeof(DeckInfoManager), "CreatePreviewSprite",
+            var createMethod = AccessTools.Method(
+                typeof(DeckInfoManager),
+                "CreatePreviewSprite",
                 new[] { typeof(GameObject), typeof(float) });
             if (createMethod == null)
             {

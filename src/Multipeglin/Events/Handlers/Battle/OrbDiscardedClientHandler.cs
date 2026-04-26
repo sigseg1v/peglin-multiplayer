@@ -21,7 +21,7 @@ public sealed class OrbDiscardedClientHandler : IClientHandler<OrbDiscardedEvent
                 {
                     // Pop the client's local shuffledDeck so the next HandleClientAiming
                     // picks up the correct new orb. The heartbeat will confirm/correct later.
-                    PopClientShuffledDeck();
+                    var newActiveOrbName = PopClientShuffledDeck();
 
                     // Increment the client's local discard counter so the UI ("0/1" → "1/1") updates
                     var bc = UnityEngine.Object.FindObjectOfType<global::Battle.BattleController>();
@@ -33,6 +33,19 @@ public sealed class OrbDiscardedClientHandler : IClientHandler<OrbDiscardedEvent
 
                     MultiplayerPlugin.Logger?.LogInfo("[OrbDiscarded] Client's discard processed — resetting aiming ball");
                     Multipeglin.Patches.MultiplayerClientPatches.ResetClientAimingBall();
+
+                    // Drive the active-orb preview slot immediately so the player sees the
+                    // new orb on the same frame as the discard, not after the next heartbeat
+                    // (~2s lag). The heartbeat will still reaffirm with the host's authoritative
+                    // CurrentOrb in case our newly-popped name was wrong.
+                    if (!string.IsNullOrEmpty(newActiveOrbName))
+                    {
+                        var services = MultiplayerPlugin.Services;
+                        if (services?.TryResolve<GameState.GameStateApplyService>(out var apply) == true)
+                        {
+                            apply.DeckApplier.RefreshActiveOrbDisplay(newActiveOrbName);
+                        }
+                    }
                 }
 
                 return;
@@ -46,14 +59,15 @@ public sealed class OrbDiscardedClientHandler : IClientHandler<OrbDiscardedEvent
         }
     }
 
-    private static void PopClientShuffledDeck()
+    /// <returns>Name of the orb that was popped (the new active orb), or null on failure.</returns>
+    private static string PopClientShuffledDeck()
     {
         try
         {
             var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
             if (dms == null || dms.Length == 0)
             {
-                return;
+                return null;
             }
 
             var dm = dms[0];
@@ -65,11 +79,14 @@ public sealed class OrbDiscardedClientHandler : IClientHandler<OrbDiscardedEvent
                 var popped = shuffled.Pop();
                 MultiplayerPlugin.Logger?.LogInfo(
                     $"[OrbDiscarded] Popped '{popped?.name}' from client shuffledDeck (remaining: {shuffled.Count})");
+                return popped?.name;
             }
         }
         catch (Exception ex)
         {
             MultiplayerPlugin.Logger?.LogWarning($"[OrbDiscarded] Failed to pop shuffledDeck: {ex.Message}");
         }
+
+        return null;
     }
 }
