@@ -1287,6 +1287,17 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
         }
 
+        // Parent group toggled off on host (e.g. Spirit of Radia's PegLayoutAlternator
+        // hides the inactive phase's pegboard). The client's vanilla
+        // PegLayoutAlternator does the same SetActive(false) independently, so the
+        // peg should already be hidden — leave it untouched. Don't destroy and
+        // don't re-activate the parent chain; the next snapshot after the host's
+        // phase swap will report activeInHierarchy=true and resume normal handling.
+        if (entry.IsParentHidden)
+        {
+            return;
+        }
+
         // Handle destroyed pegs
         if (entry.IsDestroyed)
         {

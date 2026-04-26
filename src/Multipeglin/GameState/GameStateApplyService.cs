@@ -1066,7 +1066,7 @@ public class GameStateApplyService
                 {
                     foreach (var p in pm.allPegs)
                     {
-                        if (p == null || !p.gameObject.activeSelf || p.pegType == Peg.PegType.DESTROYED)
+                        if (p == null || !p.gameObject.activeInHierarchy || p.pegType == Peg.PegType.DESTROYED)
                         {
                             continue;
                         }
@@ -1090,7 +1090,7 @@ public class GameStateApplyService
                 {
                     foreach (var b in cbombs)
                     {
-                        if (b == null || !b.gameObject.activeSelf || b.pegType == Peg.PegType.DESTROYED)
+                        if (b == null || !b.gameObject.activeInHierarchy || b.pegType == Peg.PegType.DESTROYED)
                         {
                             continue;
                         }
@@ -1107,11 +1107,12 @@ public class GameStateApplyService
                         }
                     }
                 }
-                // Host count: not destroyed AND not popped (same criteria as client)
+                // Host count: not destroyed (which also rules out parent-hidden) AND
+                // not popped — same criteria as client (activeInHierarchy && !IsDisabled).
                 var hostActivePegs = 0;
                 foreach (var p in snapshot.Pegboard.Pegs)
                 {
-                    if (!p.IsDestroyed && !p.IsCleared)
+                    if (!p.IsDestroyed && !p.IsCleared && !p.IsParentHidden)
                     {
                         hostActivePegs++;
                     }

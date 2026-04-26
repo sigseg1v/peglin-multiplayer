@@ -56,7 +56,13 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
 
                 var guid = _pegId.GetOrAssignGuid(peg);
                 var pt = (int)peg.pegType;
-                var destroyed = !peg.gameObject.activeSelf || (pt & 0x20) != 0;
+                // activeInHierarchy: catches pegs whose parent group is toggled off
+                // (Spirit of Radia's PegLayoutAlternator does this). Without this,
+                // such pegs read as alive on the host and the client's applier
+                // force-activates their parent chain — making the inactive phase's
+                // pegs appear on the client during the countdown.
+                var parentHidden = peg.gameObject.activeSelf && !peg.gameObject.activeInHierarchy;
+                var destroyed = !peg.gameObject.activeInHierarchy || (pt & 0x20) != 0;
                 // Use IsDisabled() to check if peg is actually popped (collider disabled).
                 // After Reset(), _cleared stays true but colliders are re-enabled —
                 // so peg.Cleared is NOT reliable for "is this peg functionally popped."
@@ -111,6 +117,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     PosY = peg.transform.position.y,
                     SlimeType = (int)peg.slimeType,
                     IsDestroyed = destroyed,
+                    IsParentHidden = parentHidden,
                     IsCleared = cleared,
                     IsLongPegHit = isLongPegHit,
                     WasPreviouslyCleared = wasPreviouslyCleared,
@@ -124,7 +131,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                 CaptureStructKey(peg, entry);
                 snapshot.Pegs.Add(entry);
 
-                if (peg.gameObject.activeSelf && !destroyed)
+                if (peg.gameObject.activeInHierarchy && !destroyed)
                 {
                     if (isBombInstance)
                     {
@@ -156,7 +163,8 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
 
                     var guid = _pegId.GetOrAssignGuid(bomb);
                     var pt = (int)bomb.pegType;
-                    var destroyed = !bomb.gameObject.activeSelf || (pt & 0x20) != 0;
+                    var parentHidden = bomb.gameObject.activeSelf && !bomb.gameObject.activeInHierarchy;
+                    var destroyed = !bomb.gameObject.activeInHierarchy || (pt & 0x20) != 0;
                     var cleared = false;
                     var wasPreviouslyCleared = false;
                     if (!destroyed)
@@ -189,6 +197,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                         PosY = bomb.transform.position.y,
                         SlimeType = (int)bomb.slimeType,
                         IsDestroyed = destroyed,
+                        IsParentHidden = parentHidden,
                         IsCleared = cleared,
                         WasPreviouslyCleared = wasPreviouslyCleared,
                         CoinCount = bomb.NumCoins(),
@@ -201,7 +210,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     CaptureStructKey(bomb, bombEntry);
                     snapshot.Pegs.Add(bombEntry);
 
-                    if (bomb.gameObject.activeSelf && !destroyed)
+                    if (bomb.gameObject.activeInHierarchy && !destroyed)
                     {
                         snapshot.BombPegCount++;
                     }
@@ -225,7 +234,8 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
 
                     var guid = _pegId.GetOrAssignGuid(bouncer);
                     var pt = (int)bouncer.pegType;
-                    var destroyed = !bouncer.gameObject.activeSelf || (pt & 0x20) != 0;
+                    var parentHidden = bouncer.gameObject.activeSelf && !bouncer.gameObject.activeInHierarchy;
+                    var destroyed = !bouncer.gameObject.activeInHierarchy || (pt & 0x20) != 0;
                     var cleared = false;
                     var wasPreviouslyCleared = false;
                     if (!destroyed)
@@ -258,6 +268,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                         PosY = bouncer.transform.position.y,
                         SlimeType = (int)bouncer.slimeType,
                         IsDestroyed = destroyed,
+                        IsParentHidden = parentHidden,
                         IsCleared = cleared,
                         WasPreviouslyCleared = wasPreviouslyCleared,
                         CoinCount = bouncer.NumCoins(),
@@ -269,7 +280,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     CaptureStructKey(bouncer, bouncerEntry);
                     snapshot.Pegs.Add(bouncerEntry);
 
-                    if (bouncer.gameObject.activeSelf && !destroyed)
+                    if (bouncer.gameObject.activeInHierarchy && !destroyed)
                     {
                         snapshot.BouncerPegCount++;
                     }

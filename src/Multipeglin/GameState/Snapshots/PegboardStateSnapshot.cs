@@ -38,6 +38,17 @@ public class PegEntry
 
     public bool IsDestroyed { get; set; }
 
+    /// <summary>
+    /// True when the peg's own activeSelf is true but a parent up the hierarchy
+    /// is inactive — i.e. the peg is hidden because the entire group is toggled
+    /// off (e.g. Spirit of Radia's pegboardA/B alternation). The client should
+    /// not destroy the peg AND must not force its parent chain active; both host
+    /// and client run PegLayoutAlternator independently, so the peg will become
+    /// visible naturally when the host activates the parent group and the next
+    /// snapshot reports activeInHierarchy=true.
+    /// </summary>
+    public bool IsParentHidden { get; set; }
+
     /// <summary>Number of gold coins on this peg (0 = no gold).</summary>
     public int CoinCount { get; set; }
 
