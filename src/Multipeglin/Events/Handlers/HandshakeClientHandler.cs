@@ -48,8 +48,8 @@ public sealed class HandshakeClientHandler : IClientHandler<HandshakeEvent>
                 var slot = registry.GetSlotByPeerId(senderPeerId);
                 if (slot == null)
                 {
-                    registry.RegisterClient(senderPeerId, networkEvent.PlayerName ?? "Unknown", networkEvent.RuntimeGameVersion ?? "unknown", networkEvent.ModVersion ?? "unknown");
-                    log.LogInfo($"[Lobby] Registered client '{networkEvent.PlayerName}' as slot {registry.SlotCount - 1} (peerId={senderPeerId})");
+                    var newSlot = registry.RegisterClient(senderPeerId, networkEvent.PlayerName ?? "Unknown", networkEvent.RuntimeGameVersion ?? "unknown", networkEvent.ModVersion ?? "unknown");
+                    log.LogInfo($"[Lobby] Registered client '{networkEvent.PlayerName}' as slot {newSlot.SlotIndex} (peerId={senderPeerId})");
                 }
 
                 // Broadcast updated lobby state

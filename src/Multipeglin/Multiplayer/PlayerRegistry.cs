@@ -7,7 +7,6 @@ public class PlayerRegistry
 {
     private readonly Dictionary<int, PlayerSlot> _slotsByPeerId = new Dictionary<int, PlayerSlot>();
     private readonly List<PlayerSlot> _allSlots = new List<PlayerSlot>();
-    private int _nextSlotIndex;
 
     /// <summary>Register the host as slot 0.</summary>
     public PlayerSlot RegisterHost(string playerName, string gameVersion, string modVersion)
@@ -24,7 +23,6 @@ public class PlayerRegistry
             ModVersion = modVersion,
         };
         _allSlots.Add(slot);
-        _nextSlotIndex = 1;
         return slot;
     }
 
@@ -33,7 +31,7 @@ public class PlayerRegistry
     {
         var slot = new PlayerSlot
         {
-            SlotIndex = _nextSlotIndex++,
+            SlotIndex = AllocateFreeSlotIndex(),
             PeerId = peerId,
             PlayerName = playerName,
             IsHost = false,
@@ -45,6 +43,21 @@ public class PlayerRegistry
         _slotsByPeerId[peerId] = slot;
         _allSlots.Add(slot);
         return slot;
+    }
+
+    // Smallest non-host index not currently occupied. Reusing freed slots keeps the
+    // visible roster compact when a client disconnects + reconnects in the lobby —
+    // otherwise the per-slot UI offsets push later joiners off-screen.
+    private int AllocateFreeSlotIndex()
+    {
+        var occupied = new HashSet<int>(_allSlots.Select(s => s.SlotIndex));
+        for (var i = 1; ; i++)
+        {
+            if (!occupied.Contains(i))
+            {
+                return i;
+            }
+        }
     }
 
     public PlayerSlot GetSlotByPeerId(int peerId)
@@ -86,6 +99,5 @@ public class PlayerRegistry
     {
         _slotsByPeerId.Clear();
         _allSlots.Clear();
-        _nextSlotIndex = 0;
     }
 }
