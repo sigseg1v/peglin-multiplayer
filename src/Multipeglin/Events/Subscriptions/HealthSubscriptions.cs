@@ -12,7 +12,9 @@ public sealed class HealthSubscriptions
     private readonly ManualLogSource _log;
     private readonly CoopStateManager _coopStateManager;
 
-    public HealthSubscriptions(IGameEventRegistry registry, ManualLogSource log,
+    public HealthSubscriptions(
+        IGameEventRegistry registry,
+        ManualLogSource log,
         CoopStateManager coopStateManager = null)
     {
         _registry = registry;

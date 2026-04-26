@@ -303,8 +303,13 @@ public static class LobbyUI
         // Start button (host only) — gap below the cruciball row
         if (_startButton == null && isHost)
         {
-            _startButton = createButton(lobbyParent, "StartGameBtn", "Start Game",
-                new Color(0.2f, 0.55f, 0.25f, 1f), new Vector2(0, -280), new Vector2(400, 72));
+            _startButton = createButton(
+                lobbyParent,
+                "StartGameBtn",
+                "Start Game",
+                new Color(0.2f, 0.55f, 0.25f, 1f),
+                new Vector2(0, -280),
+                new Vector2(400, 72));
             _startButton.onClick.AddListener(OnStartClicked);
             _startButtonText = _startButton.GetComponentInChildren<TextMeshProUGUI>();
         }
@@ -339,8 +344,13 @@ public static class LobbyUI
         // Ready button (client only — same position as Start Game)
         if (_readyButton == null && !isHost)
         {
-            _readyButton = createButton(lobbyParent, "ReadyBtn", "Ready",
-                new Color(0.5f, 0.3f, 0.2f, 1f), new Vector2(0, -280), new Vector2(400, 72));
+            _readyButton = createButton(
+                lobbyParent,
+                "ReadyBtn",
+                "Ready",
+                new Color(0.5f, 0.3f, 0.2f, 1f),
+                new Vector2(0, -280),
+                new Vector2(400, 72));
             _readyButton.onClick.AddListener(OnReadyToggle);
             _readyButtonText = _readyButton.GetComponentInChildren<TextMeshProUGUI>();
         }
@@ -389,8 +399,13 @@ public static class LobbyUI
         // Column 2: Class selection (center) — [<] ClassName [>]
         var ri = rowIndex;
 
-        row.LeftArrow = createButton(rowObj.transform, $"Left_{rowIndex}", "<",
-            new Color(0.3f, 0.3f, 0.4f, 1f), new Vector2(-100, 0), new Vector2(44, 44));
+        row.LeftArrow = createButton(
+            rowObj.transform,
+            $"Left_{rowIndex}",
+            "<",
+            new Color(0.3f, 0.3f, 0.4f, 1f),
+            new Vector2(-100, 0),
+            new Vector2(44, 44));
         row.LeftArrow.onClick.AddListener(() => OnClassArrow(ri, -1));
         OffsetArrowLabel(row.LeftArrow);
 
@@ -403,8 +418,13 @@ public static class LobbyUI
         classRect.sizeDelta = new Vector2(140, 44);
         row.ClassText.alignment = TextAlignmentOptions.Center;
 
-        row.RightArrow = createButton(rowObj.transform, $"Right_{rowIndex}", ">",
-            new Color(0.3f, 0.3f, 0.4f, 1f), new Vector2(80, 0), new Vector2(44, 44));
+        row.RightArrow = createButton(
+            rowObj.transform,
+            $"Right_{rowIndex}",
+            ">",
+            new Color(0.3f, 0.3f, 0.4f, 1f),
+            new Vector2(80, 0),
+            new Vector2(44, 44));
         row.RightArrow.onClick.AddListener(() => OnClassArrow(ri, 1));
         OffsetArrowLabel(row.RightArrow);
 
@@ -456,8 +476,13 @@ public static class LobbyUI
         labelRect.sizeDelta = new Vector2(260, 44);
         label.alignment = TextAlignmentOptions.Right;
 
-        _cruciballLeftBtn = createButton(_cruciballRow.transform, "CruciballLeft", "<",
-            new Color(0.3f, 0.3f, 0.4f, 1f), new Vector2(50, 0), new Vector2(40, 40));
+        _cruciballLeftBtn = createButton(
+            _cruciballRow.transform,
+            "CruciballLeft",
+            "<",
+            new Color(0.3f, 0.3f, 0.4f, 1f),
+            new Vector2(50, 0),
+            new Vector2(40, 40));
         _cruciballLeftBtn.onClick.AddListener(() => OnCruciballArrow(-1));
         OffsetArrowLabel(_cruciballLeftBtn);
 
@@ -470,8 +495,13 @@ public static class LobbyUI
         valRect.sizeDelta = new Vector2(80, 44);
         _cruciballValueText.alignment = TextAlignmentOptions.Center;
 
-        _cruciballRightBtn = createButton(_cruciballRow.transform, "CruciballRight", ">",
-            new Color(0.3f, 0.3f, 0.4f, 1f), new Vector2(190, 0), new Vector2(40, 40));
+        _cruciballRightBtn = createButton(
+            _cruciballRow.transform,
+            "CruciballRight",
+            ">",
+            new Color(0.3f, 0.3f, 0.4f, 1f),
+            new Vector2(190, 0),
+            new Vector2(40, 40));
         _cruciballRightBtn.onClick.AddListener(() => OnCruciballArrow(1));
         OffsetArrowLabel(_cruciballRightBtn);
     }

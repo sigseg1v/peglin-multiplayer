@@ -236,8 +236,13 @@ public class ClientBallRenderer : MonoBehaviour
     /// Resolve the orb prefab by name and copy its sprite / material / sorting
     /// layer to the given renderer. Optionally mirror its trail settings.
     /// </summary>
-    private void ApplyOrbSprite(SpriteRenderer target, GameObject targetGO, string orbName,
-        float scaleFactor, bool wantTrail, TrailRenderer existingTrail = null)
+    private void ApplyOrbSprite(
+        SpriteRenderer target,
+        GameObject targetGO,
+        string orbName,
+        float scaleFactor,
+        bool wantTrail,
+        TrailRenderer existingTrail = null)
     {
         if (target == null)
         {

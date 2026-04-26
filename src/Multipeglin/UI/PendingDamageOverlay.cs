@@ -77,8 +77,12 @@ public sealed class PendingDamageOverlay : MonoBehaviour
     /// Update a player's pending damage entry. Called on each peg hit
     /// with the running damage total.
     /// </summary>
-    public static void SetPlayerDamage(int slotIndex, string playerName, long damage,
-        string targetEnemyGuid, bool isAoE)
+    public static void SetPlayerDamage(
+        int slotIndex,
+        string playerName,
+        long damage,
+        string targetEnemyGuid,
+        bool isAoE)
     {
         if (_instance == null)
         {
@@ -103,8 +107,12 @@ public sealed class PendingDamageOverlay : MonoBehaviour
     // Internal implementation
     // =====================================================================
 
-    private void SetPlayerDamageInternal(int slotIndex, string playerName, long damage,
-        string targetGuid, bool isAoE)
+    private void SetPlayerDamageInternal(
+        int slotIndex,
+        string playerName,
+        long damage,
+        string targetGuid,
+        bool isAoE)
     {
         _playerData[slotIndex] = new PlayerDamageInfo
         {

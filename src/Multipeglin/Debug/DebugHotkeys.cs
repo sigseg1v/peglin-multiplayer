@@ -65,10 +65,15 @@ public sealed class DebugHotkeys : MonoBehaviour
 
             try
             {
-                enemy.Damage(99999L, screenshake: false, audioScale: 0f, damageMod: 1f,
+                enemy.Damage(
+                    99999L,
+                    screenshake: false,
+                    audioScale: 0f,
+                    damageMod: 1f,
                     unblockable: true,
                     damageSource: global::Battle.Enemies.Enemy.EnemyDamageSource.Unspecified,
-                    sourceIsPlayer: true, dealMaxHPDamage: true);
+                    sourceIsPlayer: true,
+                    dealMaxHPDamage: true);
                 killed++;
             }
             catch (Exception ex)

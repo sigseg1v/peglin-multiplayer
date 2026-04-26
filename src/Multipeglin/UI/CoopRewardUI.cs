@@ -820,8 +820,14 @@ public class CoopRewardUI : MonoBehaviour
 
     // --- UI Factory Helpers ---
 
-    private Button CreateChoiceButton(Transform parent, string name, string title, string description,
-        Color bgColor, Vector2 position, Vector2 size)
+    private Button CreateChoiceButton(
+        Transform parent,
+        string name,
+        string title,
+        string description,
+        Color bgColor,
+        Vector2 position,
+        Vector2 size)
     {
         var obj = new GameObject(name);
         obj.transform.SetParent(parent, false);
@@ -834,7 +840,8 @@ public class CoopRewardUI : MonoBehaviour
         colors.highlightedColor = new Color(
             Mathf.Min(bgColor.r + 0.15f, 1f),
             Mathf.Min(bgColor.g + 0.15f, 1f),
-            Mathf.Min(bgColor.b + 0.15f, 1f), 1f);
+            Mathf.Min(bgColor.b + 0.15f, 1f),
+            1f);
         colors.pressedColor = new Color(bgColor.r * 0.7f, bgColor.g * 0.7f, bgColor.b * 0.7f, 1f);
         btn.colors = colors;
 

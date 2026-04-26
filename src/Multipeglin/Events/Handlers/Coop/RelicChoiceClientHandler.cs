@@ -123,7 +123,9 @@ public sealed class RelicChoiceClientHandler : IClientHandler<RelicChoiceEvent>
     /// Public entry point for applying relic stat effects from other classes
     /// (e.g., CoopStateManager.AssignTreasureRelicsToNonHostPlayers).
     /// </summary>
-    public static void ApplyRelicStatEffectsStatic(CoopPlayerState playerState, int relicEffect,
+    public static void ApplyRelicStatEffectsStatic(
+        CoopPlayerState playerState,
+        int relicEffect,
         BepInEx.Logging.ManualLogSource log = null)
     {
         ApplyRelicStatEffects(playerState, relicEffect);

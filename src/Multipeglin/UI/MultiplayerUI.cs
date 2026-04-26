@@ -317,8 +317,11 @@ public class MultiplayerUI : MonoBehaviour
         StretchFill(_overlayPanel.GetComponent<RectTransform>());
 
         // Centered content panel
-        var centerPanel = CreatePanel(_overlayPanel.transform, "CenterPanel",
-            new Color(0.12f, 0.12f, 0.12f, 1f), new Vector2(960, 880));
+        var centerPanel = CreatePanel(
+            _overlayPanel.transform,
+            "CenterPanel",
+            new Color(0.12f, 0.12f, 0.12f, 1f),
+            new Vector2(960, 880));
 
         // Title
         var title = CreateText(centerPanel.transform, "Title", "Multiplayer", 48);
@@ -348,16 +351,29 @@ public class MultiplayerUI : MonoBehaviour
 
         if (steamAvailable)
         {
-            _hostSteamButton = CreateButton(_mainPanel.transform, "HostSteamBtn", "Host (Steam)",
-                new Color(0.2f, 0.55f, 0.25f, 1f), new Vector2(0, 120), new Vector2(480, 88));
+            _hostSteamButton = CreateButton(
+                _mainPanel.transform,
+                "HostSteamBtn",
+                "Host (Steam)",
+                new Color(0.2f, 0.55f, 0.25f, 1f),
+                new Vector2(0, 120),
+                new Vector2(480, 88));
             _hostSteamButton.onClick.AddListener(OnHostSteamClicked);
 
-            _joinFriendButton = CreateButton(_mainPanel.transform, "JoinFriendBtn", "Join Friend",
-                new Color(0.2f, 0.35f, 0.6f, 1f), new Vector2(0, 16), new Vector2(480, 88));
+            _joinFriendButton = CreateButton(
+                _mainPanel.transform,
+                "JoinFriendBtn",
+                "Join Friend",
+                new Color(0.2f, 0.35f, 0.6f, 1f),
+                new Vector2(0, 16),
+                new Vector2(480, 88));
             _joinFriendButton.onClick.AddListener(OnJoinFriendClicked);
 
-            var steamStatus = CreateText(_mainPanel.transform, "SteamStatus",
-                $"Steam: {LocalPlayerName}", 22);
+            var steamStatus = CreateText(
+                _mainPanel.transform,
+                "SteamStatus",
+                $"Steam: {LocalPlayerName}",
+                22);
             steamStatus.color = new Color(0.7f, 0.85f, 0.7f, 1f);
             steamStatus.raycastTarget = false;
             var ssRect = steamStatus.rectTransform;
@@ -367,9 +383,13 @@ public class MultiplayerUI : MonoBehaviour
             ssRect.anchoredPosition = new Vector2(0, 196);
             ssRect.sizeDelta = new Vector2(480, 30);
 
-            _advancedToggleButton = CreateButton(_mainPanel.transform, "AdvancedToggle",
+            _advancedToggleButton = CreateButton(
+                _mainPanel.transform,
+                "AdvancedToggle",
                 "Advanced: Direct IP",
-                new Color(0.25f, 0.25f, 0.3f, 1f), new Vector2(0, -64), new Vector2(360, 48));
+                new Color(0.25f, 0.25f, 0.3f, 1f),
+                new Vector2(0, -64),
+                new Vector2(360, 48));
             _advancedToggleButton.onClick.AddListener(OnAdvancedToggleClicked);
 
             _advancedIpContainer = new GameObject("AdvancedIpContainer");
@@ -381,38 +401,71 @@ public class MultiplayerUI : MonoBehaviour
             advRect.anchoredPosition = Vector2.zero;
             advRect.sizeDelta = new Vector2(480, 160);
 
-            _hostButton = CreateButton(_advancedIpContainer.transform, "HostBtn", "Host (Direct IP)",
-                new Color(0.3f, 0.45f, 0.3f, 1f), new Vector2(0, -116), new Vector2(420, 64));
+            _hostButton = CreateButton(
+                _advancedIpContainer.transform,
+                "HostBtn",
+                "Host (Direct IP)",
+                new Color(0.3f, 0.45f, 0.3f, 1f),
+                new Vector2(0, -116),
+                new Vector2(420, 64));
             _hostButton.onClick.AddListener(OnHostClicked);
 
-            _joinButton = CreateButton(_advancedIpContainer.transform, "JoinBtn", "Join (Direct IP)",
-                new Color(0.3f, 0.35f, 0.5f, 1f), new Vector2(0, -184), new Vector2(420, 64));
+            _joinButton = CreateButton(
+                _advancedIpContainer.transform,
+                "JoinBtn",
+                "Join (Direct IP)",
+                new Color(0.3f, 0.35f, 0.5f, 1f),
+                new Vector2(0, -184),
+                new Vector2(420, 64));
             _joinButton.onClick.AddListener(OnJoinClicked);
 
             _advancedIpContainer.SetActive(false);
 
-            var backBtn = CreateButton(_mainPanel.transform, "BackBtn", "Close",
-                new Color(0.35f, 0.2f, 0.2f, 1f), new Vector2(0, -260), new Vector2(360, 56));
+            var backBtn = CreateButton(
+                _mainPanel.transform,
+                "BackBtn",
+                "Close",
+                new Color(0.35f, 0.2f, 0.2f, 1f),
+                new Vector2(0, -260),
+                new Vector2(360, 56));
             backBtn.onClick.AddListener(HideOverlay);
         }
         else
         {
-            _hostButton = CreateButton(_mainPanel.transform, "HostBtn", "Host Game",
-                new Color(0.2f, 0.55f, 0.25f, 1f), new Vector2(0, 40), new Vector2(480, 88));
+            _hostButton = CreateButton(
+                _mainPanel.transform,
+                "HostBtn",
+                "Host Game",
+                new Color(0.2f, 0.55f, 0.25f, 1f),
+                new Vector2(0, 40),
+                new Vector2(480, 88));
             _hostButton.onClick.AddListener(OnHostClicked);
 
-            _joinButton = CreateButton(_mainPanel.transform, "JoinBtn", "Join Game",
-                new Color(0.2f, 0.35f, 0.6f, 1f), new Vector2(0, -64), new Vector2(480, 88));
+            _joinButton = CreateButton(
+                _mainPanel.transform,
+                "JoinBtn",
+                "Join Game",
+                new Color(0.2f, 0.35f, 0.6f, 1f),
+                new Vector2(0, -64),
+                new Vector2(480, 88));
             _joinButton.onClick.AddListener(OnJoinClicked);
 
-            var backBtn = CreateButton(_mainPanel.transform, "BackBtn", "Close",
-                new Color(0.35f, 0.2f, 0.2f, 1f), new Vector2(0, -168), new Vector2(480, 88));
+            var backBtn = CreateButton(
+                _mainPanel.transform,
+                "BackBtn",
+                "Close",
+                new Color(0.35f, 0.2f, 0.2f, 1f),
+                new Vector2(0, -168),
+                new Vector2(480, 88));
             backBtn.onClick.AddListener(HideOverlay);
         }
 
         // Version text
-        var ver = CreateText(_mainPanel.transform, "VersionText",
-            $"Multipeglin v{MultiplayerPluginInfo.VERSION}", 40);
+        var ver = CreateText(
+            _mainPanel.transform,
+            "VersionText",
+            $"Multipeglin v{MultiplayerPluginInfo.VERSION}",
+            40);
         ver.color = Color.white;
         ver.raycastTarget = false;
         var verRect = ver.rectTransform;
@@ -470,13 +523,22 @@ public class MultiplayerUI : MonoBehaviour
         labelRect.sizeDelta = new Vector2(640, 48);
 
         // Input field with default value
-        _codeInput = CreateInputField(_joinPanel.transform, "CodeInput",
-            "IP:PORT", new Vector2(0, 32), new Vector2(560, 72));
+        _codeInput = CreateInputField(
+            _joinPanel.transform,
+            "CodeInput",
+            "IP:PORT",
+            new Vector2(0, 32),
+            new Vector2(560, 72));
         _codeInput.text = $"127.0.0.1:{NetworkConfig.DefaultPort}";
 
         // Connect button
-        var connectBtn = CreateButton(_joinPanel.transform, "ConnectBtn", "Connect",
-            new Color(0.2f, 0.35f, 0.6f, 1f), new Vector2(0, -104), new Vector2(480, 88));
+        var connectBtn = CreateButton(
+            _joinPanel.transform,
+            "ConnectBtn",
+            "Connect",
+            new Color(0.2f, 0.35f, 0.6f, 1f),
+            new Vector2(0, -104),
+            new Vector2(480, 88));
         connectBtn.onClick.AddListener(OnConnectClicked);
 
         // Status text
@@ -490,13 +552,21 @@ public class MultiplayerUI : MonoBehaviour
         statusRect.sizeDelta = new Vector2(640, 48);
 
         // Cancel button
-        var cancelBtn = CreateButton(_joinPanel.transform, "CancelBtn", "Back",
-            new Color(0.35f, 0.2f, 0.2f, 1f), new Vector2(0, -248), new Vector2(480, 88));
+        var cancelBtn = CreateButton(
+            _joinPanel.transform,
+            "CancelBtn",
+            "Back",
+            new Color(0.35f, 0.2f, 0.2f, 1f),
+            new Vector2(0, -248),
+            new Vector2(480, 88));
         cancelBtn.onClick.AddListener(OnCancelJoinClicked);
 
         // Version text
-        var ver = CreateText(_joinPanel.transform, "VersionText",
-            $"Multipeglin v{MultiplayerPluginInfo.VERSION}", 40);
+        var ver = CreateText(
+            _joinPanel.transform,
+            "VersionText",
+            $"Multipeglin v{MultiplayerPluginInfo.VERSION}",
+            40);
         ver.color = Color.white;
         ver.raycastTarget = false;
         var verRect = ver.rectTransform;
@@ -538,14 +608,24 @@ public class MultiplayerUI : MonoBehaviour
         linkRect.sizeDelta = new Vector2(780, 44);
 
         // Invite Friend button (only meaningful when hosting via Steam; toggled in UpdateLobbyPanel)
-        _inviteFriendButton = CreateButton(_lobbyPanel.transform, "InviteFriendBtn", "Invite Friend",
-            new Color(0.2f, 0.45f, 0.55f, 1f), new Vector2(0, -345), new Vector2(400, 56));
+        _inviteFriendButton = CreateButton(
+            _lobbyPanel.transform,
+            "InviteFriendBtn",
+            "Invite Friend",
+            new Color(0.2f, 0.45f, 0.55f, 1f),
+            new Vector2(0, -345),
+            new Vector2(400, 56));
         _inviteFriendButton.onClick.AddListener(OnInviteFriendClicked);
         _inviteFriendButton.gameObject.SetActive(false);
 
         // Disconnect button at the bottom
-        var disconnectBtn = CreateButton(_lobbyPanel.transform, "DisconnectBtn", "Disconnect",
-            new Color(0.5f, 0.2f, 0.2f, 1f), new Vector2(0, -395), new Vector2(400, 56));
+        var disconnectBtn = CreateButton(
+            _lobbyPanel.transform,
+            "DisconnectBtn",
+            "Disconnect",
+            new Color(0.5f, 0.2f, 0.2f, 1f),
+            new Vector2(0, -395),
+            new Vector2(400, 56));
         disconnectBtn.onClick.AddListener(OnDisconnectClicked);
 
         _lobbyPanel.SetActive(false);
@@ -652,12 +732,22 @@ public class MultiplayerUI : MonoBehaviour
         stRect.anchoredPosition = new Vector2(0, -195);
         stRect.sizeDelta = new Vector2(640, 36);
 
-        var refreshBtn = CreateButton(_friendListPanel.transform, "RefreshBtn", "Refresh",
-            new Color(0.25f, 0.4f, 0.55f, 1f), new Vector2(-160, -250), new Vector2(260, 56));
+        var refreshBtn = CreateButton(
+            _friendListPanel.transform,
+            "RefreshBtn",
+            "Refresh",
+            new Color(0.25f, 0.4f, 0.55f, 1f),
+            new Vector2(-160, -250),
+            new Vector2(260, 56));
         refreshBtn.onClick.AddListener(PopulateFriendList);
 
-        var backBtn = CreateButton(_friendListPanel.transform, "FriendsBackBtn", "Back",
-            new Color(0.35f, 0.2f, 0.2f, 1f), new Vector2(160, -250), new Vector2(260, 56));
+        var backBtn = CreateButton(
+            _friendListPanel.transform,
+            "FriendsBackBtn",
+            "Back",
+            new Color(0.35f, 0.2f, 0.2f, 1f),
+            new Vector2(160, -250),
+            new Vector2(260, 56));
         backBtn.onClick.AddListener(() =>
         {
             _friendListPanel.SetActive(false);
@@ -759,8 +849,13 @@ public class MultiplayerUI : MonoBehaviour
         nameRect.offsetMin = new Vector2(20, 0);
         nameRect.offsetMax = new Vector2(-180, 0);
 
-        var joinBtn = CreateButton(row.transform, "JoinBtn", "Join",
-            new Color(0.2f, 0.45f, 0.25f, 1f), Vector2.zero, new Vector2(140, 44));
+        var joinBtn = CreateButton(
+            row.transform,
+            "JoinBtn",
+            "Join",
+            new Color(0.2f, 0.45f, 0.25f, 1f),
+            Vector2.zero,
+            new Vector2(140, 44));
         var jbRect = joinBtn.GetComponent<RectTransform>();
         jbRect.anchorMin = new Vector2(1, 0.5f);
         jbRect.anchorMax = new Vector2(1, 0.5f);
@@ -916,8 +1011,13 @@ public class MultiplayerUI : MonoBehaviour
         feedRect.offsetMax = new Vector2(-20, -64);
 
         // Disconnect button at bottom
-        var disconnectBtn = CreateButton(_multiplayerPanel.transform, "MultiplayerDisconnect", "Disconnect",
-            new Color(0.5f, 0.2f, 0.2f, 1f), new Vector2(0, 0), new Vector2(300, 60));
+        var disconnectBtn = CreateButton(
+            _multiplayerPanel.transform,
+            "MultiplayerDisconnect",
+            "Disconnect",
+            new Color(0.5f, 0.2f, 0.2f, 1f),
+            new Vector2(0, 0),
+            new Vector2(300, 60));
         var dcRect = disconnectBtn.GetComponent<RectTransform>();
         dcRect.anchorMin = new Vector2(0.5f, 0);
         dcRect.anchorMax = new Vector2(0.5f, 0);
@@ -1473,8 +1573,11 @@ public class MultiplayerUI : MonoBehaviour
         bg.color = new Color(0, 0, 0, 0.9f);
         StretchFill(_errorPanel.GetComponent<RectTransform>());
 
-        var box = CreatePanel(_errorPanel.transform, "ErrorBox",
-            new Color(0.15f, 0.1f, 0.1f, 1f), new Vector2(700, 280));
+        var box = CreatePanel(
+            _errorPanel.transform,
+            "ErrorBox",
+            new Color(0.15f, 0.1f, 0.1f, 1f),
+            new Vector2(700, 280));
 
         var msgText = CreateText(box.transform, "ErrorMessage", message, 26);
         msgText.enableWordWrapping = true;
@@ -1485,8 +1588,13 @@ public class MultiplayerUI : MonoBehaviour
         msgRect.anchoredPosition = new Vector2(0, 30);
         msgRect.sizeDelta = new Vector2(620, 160);
 
-        var okBtn = CreateButton(box.transform, "OkBtn", "Ok",
-            new Color(0.3f, 0.3f, 0.5f, 1f), new Vector2(0, -100), new Vector2(200, 56));
+        var okBtn = CreateButton(
+            box.transform,
+            "OkBtn",
+            "Ok",
+            new Color(0.3f, 0.3f, 0.5f, 1f),
+            new Vector2(0, -100),
+            new Vector2(200, 56));
         okBtn.onClick.AddListener(() =>
         {
             Destroy(_errorPanel);
@@ -1507,8 +1615,11 @@ public class MultiplayerUI : MonoBehaviour
         bg.color = new Color(0, 0, 0, 0.9f);
         StretchFill(_errorPanel.GetComponent<RectTransform>());
 
-        var box = CreatePanel(_errorPanel.transform, "ConfirmBox",
-            new Color(0.1f, 0.15f, 0.2f, 1f), new Vector2(700, 280));
+        var box = CreatePanel(
+            _errorPanel.transform,
+            "ConfirmBox",
+            new Color(0.1f, 0.15f, 0.2f, 1f),
+            new Vector2(700, 280));
 
         var msgText = CreateText(box.transform, "ConfirmMessage", message, 26);
         msgText.enableWordWrapping = true;
@@ -1519,8 +1630,13 @@ public class MultiplayerUI : MonoBehaviour
         msgRect.anchoredPosition = new Vector2(0, 30);
         msgRect.sizeDelta = new Vector2(620, 160);
 
-        var acceptBtn = CreateButton(box.transform, "AcceptBtn", "Join",
-            new Color(0.2f, 0.5f, 0.3f, 1f), new Vector2(-110, -100), new Vector2(200, 56));
+        var acceptBtn = CreateButton(
+            box.transform,
+            "AcceptBtn",
+            "Join",
+            new Color(0.2f, 0.5f, 0.3f, 1f),
+            new Vector2(-110, -100),
+            new Vector2(200, 56));
         acceptBtn.onClick.AddListener(() =>
         {
             Destroy(_errorPanel);
@@ -1530,8 +1646,13 @@ public class MultiplayerUI : MonoBehaviour
             catch (Exception ex) { Log?.LogError($"ConfirmDialog onAccept threw: {ex}"); }
         });
 
-        var declineBtn = CreateButton(box.transform, "DeclineBtn", "Decline",
-            new Color(0.5f, 0.2f, 0.2f, 1f), new Vector2(110, -100), new Vector2(200, 56));
+        var declineBtn = CreateButton(
+            box.transform,
+            "DeclineBtn",
+            "Decline",
+            new Color(0.5f, 0.2f, 0.2f, 1f),
+            new Vector2(110, -100),
+            new Vector2(200, 56));
         declineBtn.onClick.AddListener(() =>
         {
             Destroy(_errorPanel);
@@ -1593,8 +1714,13 @@ public class MultiplayerUI : MonoBehaviour
         return tmp;
     }
 
-    private static Button CreateButton(Transform parent, string name, string label,
-        Color bgColor, Vector2 position, Vector2 size)
+    private static Button CreateButton(
+        Transform parent,
+        string name,
+        string label,
+        Color bgColor,
+        Vector2 position,
+        Vector2 size)
     {
         var obj = new GameObject(name);
         obj.transform.SetParent(parent, false);
@@ -1607,7 +1733,8 @@ public class MultiplayerUI : MonoBehaviour
         colors.highlightedColor = new Color(
             Mathf.Min(bgColor.r + 0.15f, 1f),
             Mathf.Min(bgColor.g + 0.15f, 1f),
-            Mathf.Min(bgColor.b + 0.15f, 1f), 1f);
+            Mathf.Min(bgColor.b + 0.15f, 1f),
+            1f);
         colors.pressedColor = new Color(bgColor.r * 0.7f, bgColor.g * 0.7f, bgColor.b * 0.7f, 1f);
         btn.colors = colors;
 
@@ -1624,8 +1751,12 @@ public class MultiplayerUI : MonoBehaviour
         return btn;
     }
 
-    private static TMP_InputField CreateInputField(Transform parent, string name,
-        string placeholder, Vector2 position, Vector2 size)
+    private static TMP_InputField CreateInputField(
+        Transform parent,
+        string name,
+        string placeholder,
+        Vector2 position,
+        Vector2 size)
     {
         var obj = new GameObject(name);
         obj.transform.SetParent(parent, false);
@@ -1699,8 +1830,12 @@ public class MultiplayerUI : MonoBehaviour
         return obj;
     }
 
-    private static Toggle CreateToggle(Transform parent, string name, string label,
-        Vector2 position, Vector2 size)
+    private static Toggle CreateToggle(
+        Transform parent,
+        string name,
+        string label,
+        Vector2 position,
+        Vector2 size)
     {
         var obj = new GameObject(name);
         obj.transform.SetParent(parent, false);

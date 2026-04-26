@@ -271,7 +271,7 @@ dotnet_diagnostic.SA1514.severity = warning  # Element documentation header shou
 dotnet_diagnostic.SA1516.severity = warning
 
 # Unused private members etc - reasonable defaults
-dotnet_diagnostic.SA1117.severity = none  # Parameters should be on same line or separate lines
+dotnet_diagnostic.SA1117.severity = error  # Parameters should be on same line or separate lines (no mixing)
 dotnet_diagnostic.SA1119.severity = warning
 dotnet_diagnostic.SA1120.severity = warning
 dotnet_diagnostic.SA1121.severity = warning

@@ -587,8 +587,14 @@ public class CoopPlayerVisuals : MonoBehaviour
     }
 
     /// <summary>Create a single text panel (background + text).</summary>
-    private GameObject CreateTextPanel(string goName, float width, float height,
-        string text, float fontSize, Color textColor, Color bgColor,
+    private GameObject CreateTextPanel(
+        string goName,
+        float width,
+        float height,
+        string text,
+        float fontSize,
+        Color textColor,
+        Color bgColor,
         out TextMeshProUGUI tmpText)
     {
         EnsureOverlayCanvas();
@@ -657,21 +663,32 @@ public class CoopPlayerVisuals : MonoBehaviour
 
             var namePanel = CreateTextPanel(
                 $"CoopName_Slot{summary.SlotIndex}",
-                187, twoLines ? 80 : 50,
-                formattedName, 45, nameColor, bgColor,
+                187,
+                twoLines ? 80 : 50,
+                formattedName,
+                45,
+                nameColor,
+                bgColor,
                 out var nameText);
 
             var hpPanel = CreateTextPanel(
                 $"CoopHP_Slot{summary.SlotIndex}",
-                160, 45,
+                160,
+                45,
                 $"{summary.CurrentHealth:F0}/{summary.MaxHealth:F0}",
-                38, hpColor, bgColor,
+                38,
+                hpColor,
+                bgColor,
                 out var hpText);
 
             var arrowPanel = CreateTextPanel(
                 $"CoopArrow_Slot{summary.SlotIndex}",
-                80, 100,
-                "\u25C0", 64, arrowColor, new Color(0, 0, 0, 0),
+                80,
+                100,
+                "\u25C0",
+                64,
+                arrowColor,
+                new Color(0, 0, 0, 0),
                 out var arrowText);
             try
             { arrowText.outlineWidth = 0.4f; }
@@ -965,7 +982,8 @@ public class CoopPlayerVisuals : MonoBehaviour
             var targetScale = (activeSlot == visual.SlotIndex) ? 1.15f : 1f;
             visual.SpriteClone.transform.localScale = Vector3.Lerp(
                 visual.SpriteClone.transform.localScale,
-                Vector3.one * targetScale, Time.deltaTime * 5f);
+                Vector3.one * targetScale,
+                Time.deltaTime * 5f);
 
             // Tint + sprite (retry sprite lookup each frame until the switcher is
             // findable, so a clone created before the Player became active still
@@ -1009,8 +1027,12 @@ public class CoopPlayerVisuals : MonoBehaviour
     private static readonly Color _arrowColorDim = new Color(1f, 0.9f, 0.3f, 0.5f);
     private static readonly Color _arrowColorBright = new Color(1f, 1f, 0.6f, 1f);
 
-    private void UpdatePlayerLabel(PlayerVisual visual, CoopPlayerSummary summary,
-        Vector3 charPos, int activeSlot, Camera cam)
+    private void UpdatePlayerLabel(
+        PlayerVisual visual,
+        CoopPlayerSummary summary,
+        Vector3 charPos,
+        int activeSlot,
+        Camera cam)
     {
         if (visual == null || cam == null)
         {
@@ -1062,8 +1084,11 @@ public class CoopPlayerVisuals : MonoBehaviour
         UpdateStatusIcons(visual, summary.StatusEffects, charPos, cam);
     }
 
-    private void UpdateStatusIcons(PlayerVisual visual, List<StatusEffectEntry> effects,
-        Vector3 charPos, Camera cam)
+    private void UpdateStatusIcons(
+        PlayerVisual visual,
+        List<StatusEffectEntry> effects,
+        Vector3 charPos,
+        Camera cam)
     {
         if (visual.StatusIconContainer == null)
         {
@@ -1133,7 +1158,9 @@ public class CoopPlayerVisuals : MonoBehaviour
             else
             {
                 // Create new icon
-                var entry = CreateStatusIcon(e.EffectType, e.Intensity,
+                var entry = CreateStatusIcon(
+                    e.EffectType,
+                    e.Intensity,
                     visual.StatusIconContainer.transform);
                 if (entry != null)
                 {

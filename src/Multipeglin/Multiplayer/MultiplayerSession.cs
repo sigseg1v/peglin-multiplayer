@@ -106,8 +106,11 @@ public static class MultiplayerSession
                     var loader = Loading.PeglinSceneLoader.Instance;
                     if (loader != null)
                     {
-                        loader.LoadScene(Loading.PeglinSceneLoader.Scene.MAIN_MENU,
-                            LoadSceneMode.Single, true, 0f);
+                        loader.LoadScene(
+                            Loading.PeglinSceneLoader.Scene.MAIN_MENU,
+                            LoadSceneMode.Single,
+                            true,
+                            0f);
                     }
                     else
                     {

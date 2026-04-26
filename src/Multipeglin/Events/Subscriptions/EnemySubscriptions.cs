@@ -16,7 +16,10 @@ public sealed class EnemySubscriptions
     private readonly ManualLogSource _log;
     private readonly CoopStateManager _coopStateManager;
 
-    public EnemySubscriptions(IGameEventRegistry registry, EnemyIdentifier enemyIdentifier, ManualLogSource log,
+    public EnemySubscriptions(
+        IGameEventRegistry registry,
+        EnemyIdentifier enemyIdentifier,
+        ManualLogSource log,
         CoopStateManager coopStateManager = null)
     {
         _registry = registry;

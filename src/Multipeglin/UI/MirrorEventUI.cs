@@ -91,25 +91,47 @@ public static class MirrorEventUI
         panelRect.offsetMax = Vector2.zero;
 
         // Title
-        CreateText(_choicePanel.transform, "Title", "Mirror Event", 36,
-            new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(0.5f, 1),
-            new Vector2(0, -15), new Vector2(400, 50));
+        CreateText(
+            _choicePanel.transform,
+            "Title",
+            "Mirror Event",
+            36,
+            new Vector2(0.5f, 1),
+            new Vector2(0.5f, 1),
+            new Vector2(0.5f, 1),
+            new Vector2(0, -15),
+            new Vector2(400, 50));
 
         // Subtitle
-        CreateText(_choicePanel.transform, "Subtitle", "Choose your fate:", 24,
-            new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(0.5f, 1),
-            new Vector2(0, -60), new Vector2(400, 36));
+        CreateText(
+            _choicePanel.transform,
+            "Subtitle",
+            "Choose your fate:",
+            24,
+            new Vector2(0.5f, 1),
+            new Vector2(0.5f, 1),
+            new Vector2(0.5f, 1),
+            new Vector2(0, -60),
+            new Vector2(400, 36));
 
         // Remove One button
-        CreateButton(_choicePanel.transform, "RemoveOneBtn", "Remove an Orb",
+        CreateButton(
+            _choicePanel.transform,
+            "RemoveOneBtn",
+            "Remove an Orb",
             new Color(0.3f, 0.5f, 0.7f, 1f),
-            new Vector2(0, -30), new Vector2(360, 70),
+            new Vector2(0, -30),
+            new Vector2(360, 70),
             OnRemoveOneClicked);
 
         // Remove All button
-        CreateButton(_choicePanel.transform, "RemoveAllBtn", "Remove All Orbs",
+        CreateButton(
+            _choicePanel.transform,
+            "RemoveAllBtn",
+            "Remove All Orbs",
             new Color(0.7f, 0.3f, 0.3f, 1f),
-            new Vector2(0, -115), new Vector2(360, 70),
+            new Vector2(0, -115),
+            new Vector2(360, 70),
             OnRemoveAllClicked);
     }
 
@@ -162,9 +184,16 @@ public static class MirrorEventUI
         panelRect.offsetMax = Vector2.zero;
 
         // Title
-        CreateText(_orbGridPanel.transform, "Title", "Choose an orb to remove:", 30,
-            new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(0.5f, 1),
-            new Vector2(0, -15), new Vector2(500, 44));
+        CreateText(
+            _orbGridPanel.transform,
+            "Title",
+            "Choose an orb to remove:",
+            30,
+            new Vector2(0.5f, 1),
+            new Vector2(0.5f, 1),
+            new Vector2(0.5f, 1),
+            new Vector2(0, -15),
+            new Vector2(500, 44));
 
         // Scroll view with grid of orbs
         var scrollObj = new GameObject("ScrollView");
@@ -287,8 +316,16 @@ public static class MirrorEventUI
         Hide();
     }
 
-    private static TextMeshProUGUI CreateText(Transform parent, string name, string text, float fontSize,
-        Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 pos, Vector2 size)
+    private static TextMeshProUGUI CreateText(
+        Transform parent,
+        string name,
+        string text,
+        float fontSize,
+        Vector2 anchorMin,
+        Vector2 anchorMax,
+        Vector2 pivot,
+        Vector2 pos,
+        Vector2 size)
     {
         var obj = new GameObject(name);
         obj.transform.SetParent(parent, false);
@@ -306,8 +343,14 @@ public static class MirrorEventUI
         return tmp;
     }
 
-    private static Button CreateButton(Transform parent, string name, string label,
-        Color bgColor, Vector2 pos, Vector2 size, UnityEngine.Events.UnityAction onClick)
+    private static Button CreateButton(
+        Transform parent,
+        string name,
+        string label,
+        Color bgColor,
+        Vector2 pos,
+        Vector2 size,
+        UnityEngine.Events.UnityAction onClick)
     {
         var obj = new GameObject(name);
         obj.transform.SetParent(parent, false);

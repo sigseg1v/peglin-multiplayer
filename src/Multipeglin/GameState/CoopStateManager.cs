@@ -658,7 +658,9 @@ public class CoopStateManager
 
             // Recreate display orbs from shuffledDeck, replicating the positioning
             // logic from PlungerPlungeComplete so orbs are vertically stacked correctly.
-            var createMethod = AccessTools.Method(typeof(DeckInfoManager), "CreatePreviewSprite",
+            var createMethod = AccessTools.Method(
+                typeof(DeckInfoManager),
+                "CreatePreviewSprite",
                 new[] { typeof(GameObject), typeof(float) });
             if (createMethod == null)
             { _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: CreatePreviewSprite method null");

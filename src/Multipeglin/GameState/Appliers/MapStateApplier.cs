@@ -1084,8 +1084,12 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
     /// Falls back to PREVIOUS node position if host position is unavailable.
     /// Also updates MapController._previousNode to the closest node.
     /// </summary>
-    private void MovePlayerToCurrentNode(MapController mc, MapNode[] clientNodes,
-        List<MapNodeEntry> hostNodes, float? hostPlayerX, float? hostPlayerY)
+    private void MovePlayerToCurrentNode(
+        MapController mc,
+        MapNode[] clientNodes,
+        List<MapNodeEntry> hostNodes,
+        float? hostPlayerX,
+        float? hostPlayerY)
     {
         try
         {

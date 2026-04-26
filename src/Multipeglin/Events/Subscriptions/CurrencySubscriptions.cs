@@ -12,7 +12,9 @@ public sealed class CurrencySubscriptions
     private readonly ManualLogSource _log;
     private readonly CoopStateManager _coopStateManager;
 
-    public CurrencySubscriptions(IGameEventRegistry registry, ManualLogSource log,
+    public CurrencySubscriptions(
+        IGameEventRegistry registry,
+        ManualLogSource log,
         CoopStateManager coopStateManager = null)
     {
         _registry = registry;
