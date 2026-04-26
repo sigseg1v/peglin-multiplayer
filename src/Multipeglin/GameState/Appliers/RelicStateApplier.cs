@@ -300,10 +300,7 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
                     }
                 }
             }
-            else
-            {
-                _log.LogInfo($"[Verify] RelicState OK: count={actualCount}");
-            }
+            // Silent on OK — only mismatch lines (above) are interesting.
         }
         catch (Exception ex)
         {

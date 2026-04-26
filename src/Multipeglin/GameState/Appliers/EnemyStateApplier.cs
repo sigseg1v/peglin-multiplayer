@@ -199,7 +199,6 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
     {
         try
         {
-            var allMatch = true;
             var checked_ = 0;
             const int MAX_CHECK = 3;
 
@@ -221,7 +220,6 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                 if (Math.Abs(actualHp - entry.CurrentHealth) > 0.1f)
                 {
                     _log.LogWarning($"[Verify] MISMATCH enemy '{entry.LocKey}' (guid={entry.Id}) health: actual={actualHp:F1} expected={entry.CurrentHealth:F1}");
-                    allMatch = false;
                 }
 
                 var maxField = AccessTools.Field(typeof(Enemy), "_maxHealth");
@@ -229,17 +227,7 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
                 if (entry.MaxHealth > 0 && Math.Abs(actualMax - entry.MaxHealth) > 0.1f)
                 {
                     _log.LogWarning($"[Verify] MISMATCH enemy '{entry.LocKey}' (guid={entry.Id}) maxHealth: actual={actualMax:F1} expected={entry.MaxHealth:F1}");
-                    allMatch = false;
                 }
-            }
-
-            if (allMatch && checked_ > 0)
-            {
-                _log.LogInfo($"[Verify] EnemyState OK: checked {checked_}/{snapshot.Enemies.Count} enemies");
-            }
-            else if (checked_ == 0)
-            {
-                _log.LogInfo("[Verify] EnemyState: no GUID-matched enemies to verify");
             }
         }
         catch (Exception ex)

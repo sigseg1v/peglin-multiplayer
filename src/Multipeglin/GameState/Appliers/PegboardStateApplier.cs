@@ -525,11 +525,26 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             // don't drift around the loop relative to the host's.
             SyncSplineGenerators(snapshot);
 
-            // Per-bomb dump previously logged 6 lines per heartbeat — now only logged
-            // when the client/host bomb count diverges (a real sync issue).
+            // Per-bomb dump previously logged 6 lines per heartbeat. Gate on
+            // the count of *active* client bombs vs host's reported count —
+            // _bombs retains stale inactive entries (intentional, see cleanup
+            // path below), so raw .Count never matches and the old check fired
+            // every heartbeat for the entire session.
             var hostBombCount = snapshot.BombPegCount;
-            var clientBombCount = clientBombs?.Count ?? 0;
-            if (clientBombCount != hostBombCount)
+            var activeClientBombCount = 0;
+            if (clientBombs != null)
+            {
+                for (var i = 0; i < clientBombs.Count; i++)
+                {
+                    var b = clientBombs[i];
+                    if (b != null && b.gameObject.activeInHierarchy)
+                    {
+                        activeClientBombCount++;
+                    }
+                }
+            }
+
+            if (activeClientBombCount != hostBombCount)
             {
                 LogActualPegState(clientPegs, clientBombs, clientBouncers);
                 if (clientBombs != null)

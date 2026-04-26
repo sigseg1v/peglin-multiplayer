@@ -217,8 +217,6 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
     {
         try
         {
-            var allMatch = true;
-
             // Verify health
             var ctrl = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
             if (ctrl != null)
@@ -234,13 +232,11 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
                 if (Math.Abs(actualHealth - snapshot.CurrentHealth) > 0.1f)
                 {
                     _log.LogWarning($"[Verify] MISMATCH health: actual={actualHealth:F1} expected={snapshot.CurrentHealth:F1}");
-                    allMatch = false;
                 }
 
                 if (Math.Abs(actualMax - snapshot.MaxHealth) > 0.1f)
                 {
                     _log.LogWarning($"[Verify] MISMATCH maxHealth: actual={actualMax:F1} expected={snapshot.MaxHealth:F1}");
-                    allMatch = false;
                 }
             }
 
@@ -252,13 +248,7 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
                 if (actualGold != snapshot.Gold)
                 {
                     _log.LogWarning($"[Verify] MISMATCH gold: actual={actualGold} expected={snapshot.Gold}");
-                    allMatch = false;
                 }
-            }
-
-            if (allMatch)
-            {
-                _log.LogInfo($"[Verify] PlayerState OK: health={snapshot.CurrentHealth:F0}/{snapshot.MaxHealth:F0} gold={snapshot.Gold}");
             }
         }
         catch (Exception ex)

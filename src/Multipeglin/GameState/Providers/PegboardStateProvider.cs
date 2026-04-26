@@ -12,6 +12,11 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
     private readonly ManualLogSource _log;
     private readonly PegIdentifier _pegId;
 
+    // Last per-heartbeat composition signature — used to suppress identical
+    // capture-summary log lines.
+    private (int total, int crit, int bomb, int reset, int bouncer, int registry,
+        int bombsListCount, int allPegsBombCount, int blackHoles, int splineGens) _lastCaptureSig;
+
     public PegboardStateProvider(ManualLogSource log, PegIdentifier pegId)
     {
         _log = log;
@@ -337,11 +342,21 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
             CaptureSplineGenerators(snapshot);
 
             var bombsListCount = bombs?.Count ?? -1;
-            _log.LogInfo($"[PegProvider] Captured {snapshot.TotalPegCount} pegs from PegManager " +
-                $"(crit={snapshot.CritPegCount}, bomb={snapshot.BombPegCount}, reset={snapshot.ResetPegCount}, " +
-                $"bouncer={snapshot.BouncerPegCount}, registry={_pegId.Count}, " +
-                $"_bombs={bombsListCount}, allPegsBombs={allPegsBombCount}, " +
-                $"blackHoles={snapshot.BlackHoles.Count}, splineGens={snapshot.SplineGenerators.Count})");
+            // Composition signature — log only when any count changes vs the
+            // previous capture, otherwise this fires every heartbeat with the
+            // exact same numbers (~7000 lines per session).
+            var sig = (snapshot.TotalPegCount, snapshot.CritPegCount, snapshot.BombPegCount,
+                snapshot.ResetPegCount, snapshot.BouncerPegCount, _pegId.Count, bombsListCount,
+                allPegsBombCount, snapshot.BlackHoles.Count, snapshot.SplineGenerators.Count);
+            if (!sig.Equals(_lastCaptureSig))
+            {
+                _lastCaptureSig = sig;
+                _log.LogInfo($"[PegProvider] Captured {snapshot.TotalPegCount} pegs from PegManager " +
+                    $"(crit={snapshot.CritPegCount}, bomb={snapshot.BombPegCount}, reset={snapshot.ResetPegCount}, " +
+                    $"bouncer={snapshot.BouncerPegCount}, registry={_pegId.Count}, " +
+                    $"_bombs={bombsListCount}, allPegsBombs={allPegsBombCount}, " +
+                    $"blackHoles={snapshot.BlackHoles.Count}, splineGens={snapshot.SplineGenerators.Count})");
+            }
 
             return snapshot;
         }

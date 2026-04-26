@@ -803,11 +803,7 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             }
             catch (Exception verifyEx) { _log.LogWarning($"[DeckApplier] VerifyDeckState failed: {verifyEx.Message}"); }
 
-            if (allMatch)
-            {
-                _log.LogInfo($"[Verify] DeckState OK: complete={actualComplete} battle={actualBattle} shuffled={actualShuffled}");
-            }
-            else
+            if (!allMatch)
             {
                 LogActualDeckState(dm);
             }

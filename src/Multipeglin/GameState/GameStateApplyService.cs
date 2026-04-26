@@ -56,6 +56,12 @@ public class GameStateApplyService
     // slot's value for a frame on scene transitions.
     private FullGameStateSnapshot _latestFullSnapshot;
 
+    // Last seen client/host scene at the moment of ApplyAll — used to suppress
+    // the per-heartbeat ApplyAll summary line when nothing about scene routing
+    // has changed since the last apply.
+    private string _lastApplyClientScene = string.Empty;
+    private string _lastApplyHostScene = string.Empty;
+
     public GameStateApplyService(ManualLogSource log, EnemyIdentifier enemyId, PegIdentifier pegId, OrbIdentifier orbId)
     {
         _log = log;
@@ -286,8 +292,18 @@ public class GameStateApplyService
         _hostSceneTimestamp = snapshot.TimestampMs;
         _latestFullSnapshot = snapshot;
 
-        _log.LogInfo($"[ApplyService] ApplyAll: clientScene='{clientScene}', hostScene='{hostScene}', " +
-            $"enemies={snapshot.Enemies?.Enemies?.Count ?? 0}, pegs={snapshot.Pegboard?.TotalPegCount ?? 0}");
+        // ApplyAll/Applied-full-state success lines used to fire every heartbeat
+        // (~2400 lines per session). Only log when scene routing changes (the
+        // interesting case) — silent on the steady-state same-scene apply.
+        var sceneChanged = !string.Equals(clientScene, _lastApplyClientScene, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(hostScene, _lastApplyHostScene, StringComparison.OrdinalIgnoreCase);
+        if (sceneChanged)
+        {
+            _log.LogInfo($"[ApplyService] ApplyAll: clientScene='{clientScene}', hostScene='{hostScene}', " +
+                $"enemies={snapshot.Enemies?.Enemies?.Count ?? 0}, pegs={snapshot.Pegboard?.TotalPegCount ?? 0}");
+            _lastApplyClientScene = clientScene;
+            _lastApplyHostScene = hostScene;
+        }
 
         try
         {
@@ -302,7 +318,6 @@ public class GameStateApplyService
                 }
 
                 ApplyNonMapState(snapshot);
-                _log.LogInfo("[ApplyService] Applied full state (same scene).");
                 return;
             }
 
@@ -1281,7 +1296,6 @@ public class GameStateApplyService
         try
         {
             action();
-            _log.LogInfo($"[ApplyService] {name} OK");
         }
         catch (Exception ex) { _log.LogError($"[ApplyService] {name} failed: {ex.Message}"); }
     }
