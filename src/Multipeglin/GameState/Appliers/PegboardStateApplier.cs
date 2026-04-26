@@ -658,6 +658,23 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             _pegId.Register(bomb, entry.Guid);
             if (clientBombs != null && !clientBombs.Contains(bomb))
                 clientBombs.Add(bomb);
+
+            // The bomb prefab carries its own Rigidbody2D, which keeps it pinned
+            // to its instantiate-time position regardless of parent transform
+            // movement. For LPM rows, that means the bomb falls behind the
+            // moving row and only catches up at the next heartbeat snap —
+            // visible teleporting. Attach a per-frame follower that re-derives
+            // the bomb's world position from the LPM parent each LateUpdate.
+            if (parentedUnderLpm)
+            {
+                var follower = go.GetComponent<LpmBombFollower>() ?? go.AddComponent<LpmBombFollower>();
+                follower.LpmParent = parent;
+                follower.LocalOffset = new Vector3(
+                    entry.PosX - entry.LpmParentPosX.Value,
+                    entry.PosY - entry.LpmParentPosY.Value,
+                    0f);
+            }
+
             _log.LogInfo($"[PegboardApplier] BOMB SYNTHESIZED: guid={entry.Guid} " +
                 $"pos=({entry.PosX:F1},{entry.PosY:F1}) from _bombPrefab " +
                 $"underLpm={parentedUnderLpm}");

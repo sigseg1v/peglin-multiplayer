@@ -32,6 +32,15 @@ public class CoopStateManager
     /// </summary>
     public static bool SuppressStatusEffectUI { get; set; }
 
+    /// <summary>
+    /// True while LoadGoldState is hot-swapping the CurrencyManager singleton
+    /// between players. The Add/RemoveGold calls trigger CurrencyManager.OnGoldAdded,
+    /// which CurrencySubscriptions distributes to all inactive players —
+    /// causing a phantom gold gain on every turn swap. Subscribers must check
+    /// this flag and skip distribution while it's set.
+    /// </summary>
+    public static bool IsLoadingPlayerGold { get; private set; }
+
     public CoopStateManager(ManualLogSource log, PlayerRegistry playerRegistry)
     {
         _log = log;
@@ -986,6 +995,7 @@ public class CoopStateManager
             var beforeGold = currMgr.GoldAmount;
             var diff = state.Gold - beforeGold;
             Patches.MultiplayerClientPatches.AllowCurrencySync = true;
+            IsLoadingPlayerGold = true;
             try
             {
                 if (diff > 0)
@@ -995,6 +1005,7 @@ public class CoopStateManager
             }
             finally
             {
+                IsLoadingPlayerGold = false;
                 Patches.MultiplayerClientPatches.AllowCurrencySync = false;
             }
             _log.LogInfo($"[CoopState] LoadGoldState slot {state.SlotIndex}: gold {beforeGold}->{state.Gold} (diff={diff})");

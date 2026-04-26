@@ -47,7 +47,10 @@ public sealed class CurrencySubscriptions
         // inactive players. The active player already receives it via the
         // CurrencyManager singleton. Gold spending (shops) goes through
         // OnGoldRemoved, which is NOT distributed — each player spends their own.
-        if (IsCoop && currencyChange > 0)
+        // Skip while LoadGoldState is hot-swapping the singleton between players;
+        // its AddGold call would otherwise re-distribute the loaded amount as
+        // phantom earnings every turn swap.
+        if (IsCoop && currencyChange > 0 && !CoopStateManager.IsLoadingPlayerGold)
             _coopStateManager.DistributeGoldToInactivePlayers(currencyChange);
 
         // In coop, each player has their own gold. The host's CurrencyManager
