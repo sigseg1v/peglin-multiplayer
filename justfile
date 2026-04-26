@@ -81,14 +81,15 @@ dev: setup _restore-appid
     Start-Sleep 1; \
     Get-Content '{{logfile}}' -Wait
 
-# Build, deploy, launch TWO windowed instances for multiplayer testing.
-# Both host and client write to multipeglin_shared.log with [HOST]/[CLIENT] tags.
+# Build, deploy, launch N windowed instances for multiplayer testing.
+# All instances write to multipeglin_shared.log with [HOST]/[CLIENT] tags.
 # Optional: pass level to force a starting act, e.g. just dev-multi 3 (Mines)
 #   Acts: 1=Forest, 2=Castle, 3=Mines, 4=Core
 #   With floor: just dev-multi 3-2
+# Optional: pass player count (default 2), e.g. just dev-multi 1 4 launches 4 instances on Forest
 # Optional: set PEGLIN_SEED env var for deterministic seeds, e.g.
 #   PEGLIN_SEED=12345 just dev-multi 2
-dev-multi level="": setup _restore-appid
+dev-multi level="" players="2": setup _restore-appid
     dotnet build '{{src}}/Multipeglin.sln' -c Debug --nologo -v quiet; \
     just copy-plugins Debug; \
     $logsDir = Split-Path '{{logfile}}'; \
@@ -97,25 +98,27 @@ dev-multi level="": setup _restore-appid
     [IO.File]::Create($sharedLog).Close(); \
     $windowArgs = @('-screen-fullscreen','0','-screen-width','1280','-screen-height','720'); \
     $compatBase = "$HOME/.steam/steam/steamapps/compatdata"; \
+    $playerCount = [int]'{{players}}'; \
+    if ($playerCount -lt 1) { $playerCount = 1 } \
     if ('{{level}}' -ne '') { \
         $env:PEGLIN_MULTI_DEBUG_FORCE_LEVEL = '{{level}}'; \
         Write-Host "==> Force level: {{level}}"; \
     } \
+    Write-Host "==> Launching $playerCount instance(s)"; \
     $env:SKIP_STEAM_INIT = '1'; \
     $steamAppId = Join-Path '{{game}}' 'steam_appid.txt'; \
     $steamAppIdBak = "$steamAppId.devmulti"; \
     if (Test-Path $steamAppId) { Move-Item $steamAppId $steamAppIdBak -Force } \
-    Write-Host '==> Launching PEGLIN1 (windowed)...'; \
-    $env:MULTIPEGLIN_INSTANCE = 'PEGLIN1'; \
-    $env:MULTIPEGLIN_PLAYER_NAME = 'PEGLIN1'; \
-    $env:STEAM_COMPAT_DATA_PATH = "$compatBase/1296610"; \
-    Start-Process pwsh -ArgumentList (@('-NoProfile','-File','{{root}}/launch.ps1') + $windowArgs); \
-    Start-Sleep 5; \
-    Write-Host '==> Launching PEGLIN2 (windowed)...'; \
-    $env:MULTIPEGLIN_INSTANCE = 'PEGLIN2'; \
-    $env:MULTIPEGLIN_PLAYER_NAME = 'PEGLIN2'; \
-    $env:STEAM_COMPAT_DATA_PATH = "$compatBase/1296611"; \
-    Start-Process pwsh -ArgumentList (@('-NoProfile','-File','{{root}}/launch.ps1') + $windowArgs); \
+    for ($i = 1; $i -le $playerCount; $i++) { \
+        $name = "PEGLIN$i"; \
+        $compatId = 1296609 + $i; \
+        Write-Host "==> Launching $name (windowed, compatdata=$compatId)..."; \
+        $env:MULTIPEGLIN_INSTANCE = $name; \
+        $env:MULTIPEGLIN_PLAYER_NAME = $name; \
+        $env:STEAM_COMPAT_DATA_PATH = "$compatBase/$compatId"; \
+        Start-Process pwsh -ArgumentList (@('-NoProfile','-File','{{root}}/launch.ps1') + $windowArgs); \
+        if ($i -lt $playerCount) { Start-Sleep 5 } \
+    } \
     if (Test-Path $steamAppIdBak) { Move-Item $steamAppIdBak $steamAppId -Force } \
     Remove-Item Env:\MULTIPEGLIN_INSTANCE,Env:\MULTIPEGLIN_PLAYER_NAME,Env:\STEAM_COMPAT_DATA_PATH,Env:\PEGLIN_MULTI_DEBUG_FORCE_LEVEL,Env:\SKIP_STEAM_INIT -ErrorAction SilentlyContinue; \
     Write-Host "==> Tailing shared log (Ctrl+C to stop)"; \
