@@ -185,8 +185,10 @@ public class CoopPlayerVisuals : MonoBehaviour
             if (scene != "Battle")
             {
                 if (_inBattle)
-                { CleanupVisuals();
-                    _inBattle = false; }
+                {
+                    CleanupVisuals();
+                    _inBattle = false;
+                }
 
                 return;
             }
@@ -388,8 +390,10 @@ public class CoopPlayerVisuals : MonoBehaviour
         foreach (var s in summaries)
         {
             if (s.SlotIndex == HostSlot)
-            { hostSummary = s;
-                break; }
+            {
+                hostSummary = s;
+                break;
+            }
         }
 
         // Remove stale clones. Slot 0 (host) never has a clone — it uses
@@ -401,8 +405,10 @@ public class CoopPlayerVisuals : MonoBehaviour
             foreach (var s in summaries)
             {
                 if (s.SlotIndex == v.SlotIndex)
-                { found = true;
-                    break; }
+                {
+                    found = true;
+                    break;
+                }
             }
 
             if (!found || v.SpriteClone == null || v.SlotIndex == HostSlot)
@@ -452,8 +458,10 @@ public class CoopPlayerVisuals : MonoBehaviour
             foreach (var v in _visuals)
             {
                 if (v.SlotIndex == summary.SlotIndex)
-                { exists = true;
-                    break; }
+                {
+                    exists = true;
+                    break;
+                }
             }
 
             if (exists)
@@ -516,8 +524,10 @@ public class CoopPlayerVisuals : MonoBehaviour
             foreach (var tmp in UnityEngine.Object.FindObjectsOfType<TextMeshProUGUI>())
             {
                 if (tmp.font != null)
-                { _gameFont = tmp.font;
-                    break; }
+                {
+                    _gameFont = tmp.font;
+                    break;
+                }
             }
         }
         catch { }
@@ -555,8 +565,10 @@ public class CoopPlayerVisuals : MonoBehaviour
 
                     var tmp = intensityField.GetValue(icon) as TextMeshProUGUI;
                     if (tmp?.font != null)
-                    { _numberFont = tmp.font;
-                        break; }
+                    {
+                        _numberFont = tmp.font;
+                        break;
+                    }
                 }
             }
         }
@@ -939,8 +951,10 @@ public class CoopPlayerVisuals : MonoBehaviour
             foreach (var s in summaries)
             {
                 if (s.SlotIndex == HostSlot)
-                { hostSummary = s;
-                    break; }
+                {
+                    hostSummary = s;
+                    break;
+                }
             }
 
             if (hostSummary != null)
@@ -961,8 +975,10 @@ public class CoopPlayerVisuals : MonoBehaviour
             foreach (var s in summaries)
             {
                 if (s.SlotIndex == visual.SlotIndex)
-                { summary = s;
-                    break; }
+                {
+                    summary = s;
+                    break;
+                }
             }
 
             if (summary == null)
@@ -1118,7 +1134,8 @@ public class CoopPlayerVisuals : MonoBehaviour
             if (!_activeTypesScratch.Contains(kvp.Key))
             {
                 try
-                { if (kvp.Value.Root != null)
+                {
+                    if (kvp.Value.Root != null)
                     {
                         Destroy(kvp.Value.Root);
                     }
@@ -1388,8 +1405,10 @@ public class CoopPlayerVisuals : MonoBehaviour
 
         var screenPos = cam.WorldToScreenPoint(worldPos);
         if (screenPos.z < 0)
-        { panel.SetActive(false);
-            return; }
+        {
+            panel.SetActive(false);
+            return;
+        }
 
         if (!panel.activeSelf)
         {
@@ -1434,7 +1453,8 @@ public class CoopPlayerVisuals : MonoBehaviour
     private void DestroyVisual(PlayerVisual v)
     {
         try
-        { if (v.SpriteClone != null)
+        {
+            if (v.SpriteClone != null)
             {
                 Destroy(v.SpriteClone);
             }
@@ -1447,7 +1467,8 @@ public class CoopPlayerVisuals : MonoBehaviour
     private void DestroyPanels(PlayerVisual v)
     {
         try
-        { if (v.NamePanel != null)
+        {
+            if (v.NamePanel != null)
             {
                 Destroy(v.NamePanel);
             }
@@ -1455,7 +1476,8 @@ public class CoopPlayerVisuals : MonoBehaviour
         catch { }
 
         try
-        { if (v.HpPanel != null)
+        {
+            if (v.HpPanel != null)
             {
                 Destroy(v.HpPanel);
             }
@@ -1463,7 +1485,8 @@ public class CoopPlayerVisuals : MonoBehaviour
         catch { }
 
         try
-        { if (v.ArrowPanel != null)
+        {
+            if (v.ArrowPanel != null)
             {
                 Destroy(v.ArrowPanel);
             }
@@ -1471,7 +1494,8 @@ public class CoopPlayerVisuals : MonoBehaviour
         catch { }
 
         try
-        { if (v.StatusIconContainer != null)
+        {
+            if (v.StatusIconContainer != null)
             {
                 Destroy(v.StatusIconContainer);
             }

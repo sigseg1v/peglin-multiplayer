@@ -60,19 +60,25 @@ public sealed class BattleEventSubscriptions
         PlayerHealthController.OnHealthDepleted -= OnDefeat;
     }
 
-    private void OnBattleStarted() { if (_multiplayerMode.IsHosting)
+    private void OnBattleStarted()
+    {
+        if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new BattleStartedEvent());
         }
     }
 
-    private void OnBattleEnded() { if (_multiplayerMode.IsHosting)
+    private void OnBattleEnded()
+    {
+        if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new BattleEndedEvent());
         }
     }
 
-    private void OnVictory() { if (_multiplayerMode.IsHosting)
+    private void OnVictory()
+    {
+        if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new VictoryEvent());
         }
@@ -103,7 +109,9 @@ public sealed class BattleEventSubscriptions
         });
     }
 
-    private void OnTurnComplete() { if (_multiplayerMode.IsHosting)
+    private void OnTurnComplete()
+    {
+        if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new TurnCompleteEvent());
         }
@@ -147,25 +155,33 @@ public sealed class BattleEventSubscriptions
         _registry.Dispatch(new ShotCompleteEvent());
     }
 
-    private void OnRoundIncremented(int roundCount) { if (_multiplayerMode.IsHosting)
+    private void OnRoundIncremented(int roundCount)
+    {
+        if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new RoundIncrementedEvent { RoundCount = roundCount });
         }
     }
 
-    private void OnReloadStarted() { if (_multiplayerMode.IsHosting)
+    private void OnReloadStarted()
+    {
+        if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new ReloadStartedEvent());
         }
     }
 
-    private void OnCritActivated() { if (_multiplayerMode.IsHosting)
+    private void OnCritActivated()
+    {
+        if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new CritActivatedEvent());
         }
     }
 
-    private void OnCritDeactivated() { if (_multiplayerMode.IsHosting)
+    private void OnCritDeactivated()
+    {
+        if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new CritDeactivatedEvent());
         }
@@ -199,31 +215,41 @@ public sealed class BattleEventSubscriptions
         _registry.Dispatch(new BombThrownEvent { RegularCount = regular, RiggedCount = rigged });
     }
 
-    private void OnBombDetonated() { if (_multiplayerMode.IsHosting)
+    private void OnBombDetonated()
+    {
+        if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new BombDetonatedEvent());
         }
     }
 
-    private void OnOrbDiscarded() { if (_multiplayerMode.IsHosting)
+    private void OnOrbDiscarded()
+    {
+        if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new OrbDiscardedEvent());
         }
     }
 
-    private void OnAwaitingShot() { if (_multiplayerMode.IsHosting)
+    private void OnAwaitingShot()
+    {
+        if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new AwaitingShotEvent());
         }
     }
 
-    private void OnShotTimeout() { if (_multiplayerMode.IsHosting)
+    private void OnShotTimeout()
+    {
+        if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new ShotTimeoutEvent());
         }
     }
 
-    private void OnDefeat() { if (_multiplayerMode.IsHosting)
+    private void OnDefeat()
+    {
+        if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new DefeatEvent());
         }

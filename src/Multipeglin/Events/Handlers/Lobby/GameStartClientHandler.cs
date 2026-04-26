@@ -82,14 +82,14 @@ public sealed class GameStartClientHandler : IClientHandler<GameStartEvent>
                 if (services?.TryResolve<PlayerRegistry>(out var registry) == true && myEntry != null)
                 {
                     var slot = registry.GetSlotByIndex(myEntry.SlotIndex) ?? new PlayerSlot
-                        {
-                            SlotIndex = myEntry.SlotIndex,
-                            PeerId = -1,
-                            PlayerName = myEntry.PlayerName,
-                            IsHost = false,
-                            ChosenClass = myEntry.ChosenClass,
-                            IsReady = true,
-                        };
+                    {
+                        SlotIndex = myEntry.SlotIndex,
+                        PeerId = -1,
+                        PlayerName = myEntry.PlayerName,
+                        IsHost = false,
+                        ChosenClass = myEntry.ChosenClass,
+                        IsReady = true,
+                    };
 
                     registry.LocalSlot = slot;
                     MultiplayerPlugin.Logger?.LogInfo($"[GameStart] Set LocalSlot: index={slot.SlotIndex}, name={slot.PlayerName}");

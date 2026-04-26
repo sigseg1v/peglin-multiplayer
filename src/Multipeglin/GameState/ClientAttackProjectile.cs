@@ -105,25 +105,33 @@ public class ClientAttackProjectile : MonoBehaviour
         PeglinBattleAnimationController.OnFirePoint -= OnFirePoint;
 
         if (string.IsNullOrEmpty(_targetEnemyGuid))
-        { IsAttacking = false;
-            return; }
+        {
+            IsAttacking = false;
+            return;
+        }
 
         var enemyId = MultiplayerPlugin.Services?.TryResolve<EnemyIdentifier>(out var eid) == true ? eid : null;
         var enemy = enemyId?.Find(_targetEnemyGuid);
         if (enemy == null)
-        { IsAttacking = false;
-            return; }
+        {
+            IsAttacking = false;
+            return;
+        }
 
         var bc = Object.FindObjectOfType<Battle.BattleController>();
         if (bc == null)
-        { IsAttacking = false;
-            return; }
+        {
+            IsAttacking = false;
+            return;
+        }
 
         var playerField = AccessTools.Field(typeof(Battle.BattleController), "_playerTransform");
         var playerTransform = playerField?.GetValue(bc) as Transform;
         if (playerTransform == null)
-        { IsAttacking = false;
-            return; }
+        {
+            IsAttacking = false;
+            return;
+        }
 
         StartCoroutine(LaunchProjectile(playerTransform.position, enemy));
     }
@@ -294,13 +302,17 @@ public class ClientAttackProjectile : MonoBehaviour
         {
             var orbGo = FindOrbPrefab(orbName);
             if (orbGo == null)
-            { _shotCache[key] = null;
-                return null; }
+            {
+                _shotCache[key] = null;
+                return null;
+            }
 
             var pa = orbGo.GetComponent<Battle.Attacks.ProjectileAttack>();
             if (pa == null)
-            { _shotCache[key] = null;
-                return null; }
+            {
+                _shotCache[key] = null;
+                return null;
+            }
 
             var primaryField = isCrit ? "_criticalShotPrefab" : "_shotPrefab";
             var shotGo = AccessTools.Field(typeof(Battle.Attacks.ProjectileAttack), primaryField)
@@ -312,13 +324,17 @@ public class ClientAttackProjectile : MonoBehaviour
             }
 
             if (shotGo == null)
-            { _shotCache[key] = null;
-                return null; }
+            {
+                _shotCache[key] = null;
+                return null;
+            }
 
             var sb = shotGo.GetComponent<Battle.Attacks.ShotBehavior>();
             if (sb == null)
-            { _shotCache[key] = null;
-                return null; }
+            {
+                _shotCache[key] = null;
+                return null;
+            }
 
             var minSize = (Vector3)(AccessTools.Field(typeof(Battle.Attacks.ShotBehavior), "_minSize")
                 ?.GetValue(sb) ?? DefaultMinSize);

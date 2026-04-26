@@ -377,8 +377,10 @@ public sealed class PendingDamageOverlay : MonoBehaviour
             foreach (var tmp in FindObjectsOfType<TextMeshProUGUI>())
             {
                 if (tmp.font != null)
-                { _gameFont = tmp.font;
-                    break; }
+                {
+                    _gameFont = tmp.font;
+                    break;
+                }
             }
         }
         catch { }

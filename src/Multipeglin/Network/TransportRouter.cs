@@ -147,13 +147,17 @@ public class TransportRouter : INetworkTransport, ISteamTransport
 
     public event Action<CSteamID> OnIncomingInvite
     {
-        add { if (_steam != null)
+        add
+        {
+            if (_steam != null)
             {
                 _steam.OnIncomingInvite += value;
             }
         }
 
-        remove { if (_steam != null)
+        remove
+        {
+            if (_steam != null)
             {
                 _steam.OnIncomingInvite -= value;
             }

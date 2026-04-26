@@ -1072,7 +1072,8 @@ public class GameStateApplyService
                         }
 
                         try
-                        { if (!p.IsDisabled())
+                        {
+                            if (!p.IsDisabled())
                             {
                                 clientPegs++;
                             }
@@ -1093,7 +1094,8 @@ public class GameStateApplyService
                         }
 
                         try
-                        { if (!b.IsDisabled())
+                        {
+                            if (!b.IsDisabled())
                             {
                                 clientPegs++;
                             }

@@ -109,8 +109,11 @@ public class LiteNetTransport : INetworkTransport, INetEventListener
         string key;
         try
         { key = request.Data.GetString(); }
-        catch { request.Reject();
-            return; }
+        catch
+        {
+            request.Reject();
+            return;
+        }
 
         if (key != NetworkConfig.ConnectionKey)
         {

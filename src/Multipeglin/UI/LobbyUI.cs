@@ -330,8 +330,10 @@ public static class LobbyUI
                     foreach (var p in players)
                     {
                         if (!p.IsHost && !p.IsReady)
-                        { allReady = false;
-                            break; }
+                        {
+                            allReady = false;
+                            break;
+                        }
                     }
 
                     var hasClients = players.Count > 1;

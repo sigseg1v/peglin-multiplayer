@@ -137,8 +137,10 @@ public class RemoteCursorRenderer : MonoBehaviour
             var targetScreen = cam.WorldToScreenPoint(new Vector3(v.TargetWorld.x, v.TargetWorld.y, 0f));
             // Behind the camera (z<0) → hide.
             if (targetScreen.z < 0f)
-            { v.Root.SetActive(false);
-                continue; }
+            {
+                v.Root.SetActive(false);
+                continue;
+            }
 
             if (!v.Root.activeSelf)
             {
@@ -240,8 +242,11 @@ public class RemoteCursorRenderer : MonoBehaviour
         };
     }
 
-    private static Color WithAlpha(Color c, float a) { c.a = a;
-        return c; }
+    private static Color WithAlpha(Color c, float a)
+    {
+        c.a = a;
+        return c;
+    }
 
     private static Color SlotColor(int slot)
     {
@@ -309,8 +314,10 @@ public class RemoteCursorRenderer : MonoBehaviour
                 }
 
                 if (hits == 0)
-                { tex.SetPixel(x, y, clear);
-                    continue; }
+                {
+                    tex.SetPixel(x, y, clear);
+                    continue;
+                }
 
                 var alpha = (byte)((hits * 255) / (ss * ss));
                 tex.SetPixel(x, y, new Color32(255, 255, 255, alpha));

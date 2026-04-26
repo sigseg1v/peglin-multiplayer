@@ -32,10 +32,13 @@ public class CoopRewardUI : MonoBehaviour
     private readonly List<GameObject> _buttons = new List<GameObject>();
 
     // Track what we're currently displaying
-    private enum DisplayState { Hidden,
+    private enum DisplayState
+    {
+        Hidden,
         RelicChoices,
         RewardChoices,
-        Waiting }
+        Waiting
+    }
 
     private DisplayState _currentState = DisplayState.Hidden;
     private int _displayedRelicCount;

@@ -405,8 +405,10 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                         for (var i = 0; i < prev.Count; i++)
                         {
                             if (prev[i] != snapshot.SeededShopRelicEffects[i])
-                            { changed = true;
-                                break; }
+                            {
+                                changed = true;
+                                break;
+                            }
                         }
                     }
 
@@ -772,8 +774,10 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
 
                         var d = Vector3.SqrMagnitude(node.transform.position - target);
                         if (d < closestDist)
-                        { closestDist = d;
-                            closest = node; }
+                        {
+                            closestDist = d;
+                            closest = node;
+                        }
                     }
 
                     if (closest != null)
@@ -1147,8 +1151,10 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
 
                 var d = Vector3.SqrMagnitude(node.transform.position - targetPos);
                 if (d < closestDist)
-                { closestDist = d;
-                    closest = node; }
+                {
+                    closestDist = d;
+                    closest = node;
+                }
             }
 
             if (closest != null)

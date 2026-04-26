@@ -62,9 +62,11 @@ public sealed class RelicChoiceClientHandler : IClientHandler<RelicChoiceEvent>
                     foreach (var r in allRelics)
                     {
                         if ((int)r.effect == networkEvent.ChosenRelicEffect)
-                        { locKey = r.locKey;
+                        {
+                            locKey = r.locKey;
                             rarity = (int)r.globalRarity;
-                            break; }
+                            break;
+                        }
                     }
 
                     playerState.OwnedRelics.Add(new SerializedRelic
@@ -144,8 +146,10 @@ public sealed class RelicChoiceClientHandler : IClientHandler<RelicChoiceEvent>
         foreach (var r in playerState.OwnedRelics)
         {
             if (r.Effect == 106) // INCREASE_MAX_HP_GAIN
-            { hasHpGainBoost = true;
-                break; }
+            {
+                hasHpGainBoost = true;
+                break;
+            }
         }
 
         var hpBonus = 0f;

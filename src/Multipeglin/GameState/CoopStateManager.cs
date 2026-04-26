@@ -182,8 +182,10 @@ public class CoopStateManager
 
             var relicMgr = Resources.FindObjectsOfTypeAll<Relics.RelicManager>()?.FirstOrDefault();
             if (relicMgr == null)
-            { _log.LogWarning("[CoopState] TreasureRelics: RelicManager null");
-                return; }
+            {
+                _log.LogWarning("[CoopState] TreasureRelics: RelicManager null");
+                return;
+            }
 
             // Set up CoopRewardState so RelicChoiceClientHandler knows this is treasure
             Events.Handlers.Coop.CoopRewardState.HostRelicSelectionActive = true;
@@ -325,8 +327,10 @@ public class CoopStateManager
                 foreach (var orb in DeckManager.completeDeck)
                 {
                     if (orb != null)
-                    { anyValid = true;
-                        break; }
+                    {
+                        anyValid = true;
+                        break;
+                    }
                 }
 
                 if (!anyValid && state.CompleteDeck.Count > 0)
@@ -602,20 +606,26 @@ public class CoopStateManager
             }
 
             if (deckMgr == null)
-            { _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: DeckManager null");
-                return; }
+            {
+                _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: DeckManager null");
+                return;
+            }
 
             var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
             if (dim == null)
-            { _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: DeckInfoManager null");
-                return; }
+            {
+                _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: DeckInfoManager null");
+                return;
+            }
 
             // Clear existing display orbs
             var displayOrbsField = AccessTools.Field(typeof(DeckInfoManager), "_displayOrbs");
             var displayOrbs = displayOrbsField?.GetValue(dim) as System.Collections.Generic.Stack<GameObject>;
             if (displayOrbs == null)
-            { _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: _displayOrbs null");
-                return; }
+            {
+                _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: _displayOrbs null");
+                return;
+            }
 
             // If shuffledDeck is empty (end-of-round, all orbs drawn), bail out without
             // clearing displayOrbs. The native ChooseShuffleOrDrawAtEndOfTurn flow is
@@ -663,13 +673,17 @@ public class CoopStateManager
                 "CreatePreviewSprite",
                 new[] { typeof(GameObject), typeof(float) });
             if (createMethod == null)
-            { _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: CreatePreviewSprite method null");
-                return; }
+            {
+                _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: CreatePreviewSprite method null");
+                return;
+            }
 
             var plungerParent = AccessTools.Field(typeof(DeckInfoManager), "_plungerParent")?.GetValue(dim) as Transform;
             if (plungerParent == null)
-            { _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: _plungerParent null");
-                return; }
+            {
+                _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: _plungerParent null");
+                return;
+            }
 
             var plungerGraphic = AccessTools.Field(typeof(DeckInfoManager), "_plungerGraphic")?.GetValue(dim) as Transform;
             var startPosField = AccessTools.Field(typeof(DeckInfoManager), "_startingPlungerGraphicPosition");
@@ -754,8 +768,10 @@ public class CoopStateManager
             foreach (var go in shuffled)
             {
                 if (go == null)
-                { sb.Append("<n>|");
-                    continue; }
+                {
+                    sb.Append("<n>|");
+                    continue;
+                }
 
                 sb.Append(go.GetInstanceID()).Append(':').Append(go.name).Append('|');
             }

@@ -48,7 +48,9 @@ public class ClientBallRenderer : MonoBehaviour
 
     private void Awake() { Instance = this; }
 
-    private void OnDestroy() { if (Instance == this)
+    private void OnDestroy()
+    {
+        if (Instance == this)
         {
             Instance = null;
         }

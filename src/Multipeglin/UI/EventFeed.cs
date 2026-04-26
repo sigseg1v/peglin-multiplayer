@@ -46,7 +46,9 @@ public static class EventFeed
     public static void Clear()
     {
         lock (_entries)
-        { _entries.Clear();
-            _version++; }
+        {
+            _entries.Clear();
+            _version++;
+        }
     }
 }

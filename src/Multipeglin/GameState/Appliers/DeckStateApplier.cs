@@ -583,13 +583,17 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             for (var i = 0; i < hostDeck.Count; i++)
             {
                 if (i >= completeDeck.Count || completeDeck[i] == null)
-                { match = false;
-                    break; }
+                {
+                    match = false;
+                    break;
+                }
 
                 var name = completeDeck[i].GetComponent<Attack>()?.locNameString ?? completeDeck[i].name;
                 if (name != hostDeck[i].LocName && completeDeck[i].name != hostDeck[i].Name)
-                { match = false;
-                    break; }
+                {
+                    match = false;
+                    break;
+                }
             }
 
             if (match)
@@ -666,8 +670,10 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
 
                 var clientGuid = _orbId.GetGuid(dm.battleDeck[i]);
                 if (clientGuid != hostGuid)
-                { guidsMatch = false;
-                    break; }
+                {
+                    guidsMatch = false;
+                    break;
+                }
             }
 
             if (guidsMatch)
