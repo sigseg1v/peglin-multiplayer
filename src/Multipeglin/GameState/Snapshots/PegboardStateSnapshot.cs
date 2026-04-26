@@ -143,11 +143,20 @@ public class SplineGeneratorEntry
     /// <summary>Slash-joined ancestry chain of the generator GameObject; stable across host/client because it comes from the prefab hierarchy.</summary>
     public string HierarchyPath { get; set; }
 
-    /// <summary>Distance along the spline of sibling#0 (all pegs share a single phase offset, evenly spaced behind it).</summary>
+    /// <summary>Distance along the spline of sibling#0 (kept for back-compat / log readability).</summary>
     public float Phase { get; set; }
 
     /// <summary>Number of pegs the generator instantiated — sanity check the match.</summary>
     public int NumPegs { get; set; }
+
+    /// <summary>
+    /// Full per-peg spline-distance list. The applier writes these directly into
+    /// <c>PegSplineFollow._pegSplineDistances</c> so the client's per-peg distance
+    /// EXACTLY matches the host's, eliminating drift / spacing-mismatch edge cases
+    /// that "shift by Phase" couldn't fix (e.g. when a peg's distance got out of
+    /// step with its siblings or two generators briefly overlapped). Sized NumPegs.
+    /// </summary>
+    public List<float> Distances { get; set; } = new List<float>();
 
     /// <summary>World position of the generator GameObject's parent. PegSplineFollow positions
     /// each peg at <c>splinePoint + transform.parent.position</c>, so if the parent (often the

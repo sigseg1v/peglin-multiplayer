@@ -535,6 +535,15 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     Phase = distances[0],
                     NumPegs = distances.Count,
                 };
+                // Snapshot the full per-peg distance list so the client can write
+                // distances element-by-element (no "shift by phase" heuristic).
+                // Cheap on the wire — typical generator has 10-30 pegs.
+                entry.Distances.Capacity = distances.Count;
+                for (var d = 0; d < distances.Count; d++)
+                {
+                    entry.Distances.Add(distances[d]);
+                }
+
                 if (parent != null)
                 {
                     var pp = parent.position;

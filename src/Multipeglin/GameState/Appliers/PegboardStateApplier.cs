@@ -2237,6 +2237,14 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     private static readonly Dictionary<string, Battle.PegBehaviour.PegSplineFollow> _splineGeneratorCache =
         new Dictionary<string, Battle.PegBehaviour.PegSplineFollow>(System.StringComparer.Ordinal);
 
+    // De-dupe the spline-miss / count-mismatch warnings — log each path once per
+    // session so heartbeat spam stays readable while regressions remain visible.
+    private static readonly HashSet<string> _loggedSplineMissPaths =
+        new HashSet<string>(System.StringComparer.Ordinal);
+
+    private static readonly HashSet<string> _loggedSplineMismatchPaths =
+        new HashSet<string>(System.StringComparer.Ordinal);
+
     /// <summary>
     /// For each <see cref="Battle.PegBehaviour.PegSplineFollow"/> generator the host reports,
     /// rewrite the client's <c>_pegSplineDistances</c> list so all pegs sit at host phase plus
@@ -2291,41 +2299,76 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 }
             }
 
+            var synced = 0;
+            var skippedNoEntry = 0;
+            var skippedNoCache = 0;
+            var skippedNoDistances = 0;
+            var countMismatches = 0;
             for (var i = 0; i < entries.Count; i++)
             {
                 var entry = entries[i];
                 if (entry == null || string.IsNullOrEmpty(entry.HierarchyPath))
                 {
+                    skippedNoEntry++;
                     continue;
                 }
 
                 if (!_splineGeneratorCache.TryGetValue(entry.HierarchyPath, out var gen) || gen == null)
                 {
+                    skippedNoCache++;
+                    if (_loggedSplineMissPaths.Add(entry.HierarchyPath))
+                    {
+                        _log.LogWarning($"[PegboardApplier] Spline generator MISS path={entry.HierarchyPath}");
+                    }
+
                     continue;
                 }
 
                 var distances = _splineDistancesField.GetValue(gen) as List<float>;
                 if (distances == null || distances.Count == 0)
                 {
+                    skippedNoDistances++;
                     continue;
                 }
 
                 if (distances.Count != entry.NumPegs)
                 {
+                    countMismatches++;
+                    if (_loggedSplineMismatchPaths.Add(entry.HierarchyPath))
+                    {
+                        _log.LogWarning($"[PegboardApplier] Spline NumPegs mismatch path={entry.HierarchyPath} client={distances.Count} host={entry.NumPegs}");
+                    }
+
                     continue;
                 }
 
-                // Preserve the existing relative spacing between pegs (which the
-                // generator set up at Init time) — only shift the whole sequence
-                // so distances[0] matches the host's reported phase.
-                var shift = entry.Phase - distances[0];
-                if (System.Math.Abs(shift) >= 0.001f)
+                // Write each per-peg distance directly. Host sends the authoritative
+                // list every heartbeat; client overwrites in place. Avoids the older
+                // "shift by phase" heuristic which assumed identical spacing on both
+                // sides — fragile when pegs were destroyed/re-added or generators
+                // briefly desynced. Direct write is exact and order-preserving.
+                if (entry.Distances != null && entry.Distances.Count == distances.Count)
                 {
                     for (var j = 0; j < distances.Count; j++)
                     {
-                        distances[j] += shift;
+                        distances[j] = entry.Distances[j];
                     }
                 }
+                else
+                {
+                    // Back-compat fallback to the old shift-by-phase path if Distances
+                    // wasn't populated for any reason.
+                    var shift = entry.Phase - distances[0];
+                    if (System.Math.Abs(shift) >= 0.001f)
+                    {
+                        for (var j = 0; j < distances.Count; j++)
+                        {
+                            distances[j] += shift;
+                        }
+                    }
+                }
+
+                synced++;
 
                 // PegSplineFollow.FixedUpdate offsets every peg by the generator's
                 // parent.position. If that parent (often the moving boss / a child
@@ -2344,6 +2387,13 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         parent.position = new Vector3(entry.ParentPosX, entry.ParentPosY, cur.z);
                     }
                 }
+            }
+
+            // One-line summary per heartbeat — terse but enough to spot regressions.
+            if (entries.Count > 0)
+            {
+                _log.LogInfo($"[PegboardApplier] SplineSync synced={synced}/{entries.Count} " +
+                    $"(noCache={skippedNoCache}, noDistances={skippedNoDistances}, countMismatch={countMismatches})");
             }
         }
         catch (Exception ex)
