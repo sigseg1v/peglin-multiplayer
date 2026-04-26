@@ -1099,6 +1099,83 @@ internal static class BattleControllerPatches
         return true;
     }
 
+    // =========================================================================
+    // COOP ROUND COUNT — only increment _roundCount once per full round
+    // =========================================================================
+
+    /// <summary>
+    /// Snapshot used by the round-count fix to suppress per-turn increments.
+    /// </summary>
+    public struct RoundCountSnapshot
+    {
+        public bool Suppressed;
+        public int SavedRoundCount;
+        public BattleController.RoundCountIncremented SavedDelegate;
+    }
+
+    /// <summary>
+    /// In coop the BattleController re-enters AWAITING_SHOT for every player's
+    /// turn, which makes _roundCount++ fire per player turn instead of per
+    /// actual round. That breaks Spirit of Radia (countdown counts down N× per
+    /// round, even reaching -1 with 4 players, and phase 2 transitions early)
+    /// and any other consumer that treats RoundCount as battle rounds.
+    ///
+    /// When we're past the first player of the round, snapshot _roundCount and
+    /// OnRoundCountIncremented before Update runs and null out the delegate so
+    /// the in-block invocation is a no-op. The postfix restores both. Only the
+    /// transition into the FIRST player's turn (CurrentTurnIndex==0) actually
+    /// increments and fires the callback — exactly once per real round.
+    /// </summary>
+    [HarmonyPatch(typeof(BattleController), "Update")]
+    [HarmonyPrefix]
+    public static void BattleController_Update_RoundCount_Prefix(out RoundCountSnapshot __state)
+    {
+        __state = default;
+        if (!IsHosting || !UI.LobbyUI.GameStartReceived)
+        {
+            return;
+        }
+
+        var services = MultiplayerPlugin.Services;
+        if (services?.TryResolve<GameState.CoopStateManager>(out var coop) != true
+            || coop.TotalPlayerCount < 2)
+        {
+            return;
+        }
+
+        if (services?.TryResolve<GameState.TurnManager>(out var tm) != true)
+        {
+            return;
+        }
+
+        if (tm.CurrentTurnIndex <= 0)
+        {
+            return;
+        }
+
+        __state.Suppressed = true;
+        __state.SavedRoundCount = BattleController.RoundCount;
+        __state.SavedDelegate = BattleController.OnRoundCountIncremented;
+        BattleController.OnRoundCountIncremented = null;
+    }
+
+    [HarmonyPatch(typeof(BattleController), "Update")]
+    [HarmonyPostfix]
+    public static void BattleController_Update_RoundCount_Postfix(RoundCountSnapshot __state)
+    {
+        if (!__state.Suppressed)
+        {
+            return;
+        }
+
+        BattleController.OnRoundCountIncremented = __state.SavedDelegate;
+        if (BattleController.RoundCount != __state.SavedRoundCount)
+        {
+            var f = AccessTools.Field(typeof(BattleController), "_roundCount");
+            f?.SetValue(null, __state.SavedRoundCount);
+        }
+    }
+
     /// <summary>
     /// Suppress the client's own ThrowAllBombs coroutine. Without this, the
     /// client throws bombs using its local RNG (wrong positions), damages
