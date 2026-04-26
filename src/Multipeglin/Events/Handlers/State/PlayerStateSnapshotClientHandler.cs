@@ -25,7 +25,7 @@ public sealed class PlayerStateSnapshotClientHandler : IClientHandler<PlayerStat
         }
         catch (Exception ex)
         {
-            log?.LogError("PlayerStateSnapshotClientHandler: {ex.Message}");
+            log?.LogError($"PlayerStateSnapshotClientHandler: {ex.Message}");
         }
     }
 }

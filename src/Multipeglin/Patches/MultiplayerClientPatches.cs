@@ -579,7 +579,7 @@ public static class MultiplayerClientPatches
                 if (bc != null)
                 {
                     var field = HarmonyLib.AccessTools.Field(typeof(BattleController), "_activePachinkoBall");
-                    if (field?.GetValue(bc) == _clientBallGO)
+                    if ((object)field?.GetValue(bc) == _clientBallGO)
                     {
                         field.SetValue(bc, null);
                     }

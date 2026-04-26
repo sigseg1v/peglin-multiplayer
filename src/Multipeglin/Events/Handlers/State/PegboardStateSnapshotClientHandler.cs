@@ -25,7 +25,7 @@ public sealed class PegboardStateSnapshotClientHandler : IClientHandler<Pegboard
         }
         catch (Exception ex)
         {
-            log?.LogError("PegboardStateSnapshotClientHandler: {ex.Message}");
+            log?.LogError($"PegboardStateSnapshotClientHandler: {ex.Message}");
         }
     }
 }

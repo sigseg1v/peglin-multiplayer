@@ -31,7 +31,7 @@ public sealed class RelicStateSnapshotClientHandler : IClientHandler<RelicStateS
         }
         catch (Exception ex)
         {
-            log?.LogError("RelicStateSnapshotClientHandler: {ex.Message}");
+            log?.LogError($"RelicStateSnapshotClientHandler: {ex.Message}");
         }
     }
 }

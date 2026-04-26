@@ -283,8 +283,20 @@ dotnet_diagnostic.SA1128.severity = none
 dotnet_diagnostic.SA1129.severity = warning
 dotnet_diagnostic.SA1130.severity = warning
 dotnet_diagnostic.SA1131.severity = warning
-dotnet_diagnostic.SA1132.severity = warning
+dotnet_diagnostic.SA1132.severity = warning  # one declaration per line
 dotnet_diagnostic.SA1133.severity = warning
+
+# DTOs / event payloads use public fields intentionally; silence the
+# 'field should be private' rule globally rather than annotate ~340 sites.
+dotnet_diagnostic.SA1401.severity = none
+
+# 'Each accessor's body must follow on a new line' style; clashes with our
+# Harmony patches that often inline tiny prefix bodies.
+dotnet_diagnostic.SA1108.severity = none
+
+# 'Tuple element names should use correct casing' - we mirror game code
+# conventions in places, silence.
+dotnet_diagnostic.SA1414.severity = none
 dotnet_diagnostic.SA1134.severity = warning
 dotnet_diagnostic.SA1135.severity = warning
 dotnet_diagnostic.SA1136.severity = warning
@@ -296,7 +308,6 @@ dotnet_diagnostic.SA1142.severity = warning
 # Readability - leave defaults (warning) but disable particularly opinionated ones
 dotnet_diagnostic.SA1100.severity = warning
 dotnet_diagnostic.SA1106.severity = warning
-dotnet_diagnostic.SA1108.severity = warning
 dotnet_diagnostic.SA1110.severity = warning
 dotnet_diagnostic.SA1111.severity = warning
 dotnet_diagnostic.SA1112.severity = warning

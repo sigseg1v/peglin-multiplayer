@@ -10,7 +10,13 @@
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisLevel>latest</AnalysisLevel>
     <AnalysisMode>Default</AnalysisMode>
-    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- Required for IDE0005 (remove unused usings) to fire at build time;
+         CS1591 suppresses the resulting "missing xmldoc on public member" noise. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+
+    <!-- Warnings -> errors. Any new warning fails the build. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
   <!-- Reference assemblies for building net462 on Linux -->

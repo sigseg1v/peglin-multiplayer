@@ -15,8 +15,8 @@ namespace Multipeglin.Events.Handlers.Coop;
 /// <summary>
 /// Receives the host's RunStats snapshot + per-player damage tallies and rebuilds
 /// StaticGameData.CurrentRunStats on the client so the native RunSummary scene can
-/// render. Also stashes the per-player stats for <see cref="Patches.RunSummaryPatches"/>
-/// to inject extra StatsLines.
+/// render. Also stashes the per-player stats for RunSummaryPatches to inject extra
+/// StatsLines.
 /// </summary>
 public sealed class RunStatsSnapshotClientHandler : IClientHandler<RunStatsSnapshotEvent>
 {

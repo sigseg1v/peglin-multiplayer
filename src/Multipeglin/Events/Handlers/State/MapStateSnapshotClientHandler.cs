@@ -25,7 +25,7 @@ public sealed class MapStateSnapshotClientHandler : IClientHandler<MapStateSnaps
         }
         catch (Exception ex)
         {
-            log?.LogError("MapStateSnapshotClientHandler: {ex.Message}");
+            log?.LogError($"MapStateSnapshotClientHandler: {ex.Message}");
         }
     }
 }

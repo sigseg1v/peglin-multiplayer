@@ -25,7 +25,7 @@ public sealed class EnemyStateSnapshotClientHandler : IClientHandler<EnemyStateS
         }
         catch (Exception ex)
         {
-            log?.LogError("EnemyStateSnapshotClientHandler: {ex.Message}");
+            log?.LogError($"EnemyStateSnapshotClientHandler: {ex.Message}");
         }
     }
 }

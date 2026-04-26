@@ -31,7 +31,7 @@ public sealed class DeckStateSnapshotClientHandler : IClientHandler<DeckStateSna
         }
         catch (Exception ex)
         {
-            log?.LogError("DeckStateSnapshotClientHandler: {ex.Message}");
+            log?.LogError($"DeckStateSnapshotClientHandler: {ex.Message}");
         }
     }
 }

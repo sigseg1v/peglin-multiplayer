@@ -1475,7 +1475,10 @@ public class CoopPlayerVisuals : MonoBehaviour
     // switchers (scene + in-memory prefab variants) and take the first non-null
     // sprite for the requested class. Falls back to ClassInfo.classSprite.
     private static readonly HashSet<int> _loggedMissingClassSprite = new HashSet<int>();
-    private static Sprite _cachedPeglinSprite, _cachedBalladinSprite, _cachedRoundrelSprite, _cachedSpinventorSprite;
+    private static Sprite _cachedPeglinSprite;
+    private static Sprite _cachedBalladinSprite;
+    private static Sprite _cachedRoundrelSprite;
+    private static Sprite _cachedSpinventorSprite;
     private static RuntimeAnimatorController _cachedPeglinCtrl;
     private static RuntimeAnimatorController _cachedBalladinCtrl;
     private static RuntimeAnimatorController _cachedRoundrelCtrl;
@@ -1693,7 +1696,7 @@ public class CoopPlayerVisuals : MonoBehaviour
 
             if (_loggedMissingClassSprite.Add(chosenClass))
             {
-                Log?.LogWarning($"[CoopPlayerVisuals] No sprite for class {chosenClass} — switchers={all?.Length ?? 0}, caches: P={ _cachedPeglinSprite != null} B={ _cachedBalladinSprite != null} R={ _cachedRoundrelSprite != null} S={ _cachedSpinventorSprite != null}");
+                Log?.LogWarning($"[CoopPlayerVisuals] No sprite for class {chosenClass} — switchers={all?.Length ?? 0}, caches: P={_cachedPeglinSprite != null} B={_cachedBalladinSprite != null} R={_cachedRoundrelSprite != null} S={_cachedSpinventorSprite != null}");
             }
 
             return null;
