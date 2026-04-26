@@ -1362,11 +1362,21 @@ public static class MultiplayerClientPatches
                 MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Built slot {player.SlotIndex} state from ClassLoadoutData: " +
                     $"hp={playerState.CurrentHealth}/{playerState.MaxHealth}, deck={playerState.CompleteDeck.Count}, relics={playerState.OwnedRelics.Count}");
 
-                // On the CLIENT: if this is our slot, add the starting class relics
-                // to the local RelicManager so they show in the UI. The host side
-                // stores them in CoopPlayerState and loads them via LoadRelicState
-                // during battle, but the client needs them in its own RelicManager too.
-                if (!IsHosting && loadout?.StartingRelics != null)
+                // On the CLIENT: only add starting class relics for OUR OWN slot.
+                // Without the slot guard, the foreach over FinalPlayers would add every
+                // non-host player's starter relic into every client's local RelicManager
+                // — so PEGLIN2/3/4 all ended up holding Roundreloquence + Balladroit +
+                // Peglintuition simultaneously. That also leaks reward-orb-count effects
+                // (e.g. ADDITIONAL_PEGLIN_CHOICES, Eye of Turtle) to clients who don't
+                // own them, since BattleUpgradeCanvas reads from the local RelicManager.
+                bool isMyOwnSlot = false;
+                if (!IsHosting && services.TryResolve<Multiplayer.PlayerRegistry>(out var localRegistry)
+                    && localRegistry.LocalSlot != null
+                    && localRegistry.LocalSlot.SlotIndex == player.SlotIndex)
+                {
+                    isMyOwnSlot = true;
+                }
+                if (isMyOwnSlot && loadout?.StartingRelics != null)
                 {
                     try
                     {
@@ -1380,7 +1390,7 @@ public static class MultiplayerClientPatches
                                 {
                                     AllowRelicSync = true;
                                     clientRelicMgrs[0].AddRelic(relic);
-                                    MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Client: added starting class relic {relic.effect} ({relic.locKey})");
+                                    MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Client slot {player.SlotIndex}: added starting class relic {relic.effect} ({relic.locKey})");
                                 }
                                 catch { }
                                 finally { AllowRelicSync = false; }
@@ -2723,8 +2733,17 @@ public static class MultiplayerClientPatches
                         bc, em, primaryTarget, shot.OrbPrefabName, pierceCount);
                     if (raycastTargets != null && raycastTargets.Count > 0)
                     {
-                        targets = raycastTargets;
-                        primaryTarget = raycastTargets[0];
+                        // For pierce orbs (Sphear etc.), only let the raycast override the
+                        // manually-built pierce list when it found at least as many targets.
+                        // The raycast samples 3 thin rays and can miss narrow colliders on
+                        // back-row enemies — without this guard, pierce gets clipped down to
+                        // a single target whenever the lateral spread fails to land on the
+                        // back enemies, even though they're sitting directly in line.
+                        if (pierceCount == 0 || raycastTargets.Count >= targets.Count)
+                        {
+                            targets = raycastTargets;
+                            primaryTarget = raycastTargets[0];
+                        }
                     }
                 }
                 catch (System.Exception rex)
@@ -5372,6 +5391,150 @@ public static class MultiplayerClientPatches
                 $"[ClientPatch] SetupRelicGrant client override failed, falling through: {ex.Message}");
             return true;
         }
+    }
+
+    /// <summary>
+    /// COOP prefix on PopulateSuggestionOrbs.GenerateAddableOrbs: when the host
+    /// has rolled per-slot orb-reward lists, populate the buttons from this
+    /// player's list instead of running the native (seeded) roll. Without this,
+    /// every player sees identical post-battle orb suggestions because the
+    /// seededBattleData.postBattleOrbs list is shared across all instances.
+    ///
+    /// Falls through to the native logic if no host-broadcast list is available
+    /// (e.g. solo play or the event hasn't arrived yet).
+    /// </summary>
+    [HarmonyPatch(typeof(PopulateSuggestionOrbs), "GenerateAddableOrbs")]
+    [HarmonyPrefix]
+    public static bool PopulateSuggestionOrbs_GenerateAddableOrbs_CoopPerSlot_Prefix(
+        PopulateSuggestionOrbs __instance,
+        SeededBattleNodeData seededBattleData)
+    {
+        try
+        {
+            var services = MultiplayerPlugin.Services;
+            if (services == null) return true;
+
+            int mySlot = Events.Handlers.Coop.CoopSlotHelper.GetLocalSlotIndex(services);
+            if (mySlot < 0) return true;
+
+            if (!Events.Handlers.Coop.CoopRewardState.PerSlotOrbChoices.TryGetValue(mySlot, out var nameList)
+                || nameList == null || nameList.Count == 0)
+                return true;
+
+            var addOrbButtons = AccessTools.Field(typeof(PopulateSuggestionOrbs), "addOrbButtons")
+                ?.GetValue(__instance) as PeglinUI.PostBattle.UpgradeOption[];
+            var potentialDownButtons = AccessTools.Field(typeof(PopulateSuggestionOrbs), "potentialDownButtons")
+                ?.GetValue(__instance) as UnityEngine.UI.Button[];
+            var continueButton = AccessTools.Field(typeof(PopulateSuggestionOrbs), "continueButton")
+                ?.GetValue(__instance) as UnityEngine.UI.Button;
+            var deckMgr = __instance.deckManager;
+            var relicMgr = __instance.relicManager;
+            var cruciballMgr = __instance.cruciballManager;
+            if (addOrbButtons == null || addOrbButtons.Length == 0 || deckMgr == null) return true;
+
+            var prefabs = ResolveOrbPrefabsByName(nameList, deckMgr);
+            if (prefabs.Count == 0)
+            {
+                MultiplayerPlugin.Logger?.LogWarning(
+                    $"[CoopOrbReward] Could not resolve any orb prefabs from host list for slot {mySlot} ({string.Join(",", nameList)})");
+                return true;
+            }
+
+            int num = System.Math.Min(prefabs.Count, addOrbButtons.Length);
+
+            // Replicate the native button visibility + navigation wiring.
+            UnityEngine.UI.Button selectOnDown = null;
+            if (potentialDownButtons != null)
+            {
+                foreach (var b in potentialDownButtons)
+                {
+                    if (b != null && b.gameObject.activeInHierarchy) { selectOnDown = b; break; }
+                }
+            }
+            for (int j = 0; j < addOrbButtons.Length; j++)
+            {
+                bool active = j < num;
+                addOrbButtons[j].gameObject.SetActive(active);
+                if (!active) continue;
+                var btn = addOrbButtons[j].GetComponent<UnityEngine.UI.Button>();
+                if (btn == null) continue;
+                var nav = btn.navigation;
+                if (j > 0) nav.selectOnLeft = addOrbButtons[j - 1].GetComponent<UnityEngine.UI.Button>();
+                if (j + 1 < num && j < addOrbButtons.Length - 1)
+                    nav.selectOnRight = addOrbButtons[j + 1].GetComponent<UnityEngine.UI.Button>();
+                nav.selectOnDown = selectOnDown;
+                nav.selectOnUp = continueButton;
+                btn.navigation = nav;
+            }
+
+            for (int m = 0; m < num; m++)
+            {
+                var prefab = prefabs[m];
+                var attack = prefab.GetComponent<Battle.Attacks.Attack>();
+                if (attack != null) attack.SoftInit(deckMgr, relicMgr, cruciballMgr);
+                var opt = addOrbButtons[m];
+                opt.SpecifiedOrb = prefab;
+                opt.upgradeType = PeglinUI.PostBattle.UpgradeOption.UpgradeType.INSPECT_NEW_ORB;
+            }
+
+            // Selection focus — match native behavior best-effort.
+            try
+            {
+                var resField = AccessTools.Field(typeof(PopulateSuggestionOrbs), "_rewiredEventSystem");
+                var res = resField?.GetValue(__instance);
+                if (res != null)
+                {
+                    var hookup = (res as UnityEngine.MonoBehaviour)
+                        ?.GetComponent<PeglinUI.ControllerSupport.ControllerMenuHookup>();
+                    if (hookup != null)
+                    {
+                        hookup.LastSelected = addOrbButtons[0].gameObject;
+                    }
+                }
+            }
+            catch { /* selection focus is non-critical */ }
+
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[CoopOrbReward] Populated {num} per-slot orbs for slot {mySlot}: {string.Join(",", nameList)}");
+            return false;
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning(
+                $"[CoopOrbReward] GenerateAddableOrbs override failed, falling through: {ex.Message}");
+            return true;
+        }
+    }
+
+    private static System.Collections.Generic.List<GameObject> ResolveOrbPrefabsByName(
+        System.Collections.Generic.List<string> names, DeckManager deckMgr)
+    {
+        var result = new System.Collections.Generic.List<GameObject>();
+        var allPools = new[] { deckMgr.CommonOrbPool, deckMgr.UncommonOrbPool, deckMgr.RareOrbPool };
+        foreach (var name in names)
+        {
+            GameObject found = null;
+            foreach (var pool in allPools)
+            {
+                if (pool == null) continue;
+                foreach (var go in pool)
+                {
+                    if (go != null && go.name == name) { found = go; break; }
+                }
+                if (found != null) break;
+            }
+            if (found == null)
+            {
+                // Fall back: scan all loaded Attack prefabs for a name match.
+                foreach (var attack in Resources.FindObjectsOfTypeAll<Battle.Attacks.Attack>())
+                {
+                    if (attack == null || attack.gameObject == null) continue;
+                    if (attack.gameObject.name == name) { found = attack.gameObject; break; }
+                }
+            }
+            if (found != null) result.Add(found);
+        }
+        return result;
     }
 
     /// <summary>

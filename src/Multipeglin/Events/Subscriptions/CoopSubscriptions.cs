@@ -1101,6 +1101,22 @@ public sealed class CoopSubscriptions
 
             CoopRewardState.TotalRewardClientsExpected = rewardClientCount;
 
+            // Host-authoritative per-slot orb-reward rolls. Without this, every
+            // player sees the same orb suggestions because BattleUpgradeCanvas
+            // pulls from the shared seededBattleData. We roll a fresh list per
+            // slot here, store the host's own list locally, and broadcast each
+            // non-host slot's list to its targeted client. The patch on
+            // PopulateSuggestionOrbs.GenerateAddableOrbs reads from
+            // CoopRewardState.PerSlotOrbChoices to populate the buttons.
+            try
+            {
+                GenerateAndBroadcastPerSlotOrbChoices(registry);
+            }
+            catch (Exception orbEx)
+            {
+                _log.LogWarning($"[CoopSubs] OnVictory per-slot orb generation failed: {orbEx.Message}");
+            }
+
             // Dispatch PostBattleStartEvent — clients will activate their own PostBattleController
             registry.Dispatch(new PostBattleStartEvent());
 
@@ -1110,6 +1126,104 @@ public sealed class CoopSubscriptions
         {
             _log.LogWarning($"[CoopSubs] OnVictory reward distribution failed: {ex.Message}");
         }
+    }
+
+    // =========================================================================
+    // PER-SLOT ORB REWARD ROLLS (host-authoritative)
+    // =========================================================================
+
+    private const Relics.RelicEffect RELIC_ADDITIONAL_ORB_RELIC_OPTIONS = Relics.RelicEffect.ADDITIONAL_ORB_RELIC_OPTIONS;
+    private const Relics.RelicEffect RELIC_ADDITIONAL_PEGLIN_CHOICES = Relics.RelicEffect.ADDITIONAL_PEGLIN_CHOICES;
+
+    /// <summary>
+    /// Roll a fresh orb-reward list per slot using the same probability mix
+    /// the native PopulateSuggestionOrbs uses (60% common, 30% uncommon, 10%
+    /// rare). Each slot's count uses that slot's owned relics for the +1
+    /// bonuses (Eye of Turtle / Curiosity etc.). Stores the host's slot-0
+    /// list in CoopRewardState and broadcasts each non-host slot's list to
+    /// the targeted client.
+    /// </summary>
+    private void GenerateAndBroadcastPerSlotOrbChoices(IGameEventRegistry registry)
+    {
+        var deckMgr = UnityEngine.Resources.FindObjectsOfTypeAll<DeckManager>().FirstOrDefault();
+        if (deckMgr == null)
+        {
+            _log.LogWarning("[CoopSubs] GenerateAndBroadcastPerSlotOrbChoices: no DeckManager found");
+            return;
+        }
+        var commonPool = deckMgr.CommonOrbPool;
+        var uncommonPool = deckMgr.UncommonOrbPool;
+        var rarePool = deckMgr.RareOrbPool;
+        if (commonPool == null || commonPool.Count == 0)
+        {
+            _log.LogWarning("[CoopSubs] GenerateAndBroadcastPerSlotOrbChoices: empty CommonOrbPool");
+            return;
+        }
+
+        CoopRewardState.PerSlotOrbChoices.Clear();
+
+        foreach (var kvp in _coopStateManager.PlayerStates)
+        {
+            int slot = kvp.Key;
+            var state = kvp.Value;
+            if (state == null || !state.IsInitialized) continue;
+
+            int count = 3;
+            if (SlotHasRelic(state, RELIC_ADDITIONAL_ORB_RELIC_OPTIONS)) count++;
+            if (SlotHasRelic(state, RELIC_ADDITIONAL_PEGLIN_CHOICES)) count++;
+
+            var picked = new List<string>();
+            int safety = 0;
+            while (picked.Count < count && safety++ < 200)
+            {
+                List<GameObject> pool;
+                float roll = UnityEngine.Random.value;
+                if (roll <= 0.6f) pool = commonPool;
+                else if (roll <= 0.9f && uncommonPool != null && uncommonPool.Count > 0) pool = uncommonPool;
+                else if (rarePool != null && rarePool.Count > 0) pool = rarePool;
+                else pool = commonPool;
+
+                var prefab = pool[UnityEngine.Random.Range(0, pool.Count)];
+                if (prefab == null) continue;
+
+                // Floor-based promotion to next-level prefab (mirrors native logic).
+                if (UnityEngine.Random.value < (float)(StaticGameData.totalFloorCount - 5) / 100f)
+                {
+                    var attack = prefab.GetComponent<Battle.Attacks.Attack>();
+                    if (attack != null && attack.NextLevelPrefab != null)
+                    {
+                        prefab = attack.NextLevelPrefab;
+                        if (UnityEngine.Random.value < (float)(StaticGameData.totalFloorCount - 5) / 200f)
+                        {
+                            var attack2 = prefab.GetComponent<Battle.Attacks.Attack>();
+                            if (attack2 != null && attack2.NextLevelPrefab != null)
+                                prefab = attack2.NextLevelPrefab;
+                        }
+                    }
+                }
+
+                if (picked.Contains(prefab.name)) continue;
+                picked.Add(prefab.name);
+            }
+
+            CoopRewardState.PerSlotOrbChoices[slot] = picked;
+            _log.LogInfo($"[CoopSubs] Per-slot orb roll slot={slot} count={picked.Count}: {string.Join(",", picked)}");
+
+            if (slot == 0) continue; // Host reads its own list locally.
+            registry.Dispatch(new CoopOrbRewardChoicesEvent
+            {
+                TargetSlotIndex = slot,
+                OrbPrefabNames = picked,
+            });
+        }
+    }
+
+    private static bool SlotHasRelic(CoopPlayerState state, Relics.RelicEffect effect)
+    {
+        if (state?.OwnedRelics == null) return false;
+        foreach (var r in state.OwnedRelics)
+            if (r != null && r.Effect == (int)effect) return true;
+        return false;
     }
 
     // =========================================================================

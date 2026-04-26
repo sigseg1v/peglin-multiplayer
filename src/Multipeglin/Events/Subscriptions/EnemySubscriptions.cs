@@ -83,9 +83,9 @@ public sealed class EnemySubscriptions
     }
 
     /// <summary>
-    /// Scale enemy HP and damage based on the number of coop players.
-    ///   hp  *= 1 + 2   * (players - 1)
-    ///   dmg  = Ceil(dmg * (1 + 0.2 * (players - 1)))
+    /// Scale enemy HP based on the number of coop players.
+    ///   1p: x1.0   2p: x1.75   3p: x2.25   4p: x2.5
+    /// Damage is NOT scaled — high player counts were too punishing.
     /// Called from OnEnemySpawned (which fires inside Enemy.Initialize AFTER
     /// _maxHealth is set and BEFORE UpdateHealthBar), so the bar picks up the
     /// scaled values automatically on the host. Client HP is synced via the
@@ -94,10 +94,14 @@ public sealed class EnemySubscriptions
     private void ApplyCoopScaling(Enemy enemy)
     {
         int players = PlayerCount;
-        if (players <= 1) return;
-
-        float hpMult = 1f + 2f * (players - 1);
-        float dmgMult = 1f + 0.2f * (players - 1);
+        float hpMult = players switch
+        {
+            <= 1 => 1f,
+            2 => 1.75f,
+            3 => 2.25f,
+            _ => 2.5f,
+        };
+        if (hpMult == 1f) return;
 
         try
         {
@@ -108,15 +112,7 @@ public sealed class EnemySubscriptions
             // Initialize has just done `CurrentHealth = maxHealth;` — keep them in sync.
             enemy.CurrentHealth = newMax;
 
-            float oldMelee = enemy.DamagePerMeleeAttack;
-            float oldRanged = enemy.DamagePerRangedAttack;
-            enemy.DamagePerMeleeAttack = Mathf.Ceil(oldMelee * dmgMult);
-            enemy.DamagePerRangedAttack = Mathf.Ceil(oldRanged * dmgMult);
-
-            _log.LogInfo(
-                $"[EnemyScale] {enemy.name} players={players} hp {oldMax:F0}->{newMax:F0} "
-                + $"melee {oldMelee:F1}->{enemy.DamagePerMeleeAttack:F0} "
-                + $"ranged {oldRanged:F1}->{enemy.DamagePerRangedAttack:F0}");
+            _log.LogInfo($"[EnemyScale] {enemy.name} players={players} hp {oldMax:F0}->{newMax:F0}");
         }
         catch (System.Exception ex)
         {

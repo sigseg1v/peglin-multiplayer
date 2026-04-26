@@ -499,6 +499,17 @@ public class CoopStateManager
             var displayOrbs = displayOrbsField?.GetValue(dim) as System.Collections.Generic.Stack<GameObject>;
             if (displayOrbs == null) { _log.LogWarning("[CoopState] RebuildDeckInfoDisplay: _displayOrbs null"); return; }
 
+            // If shuffledDeck is empty (end-of-round, all orbs drawn), bail out without
+            // clearing displayOrbs. The native ChooseShuffleOrDrawAtEndOfTurn flow is
+            // about to ShuffleBattleDeck → animate → PlungerPlungeComplete, which
+            // repopulates _displayOrbs from the freshly-shuffled deck. If we destroy
+            // _displayOrbs here, BattleController.DrawBall fires DeckManager.onBallUsed
+            // → DeckInfoManager.DrawNextOrb → _displayOrbs.Pop() on an empty stack,
+            // throwing and aborting the draw animation chain (top-peg pull-up + aimer
+            // sprite never render). Player can still aim/shoot — visual only.
+            if (deckMgr.shuffledDeck == null || deckMgr.shuffledDeck.Count == 0)
+                return;
+
             // Fast path: skip the destroy-and-recreate churn when the cached signature
             // matches the current shuffledDeck, the same DeckInfoManager is still
             // active, and the existing displayOrbs count matches what we'd produce.

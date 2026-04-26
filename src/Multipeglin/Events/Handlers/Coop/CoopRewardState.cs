@@ -70,6 +70,17 @@ public static class CoopRewardState
     public static bool AllClientRewardChoicesReceived => TotalRewardClientsExpected > 0
         && ClientRewardChoicesReceived.Count >= TotalRewardClientsExpected;
 
+    /// <summary>
+    /// Per-slot orb choices for the post-battle "Add Orb" suggestion panel.
+    /// Host: filled for ALL slots (including its own slot 0) before broadcasting
+    /// PostBattleStartEvent. Client: filled only for its own slot via
+    /// CoopOrbRewardChoicesClientHandler. Read by the
+    /// PopulateSuggestionOrbs.GenerateAddableOrbs patch to override the seeded
+    /// roll so each player sees independently-rolled orbs.
+    /// </summary>
+    public static System.Collections.Generic.Dictionary<int, System.Collections.Generic.List<string>> PerSlotOrbChoices
+        = new System.Collections.Generic.Dictionary<int, System.Collections.Generic.List<string>>();
+
     // --- Shop wait-for-all ---
 
     /// <summary>True when the shop phase is active (all players shopping).</summary>
@@ -223,6 +234,7 @@ public static class CoopRewardState
         PendingSentRewardChoices.Clear();
         ClientRewardChoicesReceived.Clear();
         TotalRewardClientsExpected = 0;
+        PerSlotOrbChoices.Clear();
         ClientInNativeRewardPhase = false;
         HostRewardPhaseActive = false;
         HostRewardsDone = false;
