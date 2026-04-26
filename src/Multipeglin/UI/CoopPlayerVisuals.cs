@@ -728,13 +728,6 @@ public class CoopPlayerVisuals : MonoBehaviour
                 arrowColor,
                 new Color(0, 0, 0, 0),
                 out var arrowText);
-            try
-            {
-                arrowText.outlineWidth = 0.4f;
-            }
-            catch
-            {
-            }
 
             arrowPanel.SetActive(false); // only visible for active player
 

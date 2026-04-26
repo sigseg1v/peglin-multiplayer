@@ -196,18 +196,20 @@ public class RemoteCursorRenderer : MonoBehaviour
 
         var color = WithAlpha(SlotColor(slotIndex), Alpha);
 
-        // Arrow glyph as the cursor — top-left tip aligned with the rect's top-left.
+        // Arrow glyph as the cursor — solid left-pointing triangle rotated 45°
+        // so the tip points toward the upper-left. Avoids the stray-pixel artifact
+        // baked into the U+2196 ↖ glyph in the bundled TMP font.
         var iconGo = new GameObject("Icon");
         iconGo.transform.SetParent(root.transform, worldPositionStays: false);
         var iconRect = iconGo.AddComponent<RectTransform>();
         iconRect.sizeDelta = new Vector2(40f, 40f);
         iconRect.pivot = new Vector2(0f, 1f);
         iconRect.anchoredPosition = Vector2.zero;
+        iconRect.localEulerAngles = new Vector3(0f, 0f, 45f);
         var icon = iconGo.AddComponent<TextMeshProUGUI>();
-        icon.text = "\u2196"; // ↖ NORTH WEST ARROW
+        icon.text = "\u25C0"; // ◀ BLACK LEFT-POINTING TRIANGLE (rotated 45° → NW)
         icon.fontSize = 36f;
-        icon.fontStyle = FontStyles.Bold;
-        icon.alignment = TextAlignmentOptions.TopLeft;
+        icon.alignment = TextAlignmentOptions.Center;
         icon.raycastTarget = false;
         icon.color = color;
 
