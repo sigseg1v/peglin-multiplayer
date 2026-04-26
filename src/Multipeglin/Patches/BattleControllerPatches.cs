@@ -1108,23 +1108,34 @@ internal static class BattleControllerPatches
     /// </summary>
     public struct RoundCountSnapshot
     {
-        public bool Suppressed;
+        public bool Engaged;
         public int SavedRoundCount;
         public BattleController.RoundCountIncremented SavedDelegate;
     }
 
+    // Tracks the TurnManager round number for which we last actually fired
+    // OnRoundCountIncremented. Resets when the turn manager's round counter
+    // resets (new battle).
+    private static int _lastFiredCoopRound;
+
     /// <summary>
     /// In coop the BattleController re-enters AWAITING_SHOT for every player's
-    /// turn, which makes _roundCount++ fire per player turn instead of per
-    /// actual round. That breaks Spirit of Radia (countdown counts down N× per
-    /// round, even reaching -1 with 4 players, and phase 2 transitions early)
-    /// and any other consumer that treats RoundCount as battle rounds.
+    /// turn (and at the start of the next real round). Each entry runs
+    /// `_roundCount++; OnRoundCountIncremented?.Invoke()`. That breaks any
+    /// consumer that treats RoundCount as battle rounds — Spirit of Radia's
+    /// countdown text in particular ticks down N× per real round and phase 2
+    /// transitions early.
     ///
-    /// When we're past the first player of the round, snapshot _roundCount and
-    /// OnRoundCountIncremented before Update runs and null out the delegate so
-    /// the in-block invocation is a no-op. The postfix restores both. Only the
-    /// transition into the FIRST player's turn (CurrentTurnIndex==0) actually
-    /// increments and fires the callback — exactly once per real round.
+    /// We can't tell from inside Update which entry corresponds to a "real new
+    /// round" without external context, so:
+    ///   1. Prefix: snapshot _roundCount + null the delegate so Update's inline
+    ///      `Invoke` is a no-op (we'll manually invoke later when appropriate).
+    ///   2. Postfix: restore the delegate. If Update incremented _roundCount,
+    ///      consult TurnManager.RoundNumber. If it advanced past
+    ///      `_lastFiredCoopRound`, this is the first player turn of a real new
+    ///      round → invoke the delegate exactly once with the new count and
+    ///      bump the tracker. Otherwise this was a mid-round player swap →
+    ///      roll back _roundCount to its pre-Update value.
     /// </summary>
     [HarmonyPatch(typeof(BattleController), "Update")]
     [HarmonyPrefix]
@@ -1143,17 +1154,7 @@ internal static class BattleControllerPatches
             return;
         }
 
-        if (services?.TryResolve<GameState.TurnManager>(out var tm) != true)
-        {
-            return;
-        }
-
-        if (tm.CurrentTurnIndex <= 0)
-        {
-            return;
-        }
-
-        __state.Suppressed = true;
+        __state.Engaged = true;
         __state.SavedRoundCount = BattleController.RoundCount;
         __state.SavedDelegate = BattleController.OnRoundCountIncremented;
         BattleController.OnRoundCountIncremented = null;
@@ -1163,14 +1164,49 @@ internal static class BattleControllerPatches
     [HarmonyPostfix]
     public static void BattleController_Update_RoundCount_Postfix(RoundCountSnapshot __state)
     {
-        if (!__state.Suppressed)
+        if (!__state.Engaged)
         {
             return;
         }
 
         BattleController.OnRoundCountIncremented = __state.SavedDelegate;
-        if (BattleController.RoundCount != __state.SavedRoundCount)
+
+        var newCount = BattleController.RoundCount;
+        if (newCount == __state.SavedRoundCount)
         {
+            return; // Update didn't enter the AWAITING_SHOT-entry branch
+        }
+
+        var services = MultiplayerPlugin.Services;
+        GameState.TurnManager tm = null;
+        services?.TryResolve<GameState.TurnManager>(out tm);
+
+        // Reset the tracker when the TurnManager has reset (new battle).
+        if (tm != null && tm.RoundNumber < _lastFiredCoopRound)
+        {
+            _lastFiredCoopRound = 0;
+        }
+
+        var coopRound = tm?.RoundNumber ?? 0;
+        if (coopRound > _lastFiredCoopRound)
+        {
+            // First sub-turn of a real new round — fire exactly once.
+            _lastFiredCoopRound = coopRound;
+            try
+            {
+                __state.SavedDelegate?.Invoke(newCount);
+            }
+            catch (System.Exception ex)
+            {
+                MultiplayerPlugin.Logger?.LogWarning(
+                    $"[CoopRoundCount] Delegate invoke failed: {ex.Message}");
+            }
+        }
+        else
+        {
+            // Mid-round player swap re-entered AWAITING_SHOT — undo the
+            // bogus increment so consumers see the same RoundCount until
+            // a real new round starts.
             var f = AccessTools.Field(typeof(BattleController), "_roundCount");
             f?.SetValue(null, __state.SavedRoundCount);
         }

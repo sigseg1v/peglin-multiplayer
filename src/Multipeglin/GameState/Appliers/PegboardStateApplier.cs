@@ -1288,13 +1288,20 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         }
 
         // Parent group toggled off on host (e.g. Spirit of Radia's PegLayoutAlternator
-        // hides the inactive phase's pegboard). The client's vanilla
-        // PegLayoutAlternator does the same SetActive(false) independently, so the
-        // peg should already be hidden — leave it untouched. Don't destroy and
-        // don't re-activate the parent chain; the next snapshot after the host's
-        // phase swap will report activeInHierarchy=true and resume normal handling.
+        // hides the inactive phase's pegboard). We can't trust the client's vanilla
+        // alternator to have hidden the parent — its Start coroutine may not have
+        // run yet when the first heartbeat lands, and once a peg's gameObject is
+        // visible there's nothing to hide it later. Mirror the host directly: force
+        // the peg inactive. Don't destroy it; when the host swaps phases the next
+        // snapshot will report IsParentHidden=false and the reactivation path below
+        // (EnsureParentChainActive + SetActive(true)) will bring it back.
         if (entry.IsParentHidden)
         {
+            if (peg.gameObject.activeInHierarchy || peg.gameObject.activeSelf)
+            {
+                peg.gameObject.SetActive(false);
+            }
+
             return;
         }
 
