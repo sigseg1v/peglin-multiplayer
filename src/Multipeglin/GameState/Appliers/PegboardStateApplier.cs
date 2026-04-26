@@ -98,7 +98,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 //
                 // Only runs when the target peg has no GUID yet (first-time bind)
                 // AND the type matches — never re-bind an already-GUID'd peg.
-                Peg structCandidate = ResolveByStructKey(structIndex, entry);
+                var structCandidate = ResolveByStructKey(structIndex, entry);
                 if (structCandidate != null
                     && !matchedPegs.Contains(structCandidate)
                     && string.IsNullOrEmpty(_pegId.GetGuid(structCandidate))
@@ -121,7 +121,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 // position-sanity guard to reject obviously-wrong bindings.
                 if (peg == null && string.IsNullOrEmpty(entry.ParentName))
                 {
-                    Peg indexCandidate = ResolveByIndex(entry.Index, pegsCount, bombsCount,
+                    var indexCandidate = ResolveByIndex(entry.Index, pegsCount, bombsCount,
                         clientPegs, clientBombs, clientBouncers);
                     if (indexCandidate != null
                         && !matchedPegs.Contains(indexCandidate)
@@ -281,7 +281,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 foreach (var entry in unmatchedEntries)
                 {
                     Peg peg = null;
-                    List<Peg> pool = entry.IsBomb ? availableBombs
+                    var pool = entry.IsBomb ? availableBombs
                         : entry.IsBouncer ? availableBouncers
                         : availableRegulars;
 
@@ -1825,8 +1825,8 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         var vineGo = bc.CreateBramballVine();
                         var lr = vineGo.GetComponent<LineRenderer>();
 
-                        Vector3 pos1 = peg1 is LongPeg ? peg1.GetCenterOfPeg() : peg1.transform.position;
-                        Vector3 pos2 = peg2 is LongPeg ? peg2.GetCenterOfPeg() : peg2.transform.position;
+                        var pos1 = peg1 is LongPeg ? peg1.GetCenterOfPeg() : peg1.transform.position;
+                        var pos2 = peg2 is LongPeg ? peg2.GetCenterOfPeg() : peg2.transform.position;
 
                         if (lr != null)
                         {
@@ -1843,7 +1843,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         }
 
                         vineGo.transform.position = (pos1 + pos2) / 2f;
-                        Vector3 to = pos2 - pos1;
+                        var to = pos2 - pos1;
                         vineGo.transform.eulerAngles = new Vector3(0f, 0f,
                             Vector3.SignedAngle(Vector3.up, to, Vector3.forward));
 

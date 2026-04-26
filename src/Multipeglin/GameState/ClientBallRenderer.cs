@@ -247,7 +247,7 @@ public class ClientBallRenderer : MonoBehaviour
         try
         {
             var cleanName = orbName?.Replace("(Clone)", string.Empty).Trim();
-            GameObject orbGo = FindOrbPrefab(cleanName);
+            var orbGo = FindOrbPrefab(cleanName);
 
             if (orbGo != null)
             {

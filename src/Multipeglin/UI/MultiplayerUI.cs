@@ -705,7 +705,7 @@ public class MultiplayerUI : MonoBehaviour
             for (var i = 0; i < total; i++)
             {
                 var fid = SteamFriends.GetFriendByIndex(i, EFriendFlags.k_EFriendFlagImmediate);
-                if (!SteamFriends.GetFriendGamePlayed(fid, out FriendGameInfo_t info))
+                if (!SteamFriends.GetFriendGamePlayed(fid, out var info))
                 {
                     continue;
                 }

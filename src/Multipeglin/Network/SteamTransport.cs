@@ -158,7 +158,7 @@ public class SteamTransport : ISteamTransport
                 _recvBuffer = new byte[size];
             }
 
-            if (!SteamNetworking.ReadP2PPacket(_recvBuffer, size, out var read, out CSteamID sender, 0))
+            if (!SteamNetworking.ReadP2PPacket(_recvBuffer, size, out var read, out var sender, 0))
             {
                 break;
             }

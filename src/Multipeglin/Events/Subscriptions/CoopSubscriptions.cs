@@ -1840,7 +1840,7 @@ public sealed class CoopSubscriptions
 
         var playerField = AccessTools.Field(typeof(BattleController), "_playerTransform");
         var playerTransform = playerField?.GetValue(bc) as UnityEngine.Transform;
-        Vector2 playerPos = playerTransform != null ? (Vector2)playerTransform.position : Vector2.zero;
+        var playerPos = playerTransform != null ? (Vector2)playerTransform.position : Vector2.zero;
 
         attack.Initialize(playerPos, am, rm, dm, cm, phc, psec);
 

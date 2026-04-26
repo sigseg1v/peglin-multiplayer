@@ -70,7 +70,7 @@ public class CursorSync : MonoBehaviour
             return;
         }
 
-        Vector3 screenPos = Input.mousePosition;
+        var screenPos = Input.mousePosition;
         // Guard against mouse outside the window — Input.mousePosition clamps
         // but can report negative values on some platforms.
         if (screenPos.x < 0 || screenPos.y < 0
@@ -79,8 +79,8 @@ public class CursorSync : MonoBehaviour
             return;
         }
 
-        Vector3 worldPos = cam.ScreenToWorldPoint(new Vector3(screenPos.x, screenPos.y, -cam.transform.position.z));
-        Vector2 flat = new Vector2(worldPos.x, worldPos.y);
+        var worldPos = cam.ScreenToWorldPoint(new Vector3(screenPos.x, screenPos.y, -cam.transform.position.z));
+        var flat = new Vector2(worldPos.x, worldPos.y);
 
         if (_hasSent && (flat - _lastSentWorldPos).sqrMagnitude < MinMoveDelta * MinMoveDelta)
         {

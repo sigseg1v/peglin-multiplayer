@@ -132,9 +132,9 @@ public class ClientAttackProjectile : MonoBehaviour
     {
         var paramsOpt = TryGetShotParams(_orbName, _isCrit);
 
-        Vector3 minSize = DefaultMinSize;
-        Vector3 maxSize = DefaultMaxSize;
-        Vector3 startupOffset = DefaultStartupOffset;
+        var minSize = DefaultMinSize;
+        var maxSize = DefaultMaxSize;
+        var startupOffset = DefaultStartupOffset;
         var minForce = DefaultMinForce;
         var maxForce = DefaultMaxForce;
         var forcePerPeg = DefaultForcePerPeg;
@@ -182,22 +182,22 @@ public class ClientAttackProjectile : MonoBehaviour
         var t = maxForce > 0f ? Mathf.Abs(force) / maxForce : 0f;
         go.transform.localScale = Vector3.Lerp(minSize, maxSize, t);
 
-        Vector3 startPos = new Vector3(
+        var startPos = new Vector3(
             playerGroundPos.x + startupOffset.x,
             playerGroundPos.y + startupOffset.y,
             playerGroundPos.z);
         go.transform.position = startPos;
 
-        Vector3 targetPos = targetEnemy.transform.position;
+        var targetPos = targetEnemy.transform.position;
         var col = targetEnemy.GetComponentInChildren<Collider2D>();
         if (col != null)
         {
             targetPos = col.bounds.center;
         }
 
-        Vector3 endPos = new Vector3(targetPos.x, targetPos.y, startPos.z);
+        var endPos = new Vector3(targetPos.x, targetPos.y, startPos.z);
 
-        Vector3 direction = (endPos - startPos).normalized;
+        var direction = (endPos - startPos).normalized;
         if (direction.sqrMagnitude > 0.001f)
         {
             go.transform.right = direction;
@@ -320,11 +320,11 @@ public class ClientAttackProjectile : MonoBehaviour
             { _shotCache[key] = null;
                 return null; }
 
-            Vector3 minSize = (Vector3)(AccessTools.Field(typeof(Battle.Attacks.ShotBehavior), "_minSize")
+            var minSize = (Vector3)(AccessTools.Field(typeof(Battle.Attacks.ShotBehavior), "_minSize")
                 ?.GetValue(sb) ?? DefaultMinSize);
-            Vector3 maxSize = (Vector3)(AccessTools.Field(typeof(Battle.Attacks.ShotBehavior), "_maxSize")
+            var maxSize = (Vector3)(AccessTools.Field(typeof(Battle.Attacks.ShotBehavior), "_maxSize")
                 ?.GetValue(sb) ?? DefaultMaxSize);
-            Vector3 startupOffset = (Vector3)(AccessTools.Field(typeof(Battle.Attacks.ShotBehavior), "_startupOffset")
+            var startupOffset = (Vector3)(AccessTools.Field(typeof(Battle.Attacks.ShotBehavior), "_startupOffset")
                 ?.GetValue(sb) ?? DefaultStartupOffset);
             var minForce = (float)(AccessTools.Field(typeof(Battle.Attacks.ShotBehavior), "_minForce")
                 ?.GetValue(sb) ?? DefaultMinForce);

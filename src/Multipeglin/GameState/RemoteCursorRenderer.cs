@@ -145,7 +145,7 @@ public class RemoteCursorRenderer : MonoBehaviour
                 v.Root.SetActive(true);
             }
 
-            Vector2 target2D = new Vector2(targetScreen.x, targetScreen.y);
+            var target2D = new Vector2(targetScreen.x, targetScreen.y);
             if (!v.Seeded)
             {
                 v.ScreenPos = target2D;

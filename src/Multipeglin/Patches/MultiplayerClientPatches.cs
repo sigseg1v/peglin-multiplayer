@@ -919,7 +919,7 @@ public static class MultiplayerClientPatches
 
         // Initial velocity: matches TrajectorySimulation line 61
         // Original uses Time.deltaTime which varies per frame; we use fixedDeltaTime for stability
-        UnityEngine.Vector3 vel = (UnityEngine.Vector3)(aimDir * (_clientFireForce * UnityEngine.Time.fixedDeltaTime) / _clientBallMass);
+        var vel = (UnityEngine.Vector3)(aimDir * (_clientFireForce * UnityEngine.Time.fixedDeltaTime) / _clientBallMass);
 
         for (var i = 1; i < segments; i++)
         {
@@ -1100,7 +1100,7 @@ public static class MultiplayerClientPatches
             // changed it to AIMING, but the scale tween could still be running.
             {
                 var tweens = DG.Tweening.DOTween.TweensByTarget(activeBallGO.transform);
-                UnityEngine.Vector3 targetScale = activeBallGO.transform.localScale;
+                var targetScale = activeBallGO.transform.localScale;
                 var hadTween = false;
                 if (tweens != null)
                 {
@@ -3835,9 +3835,9 @@ public static class MultiplayerClientPatches
 
         var offsetField = AccessTools.Field(typeof(BattleController), "_playerTransformOffset");
         var offset = (UnityEngine.Vector3)(offsetField?.GetValue(bc) ?? new UnityEngine.Vector3(1f, 0.5f, 0f));
-        UnityEngine.Vector2 origin = (UnityEngine.Vector2)(playerTransform.position + offset);
+        var origin = (UnityEngine.Vector2)(playerTransform.position + offset);
 
-        UnityEngine.Vector2 aim = ((UnityEngine.Vector2)declaredTarget.transform.position - origin).normalized;
+        var aim = ((UnityEngine.Vector2)declaredTarget.transform.position - origin).normalized;
         if (aim.sqrMagnitude < 0.0001f)
         {
             return null;

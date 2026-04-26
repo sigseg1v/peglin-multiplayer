@@ -82,7 +82,7 @@ public sealed class BombThrownClientHandler : IClientHandler<BombThrownEvent>
             yield break;
         }
 
-        Vector3 spawnPos = playerTransform.position + playerOffset;
+        var spawnPos = playerTransform.position + playerOffset;
         var wait = new WaitForSeconds(0.02f);
 
         // Spawn rigged bombs first (matches host order)

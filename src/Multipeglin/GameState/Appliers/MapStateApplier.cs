@@ -1010,7 +1010,7 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 // map-flash fix — heartbeats used to re-run GenerateIcon on every node
                 // every 2s, which re-toggled icon SpriteRenderer state and could produce
                 // subtle visible jitter during scene-load fade-in.
-                RoomState currentState = (RoomState)(roomStatusField?.GetValue(clientNode) ?? RoomState.UPCOMING);
+                var currentState = (RoomState)(roomStatusField?.GetValue(clientNode) ?? RoomState.UPCOMING);
                 var bossIndexOk = hostNode.SelectedBossIndex < 0
                     || bossIndexField == null
                     || (int)bossIndexField.GetValue(clientNode) == hostNode.SelectedBossIndex;
