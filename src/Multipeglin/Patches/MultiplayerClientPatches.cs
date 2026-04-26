@@ -3323,7 +3323,7 @@ public static class MultiplayerClientPatches
     private static System.Collections.IEnumerator PlayCoopAttackSequence(
         BattleController bc,
         Battle.Attacks.AttackManager am,
-        System.Collections.Generic.List<Events.Subscriptions.CoopSubscriptions.PlayerAttackData> shots,
+        System.Collections.Generic.List<Events.Subscriptions.Coop.PlayerAttackData> shots,
         EnemyManager em,
         Utility.EnemyIdentifier enemyId)
     {
@@ -3656,7 +3656,7 @@ public static class MultiplayerClientPatches
     /// </summary>
     private static void ExpandTargetsForShooterRelics(
         EnemyManager em,
-        Events.Subscriptions.CoopSubscriptions.PlayerAttackData shot,
+        Events.Subscriptions.Coop.PlayerAttackData shot,
         Battle.Enemies.Enemy primaryTarget,
         System.Collections.Generic.List<Battle.Enemies.Enemy> targets)
     {

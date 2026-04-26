@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using Battle;
 using BepInEx.Logging;
-using HarmonyLib;
 using Multipeglin.Events.Handlers.Coop;
 using Multipeglin.Events.Network.Coop;
+using Multipeglin.Events.Subscriptions.Coop;
 using Multipeglin.GameState;
 using Multipeglin.Multiplayer;
 using UnityEngine;
@@ -20,52 +20,25 @@ namespace Multipeglin.Events.Subscriptions;
 /// to whichever player is currently loaded in the singletons (the active player).
 /// This class captures the damage delta and applies it to all OTHER players' stored
 /// CoopPlayerState so everyone takes the same hit.
+///
+/// The heavy lifting is delegated to focused interfaces:
+///   • IBattleControllerUpdateManager — all reflection on BattleController fields/methods
+///   • ICoopDeckManager              — battle-deck rebuild + non-host starting bonuses
+///   • IOrbStatusEffectApplier       — orb status capture + temp-orb attack restoration
+///   • IBuffApplier                  — defensive buff resolution against stored state
 /// </summary>
 public sealed class CoopSubscriptions
 {
-    /// <summary>Per-player peg damage data accumulated during shots.</summary>
-    private class ShotDamageData
-    {
-        public int PegMultiplierDamageTally;
-        public int CriticalHitCount;
-        public int NumPegsHit;
-        public int CactusDamageTally;
-        public float DamageMultiplier;
-        public long DamageBonus;
-
-        // Per-player targeting data
-        public long PrecomputedDamage;
-        public string TargetEnemyGuid;
-        public bool IsAoE;      // SimpleAttack hits all enemies
-        public bool IsHeal;     // HealAction — not an attack
-        public string PlayerName;
-
-        // Status effects captured from the orb's IAffectEnemyOnHit components + relic effects
-        public List<(Battle.StatusEffects.StatusEffectType Type, int Intensity)> StatusEffectsToApply;
-
-        // Orb name (prefab name without "(Clone)") for re-instantiating at ALL_DONE.
-        // Used with AssetLoading.GetOrbPrefab() to get the correct orb type so DoAttack
-        // computes damage with the right formula.
-        public string OrbPrefabName;
-
-        // Pincer Maneuver (ADDITIONAL_REVERSE_PROJECTILE_ATTACK): when true, the primary
-        // damage has already been halved (rounded up) and a second shot of the same
-        // halved damage should land on the farthest enemy from the player.
-        public bool HasReverseShot;
-
-        // Alien's Rock (SPLASH_EFFECT_ON_TARGETED_ATTACKS): targeted attacks splash to
-        // adjacent enemies (range 1, SIDE). Captured at shot time using the shooter's
-        // active relics; applied during PlayCoopAttackSequence by expanding targets.
-        public bool HasTargetedSplash;
-        // TARGETED_ATTACKS_HIT_ALL: targeted attacks hit every alive enemy.
-        public bool HasTargetedHitAll;
-    }
-
     private readonly IMultiplayerMode _mode;
     private readonly CoopStateManager _coopStateManager;
     private readonly TurnManager _turnManager;
-    private readonly GameState.IGameStateSyncService _syncService;
+    private readonly IGameStateSyncService _syncService;
     private readonly ManualLogSource _log;
+
+    private readonly IBattleControllerUpdateManager _bcUpdater;
+    private readonly ICoopDeckManager _deckMgr;
+    private readonly IOrbStatusEffectApplier _orbApplier;
+    private readonly IBuffApplier _buffApplier;
 
     private readonly Dictionary<int, ShotDamageData> _accumulatedShotData = new Dictionary<int, ShotDamageData>();
 
@@ -95,12 +68,25 @@ public sealed class CoopSubscriptions
     /// </summary>
     internal static CoopSubscriptions Instance { get; private set; }
 
-    public CoopSubscriptions(IMultiplayerMode mode, CoopStateManager coopStateManager, TurnManager turnManager, GameState.IGameStateSyncService syncService, ManualLogSource log)
+    public CoopSubscriptions(
+        IMultiplayerMode mode,
+        CoopStateManager coopStateManager,
+        TurnManager turnManager,
+        IGameStateSyncService syncService,
+        IBattleControllerUpdateManager bcUpdater,
+        ICoopDeckManager deckMgr,
+        IOrbStatusEffectApplier orbApplier,
+        IBuffApplier buffApplier,
+        ManualLogSource log)
     {
         _mode = mode;
         _coopStateManager = coopStateManager;
         _turnManager = turnManager;
         _syncService = syncService;
+        _bcUpdater = bcUpdater;
+        _deckMgr = deckMgr;
+        _orbApplier = orbApplier;
+        _buffApplier = buffApplier;
         _log = log;
         Instance = this;
     }
@@ -128,6 +114,10 @@ public sealed class CoopSubscriptions
         BattleController.OnShotComplete -= OnShotComplete;
         BattleController.OnVictory -= OnVictory;
     }
+
+    // =========================================================================
+    // ENEMY ATTACK PHASE — capture & distribute damage to non-active players
+    // =========================================================================
 
     /// <summary>
     /// Called when the enemy attack phase begins. Snapshot the active player's
@@ -198,7 +188,7 @@ public sealed class CoopSubscriptions
             }
 
             var oldHp = state.CurrentHealth;
-            var effectiveDamage = ApplyDefensiveBuffs(state, rawDamage);
+            var effectiveDamage = _buffApplier.ApplyDefensiveBuffs(state, rawDamage);
             state.CurrentHealth = Mathf.Max(0f, state.CurrentHealth - effectiveDamage);
             var actualTaken = oldHp - state.CurrentHealth;
             if (actualTaken > 0)
@@ -253,6 +243,7 @@ public sealed class CoopSubscriptions
                 {
                     activeState.CurrentHealth = Mathf.Max(0f, phc.CurrentHealth);
                 }
+
                 // Accumulate damage taken for the active slot's run-summary tally.
                 if (amount > 0)
                 {
@@ -308,6 +299,7 @@ public sealed class CoopSubscriptions
                 if (_coopStateManager.AllPlayersDead)
                 {
                     _log.LogWarning("[CoopSubs] All co-op players have died! Triggering defeat.");
+
                     // phc.Damage(0) is a no-op, and by now every player's HP is already 0.
                     // CheckForDeathAndUpdateBar triggers GameOverObj.SetActive + OnHealthDepleted
                     // directly; the Harmony prefix in MultiplayerClientPatches lets it through
@@ -339,11 +331,14 @@ public sealed class CoopSubscriptions
                 {
                     var st = _coopStateManager.GetPlayerState(slot);
                     if (st != null && st.CurrentHealth > 0)
-                    { nextSlot = slot;
-                        break; }
+                    {
+                        nextSlot = slot;
+                        break;
+                    }
                 }
 
                 _coopStateManager.SwapToPlayer(nextSlot);
+
                 // Do NOT call EnsureBattleDeckPopulated here. If the active
                 // shuffledDeck is empty (all orbs fired), the game's native
                 // ChooseShuffleOrDrawAtEndOfTurn → ShuffleBattleDeck →
@@ -362,7 +357,7 @@ public sealed class CoopSubscriptions
             }
 
             // Clean up any temp orb instance created during ALL_DONE for attack restoration
-            CleanupTempOrb();
+            _orbApplier.CleanupTempOrb();
         }
         catch (Exception ex)
         {
@@ -438,8 +433,8 @@ public sealed class CoopSubscriptions
                     state.ShuffledOrder?.Clear();
                     _log.LogInfo($"[CoopSubs] Battle init: slot {kvp.Key} — rebuilding deck from completeDeck ({state.CompleteDeck.Count})");
                     _coopStateManager.SwapToPlayer(kvp.Key);
-                    EnsureBattleDeckPopulated($"battle init slot {kvp.Key}");
-                    ApplyNonHostStartingBonuses(kvp.Key);
+                    _deckMgr.EnsureBattleDeckPopulated($"battle init slot {kvp.Key}");
+                    _deckMgr.ApplyNonHostStartingBonuses(kvp.Key);
                     _coopStateManager.SaveActivePlayerState();
                 }
             }
@@ -460,12 +455,12 @@ public sealed class CoopSubscriptions
                 _syncService.SyncAll("BattleInit-DeckPopulated");
                 _log.LogInfo("[CoopSubs] Battle init: sent immediate SyncAll with populated decks");
             }
-            catch (System.Exception syncEx)
+            catch (Exception syncEx)
             {
                 _log.LogWarning($"[CoopSubs] Battle init SyncAll failed: {syncEx.Message}");
             }
         }
-        catch (System.Exception ex)
+        catch (Exception ex)
         {
             _log.LogWarning($"[CoopSubs] Battle init state capture failed: {ex.Message}\n{ex.StackTrace}");
         }
@@ -502,15 +497,10 @@ public sealed class CoopSubscriptions
             // previous round's ALL_DONE restoration (where host tallies were
             // written back for DoAttack). Without this, the next round's peg
             // hits accumulate on top of the stale values.
-            var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
+            var bc = _bcUpdater.GetBattleController();
             if (bc != null)
             {
-                AccessTools.Field(typeof(BattleController), "_pegMultiplierDamageTally")?.SetValue(bc, 0);
-                AccessTools.Field(typeof(BattleController), "_criticalHitCount")?.SetValue(null, 0);
-                AccessTools.Field(typeof(BattleController), "_numPegsHit")?.SetValue(bc, 0);
-                AccessTools.Field(typeof(BattleController), "_cactusDamageTally")?.SetValue(bc, 0);
-                AccessTools.Field(typeof(BattleController), "_damageMultiplier")?.SetValue(bc, 1f);
-                AccessTools.Field(typeof(BattleController), "_damageBonus")?.SetValue(bc, 0);
+                _bcUpdater.ResetShotTallies(bc);
             }
 
             // Send clear event to client so its overlay resets too
@@ -519,10 +509,12 @@ public sealed class CoopSubscriptions
                 var services = MultiplayerPlugin.Services;
                 if (services?.TryResolve<IGameEventRegistry>(out var reg) == true)
                 {
-                    reg.Dispatch(new Events.Network.Coop.PendingDamagePreviewEvent());
+                    reg.Dispatch(new PendingDamagePreviewEvent());
                 }
             }
-            catch { }
+            catch
+            {
+            }
 
             _turnManager.StartNewRound();
             _log.LogInfo($"[CoopSubs] New round {_turnManager.RoundNumber} started, slot {_turnManager.CurrentPlayerSlot}");
@@ -559,30 +551,21 @@ public sealed class CoopSubscriptions
     /// </summary>
     private void SwapAndRedrawForRoundStart(string context)
     {
-        var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
+        var bc = _bcUpdater.GetBattleController();
 
         try
         {
             if (bc != null)
             {
-                var activeBallField = AccessTools.Field(typeof(BattleController), "_activePachinkoBall");
-                if (activeBallField?.GetValue(bc) is GameObject activeBall)
-                {
-                    UnityEngine.Object.Destroy(activeBall);
-                    activeBallField.SetValue(bc, null);
-                }
-
-                AccessTools.Field(typeof(BattleController), "_remainingPachinkoBalls")?.SetValue(bc, 0);
-
-                AccessTools.Field(typeof(BattleController), "_pegMultiplierDamageTally")?.SetValue(bc, 0);
-                AccessTools.Field(typeof(BattleController), "_criticalHitCount")?.SetValue(null, 0);
-                AccessTools.Field(typeof(BattleController), "_numPegsHit")?.SetValue(bc, 0);
-                AccessTools.Field(typeof(BattleController), "_cactusDamageTally")?.SetValue(bc, 0);
-                AccessTools.Field(typeof(BattleController), "_damageMultiplier")?.SetValue(bc, 1f);
-                AccessTools.Field(typeof(BattleController), "_damageBonus")?.SetValue(bc, 0);
+                _bcUpdater.DestroyActivePachinkoBall(bc);
+                _bcUpdater.SetRemainingPachinkoBalls(bc, 0);
+                _bcUpdater.ResetShotTallies(bc);
             }
         }
-        catch (Exception ex) { _log.LogWarning($"[CoopSubs] SwapAndRedraw ({context}): pre-swap cleanup failed: {ex.Message}"); }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[CoopSubs] SwapAndRedraw ({context}): pre-swap cleanup failed: {ex.Message}");
+        }
 
         _coopStateManager.SwapToPlayer(_turnManager.CurrentPlayerSlot);
 
@@ -598,9 +581,12 @@ public sealed class CoopSubscriptions
             DeckManager.onBallUsed = _ => { };
             DeckManager.onDeckShuffled = _ => { };
         }
-        catch (Exception cbEx) { _log.LogWarning($"[CoopSubs] SwapAndRedraw ({context}): callback disconnect failed: {cbEx.Message}"); }
+        catch (Exception cbEx)
+        {
+            _log.LogWarning($"[CoopSubs] SwapAndRedraw ({context}): callback disconnect failed: {cbEx.Message}");
+        }
 
-        if (!EnsureBattleDeckPopulated($"{context} swap"))
+        if (!_deckMgr.EnsureBattleDeckPopulated($"{context} swap"))
         {
             _log.LogWarning($"[CoopSubs] SwapAndRedraw ({context}): EnsureBattleDeckPopulated failed — deck may be empty");
         }
@@ -614,11 +600,10 @@ public sealed class CoopSubscriptions
 
         try
         {
-            BattleController.CurrentBattleState = BattleController.BattleState.AWAITING_SHOT;
+            _bcUpdater.SetBattleState(BattleController.BattleState.AWAITING_SHOT);
             if (bc != null)
             {
-                var drawBallMethod = AccessTools.Method(typeof(BattleController), "DrawBall");
-                drawBallMethod?.Invoke(bc, null);
+                _bcUpdater.InvokeDrawBall(bc);
                 _log.LogInfo($"[CoopSubs] SwapAndRedraw ({context}): DrawBall invoked for slot {_turnManager.CurrentPlayerSlot}");
             }
         }
@@ -640,7 +625,10 @@ public sealed class CoopSubscriptions
                     DeckManager.onDeckShuffled = savedOnDeckShuffled;
                 }
             }
-            catch (Exception restoreEx) { _log.LogWarning($"[CoopSubs] SwapAndRedraw ({context}): callback restore failed: {restoreEx.Message}"); }
+            catch (Exception restoreEx)
+            {
+                _log.LogWarning($"[CoopSubs] SwapAndRedraw ({context}): callback restore failed: {restoreEx.Message}");
+            }
         }
 
         try
@@ -722,33 +710,25 @@ public sealed class CoopSubscriptions
         var activeSlot = _coopStateManager.ActivePlayerSlot;
 
         // Read BattleController's peg damage tallies for this player's shot
-        var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
-        var pegTallyField = AccessTools.Field(typeof(BattleController), "_pegMultiplierDamageTally");
-        var critField = AccessTools.Field(typeof(BattleController), "_criticalHitCount");
-        var numPegsField = AccessTools.Field(typeof(BattleController), "_numPegsHit");
-        var cactusField = AccessTools.Field(typeof(BattleController), "_cactusDamageTally");
-        var dmgMultField = AccessTools.Field(typeof(BattleController), "_damageMultiplier");
-        var dmgBonusField = AccessTools.Field(typeof(BattleController), "_damageBonus");
+        var bc = _bcUpdater.GetBattleController();
 
         if (bc != null)
         {
-            var pegTally = pegTallyField != null ? (int)pegTallyField.GetValue(bc) : 0;
-            // _criticalHitCount is static, so pass null for the instance
-            var critCount = critField != null ? (int)critField.GetValue(null) : 0;
-            var numPegs = numPegsField != null ? (int)numPegsField.GetValue(bc) : 0;
-            var cactusTally = cactusField != null ? (int)cactusField.GetValue(bc) : 0;
-
-            var dmgMult = dmgMultField != null ? (float)dmgMultField.GetValue(bc) : 1f;
-            long dmgBonus = dmgBonusField != null ? (int)dmgBonusField.GetValue(bc) : 0;
+            var pegTally = _bcUpdater.GetPegMultiplierDamageTally(bc);
+            var critCount = _bcUpdater.GetCriticalHitCount();
+            var numPegs = _bcUpdater.GetNumPegsHit(bc);
+            var cactusTally = _bcUpdater.GetCactusDamageTally(bc);
+            var dmgMult = _bcUpdater.GetDamageMultiplier(bc);
+            var dmgBonus = _bcUpdater.GetDamageBonus(bc);
 
             // Pre-compute this player's damage using the currently loaded Attack
-            var amField = AccessTools.Field(typeof(BattleController), "_attackManager");
-            var am = amField?.GetValue(bc) as Battle.Attacks.AttackManager;
+            var am = _bcUpdater.GetAttackManager(bc);
             long precomputedDamage = 0;
             var isAoE = false;
             var isHeal = false;
             List<(Battle.StatusEffects.StatusEffectType, int)> capturedEffects = null;
             string capturedOrbName = null;
+
             // Pincer Maneuver (ADDITIONAL_REVERSE_PROJECTILE_ATTACK): when the active
             // player has this relic, ProjectileAttack.Fire halves the damage (rounded
             // up) and schedules a second shot at the farthest enemy with the same
@@ -778,8 +758,7 @@ public sealed class CoopSubscriptions
                 }
 
                 // Check attack type to determine targeting behavior
-                var attackField = AccessTools.Field(typeof(Battle.Attacks.AttackManager), "_attack");
-                var attack = attackField?.GetValue(am) as Battle.Attacks.Attack;
+                var attack = _bcUpdater.GetCurrentAttack(am);
                 if (attack is Battle.Attacks.SimpleAttack)
                 {
                     isAoE = true;
@@ -790,7 +769,7 @@ public sealed class CoopSubscriptions
                 // but non-host damage is applied via enemy.Damage() which skips status effects.
                 if (activeSlot != 0 && attack != null)
                 {
-                    capturedEffects = CaptureOrbStatusEffects(attack, critCount);
+                    capturedEffects = _orbApplier.CaptureOrbStatusEffects(attack, critCount);
                 }
 
                 // Apply self-granting post-attack status effects (Ballusion from Evasive
@@ -804,7 +783,7 @@ public sealed class CoopSubscriptions
                 // for the current shooter before we swap to the next player.
                 if (attack != null)
                 {
-                    ApplySelfPostAttackBuffs(attack, critCount, activeSlot);
+                    _orbApplier.ApplySelfPostAttackBuffs(attack, critCount, activeSlot);
                 }
 
                 // Capture the orb name for re-instantiation at ALL_DONE.
@@ -812,8 +791,7 @@ public sealed class CoopSubscriptions
                 // We store the prefab name so we can look it up via AssetLoading.GetOrbPrefab().
                 try
                 {
-                    var activeBallField = AccessTools.Field(typeof(BattleController), "_activePachinkoBall");
-                    var activeBall = activeBallField?.GetValue(bc) as GameObject;
+                    var activeBall = _bcUpdater.GetActivePachinkoBall(bc);
                     if (activeBall != null)
                     {
                         capturedOrbName = activeBall.name.Replace("(Clone)", string.Empty).Trim();
@@ -823,7 +801,10 @@ public sealed class CoopSubscriptions
                         _log.LogWarning($"[CoopSubs] _activePachinkoBall was null at shot capture for slot {activeSlot}");
                     }
                 }
-                catch (Exception ex) { _log.LogWarning($"[CoopSubs] Failed to capture orb name: {ex.Message}"); }
+                catch (Exception ex)
+                {
+                    _log.LogWarning($"[CoopSubs] Failed to capture orb name: {ex.Message}");
+                }
             }
 
             // Get target enemy GUID: host uses TargetingManager, client uses stored value
@@ -891,15 +872,9 @@ public sealed class CoopSubscriptions
         {
             // More players need to shoot. Reset tallies to 0 for the next player,
             // swap to them, and redirect BattleController back to AWAITING_SHOT.
-
             if (bc != null)
             {
-                pegTallyField?.SetValue(bc, 0);
-                critField?.SetValue(null, 0); // static field
-                numPegsField?.SetValue(bc, 0);
-                cactusField?.SetValue(bc, 0);
-                dmgMultField?.SetValue(bc, 1f);
-                dmgBonusField?.SetValue(bc, 0);
+                _bcUpdater.ResetShotTallies(bc);
             }
 
             _coopStateManager.SwapToPlayer(_turnManager.CurrentPlayerSlot);
@@ -918,28 +893,27 @@ public sealed class CoopSubscriptions
                 DeckManager.onBallUsed = _ => { }; // no-op during non-host operations
                 DeckManager.onDeckShuffled = _ => { }; // no-op during non-host shuffle
             }
-            catch (Exception cbEx) { _log.LogWarning($"[CoopSubs] Failed to disconnect DeckManager callbacks: {cbEx.Message}"); }
+            catch (Exception cbEx)
+            {
+                _log.LogWarning($"[CoopSubs] Failed to disconnect DeckManager callbacks: {cbEx.Message}");
+            }
 
-            if (!EnsureBattleDeckPopulated("shot complete swap"))
+            if (!_deckMgr.EnsureBattleDeckPopulated("shot complete swap"))
             {
                 _log.LogWarning("[CoopSubs] EnsureBattleDeckPopulated failed after shot complete swap — deck may be empty");
             }
 
             // Override BattleState back to AWAITING_SHOT so the state machine
             // re-enters the aiming phase instead of proceeding to attack.
-            BattleController.CurrentBattleState = BattleController.BattleState.AWAITING_SHOT;
+            _bcUpdater.SetBattleState(BattleController.BattleState.AWAITING_SHOT);
 
             // Manually trigger DrawBall since we bypassed the normal flow.
             try
             {
                 if (bc != null)
                 {
-                    var drawBallMethod = AccessTools.Method(typeof(BattleController), "DrawBall");
-                    if (drawBallMethod != null)
-                    {
-                        drawBallMethod.Invoke(bc, null);
-                        _log.LogInfo($"[CoopSubs] Manually called DrawBall for slot {_turnManager.CurrentPlayerSlot}");
-                    }
+                    _bcUpdater.InvokeDrawBall(bc);
+                    _log.LogInfo($"[CoopSubs] Manually called DrawBall for slot {_turnManager.CurrentPlayerSlot}");
                 }
             }
             catch (Exception ex)
@@ -962,7 +936,10 @@ public sealed class CoopSubscriptions
                         DeckManager.onDeckShuffled = savedOnDeckShuffled;
                     }
                 }
-                catch (Exception restoreEx) { _log.LogWarning($"[CoopSubs] Failed to restore DeckManager callbacks: {restoreEx.Message}"); }
+                catch (Exception restoreEx)
+                {
+                    _log.LogWarning($"[CoopSubs] Failed to restore DeckManager callbacks: {restoreEx.Message}");
+                }
             }
 
             // Do NOT call RebuildDeckInfoDisplay here. The host should always
@@ -971,7 +948,6 @@ public sealed class CoopSubscriptions
             // the client's DrawBall won't touch the host's displayOrbs. The
             // native game flow (PlungerPlungeComplete + DrawNextOrb) keeps the
             // host's deck tube correct across rounds.
-
             BroadcastTurnChange();
 
             // Push updated AllDecks to client immediately so the client
@@ -989,15 +965,16 @@ public sealed class CoopSubscriptions
             // BattleController so the normal attack phase resolves the host's attack.
             // Non-host players' damage will be applied directly in the DoAttack prefix
             // based on their per-player targeting data in _accumulatedShotData.
-
             if (_accumulatedShotData.TryGetValue(0, out var hostData) && bc != null)
             {
-                pegTallyField?.SetValue(bc, hostData.PegMultiplierDamageTally);
-                critField?.SetValue(null, hostData.CriticalHitCount);
-                numPegsField?.SetValue(bc, hostData.NumPegsHit);
-                cactusField?.SetValue(bc, hostData.CactusDamageTally);
-                dmgMultField?.SetValue(bc, hostData.DamageMultiplier);
-                dmgBonusField?.SetValue(bc, (int)hostData.DamageBonus);
+                _bcUpdater.WriteShotTallies(
+                    bc,
+                    hostData.PegMultiplierDamageTally,
+                    hostData.CriticalHitCount,
+                    hostData.NumPegsHit,
+                    hostData.CactusDamageTally,
+                    hostData.DamageMultiplier,
+                    hostData.DamageBonus);
                 _log.LogInfo($"[CoopSubs] Host (slot 0) damage: pegTally={hostData.PegMultiplierDamageTally}, " +
                     $"crits={hostData.CriticalHitCount}, pegsHit={hostData.NumPegsHit}, " +
                     $"dmgMult={hostData.DamageMultiplier}, dmgBonus={hostData.DamageBonus}");
@@ -1005,10 +982,10 @@ public sealed class CoopSubscriptions
             else if (bc != null)
             {
                 // Host data missing — zero out tallies to avoid stale data
-                pegTallyField?.SetValue(bc, 0);
-                critField?.SetValue(null, 0);
-                numPegsField?.SetValue(bc, 0);
-                cactusField?.SetValue(bc, 0);
+                _bcUpdater.SetPegMultiplierDamageTally(bc, 0);
+                _bcUpdater.SetCriticalHitCount(0);
+                _bcUpdater.SetNumPegsHit(bc, 0);
+                _bcUpdater.SetCactusDamageTally(bc, 0);
                 _log.LogWarning("[CoopSubs] Host slot 0 not found in accumulated shot data!");
             }
 
@@ -1028,7 +1005,10 @@ public sealed class CoopSubscriptions
                         }
                     }
                 }
-                catch (Exception ex) { _log.LogWarning($"[CoopSubs] Failed to set host target: {ex.Message}"); }
+                catch (Exception ex)
+                {
+                    _log.LogWarning($"[CoopSubs] Failed to set host target: {ex.Message}");
+                }
             }
 
             // Swap to host for the attack phase (their orb/relics drive the native attack)
@@ -1049,14 +1029,17 @@ public sealed class CoopSubscriptions
                     var orbPrefab = Loading.AssetLoading.Instance?.GetOrbPrefab(hostAttackData.OrbPrefabName);
                     if (orbPrefab != null)
                     {
-                        RestoreAttackFromPrefab(bc, orbPrefab, "host");
+                        _orbApplier.RestoreAttackFromPrefab(bc, orbPrefab, "host");
                     }
                     else
                     {
                         _log.LogWarning($"[CoopSubs] ALL_DONE: AssetLoading.GetOrbPrefab returned null for '{hostAttackData.OrbPrefabName}'");
                     }
                 }
-                catch (Exception ex) { _log.LogWarning($"[CoopSubs] Failed to restore host Attack: {ex.Message}"); }
+                catch (Exception ex)
+                {
+                    _log.LogWarning($"[CoopSubs] Failed to restore host Attack: {ex.Message}");
+                }
             }
             else if (bc != null)
             {
@@ -1069,7 +1052,7 @@ public sealed class CoopSubscriptions
             // to apply non-host players' damage to their chosen targets.
             // The live PendingDamageOverlay was already updating during shots
             // via HandlePegActivated postfix — no final preview call needed.
-
+            //
             // DO NOT redirect state — let PRE_ATTACK_SPAWN_CHECK -> DO_ATTACK proceed normally
             BroadcastTurnChange();
 
@@ -1120,34 +1103,24 @@ public sealed class CoopSubscriptions
         _log.LogInfo($"[CoopSubs] SkipCurrentTurn source={source}, slot={activeSlot}");
 
         // Zero out peg tallies so the accumulated shot records as zero damage.
-        var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
+        var bc = _bcUpdater.GetBattleController();
         if (bc != null)
         {
             try
-            {
-                AccessTools.Field(typeof(BattleController), "_pegMultiplierDamageTally")?.SetValue(bc, 0);
-                AccessTools.Field(typeof(BattleController), "_criticalHitCount")?.SetValue(null, 0);
-                AccessTools.Field(typeof(BattleController), "_numPegsHit")?.SetValue(bc, 0);
-                AccessTools.Field(typeof(BattleController), "_cactusDamageTally")?.SetValue(bc, 0);
-                AccessTools.Field(typeof(BattleController), "_damageMultiplier")?.SetValue(bc, 1f);
-                AccessTools.Field(typeof(BattleController), "_damageBonus")?.SetValue(bc, 0);
-            }
+            { _bcUpdater.ResetShotTallies(bc); }
             catch (Exception ex) { _log.LogWarning($"[CoopSubs] Skip: tally reset failed: {ex.Message}"); }
 
             // Destroy the aim ball and zero the remaining counter so physics
             // doesn't fire a free shot once we return control.
             try
             {
-                var activeBallField = AccessTools.Field(typeof(BattleController), "_activePachinkoBall");
-                if (activeBallField?.GetValue(bc) is GameObject activeBall)
-                {
-                    UnityEngine.Object.Destroy(activeBall);
-                    activeBallField.SetValue(bc, null);
-                }
-
-                AccessTools.Field(typeof(BattleController), "_remainingPachinkoBalls")?.SetValue(bc, 0);
+                _bcUpdater.DestroyActivePachinkoBall(bc);
+                _bcUpdater.SetRemainingPachinkoBalls(bc, 0);
             }
-            catch (Exception ex) { _log.LogWarning($"[CoopSubs] Skip: clear ball failed: {ex.Message}"); }
+            catch (Exception ex)
+            {
+                _log.LogWarning($"[CoopSubs] Skip: clear ball failed: {ex.Message}");
+            }
         }
 
         // Run the normal post-shot flow. This records the zero-damage shot,
@@ -1162,10 +1135,13 @@ public sealed class CoopSubscriptions
         {
             try
             {
-                BattleController.CurrentBattleState = BattleController.BattleState.PRE_ATTACK_SPAWN_CHECK;
+                _bcUpdater.SetBattleState(BattleController.BattleState.PRE_ATTACK_SPAWN_CHECK);
                 _log.LogInfo("[CoopSubs] Skip: forced BattleState -> PRE_ATTACK_SPAWN_CHECK");
             }
-            catch (Exception ex) { _log.LogWarning($"[CoopSubs] Skip: state transition failed: {ex.Message}"); }
+            catch (Exception ex)
+            {
+                _log.LogWarning($"[CoopSubs] Skip: state transition failed: {ex.Message}");
+            }
         }
     }
 
@@ -1289,7 +1265,7 @@ public sealed class CoopSubscriptions
     /// </summary>
     private void GenerateAndBroadcastPerSlotOrbChoices(IGameEventRegistry registry)
     {
-        var deckMgr = UnityEngine.Resources.FindObjectsOfTypeAll<DeckManager>().FirstOrDefault();
+        var deckMgr = Resources.FindObjectsOfTypeAll<DeckManager>().FirstOrDefault();
         if (deckMgr == null)
         {
             _log.LogWarning("[CoopSubs] GenerateAndBroadcastPerSlotOrbChoices: no DeckManager found");
@@ -1469,18 +1445,14 @@ public sealed class CoopSubscriptions
         {
             // All remaining players have shot. Write host tallies and let per-player
             // resolution handle the rest in the DoAttack prefix.
-            var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
-            var pegTallyField = AccessTools.Field(typeof(BattleController), "_pegMultiplierDamageTally");
-            var critField = AccessTools.Field(typeof(BattleController), "_criticalHitCount");
-            var numPegsField = AccessTools.Field(typeof(BattleController), "_numPegsHit");
-            var cactusField = AccessTools.Field(typeof(BattleController), "_cactusDamageTally");
+            var bc = _bcUpdater.GetBattleController();
 
             if (_accumulatedShotData.TryGetValue(0, out var hostData) && bc != null)
             {
-                pegTallyField?.SetValue(bc, hostData.PegMultiplierDamageTally);
-                critField?.SetValue(null, hostData.CriticalHitCount);
-                numPegsField?.SetValue(bc, hostData.NumPegsHit);
-                cactusField?.SetValue(bc, hostData.CactusDamageTally);
+                _bcUpdater.SetPegMultiplierDamageTally(bc, hostData.PegMultiplierDamageTally);
+                _bcUpdater.SetCriticalHitCount(hostData.CriticalHitCount);
+                _bcUpdater.SetNumPegsHit(bc, hostData.NumPegsHit);
+                _bcUpdater.SetCactusDamageTally(bc, hostData.CactusDamageTally);
             }
 
             if (_coopStateManager.ActivePlayerSlot != 0)
@@ -1509,21 +1481,23 @@ public sealed class CoopSubscriptions
                 DeckManager.onBallUsed = _ => { };
                 DeckManager.onDeckShuffled = _ => { };
             }
-            catch (Exception cbEx) { _log.LogWarning($"[CoopSubs] Disconnect: failed to save DeckManager callbacks: {cbEx.Message}"); }
+            catch (Exception cbEx)
+            {
+                _log.LogWarning($"[CoopSubs] Disconnect: failed to save DeckManager callbacks: {cbEx.Message}");
+            }
 
-            EnsureBattleDeckPopulated("disconnect swap");
+            _deckMgr.EnsureBattleDeckPopulated("disconnect swap");
 
             // Redirect battle state back to AWAITING_SHOT
-            BattleController.CurrentBattleState = BattleController.BattleState.AWAITING_SHOT;
+            _bcUpdater.SetBattleState(BattleController.BattleState.AWAITING_SHOT);
 
             // Manually trigger DrawBall for the next player
-            var bc = UnityEngine.Object.FindObjectOfType<BattleController>();
+            var bc = _bcUpdater.GetBattleController();
             try
             {
                 if (bc != null)
                 {
-                    var drawBallMethod = AccessTools.Method(typeof(BattleController), "DrawBall");
-                    drawBallMethod?.Invoke(bc, null);
+                    _bcUpdater.InvokeDrawBall(bc);
                     _log.LogInfo($"[CoopSubs] Disconnect: called DrawBall for next player slot {nextSlot}");
                 }
             }
@@ -1545,7 +1519,10 @@ public sealed class CoopSubscriptions
                         DeckManager.onDeckShuffled = savedOnDeckShuffled;
                     }
                 }
-                catch (Exception restoreEx) { _log.LogWarning($"[CoopSubs] Disconnect: failed to restore DeckManager callbacks: {restoreEx.Message}"); }
+                catch (Exception restoreEx)
+                {
+                    _log.LogWarning($"[CoopSubs] Disconnect: failed to restore DeckManager callbacks: {restoreEx.Message}");
+                }
             }
 
             BroadcastTurnChange();
@@ -1565,160 +1542,9 @@ public sealed class CoopSubscriptions
         }
     }
 
-    /// <summary>
-    /// Mirror BattleController's native ApplyStartingBonuses for a non-host player
-    /// at battle init. Native code only runs for the host (the slot loaded into the
-    /// singletons when BattleController.Start() executes), so non-host relics like
-    /// Spiral Slayer (START_WITH_STR) never grant their starting status effect.
-    ///
-    /// Call this AFTER SwapToPlayer(slot) loads the slot's relics into the singleton
-    /// and BEFORE SaveActivePlayerState() captures the resulting status effects.
-    /// We also reset per-battle relic counters here so the bonus actually applies on
-    /// every battle (AttemptUseRelic decrements the counter each call).
-    /// </summary>
-    private void ApplyNonHostStartingBonuses(int slot)
-    {
-        try
-        {
-            var relicMgr = UnityEngine.Resources.FindObjectsOfTypeAll<Relics.RelicManager>()?.FirstOrDefault();
-            if (relicMgr != null)
-            {
-                try
-                { relicMgr.ResetBattleRelics(); }
-                catch (Exception rex) { _log.LogWarning($"[CoopSubs] ResetBattleRelics for slot {slot} failed: {rex.Message}"); }
-            }
-
-            var psec = UnityEngine.Object.FindObjectOfType<Battle.StatusEffects.PlayerStatusEffectController>();
-            if (psec == null)
-            {
-                _log.LogWarning($"[CoopSubs] ApplyNonHostStartingBonuses: PlayerStatusEffectController not found for slot {slot}");
-                return;
-            }
-
-            psec.ApplyStartingBonuses();
-            _log.LogInfo($"[CoopSubs] Applied starting bonuses for slot {slot}");
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning($"[CoopSubs] ApplyNonHostStartingBonuses for slot {slot} failed: {ex.Message}");
-        }
-    }
-
-    /// <summary>
-    /// After SwapToPlayer loads deck state, only shuffle if truly needed.
-    /// LoadDeckState rebuilds battleDeck and shuffledDeck from the saved state.
-    /// If shuffledDeck is populated, the loaded order is authoritative — do NOT
-    /// re-shuffle or the host-deterministic draw order will be lost.
-    /// Only shuffle if both battleDeck and shuffledDeck are empty (no state was saved),
-    /// or if battleDeck has orbs but shuffledDeck couldn't be rebuilt (name mismatch).
-    /// </summary>
-    private bool EnsureBattleDeckPopulated(string context)
-    {
-        try
-        {
-            var dms = UnityEngine.Resources.FindObjectsOfTypeAll<DeckManager>();
-            if (dms == null || dms.Length == 0)
-            {
-                return false;
-            }
-
-            var dm = dms[0];
-            var hasBattle = dm.battleDeck != null && dm.battleDeck.Count > 0;
-            var hasShuffled = dm.shuffledDeck != null && dm.shuffledDeck.Count > 0;
-
-            if (hasBattle && hasShuffled)
-            {
-                // Both populated from loaded state — do NOT re-shuffle
-                return true;
-            }
-
-            if (hasBattle && !hasShuffled)
-            {
-                // Battle deck loaded but shuffled order couldn't be rebuilt
-                // (e.g. orb name matching failed). Re-shuffle from the loaded battle deck.
-                _log.LogInfo($"[CoopSubs] {context}: battleDeck has {dm.battleDeck.Count} orbs but shuffledDeck empty — re-shuffling");
-                dm.ShuffleBattleDeck();
-            }
-            else if (!hasBattle && DeckManager.completeDeck != null && DeckManager.completeDeck.Count > 0)
-            {
-                // No battle deck loaded but complete deck exists — initialize battle deck.
-                // CRITICAL: ShuffleBattleDeck() calls ShuffleCompleteDeck(fromComplete: false)
-                // which reads from the EMPTY battleDeck and does nothing.
-                // We must call ShuffleCompleteDeck(fromComplete: true) to build battleDeck
-                // from completeDeck and populate shuffledDeck.
-                _log.LogInfo($"[CoopSubs] {context}: battleDeck empty, initializing from completeDeck ({DeckManager.completeDeck.Count} orbs)");
-
-                var shuffleMethod = AccessTools.Method(typeof(DeckManager), "ShuffleCompleteDeck", new[] { typeof(bool) });
-                if (shuffleMethod != null)
-                {
-                    shuffleMethod.Invoke(dm, new object[] { true });
-                    _log.LogInfo($"[CoopSubs] {context}: after ShuffleCompleteDeck(true): battleDeck={dm.battleDeck?.Count ?? 0}, shuffledDeck={dm.shuffledDeck?.Count ?? 0}");
-                }
-                else
-                {
-                    // Fallback: manually copy completeDeck into battleDeck, then shuffle
-                    _log.LogWarning($"[CoopSubs] {context}: ShuffleCompleteDeck not found, manually copying completeDeck to battleDeck");
-                    if (dm.battleDeck == null)
-                    {
-                        dm.battleDeck = new System.Collections.Generic.List<GameObject>();
-                    }
-
-                    foreach (var orb in DeckManager.completeDeck)
-                    {
-                        if (orb != null)
-                        {
-                            var instance = UnityEngine.Object.Instantiate(orb);
-                            instance.name = orb.name;
-                            instance.SetActive(false);
-                            dm.battleDeck.Add(instance);
-                        }
-                    }
-
-                    dm.ShuffleBattleDeck();
-                    _log.LogInfo($"[CoopSubs] {context}: after fallback shuffle: battleDeck={dm.battleDeck?.Count ?? 0}, shuffledDeck={dm.shuffledDeck?.Count ?? 0}");
-                }
-            }
-            // else: both empty — nothing to do, likely pre-battle state
-
-            // Return success: both battleDeck and shuffledDeck are non-empty
-            var success = (dm.battleDeck != null && dm.battleDeck.Count > 0) &&
-                           (dm.shuffledDeck != null && dm.shuffledDeck.Count > 0);
-            return success;
-        }
-        catch (System.Exception ex)
-        {
-            _log.LogWarning($"[CoopSubs] EnsureBattleDeckPopulated ({context}) failed: {ex.Message}");
-            return false;
-        }
-    }
-
     // =========================================================================
     // PER-PLAYER DAMAGE RESOLUTION — accessed by DoAttack Harmony prefix
     // =========================================================================
-
-    /// <summary>
-    /// Data for a single player's shot, consumed during DoAttack.
-    /// </summary>
-    public class PlayerAttackData
-    {
-        public int SlotIndex;
-        public string PlayerName;
-        public long Damage;
-        public string TargetEnemyGuid;
-        public bool IsAoE;
-        public bool IsHeal;
-        public List<(Battle.StatusEffects.StatusEffectType Type, int Intensity)> StatusEffectsToApply;
-        public int NumPegsHit;
-        public int CriticalHitCount;
-        public string OrbPrefabName;
-        // Pincer Maneuver: damage above is the halved primary shot; the coop
-        // sequencer must apply the same damage to the farthest enemy.
-        public bool HasReverseShot;
-        // Alien's Rock — splash to adjacent enemies on targeted hit.
-        public bool HasTargetedSplash;
-        // TARGETED_ATTACKS_HIT_ALL — targeted hit damages every alive enemy.
-        public bool HasTargetedHitAll;
-    }
 
     /// <summary>
     /// Returns ALL players' accumulated shot data for per-player damage resolution.
@@ -1765,7 +1591,7 @@ public sealed class CoopSubscriptions
     /// Returns ALL players' accumulated shot data for the pending damage overlay.
     /// Does NOT clear the data — called repeatedly during shots.
     /// </summary>
-    internal static List<Events.Network.Coop.PendingDamagePreviewEvent.DamageEntry> GetAccumulatedDamageEntries()
+    internal static List<PendingDamagePreviewEvent.DamageEntry> GetAccumulatedDamageEntries()
     {
         var inst = Instance;
         if (inst == null)
@@ -1773,7 +1599,7 @@ public sealed class CoopSubscriptions
             return null;
         }
 
-        var result = new List<Events.Network.Coop.PendingDamagePreviewEvent.DamageEntry>();
+        var result = new List<PendingDamagePreviewEvent.DamageEntry>();
         foreach (var kvp in inst._accumulatedShotData)
         {
             var d = kvp.Value;
@@ -1782,7 +1608,7 @@ public sealed class CoopSubscriptions
                 continue;
             }
 
-            result.Add(new Events.Network.Coop.PendingDamagePreviewEvent.DamageEntry
+            result.Add(new PendingDamagePreviewEvent.DamageEntry
             {
                 SlotIndex = kvp.Key,
                 PlayerName = d.PlayerName,
@@ -1795,253 +1621,13 @@ public sealed class CoopSubscriptions
         return result;
     }
 
-    /// <summary>Temporary orb instance created at ALL_DONE; destroyed after DoAttack.</summary>
-    internal static GameObject TempOrbInstance;
-
-    /// <summary>
-    /// Instantiate the orb prefab, initialize its Attack component, and set it as
-    /// AttackManager._attack so DoAttack uses the correct damage formula.
-    /// </summary>
-    private static void RestoreAttackFromPrefab(BattleController bc, GameObject orbPrefab, string label)
-    {
-        // Clean up any previous temp orb
-        if (TempOrbInstance != null)
-        {
-            UnityEngine.Object.Destroy(TempOrbInstance);
-            TempOrbInstance = null;
-        }
-
-        // Instantiate offscreen so it's invisible but active (Fire() needs active components)
-        TempOrbInstance = UnityEngine.Object.Instantiate(orbPrefab, new Vector3(-999, -999, 0), UnityEngine.Quaternion.identity);
-        TempOrbInstance.name = $"CoopTempOrb_{label}";
-
-        var attack = TempOrbInstance.GetComponent<Battle.Attacks.Attack>();
-        if (attack == null)
-        {
-            MultiplayerPlugin.Logger?.LogWarning($"[CoopSubs] Prefab '{orbPrefab.name}' has no Attack component!");
-            UnityEngine.Object.Destroy(TempOrbInstance);
-            TempOrbInstance = null;
-            return;
-        }
-
-        // Initialize the Attack with the current singletons (host's state is loaded at this point)
-        var amField = AccessTools.Field(typeof(BattleController), "_attackManager");
-        var am = amField?.GetValue(bc) as Battle.Attacks.AttackManager;
-        var dmField = AccessTools.Field(typeof(BattleController), "_deckManager");
-        var dm = dmField?.GetValue(bc) as DeckManager;
-        var rmField = AccessTools.Field(typeof(BattleController), "_relicManager");
-        var rm = rmField?.GetValue(bc) as Relics.RelicManager;
-        var cmField = AccessTools.Field(typeof(BattleController), "_cruciballManager");
-        var cm = cmField?.GetValue(bc) as Cruciball.CruciballManager;
-        var phcField = AccessTools.Field(typeof(BattleController), "_playerHealthController");
-        var phc = phcField?.GetValue(bc) as PlayerHealthController;
-        var psecField = AccessTools.Field(typeof(BattleController), "_playerStatusEffectController");
-        var psec = psecField?.GetValue(bc) as Battle.StatusEffects.PlayerStatusEffectController;
-
-        var playerField = AccessTools.Field(typeof(BattleController), "_playerTransform");
-        var playerTransform = playerField?.GetValue(bc) as UnityEngine.Transform;
-        var playerPos = playerTransform != null ? (Vector2)playerTransform.position : Vector2.zero;
-
-        attack.Initialize(playerPos, am, rm, dm, cm, phc, psec);
-
-        // Clone the instanceID from the matching deck entry so that
-        // IsAttackUnique can correctly identify this orb in the deck
-        // (needed for UNIQUE_ORBS_BUFF / Spinventoriginality relic).
-        // Initialize called SoftInit(forUI:false) which set applyUniqueBuff
-        // with the wrong instanceID; we need to re-check after cloning.
-        if (dm?.battleDeck != null)
-        {
-            foreach (var deckOrb in dm.battleDeck)
-            {
-                if (deckOrb != null)
-                {
-                    var deckAttack = deckOrb.GetComponent<Battle.Attacks.Attack>();
-                    if (deckAttack != null && deckAttack.locNameString == attack.locNameString)
-                    {
-                        attack.CloneInstanceId(deckAttack);
-                        attack.CheckUniqueBuff(string.Empty);
-                        break;
-                    }
-                }
-            }
-        }
-
-        // Compute relic-based damage buffs (UNIQUE_ORBS_BUFF, INCREASE_STRENGTH_SMALL, etc.)
-        // This mirrors what BattleController.DrawBall does after InitializeAttack.
-        attack.CalculateStaticDamageBuffs(saveResults: true);
-
-        // Set as the active attack in AttackManager
-        if (am != null)
-        {
-            var atkField = AccessTools.Field(typeof(Battle.Attacks.AttackManager), "_attack");
-            atkField?.SetValue(am, attack);
-            am.isHeal = attack is HealAction;
-        }
-
-        MultiplayerPlugin.Logger?.LogInfo($"[CoopSubs] Restored {label} Attack from prefab: {orbPrefab.name}");
-    }
-
     /// <summary>
     /// Clean up the temporary orb instance after DoAttack finishes.
     /// Called from the DoAttack postfix in MultiplayerClientPatches.
     /// </summary>
     internal static void CleanupTempOrb()
     {
-        if (TempOrbInstance != null)
-        {
-            UnityEngine.Object.Destroy(TempOrbInstance);
-            TempOrbInstance = null;
-        }
-    }
-
-    /// <summary>
-    /// Capture status effects from an orb at shot completion time for non-host players,
-    /// since their effects won't be applied by the normal DoAttack pipeline (which only
-    /// processes the host's Attack object).
-    ///
-    /// We collect from three sources matching the native per-hit pipeline:
-    ///   1. attack.GetStatusEffects(critCount) — covers the Attack base class's relic
-    ///      effects (ATTACKS_DEAL_BLIND, Transpherency, Poison, Exploitaball) AND the
-    ///      subclass overrides that orbs like BlindOrb, ThornOrb, PoisonOrb rely on
-    ///      (e.g. BlindAttack adds Blind(BlindIntensity=11)). Invoked natively per-hit
-    ///      from ProjectileAttack.DoDamage; we invoke it once per shot for replay.
-    ///   2. AddStatusEffectOnHit components — per-hit IAffectEnemyOnHit effects
-    ///      attached to the orb prefab.
-    ///   3. AddRandomStatusEffectOnHit — Roundreloquence's random roll.
-    /// </summary>
-    private static List<(Battle.StatusEffects.StatusEffectType, int)> CaptureOrbStatusEffects(
-        Battle.Attacks.Attack attack, int critCount)
-    {
-        var effects = new List<(Battle.StatusEffects.StatusEffectType, int)>();
-        try
-        {
-            // 1. attack.GetStatusEffects — relic-driven base effects + Attack subclass overrides
-            try
-            {
-                var fromAttack = attack.GetStatusEffects(critCount);
-                if (fromAttack != null)
-                {
-                    foreach (var se in fromAttack)
-                    {
-                        if (se == null || se.EffectType == Battle.StatusEffects.StatusEffectType.None)
-                        {
-                            continue;
-                        }
-
-                        effects.Add((se.EffectType, se.Intensity));
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                MultiplayerPlugin.Logger?.LogWarning(
-                    $"[CoopSubs] attack.GetStatusEffects failed: {ex.Message}");
-            }
-
-            // 2. AddStatusEffectOnHit — orb-prefab per-hit effects
-            foreach (var seh in attack.GetComponents<Battle.Attacks.AttackBehaviours.AddStatusEffectOnHit>())
-            {
-                var intensity = seh.intensity;
-                if (seh.isCritThresholdCumulative && seh.critCountThreshold > 0)
-                {
-                    intensity += critCount / seh.critCountThreshold * seh.critAddIntensity;
-                }
-                else if (seh.critCountThreshold <= critCount)
-                {
-                    intensity += seh.critAddIntensity;
-                }
-
-                effects.Add((seh.type, intensity));
-            }
-
-            // 3. AddRandomStatusEffectOnHit — Roundreloquence orb
-            foreach (var _ in attack.GetComponents<Battle.Attacks.AttackBehaviours.AddRandomStatusEffectOnHit>())
-            {
-                var idx = UnityEngine.Random.Range(0,
-                    Battle.Attacks.AttackBehaviours.AddRandomStatusEffectOnHit.RoundreloquencePotentialEffects.Length);
-                effects.Add((
-                    Battle.Attacks.AttackBehaviours.AddRandomStatusEffectOnHit.RoundreloquencePotentialEffects[idx],
-                    Battle.Attacks.AttackBehaviours.AddRandomStatusEffectOnHit.RoundreloquenceEffectIntensity[idx]));
-            }
-
-            if (effects.Count > 0)
-            {
-                MultiplayerPlugin.Logger?.LogInfo(
-                    $"[CoopSubs] Captured {effects.Count} status effect(s) from orb " +
-                    $"({attack.GetType().Name}): " +
-                    string.Join(", ", effects.Select(e => $"{e.Item1}({e.Item2})")));
-            }
-        }
-        catch (Exception ex)
-        {
-            MultiplayerPlugin.Logger?.LogWarning($"[CoopSubs] CaptureOrbStatusEffects failed: {ex.Message}");
-        }
-
-        return effects.Count > 0 ? effects : null;
-    }
-
-    /// <summary>
-    /// Apply self-granting post-attack status effects (Ballusion from Evasive Maneuvorb,
-    /// Muscircle, Ballwark from shield pegs, etc.) to the currently loaded player's
-    /// PlayerStatusEffectController. This replicates the game's native
-    /// CallPostAttackOperations logic, which is skipped in coop because the DoAttack
-    /// Harmony prefix returns false.
-    ///
-    /// Invokes the component's own HandleAttackFinished method directly so that the
-    /// crit/shield-peg intensity scaling matches native behavior exactly.
-    /// </summary>
-    private static void ApplySelfPostAttackBuffs(Battle.Attacks.Attack attack, int critCount, int slotIndex)
-    {
-        try
-        {
-            var statusCtrl = UnityEngine.Object.FindObjectOfType<Battle.StatusEffects.PlayerStatusEffectController>();
-            if (statusCtrl == null)
-            {
-                return;
-            }
-
-            var grantCount = 0;
-            var grantShieldCount = 0;
-
-            foreach (var grant in attack.GetComponents<Battle.Attacks.AttackBehaviours.GrantStatusAfterAttack>())
-            {
-                try
-                {
-                    grant.HandleAttackFinished(statusCtrl);
-                    grantCount++;
-                }
-                catch (Exception ex)
-                {
-                    MultiplayerPlugin.Logger?.LogWarning(
-                        $"[CoopSubs] GrantStatusAfterAttack.HandleAttackFinished failed: {ex.Message}");
-                }
-            }
-
-            foreach (var grant in attack.GetComponents<Battle.Attacks.AttackBehaviours.GrantStatusAfterAttackPerShieldPeg>())
-            {
-                try
-                {
-                    grant.HandleAttackFinished(statusCtrl);
-                    grantShieldCount++;
-                }
-                catch (Exception ex)
-                {
-                    MultiplayerPlugin.Logger?.LogWarning(
-                        $"[CoopSubs] GrantStatusAfterAttackPerShieldPeg.HandleAttackFinished failed: {ex.Message}");
-                }
-            }
-
-            if (grantCount > 0 || grantShieldCount > 0)
-            {
-                MultiplayerPlugin.Logger?.LogInfo(
-                    $"[CoopSubs] Applied self-buffs for slot {slotIndex}: " +
-                    $"GrantStatusAfterAttack={grantCount}, GrantStatusAfterAttackPerShieldPeg={grantShieldCount}, crits={critCount}");
-            }
-        }
-        catch (Exception ex)
-        {
-            MultiplayerPlugin.Logger?.LogWarning($"[CoopSubs] ApplySelfPostAttackBuffs failed: {ex.Message}");
-        }
+        Instance?._orbApplier?.CleanupTempOrb();
     }
 
     /// <summary>
@@ -2069,138 +1655,5 @@ public sealed class CoopSubscriptions
         {
             _log.LogWarning($"[CoopSubs] BroadcastTurnChange failed: {ex.Message}");
         }
-    }
-
-    // =========================================================================
-    // PER-PLAYER DEFENSIVE BUFF RESOLUTION
-    // =========================================================================
-
-    /// <summary>
-    /// Apply a player's defensive status effects (Ballusion, Intangiball, Ballwark)
-    /// to incoming damage. Modifies the player's saved status effects in-place
-    /// (e.g. consuming Ballwark stacks, reducing Ballusion on dodge).
-    /// Returns the effective damage after all defensive buffs.
-    /// </summary>
-    private float ApplyDefensiveBuffs(GameState.CoopPlayerState state, float rawDamage)
-    {
-        var damage = rawDamage;
-
-        var ballusionStacks = GetEffectIntensity(state, (int)Battle.StatusEffects.StatusEffectType.Ballusion);
-        var intangiballCap = GetEffectIntensity(state, (int)Battle.StatusEffects.StatusEffectType.Intangiball);
-        var ballwarkStacks = GetEffectIntensity(state, (int)Battle.StatusEffects.StatusEffectType.Ballwark);
-
-        // 1. Ballusion (evasion): 1% dodge chance per stack
-        if (ballusionStacks > 0 && damage > 0f)
-        {
-            var evasionChance = ballusionStacks * Battle.StatusEffects.StatusEffectData.BALLUSION_EVASION_PER_STACK;
-            var roll = UnityEngine.Random.value;
-            if (roll < evasionChance)
-            {
-                // Dodge! Reduce Ballusion stacks by ~50%
-                var reduction = Battle.StatusEffects.StatusEffectData.BALLUSION_REDUCTION_PERCENTAGE;
-
-                // Check for relics that modify reduction
-                if (HasRelic(state, Relics.RelicEffect.BALLUSION_DOUBLE_MAX) ||
-                    HasRelic(state, Relics.RelicEffect.RETAIN_DODGE_BETWEEN_BATTLES))
-                {
-                    reduction -= 0.1f;
-                }
-
-                if (HasRelic(state, Relics.RelicEffect.BALLUSION_DOUBLE_GAIN_AND_LOSS))
-                {
-                    reduction *= 2f;
-                }
-
-                var keep = Mathf.Clamp(1f - reduction, 0f, 1f);
-                var newStacks = Mathf.RoundToInt(ballusionStacks * keep);
-                SetEffectIntensity(state, (int)Battle.StatusEffects.StatusEffectType.Ballusion, newStacks);
-
-                _log.LogInfo($"[CoopSubs] Slot {state.SlotIndex} DODGED (Ballusion {ballusionStacks}->{newStacks}, roll={roll:F3} < {evasionChance:F3})");
-                damage = 0f;
-            }
-        }
-
-        // 2. Intangiball (damage cap)
-        if (intangiballCap > 0 && damage > 0f)
-        {
-            damage = Mathf.Min(damage, intangiballCap);
-        }
-
-        // 3. Ballwark (armor absorption)
-        if (ballwarkStacks > 0 && damage > 0f)
-        {
-            float armour = ballwarkStacks;
-            if (armour >= damage)
-            {
-                armour -= damage;
-                damage = 0f;
-            }
-            else
-            {
-                damage -= armour;
-                armour = 0f;
-            }
-
-            SetEffectIntensity(state, (int)Battle.StatusEffects.StatusEffectType.Ballwark, Mathf.RoundToInt(armour));
-            _log.LogInfo($"[CoopSubs] Slot {state.SlotIndex} Ballwark absorbed: {ballwarkStacks}->{Mathf.RoundToInt(armour)}");
-        }
-
-        return Mathf.Max(0f, damage);
-    }
-
-    private static int GetEffectIntensity(GameState.CoopPlayerState state, int effectType)
-    {
-        foreach (var e in state.StatusEffects)
-        {
-            if (e.EffectType == effectType)
-            {
-                return e.Intensity;
-            }
-        }
-
-        return 0;
-    }
-
-    private static void SetEffectIntensity(GameState.CoopPlayerState state, int effectType, int intensity)
-    {
-        for (var i = 0; i < state.StatusEffects.Count; i++)
-        {
-            if (state.StatusEffects[i].EffectType == effectType)
-            {
-                if (intensity <= 0)
-                {
-                    state.StatusEffects.RemoveAt(i);
-                }
-                else
-                {
-                    state.StatusEffects[i].Intensity = intensity;
-                }
-
-                return;
-            }
-        }
-        // Effect not in list yet — add if positive
-        if (intensity > 0)
-        {
-            state.StatusEffects.Add(new GameState.SerializedStatusEffect
-            {
-                EffectType = effectType,
-                Intensity = intensity,
-            });
-        }
-    }
-
-    private static bool HasRelic(GameState.CoopPlayerState state, Relics.RelicEffect effect)
-    {
-        var effectInt = (int)effect;
-        foreach (var r in state.OwnedRelics)
-        {
-            if (r.Effect == effectInt)
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 }

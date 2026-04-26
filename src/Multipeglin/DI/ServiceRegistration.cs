@@ -15,6 +15,7 @@ using Multipeglin.Events.Handlers.State;
 using Multipeglin.Events.Handlers.StatusEffect;
 using Multipeglin.Events.Network;
 using Multipeglin.Events.Subscriptions;
+using Multipeglin.Events.Subscriptions.Coop;
 using Multipeglin.GameState;
 using Multipeglin.Multiplayer;
 using Multipeglin.Network;
@@ -383,7 +384,20 @@ public static class ServiceRegistration
 
         // Co-op damage distribution + turn system - enemy damage applies to all players,
         // TurnManager drives turn order during co-op battles
-        new CoopSubscriptions(multiplayerMode, coopStateManager, turnManager, syncService, log).Subscribe();
+        var bcUpdater = new BattleControllerUpdateManager();
+        var deckMgr = new CoopDeckManager(log);
+        var orbApplier = new OrbStatusEffectApplier(bcUpdater, log);
+        var buffApplier = new BuffApplier(log);
+        new CoopSubscriptions(
+            multiplayerMode,
+            coopStateManager,
+            turnManager,
+            syncService,
+            bcUpdater,
+            deckMgr,
+            orbApplier,
+            buffApplier,
+            log).Subscribe();
 
         // State sync subscriptions - triggers full/partial state capture on key events
         new StateSyncSubscriptions(syncService, multiplayerMode, log).Subscribe();
