@@ -8,6 +8,8 @@ public class PegboardStateSnapshot
 
     public List<VineEntry> Vines { get; set; } = new List<VineEntry>();
 
+    public List<BlackHoleEntry> BlackHoles { get; set; } = new List<BlackHoleEntry>();
+
     public int TotalPegCount { get; set; }
 
     public int CritPegCount { get; set; }
@@ -125,4 +127,21 @@ public class VineEntry
     public string Peg1Guid { get; set; }
 
     public string Peg2Guid { get; set; }
+}
+
+/// <summary>
+/// Spirit of Radia (and any other source of <see cref="Battle.Pachinko.Obstacles.PegboardBlackHole"/>)
+/// spawns black-hole obstacles that are independent GameObjects, not pegs. The client blocks the
+/// boss action that instantiates them, so the host must enumerate and ship their world positions
+/// every heartbeat — the client mirrors them as visual-only clones (no gravity simulation needed
+/// since the client never owns balls).
+/// </summary>
+public class BlackHoleEntry
+{
+    /// <summary>Stable index within the host's spawn list — used as an identity key for diffing.</summary>
+    public int Index { get; set; }
+
+    public float PosX { get; set; }
+
+    public float PosY { get; set; }
 }

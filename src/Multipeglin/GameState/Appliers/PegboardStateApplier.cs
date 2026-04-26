@@ -29,6 +29,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     /// <summary>Tracks vines created on the client, keyed by sorted peg GUID pair.</summary>
     private readonly Dictionary<string, GameObject> _clientVines = new Dictionary<string, GameObject>();
 
+    /// <summary>Tracks black-hole visuals the client has spawned, keyed by host snapshot index.</summary>
+    private readonly Dictionary<int, GameObject> _clientBlackHoles = new Dictionary<int, GameObject>();
+
     public PegboardStateApplier(ManualLogSource log, PegIdentifier pegId)
     {
         _log = log;
@@ -514,6 +517,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
             // Sync bramball vines
             SyncVines(snapshot, bc);
+
+            // Sync Spirit of Radia black-hole obstacles
+            SyncBlackHoles(snapshot);
 
             // Per-bomb dump previously logged 6 lines per heartbeat — now only logged
             // when the client/host bomb count diverges (a real sync issue).
@@ -2104,5 +2110,132 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         {
             _log.LogWarning($"[PegboardApplier] SyncVines failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Mirror the host's <see cref="Battle.Pachinko.Obstacles.PegboardBlackHole"/>
+    /// instances as visual-only clones on the client.
+    /// </summary>
+    /// <remarks>
+    /// The boss action that instantiates them is blocked on the client (uses RNG
+    /// for spawn-location shuffling), so the heartbeat is the only path. We pull
+    /// the prefab off the live SpiritOfRadiaBoss's AddBlackHoles component so we
+    /// don't need to send the visual asset over the wire — both sides loaded the
+    /// same boss prefab from Addressables. Each entry's <c>Index</c> is its slot
+    /// in the host's spawn order; we key the client tracking dict by that, so
+    /// new spawns add and despawn-by-index removes cleanly.
+    /// </remarks>
+    private void SyncBlackHoles(PegboardStateSnapshot snapshot)
+    {
+        try
+        {
+            var hostHoles = snapshot.BlackHoles;
+            var hostCount = hostHoles?.Count ?? 0;
+
+            // Drop tracked entries whose GameObject has been destroyed (e.g.
+            // scene change) so subsequent diffs see a clean slate.
+            var stale = new List<int>();
+            foreach (var kvp in _clientBlackHoles)
+            {
+                if (kvp.Value == null)
+                {
+                    stale.Add(kvp.Key);
+                }
+            }
+
+            foreach (var k in stale)
+            {
+                _clientBlackHoles.Remove(k);
+            }
+
+            // Remove client black holes the host no longer reports.
+            if (_clientBlackHoles.Count > hostCount)
+            {
+                var toRemove = new List<int>();
+                foreach (var kvp in _clientBlackHoles)
+                {
+                    if (kvp.Key >= hostCount)
+                    {
+                        toRemove.Add(kvp.Key);
+                    }
+                }
+
+                foreach (var k in toRemove)
+                {
+                    if (_clientBlackHoles.TryGetValue(k, out var go) && go != null)
+                    {
+                        UnityEngine.Object.Destroy(go);
+                    }
+
+                    _clientBlackHoles.Remove(k);
+                }
+            }
+
+            if (hostCount == 0)
+            {
+                return;
+            }
+
+            GameObject prefab = null;
+            for (var i = 0; i < hostCount; i++)
+            {
+                var entry = hostHoles[i];
+                if (entry == null)
+                {
+                    continue;
+                }
+
+                if (!_clientBlackHoles.TryGetValue(entry.Index, out var go) || go == null)
+                {
+                    if (prefab == null)
+                    {
+                        prefab = FindBlackHolePrefab();
+                        if (prefab == null)
+                        {
+                            return;
+                        }
+                    }
+
+                    go = UnityEngine.Object.Instantiate(
+                        prefab,
+                        new Vector3(entry.PosX, entry.PosY, 0f),
+                        Quaternion.identity);
+                    go.name = $"ClientBlackHole_{entry.Index}";
+                    // Mark dummy so FixedUpdate skips the OverlapCircle gravity
+                    // pass — the client owns no ball physics, and any local
+                    // ball-renderer visual must not be tugged around by it.
+                    var bh = go.GetComponent<Battle.Pachinko.Obstacles.PegboardBlackHole>();
+                    bh?.SetDummy(true);
+                    _clientBlackHoles[entry.Index] = go;
+                }
+                else
+                {
+                    go.transform.position = new Vector3(entry.PosX, entry.PosY, 0f);
+                    if (!go.activeSelf)
+                    {
+                        go.SetActive(true);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[PegboardApplier] SyncBlackHoles failed: {ex.Message}");
+        }
+    }
+
+    private static GameObject FindBlackHolePrefab()
+    {
+        var addList = UnityEngine.Resources.FindObjectsOfTypeAll<Battle.Enemies.Behaviours.SpiritOfRadia.AddBlackHoles>();
+        for (var i = 0; i < addList.Length; i++)
+        {
+            var prefab = addList[i]?.blackHolePrefab;
+            if (prefab != null)
+            {
+                return prefab;
+            }
+        }
+
+        return null;
     }
 }

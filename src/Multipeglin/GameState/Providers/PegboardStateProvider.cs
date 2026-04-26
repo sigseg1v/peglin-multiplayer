@@ -333,11 +333,13 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                 _log.LogWarning($"[PegProvider] Failed to capture vines: {ex.Message}");
             }
 
+            CaptureBlackHoles(snapshot);
+
             var bombsListCount = bombs?.Count ?? -1;
             _log.LogInfo($"[PegProvider] Captured {snapshot.TotalPegCount} pegs from PegManager " +
                 $"(crit={snapshot.CritPegCount}, bomb={snapshot.BombPegCount}, reset={snapshot.ResetPegCount}, " +
                 $"bouncer={snapshot.BouncerPegCount}, registry={_pegId.Count}, " +
-                $"_bombs={bombsListCount}, allPegsBombs={allPegsBombCount})");
+                $"_bombs={bombsListCount}, allPegsBombs={allPegsBombCount}, blackHoles={snapshot.BlackHoles.Count})");
 
             return snapshot;
         }
@@ -422,27 +424,84 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
             entry.LocalPosY = lp.y;
             entry.SiblingIndex = peg.transform.GetSiblingIndex();
 
-            // HasLpm: LPM can be on the peg itself (moves the peg directly), or on
-            // any ancestor (moves a whole row). When LPM is on the peg itself,
-            // localPosition drifts every physics tick — matching by it will bind
-            // LPM pegs to the wrong targets, causing "the wrong pegs are moving"
-            // on the client (visible on ConvergingWaves / moving-peg layouts).
-            // When LPM is on an ancestor, the peg's localPosition is stable.
-            var hasLpm = peg.GetComponent<LinearPegMovement>() != null;
-            if (!hasLpm && parent != null && parent.GetComponent<LinearPegMovement>() != null)
-            {
-                hasLpm = true;
-            }
-
-            if (!hasLpm && parent != null && parent.parent != null && parent.parent.GetComponent<LinearPegMovement>() != null)
-            {
-                hasLpm = true;
-            }
-
-            entry.HasLpm = hasLpm;
+            // HasLpm: name is historical — true whenever the peg's transform is
+            // continuously driven by *any* movement component on self/ancestors.
+            // Covers LPM (whole-row drift), PegSplineFollow / RotatingPegCircle
+            // (parent generators that overwrite each child's transform.position
+            // every FixedUpdate), and the IDummiableMovingPeg family (per-peg
+            // movers like PegMoveAndReturn, PegSquareMovement, PegTeleport,
+            // SimpleMovablePeg, FireworkMovement). For all of these the peg's
+            // localPosition drifts mid-frame, so the applier must fall back to
+            // (ParentName, SiblingIndex) matching instead of (ParentName,
+            // LocalPos). Without this, e.g. Spirit of Radia's spline-following
+            // pegs ("figure 8" loops) bind to the wrong client pegs and only
+            // half of the loop animates correctly.
+            entry.HasLpm = HasMovingAncestor(peg.transform);
         }
         catch
         {
         }
+    }
+
+    /// <summary>
+    /// Enumerate all live <see cref="Battle.Pachinko.Obstacles.PegboardBlackHole"/>
+    /// instances in the scene and ship their world positions. The client blocks
+    /// the boss action that spawns them, so without this they're invisible.
+    /// FindObjectsOfType skips inactive — black holes are toggled active/inactive
+    /// during shot pauses, so include inactive ones for the visual mirror.
+    /// </summary>
+    private void CaptureBlackHoles(PegboardStateSnapshot snapshot)
+    {
+        try
+        {
+            var holes = UnityEngine.Resources.FindObjectsOfTypeAll<Battle.Pachinko.Obstacles.PegboardBlackHole>();
+            var idx = 0;
+            for (var i = 0; i < holes.Length; i++)
+            {
+                var h = holes[i];
+                if (h == null || h.gameObject == null)
+                {
+                    continue;
+                }
+
+                if (h.gameObject.scene.name == null)
+                {
+                    continue;
+                }
+
+                var pos = h.transform.position;
+                snapshot.BlackHoles.Add(new Snapshots.BlackHoleEntry
+                {
+                    Index = idx,
+                    PosX = pos.x,
+                    PosY = pos.y,
+                });
+                idx++;
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[PegProvider] Failed to capture black holes: {ex.Message}");
+        }
+    }
+
+    private static bool HasMovingAncestor(UnityEngine.Transform t)
+    {
+        for (var cur = t; cur != null; cur = cur.parent)
+        {
+            if (cur.GetComponent<LinearPegMovement>() != null
+                || cur.GetComponent<PegSplineFollow>() != null
+                || cur.GetComponent<RotatingPegCircle>() != null
+                || cur.GetComponent<PegMoveAndReturn>() != null
+                || cur.GetComponent<PegSquareMovement>() != null
+                || cur.GetComponent<PegTeleport>() != null
+                || cur.GetComponent<SimpleMovablePeg>() != null
+                || cur.GetComponent<FireworkMovement>() != null)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
