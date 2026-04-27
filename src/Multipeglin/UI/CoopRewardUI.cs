@@ -54,6 +54,12 @@ public class CoopRewardUI : MonoBehaviour
     private string _hostWaitingPhaseKey;
     private GameObject _forceContinueButton;
 
+    // Navigate-phase standalone force button: shown independent of the dimmed
+    // overlay so the host can keep aiming while the timer runs out, but force-
+    // resolve once 60s elapse without all players shooting.
+    private GameObject _navForceButton;
+    private float _navPhaseStartedAt = -1f;
+
     private void Start()
     {
         try
@@ -157,6 +163,10 @@ public class CoopRewardUI : MonoBehaviour
                     Log?.LogInfo($"[CoopRewardUI] Scene change {_lastSceneName} -> {currentScene}, hiding overlay");
                     HideOverlay();
                     CoopRewardState.Reset();
+                    CoopNavigateState.Reset();
+                    DestroyNavForceButton();
+                    _navPhaseStartedAt = -1f;
+                    Patches.MultiplayerClientPatches.AllowNavigateLogic = false;
                 }
             }
 
@@ -179,6 +189,12 @@ public class CoopRewardUI : MonoBehaviour
                 return;
             }
 
+            // Standalone navigate-phase force button (host only; independent of overlay).
+            TickNavigateStandaloneForce(mode);
+
+            // Repaint slot tally colors (everyone, every frame the tally changes).
+            CoopNavigateSlotPainter.Tick();
+
             // Check if all choices are complete -- hide overlay
             if (CoopRewardState.AllChoicesComplete)
             {
@@ -191,8 +207,12 @@ public class CoopRewardUI : MonoBehaviour
                 return;
             }
 
-            // Check if we're waiting for other players
-            if (CoopRewardState.WaitingForOtherPlayers)
+            // Check if we're waiting for other players (reward/relic phases) OR
+            // we're in the parallel-shoot navigate phase having already voted.
+            var inNavigateWait = CoopNavigateState.PhaseActive
+                && CoopNavigateState.LocalVoteCast
+                && !CoopNavigateState.Resolved;
+            if (CoopRewardState.WaitingForOtherPlayers || inNavigateWait)
             {
                 if (_currentState != DisplayState.Waiting)
                 {
@@ -366,6 +386,10 @@ public class CoopRewardUI : MonoBehaviour
         {
             _titleText.text = "Waiting for other players to finish...";
         }
+        else if (CoopNavigateState.PhaseActive && CoopNavigateState.LocalVoteCast && !CoopNavigateState.Resolved)
+        {
+            _titleText.text = "Waiting for other players to navigate...";
+        }
         else if (CoopRewardState.HostRelicSelectionActive)
         {
             _titleText.text = isHost
@@ -457,6 +481,14 @@ public class CoopRewardUI : MonoBehaviour
         if (CoopRewardState.HostRelicSelectionActive && CoopRewardState.HostHasChosenRelic)
         {
             return "starting_relic";
+        }
+
+        if (CoopNavigateState.PhaseActive && !CoopNavigateState.Resolved)
+        {
+            // Host can force-resolve the navigate phase regardless of whether
+            // it has voted itself — covers the case where the host is stuck
+            // (e.g., its own nav ball is jammed and clients are waiting).
+            return "navigate";
         }
 
         return null;
@@ -581,6 +613,9 @@ public class CoopRewardUI : MonoBehaviour
                 case "starting_relic":
                     ForceContinueStartingRelic();
                     break;
+                case "navigate":
+                    ForceContinueNavigate();
+                    break;
                 default:
                     Log?.LogWarning($"[CoopRewardUI] Force Continue: unknown phase '{phase}'");
                     break;
@@ -678,6 +713,111 @@ public class CoopRewardUI : MonoBehaviour
             Log?.LogWarning("[CoopRewardUI] Force-resuming host PostBattleController.StartNavigation");
             var navMethod = HarmonyLib.AccessTools.Method(typeof(global::Battle.PostBattleController), "StartNavigation");
             navMethod?.Invoke(pbc, new object[] { true });
+        }
+    }
+
+    private void ForceContinueNavigate()
+    {
+        Log?.LogWarning("[CoopRewardUI] Force-resolving navigate phase");
+        CoopNavigateResolver.ForceResolve();
+        DestroyNavForceButton();
+    }
+
+    /// <summary>
+    /// Standalone navigate-phase force-skip button. Appears in the bottom-right
+    /// of the screen on the host after 60s in-phase, regardless of whether the
+    /// host has voted. Independent of the dimmed waiting overlay so the host
+    /// can keep aiming while the timer runs out.
+    /// </summary>
+    private void TickNavigateStandaloneForce(IMultiplayerMode mode)
+    {
+        if (mode == null || !mode.IsHosting)
+        {
+            DestroyNavForceButton();
+            _navPhaseStartedAt = -1f;
+            return;
+        }
+
+        if (!CoopNavigateState.PhaseActive || CoopNavigateState.Resolved)
+        {
+            DestroyNavForceButton();
+            _navPhaseStartedAt = -1f;
+            return;
+        }
+
+        // Track when we first observed the active phase.
+        if (_navPhaseStartedAt < 0f)
+        {
+            _navPhaseStartedAt = Time.unscaledTime;
+        }
+
+        // If the dimmed-overlay flow is already showing the force-continue
+        // button (host has voted), skip the standalone variant to avoid two
+        // overlapping buttons.
+        if (_currentState == DisplayState.Waiting && _hostWaitingPhaseKey == "navigate")
+        {
+            DestroyNavForceButton();
+            return;
+        }
+
+        if (Time.unscaledTime - _navPhaseStartedAt < ForceContinueDelaySeconds)
+        {
+            return;
+        }
+
+        if (_navForceButton != null)
+        {
+            return;
+        }
+
+        _navForceButton = CreateNavForceButton();
+    }
+
+    private GameObject CreateNavForceButton()
+    {
+        var obj = new GameObject("NavForceContinueButton");
+        obj.transform.SetParent(_canvasObj.transform, false);
+
+        var img = obj.AddComponent<Image>();
+        img.color = new Color(0.55f, 0.18f, 0.18f, 0.9f);
+
+        var btn = obj.AddComponent<Button>();
+        var colors = btn.colors;
+        colors.highlightedColor = new Color(0.7f, 0.25f, 0.25f);
+        colors.pressedColor = new Color(0.4f, 0.12f, 0.12f);
+        btn.colors = colors;
+
+        var rect = obj.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(1, 0);
+        rect.anchorMax = new Vector2(1, 0);
+        rect.pivot = new Vector2(1, 0);
+        rect.anchoredPosition = new Vector2(-30, 30);
+        rect.sizeDelta = new Vector2(280, 60);
+
+        var labelObj = new GameObject("Label");
+        labelObj.transform.SetParent(obj.transform, false);
+        var label = labelObj.AddComponent<TextMeshProUGUI>();
+        label.text = "Force Continue";
+        label.fontSize = 26;
+        label.fontStyle = FontStyles.Bold;
+        label.alignment = TextAlignmentOptions.Center;
+        label.color = Color.white;
+        var labelRect = label.rectTransform;
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = Vector2.zero;
+        labelRect.offsetMax = Vector2.zero;
+
+        btn.onClick.AddListener(ForceContinueNavigate);
+        return obj;
+    }
+
+    private void DestroyNavForceButton()
+    {
+        if (_navForceButton != null)
+        {
+            Destroy(_navForceButton);
+            _navForceButton = null;
         }
     }
 
@@ -946,6 +1086,7 @@ public class CoopRewardUI : MonoBehaviour
     private void OnDestroy()
     {
         ClearButtons();
+        DestroyNavForceButton();
         if (_canvasObj != null)
         {
             Destroy(_canvasObj);

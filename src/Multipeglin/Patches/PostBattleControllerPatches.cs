@@ -1,5 +1,6 @@
 using HarmonyLib;
 using Multipeglin.Events;
+using Multipeglin.Events.Handlers.Coop;
 using static Multipeglin.Patches.MultiplayerClientPatches;
 
 namespace Multipeglin.Patches;
@@ -67,6 +68,11 @@ internal static class PostBattleControllerPatches
                     reg.Dispatch(new Events.Network.Coop.AllChoicesCompleteEvent { Phase = "post_battle" });
                 }
 
+                // Enter parallel-shoot navigate phase. Returns false in solo / single-player
+                // contexts (no clients), in which case the host runs the native flow alone.
+                var childCount = StaticGameData.currentNode?.ChildNodes?.Length ?? 0;
+                CoopNavigateResolver.StartPhase("post_battle", childCount);
+
                 return true; // let StartNavigation run
             }
             else
@@ -80,6 +86,14 @@ internal static class PostBattleControllerPatches
         }
         else if (ShouldSuppressClientLogic)
         {
+            // When the parallel-shoot navigate phase is active, this is the client
+            // running StartNavigation locally (invoked by NavigatePhaseStartClientHandler).
+            // Allow it through so the slots get configured and the nav ball arms.
+            if (CoopNavigateState.PhaseActive && AllowNavigateLogic)
+            {
+                return true;
+            }
+
             // Client: never navigate — send results to host and wait
             MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Client finished post-battle rewards — sending results to host");
 

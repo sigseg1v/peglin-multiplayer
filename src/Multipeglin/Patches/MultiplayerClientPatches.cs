@@ -120,6 +120,13 @@ public static class MultiplayerClientPatches
     internal static bool AllowTextScenarioLogic;
 
     /// <summary>
+    /// Set to true on the client during the parallel-shoot end-of-stage navigate
+    /// phase. Allows the nav ball to arm, aim, and fire locally; HandleSlotTriggerActivated
+    /// patches divert the slot hit into a NavigateVoteEvent instead of triggering victory.
+    /// </summary>
+    internal static bool AllowNavigateLogic;
+
+    /// <summary>
     /// Tracks the relic effect chosen by the client during the post-battle
     /// boss/rare relic selection. Reset when the reward phase ends.
     /// -1 means no relic chosen (skipped or not yet selected).

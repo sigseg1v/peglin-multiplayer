@@ -233,6 +233,18 @@ public static class ServiceRegistration
             // Remove from player registry (after coop handling so the slot lookup works)
             playerRegistry.RemoveByPeerId(peerId);
             log.LogInfo($"[Disconnect] Removed peer {peerId} from PlayerRegistry. Remaining slots: {playerRegistry.SlotCount}");
+
+            // If a parallel-shoot navigate phase is running, drop the leaver
+            // from the expected voter count so the resolver doesn't deadlock
+            // waiting for a vote that will never arrive.
+            try
+            {
+                Events.Handlers.Coop.CoopNavigateResolver.OnPeerDisconnected();
+            }
+            catch (System.Exception ex)
+            {
+                log.LogWarning($"[Disconnect] CoopNavigateResolver.OnPeerDisconnected failed: {ex.Message}");
+            }
         };
     }
 
@@ -342,6 +354,12 @@ public static class ServiceRegistration
         registry.Register(new CoopHandlers.RunStatsSnapshotServerHandler(), new CoopHandlers.RunStatsSnapshotClientHandler());
         registry.Register(new CoopHandlers.OrbDiscardRequestServerHandler(), new CoopHandlers.OrbDiscardRequestClientHandler());
         registry.Register(new CoopHandlers.SkipTurnRequestServerHandler(), new CoopHandlers.SkipTurnRequestClientHandler());
+
+        // Co-op end-of-stage navigate (parallel-shoot vote system)
+        registry.Register(new CoopHandlers.NavigatePhaseStartServerHandler(), new CoopHandlers.NavigatePhaseStartClientHandler());
+        registry.Register(new CoopHandlers.NavigateVoteServerHandler(), new CoopHandlers.NavigateVoteClientHandler());
+        registry.Register(new CoopHandlers.NavigateVoteUpdateServerHandler(), new CoopHandlers.NavigateVoteUpdateClientHandler());
+        registry.Register(new CoopHandlers.NavigateResolvedServerHandler(), new CoopHandlers.NavigateResolvedClientHandler());
 
         // Scenario events (TextScenario / Mirror / Shop / Treasure)
         registry.Register(new ScenarioHandlers.MirrorEventStartServerHandler(), new ScenarioHandlers.MirrorEventStartClientHandler());

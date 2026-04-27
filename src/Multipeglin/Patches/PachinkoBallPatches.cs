@@ -42,6 +42,12 @@ internal static class PachinkoBallPatches
                 return true; // Let the client fire normally in PegMinigame
             }
 
+            if (AllowNavigateLogic)
+            {
+                // End-of-stage navigate phase — nav ball is local, slot hit becomes a vote.
+                return true;
+            }
+
             if (UI.LobbyUI.GameStartReceived
                 && Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn
                 && !ClientShotSentThisTurn)
