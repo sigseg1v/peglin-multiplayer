@@ -50,6 +50,33 @@ public sealed class CoopSubscriptions
     internal static string LastPendingShotTargetGuid { get; set; }
 
     /// <summary>
+    /// High-water mark for the running pegTally observed during the current shot.
+    /// Updated from BattleControllerPatches.HandlePegActivated_Postfix on every
+    /// peg hit, then read in OnShotComplete and used as a defensive fallback if
+    /// BC's _pegMultiplierDamageTally has been zeroed by the time we capture
+    /// (e.g. multiball satellites destroying themselves in unusual orders, or
+    /// any future native-game flow that resets the tally before our hook fires).
+    /// Reset on every new shot via ShotFired (CoopSubscriptions also clears it
+    /// in OnAwaitingShot and OnShotComplete after consuming).
+    /// </summary>
+    internal static int HighWaterPegTally { get; set; }
+
+    /// <summary>
+    /// High-water mark for am.GetCurrentDamage observed during the current shot.
+    /// Mirrors HighWaterPegTally but stores the fully-computed damage so it
+    /// captures any per-peg crit/multiplier/bonus updates that happened before
+    /// the satellite's destruction. Used as a sanity floor in OnShotComplete.
+    /// </summary>
+    internal static long HighWaterDamage { get; set; }
+
+    /// <summary>
+    /// Number of multiball-spawn events observed during the current shot.
+    /// Updated by PachinkoBallPatches when OnAdditionalPachinkoBallCreated fires.
+    /// Logged in OnShotComplete to make multiball-specific issues diagnosable.
+    /// </summary>
+    internal static int MultiballSpawnCount { get; set; }
+
+    /// <summary>
     /// Track health before the enemy attack phase to compute the damage delta.
     /// </summary>
     private float _healthBeforeAttack;
@@ -750,6 +777,34 @@ public sealed class CoopSubscriptions
             if (am != null)
             {
                 precomputedDamage = am.GetCurrentDamage(pegTally, dmgMult, dmgBonus, critCount);
+
+                // Defensive multiball fallback — if BC's pegTally has been
+                // zeroed, or am._attack has been Unity-destroyed (which makes
+                // GetCurrentDamage return 0), fall back to the high-water mark
+                // observed during the shot. The HWM only goes UP per peg, so
+                // the comparison is safe: if the natural capture is correct,
+                // it will already equal or exceed the HWM.
+                var hwmTally = HighWaterPegTally;
+                var hwmDamage = HighWaterDamage;
+                if (hwmDamage > precomputedDamage)
+                {
+                    _log.LogWarning(
+                        $"[CoopSubs] Damage capture below HWM — using HWM. " +
+                        $"captured={precomputedDamage} (pegTally={pegTally}), " +
+                        $"hwm={hwmDamage} (pegTally={hwmTally}), " +
+                        $"multiballSpawns={MultiballSpawnCount}, slot={activeSlot}");
+                    precomputedDamage = hwmDamage;
+
+                    // If the only reason capture failed is a zeroed pegTally,
+                    // also recover the tally so downstream consumers (e.g. the
+                    // ALL_DONE branch that writes back to BC for native attack)
+                    // see consistent values.
+                    if (pegTally == 0 && hwmTally > 0)
+                    {
+                        pegTally = hwmTally;
+                    }
+                }
+
                 isHeal = am.isHeal;
                 if (hasReverseShot && !isHeal && precomputedDamage > 0)
                 {
@@ -764,10 +819,12 @@ public sealed class CoopSubscriptions
                     isAoE = true;
                 }
 
-                // Capture status effects from the orb's components for non-host players.
-                // The host's effects are applied by the normal attack pipeline in DoAttack,
-                // but non-host damage is applied via enemy.Damage() which skips status effects.
-                if (activeSlot != 0 && attack != null)
+                // Capture status effects from the orb's components for ALL slots (host included).
+                // The DoAttack Harmony prefix skips the native attack pipeline in coop mode, so
+                // GetStatusEffects is never invoked for the host either — without this capture,
+                // PoisonOrb / BlindOrb / ThornOrb etc. would silently fail to debuff their target
+                // even when fired by the host.
+                if (attack != null)
                 {
                     capturedEffects = _orbApplier.CaptureOrbStatusEffects(attack, critCount);
                 }
@@ -857,7 +914,8 @@ public sealed class CoopSubscriptions
             _log.LogInfo($"[CoopSubs] Saved shot data for slot {activeSlot}: " +
                 $"pegTally={pegTally}, crits={critCount}, pegsHit={numPegs}, " +
                 $"damage={precomputedDamage}, target={targetGuid ?? "auto"}, isAoE={isAoE}, " +
-                $"statusEffects={capturedEffects?.Count ?? 0}, orb={capturedOrbName ?? "NONE"}");
+                $"statusEffects={capturedEffects?.Count ?? 0}, orb={capturedOrbName ?? "NONE"}, " +
+                $"multiballSpawns={MultiballSpawnCount}, hwmTally={HighWaterPegTally}, hwmDmg={HighWaterDamage}");
         }
 
         // Mark current player's shot as fired before advancing

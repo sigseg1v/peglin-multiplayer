@@ -791,6 +791,21 @@ internal static class BattleControllerPatches
             }
 
             var currentDamage = am.GetCurrentDamage(pegTally, dmgMult, dmgBonus, critCount);
+
+            // Track the high-water mark across the entire shot so OnShotComplete
+            // can fall back to this if BC's _pegMultiplierDamageTally has been
+            // zeroed before we capture (defensive — see CoopSubscriptions for
+            // the full rationale around multiball satellite timing).
+            if (pegTally > Events.Subscriptions.CoopSubscriptions.HighWaterPegTally)
+            {
+                Events.Subscriptions.CoopSubscriptions.HighWaterPegTally = pegTally;
+            }
+
+            if (currentDamage > Events.Subscriptions.CoopSubscriptions.HighWaterDamage)
+            {
+                Events.Subscriptions.CoopSubscriptions.HighWaterDamage = currentDamage;
+            }
+
             if (currentDamage <= 0 && am.isHeal)
             {
                 return; // heal orbs — no damage preview
@@ -872,6 +887,42 @@ internal static class BattleControllerPatches
         {
             MultiplayerPlugin.Logger?.LogWarning($"[CoopDmgOverlay] HandlePegActivated postfix failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Reset per-shot multiball diagnostic counters when a new shot starts.
+    /// Pairs with HandlePegActivated_Postfix and OnShotComplete (CoopSubscriptions)
+    /// to provide a defensive damage floor for shots whose pegTally gets zeroed
+    /// before our capture (multiball satellite destruction races).
+    /// </summary>
+    [HarmonyPatch(typeof(BattleController), "ShotFired")]
+    [HarmonyPostfix]
+    public static void BattleController_ShotFired_Postfix()
+    {
+        if (!IsHosting)
+        {
+            return;
+        }
+
+        Events.Subscriptions.CoopSubscriptions.HighWaterPegTally = 0;
+        Events.Subscriptions.CoopSubscriptions.HighWaterDamage = 0;
+        Events.Subscriptions.CoopSubscriptions.MultiballSpawnCount = 0;
+    }
+
+    /// <summary>
+    /// Count multiball satellite spawns so OnShotComplete can log them when
+    /// diagnosing damage-capture issues for multiball orbs.
+    /// </summary>
+    [HarmonyPatch(typeof(PachinkoBall), "SpawnMultiball")]
+    [HarmonyPostfix]
+    public static void PachinkoBall_SpawnMultiball_Postfix()
+    {
+        if (!IsHosting)
+        {
+            return;
+        }
+
+        Events.Subscriptions.CoopSubscriptions.MultiballSpawnCount++;
     }
 
     // =========================================================================
