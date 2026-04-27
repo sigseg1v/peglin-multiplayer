@@ -163,6 +163,9 @@ public sealed class PostBattleCompleteClientHandler : IClientHandler<PostBattleC
                 CoopRewardState.HostRewardPhaseActive = false;
                 CoopRewardState.WaitingForOtherPlayers = false;
 
+                // Strip negative debuffs from all players before leaving the battle scene
+                coopState.ClearNegativeDebuffsFromAllPlayers();
+
                 if (services.TryResolve<IGameEventRegistry>(out var evtReg))
                 {
                     evtReg.Dispatch(new AllChoicesCompleteEvent { Phase = "post_battle" });

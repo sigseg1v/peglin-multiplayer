@@ -56,6 +56,12 @@ internal static class PostBattleControllerPatches
                 Events.Handlers.Coop.CoopRewardState.HostRewardPhaseActive = false;
                 AllowNativeRewardLogic = false;
 
+                // Strip negative debuffs from all players before leaving the battle scene
+                if (services.TryResolve<GameState.CoopStateManager>(out var coopState2))
+                {
+                    coopState2.ClearNegativeDebuffsFromAllPlayers();
+                }
+
                 if (services.TryResolve<IGameEventRegistry>(out var reg))
                 {
                     reg.Dispatch(new Events.Network.Coop.AllChoicesCompleteEvent { Phase = "post_battle" });

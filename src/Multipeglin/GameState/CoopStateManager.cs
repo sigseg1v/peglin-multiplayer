@@ -1259,6 +1259,60 @@ public class CoopStateManager
 
     // --- Status effect save/load ---
 
+    /// <summary>
+    /// Clear negative debuffs from every player's saved state. Called between
+    /// battles (after the post-battle reward phase, before navigating to the map)
+    /// so debuffs like Spinfection / Exploitaball don't bleed into future fights.
+    /// Buffs (Ballusion, Intangiball, Ballwark, etc.) are preserved because they
+    /// are part of the multiplayer balance.
+    /// </summary>
+    public void ClearNegativeDebuffsFromAllPlayers()
+    {
+        foreach (var kvp in PlayerStates)
+        {
+            var state = kvp.Value;
+            if (state?.StatusEffects == null || state.StatusEffects.Count == 0)
+            {
+                continue;
+            }
+
+            var before = state.StatusEffects.Count;
+            state.StatusEffects.RemoveAll(e => IsDebuff(e.EffectType));
+            var removed = before - state.StatusEffects.Count;
+            if (removed > 0)
+            {
+                _log.LogInfo($"[CoopState] ClearDebuffs slot {state.SlotIndex}: removed {removed} debuff(s), {state.StatusEffects.Count} buff(s) preserved");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Heuristic: is this StatusEffectType a negative debuff that should be cleared
+    /// between battles? Compared by name string to remain forward-compatible with
+    /// new game versions that add debuffs (e.g. Spinfection in Peglin 2.0.10) which
+    /// are not present in the decompiled enum the mod was built against.
+    /// </summary>
+    private static bool IsDebuff(int effectType)
+    {
+        var name = ((Battle.StatusEffects.StatusEffectType)effectType).ToString();
+        switch (name)
+        {
+            case "Thorned":
+            case "Stunned":
+            case "Blind":
+            case "Confusion":
+            case "Slimed":
+            case "Webbed":
+            case "Poison":
+            case "Exploitaball":
+            case "Transpherency":
+            case "Spinfection":
+                return true;
+            default:
+                return false;
+        }
+    }
+
     private void SaveStatusEffects(CoopPlayerState state)
     {
         try
