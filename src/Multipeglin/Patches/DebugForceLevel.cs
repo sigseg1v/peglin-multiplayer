@@ -97,6 +97,17 @@ public static class DebugForceLevel
             return;
         }
 
+        // Continue mode owns the destination scene — overriding it here would
+        // jump the host back to act 1 instead of resuming the saved act, which
+        // also hard-desyncs every client (their save context is for a different
+        // map than the one the host actually loaded).
+        if (Continue.ContinueSession.IsActive)
+        {
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[DebugForceLevel] Continue is active (saved scene={___LoadData.SceneToLoad}); skipping force-level override");
+            return;
+        }
+
         ___LoadData.SceneToLoad = _forcedScene.Value;
 
         if (_forcedFloorCount.HasValue)
