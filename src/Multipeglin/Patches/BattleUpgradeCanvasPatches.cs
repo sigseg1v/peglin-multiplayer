@@ -1,6 +1,11 @@
+using System.Linq;
 using Data;
 using HarmonyLib;
+using Multipeglin.Events;
+using Multipeglin.Events.Network.Coop;
+using Multipeglin.GameState;
 using UnityEngine;
+using Worldmap;
 using static Multipeglin.Patches.MultiplayerClientPatches;
 
 namespace Multipeglin.Patches;
@@ -66,6 +71,111 @@ internal static class BattleUpgradeCanvasPatches
         catch (System.Exception ex)
         {
             MultiplayerPlugin.Logger?.LogError($"[ClientPatch] Failed to send TreasureCompleteEvent: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// HOST-ONLY postfix on ConfigureForPostBattleRewards: vanilla heals only
+    /// the active singleton (host's currently-loaded slot) when the room is
+    /// BOSS. Walk every other CoopPlayerState, apply the same heal math, save
+    /// the active singleton's new HP back into its stored slot, then broadcast
+    /// PostBattleBossHealEvent so each client can heal its own slot locally
+    /// (with animation).
+    /// </summary>
+    [HarmonyPatch(typeof(PeglinUI.PostBattle.BattleUpgradeCanvas), nameof(PeglinUI.PostBattle.BattleUpgradeCanvas.ConfigureForPostBattleRewards))]
+    [HarmonyPostfix]
+    public static void BattleUpgradeCanvas_ConfigureForPostBattleRewards_Postfix(
+        PeglinUI.PostBattle.BattleUpgradeCanvas __instance)
+    {
+        try
+        {
+            if (!IsHosting)
+            {
+                return;
+            }
+
+            if (StaticGameData.currentNode == null || StaticGameData.currentNode.RoomType != RoomType.BOSS)
+            {
+                return;
+            }
+
+            var services = MultiplayerPlugin.Services;
+            if (services == null
+                || !services.TryResolve<CoopStateManager>(out var coopState)
+                || coopState == null
+                || coopState.PlayerStates.Count == 0)
+            {
+                return;
+            }
+
+            var cruciballField = AccessTools.Field(typeof(PeglinUI.PostBattle.BattleUpgradeCanvas), "_cruciballManager");
+            var cm = cruciballField?.GetValue(__instance) as Cruciball.CruciballManager;
+            var lessHealing = cm != null && cm.LessHealingFromBosses();
+
+            // The active slot's singleton was already healed by vanilla. Snapshot
+            // it back into stored state so we don't double-heal it below.
+            coopState.SaveActivePlayerState();
+            var activeSlot = coopState.ActivePlayerSlot;
+
+            var entries = new System.Collections.Generic.List<PostBattleBossHealEvent.Entry>();
+
+            foreach (var kvp in coopState.PlayerStates.OrderBy(p => p.Key))
+            {
+                var slot = kvp.Key;
+                var state = kvp.Value;
+                if (state == null || state.MaxHealth <= 0)
+                {
+                    continue;
+                }
+
+                var beforeHp = state.CurrentHealth;
+
+                if (slot != activeSlot)
+                {
+                    float newHp;
+                    if (lessHealing)
+                    {
+                        newHp = Mathf.Min(state.MaxHealth, beforeHp + Mathf.Ceil(state.MaxHealth / 2f));
+                    }
+                    else
+                    {
+                        newHp = state.MaxHealth;
+                    }
+
+                    state.CurrentHealth = newHp;
+                }
+
+                var healed = state.CurrentHealth - beforeHp;
+                if (healed <= 0)
+                {
+                    continue;
+                }
+
+                entries.Add(new PostBattleBossHealEvent.Entry
+                {
+                    SlotIndex = slot,
+                    NewCurrentHealth = state.CurrentHealth,
+                    MaxHealth = state.MaxHealth,
+                    HealedAmount = healed,
+                });
+            }
+
+            if (entries.Count == 0)
+            {
+                return;
+            }
+
+            if (services.TryResolve<IGameEventRegistry>(out var registry))
+            {
+                registry.Dispatch(new PostBattleBossHealEvent { Entries = entries });
+            }
+
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[BossHeal] dispatched heal for {entries.Count} slot(s); lessHealing={lessHealing}");
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[BossHeal] postfix failed: {ex.Message}");
         }
     }
 
