@@ -165,6 +165,16 @@ internal static class MapControllerPatches
             catch
             {
             }
+
+            // After a Continue-launch, hydrate CoopStateManager from the saved file
+            // now that the game's continue restoration has populated singletons.
+            try
+            {
+                Continue.ContinueLoader.ApplyPendingCoopState();
+            }
+            catch
+            {
+            }
             // Swallow Start exceptions on host so Unity doesn't mark the MC broken.
             return null;
         }
@@ -290,6 +300,49 @@ internal static class MapControllerPatches
     // =========================================================================
     // RNG STATE CAPTURE — host saves state before map generation
     // =========================================================================
+
+    // =========================================================================
+    // CONTINUE AUTO-SAVE — write a coop continue file after each stage transition
+    // =========================================================================
+
+    /// <summary>
+    /// MapController.OnSceneLoaded fires for both map and non-map scenes.
+    /// For map scenes (`scene.name.Contains("Map")`) and `!_firstLoad`, the
+    /// game itself calls SaveManager.RequestSave + SaveRun, which writes
+    /// Save_Nr.data to disk. We piggyback on that: postfix here, read the
+    /// freshly-written RUN bytes, and write our coop continue file.
+    /// Host-only.
+    /// </summary>
+    [HarmonyPatch(typeof(MapController), "OnSceneLoaded")]
+    [HarmonyPostfix]
+    public static void MapController_OnSceneLoaded_Postfix(UnityEngine.SceneManagement.Scene scene, MapController __instance)
+    {
+        if (!IsHosting)
+        {
+            return;
+        }
+
+        if (!scene.isLoaded || !scene.name.Contains("Map"))
+        {
+            return;
+        }
+
+        var firstLoad = true;
+        try
+        {
+            firstLoad = (bool)(AccessTools.Field(typeof(MapController), "_firstLoad")?.GetValue(__instance) ?? true);
+        }
+        catch
+        {
+        }
+
+        if (firstLoad)
+        {
+            return;
+        }
+
+        Continue.ContinueSaver.Save($"map-loaded:{scene.name}");
+    }
 
     [HarmonyPatch(typeof(MapController), "Awake")]
     [HarmonyPrefix]

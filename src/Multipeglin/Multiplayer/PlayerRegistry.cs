@@ -45,6 +45,34 @@ public class PlayerRegistry
         return slot;
     }
 
+    /// <summary>
+    /// Register a client into a specific (Continue-restored) slot. If the slot is
+    /// already occupied or invalid, falls back to AllocateFreeSlotIndex so the
+    /// caller never gets a null result.
+    /// </summary>
+    public PlayerSlot RegisterClientWithSlot(int peerId, string playerName, int desiredSlotIndex, string gameVersion, string modVersion)
+    {
+        var occupied = new HashSet<int>(_allSlots.Select(s => s.SlotIndex));
+        var slotIndex = (desiredSlotIndex > 0 && !occupied.Contains(desiredSlotIndex))
+            ? desiredSlotIndex
+            : AllocateFreeSlotIndex();
+
+        var slot = new PlayerSlot
+        {
+            SlotIndex = slotIndex,
+            PeerId = peerId,
+            PlayerName = playerName,
+            IsHost = false,
+            ChosenClass = 0,
+            IsReady = false,
+            GameVersion = gameVersion,
+            ModVersion = modVersion,
+        };
+        _slotsByPeerId[peerId] = slot;
+        _allSlots.Add(slot);
+        return slot;
+    }
+
     // Smallest non-host index not currently occupied. Reusing freed slots keeps the
     // visible roster compact when a client disconnects + reconnects in the lobby —
     // otherwise the per-slot UI offsets push later joiners off-screen.

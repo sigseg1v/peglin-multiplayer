@@ -48,8 +48,27 @@ public sealed class HandshakeClientHandler : IClientHandler<HandshakeEvent>
                 var slot = registry.GetSlotByPeerId(senderPeerId);
                 if (slot == null)
                 {
-                    var newSlot = registry.RegisterClient(senderPeerId, networkEvent.PlayerName ?? "Unknown", networkEvent.RuntimeGameVersion ?? "unknown", networkEvent.ModVersion ?? "unknown");
-                    log.LogInfo($"[Lobby] Registered client '{networkEvent.PlayerName}' as slot {newSlot.SlotIndex} (peerId={senderPeerId})");
+                    var name = networkEvent.PlayerName ?? "Unknown";
+
+                    // Continue mode: only roster members may join, and they go to
+                    // the slot they had when the save was written.
+                    if (Continue.ContinueSession.IsActive)
+                    {
+                        var expectedSlot = Continue.ContinueSession.GetSlotForPlayer(name);
+                        if (expectedSlot < 0)
+                        {
+                            log.LogWarning($"[Lobby] Continue: rejecting '{name}' — not in saved roster");
+                            return;
+                        }
+
+                        var newSlot = registry.RegisterClientWithSlot(senderPeerId, name, expectedSlot, networkEvent.RuntimeGameVersion ?? "unknown", networkEvent.ModVersion ?? "unknown");
+                        log.LogInfo($"[Lobby] Continue: registered '{name}' into saved slot {newSlot.SlotIndex} (peerId={senderPeerId})");
+                    }
+                    else
+                    {
+                        var newSlot = registry.RegisterClient(senderPeerId, name, networkEvent.RuntimeGameVersion ?? "unknown", networkEvent.ModVersion ?? "unknown");
+                        log.LogInfo($"[Lobby] Registered client '{name}' as slot {newSlot.SlotIndex} (peerId={senderPeerId})");
+                    }
                 }
 
                 // Broadcast updated lobby state

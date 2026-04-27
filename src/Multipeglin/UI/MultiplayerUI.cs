@@ -39,6 +39,9 @@ public class MultiplayerUI : MonoBehaviour
     private GameObject _hostPanel;
     private GameObject _joinPanel;
     private GameObject _lobbyPanel;
+    private GameObject _continuePanel;
+    private GameObject _continueListContent;
+    private TextMeshProUGUI _continueStatusText;
     private GameObject _multiplayerPanel;
 
     // Main panel elements
@@ -46,6 +49,7 @@ public class MultiplayerUI : MonoBehaviour
     private Button _joinButton;
     private Button _hostSteamButton;
     private Button _joinFriendButton;
+    private Button _continueButton;
     private GameObject _advancedIpContainer; // legacy Host/Join IP buttons; hidden until toggled
     private Button _advancedToggleButton;
     private bool _advancedIpVisible;
@@ -342,6 +346,7 @@ public class MultiplayerUI : MonoBehaviour
         CreateHostPanel(centerPanel.transform);
         CreateJoinPanel(centerPanel.transform);
         CreateLobbyPanel(centerPanel.transform);
+        CreateContinuePanel(centerPanel.transform);
 
         ShowMainPanel();
     }
@@ -362,8 +367,8 @@ public class MultiplayerUI : MonoBehaviour
                 "HostSteamBtn",
                 "Host (Steam)",
                 new Color(0.2f, 0.55f, 0.25f, 1f),
-                new Vector2(0, 120),
-                new Vector2(480, 88));
+                new Vector2(0, 144),
+                new Vector2(480, 80));
             _hostSteamButton.onClick.AddListener(OnHostSteamClicked);
 
             _joinFriendButton = CreateButton(
@@ -371,9 +376,18 @@ public class MultiplayerUI : MonoBehaviour
                 "JoinFriendBtn",
                 "Join Friend",
                 new Color(0.2f, 0.35f, 0.6f, 1f),
-                new Vector2(0, 16),
-                new Vector2(480, 88));
+                new Vector2(0, 56),
+                new Vector2(480, 80));
             _joinFriendButton.onClick.AddListener(OnJoinFriendClicked);
+
+            _continueButton = CreateButton(
+                _mainPanel.transform,
+                "ContinueBtn",
+                "Continue",
+                new Color(0.4f, 0.35f, 0.55f, 1f),
+                new Vector2(0, -32),
+                new Vector2(480, 80));
+            _continueButton.onClick.AddListener(OnContinueClicked);
 
             var steamStatus = CreateText(
                 _mainPanel.transform,
@@ -386,7 +400,7 @@ public class MultiplayerUI : MonoBehaviour
             ssRect.anchorMin = new Vector2(0.5f, 0.5f);
             ssRect.anchorMax = new Vector2(0.5f, 0.5f);
             ssRect.pivot = new Vector2(0.5f, 0.5f);
-            ssRect.anchoredPosition = new Vector2(0, 196);
+            ssRect.anchoredPosition = new Vector2(0, 212);
             ssRect.sizeDelta = new Vector2(480, 30);
 
             _advancedToggleButton = CreateButton(
@@ -394,8 +408,8 @@ public class MultiplayerUI : MonoBehaviour
                 "AdvancedToggle",
                 "Advanced: Direct IP",
                 new Color(0.25f, 0.25f, 0.3f, 1f),
-                new Vector2(0, -64),
-                new Vector2(360, 48));
+                new Vector2(0, -112),
+                new Vector2(360, 44));
             _advancedToggleButton.onClick.AddListener(OnAdvancedToggleClicked);
 
             _advancedIpContainer = new GameObject("AdvancedIpContainer");
@@ -443,8 +457,8 @@ public class MultiplayerUI : MonoBehaviour
                 "HostBtn",
                 "Host Game",
                 new Color(0.2f, 0.55f, 0.25f, 1f),
-                new Vector2(0, 40),
-                new Vector2(480, 88));
+                new Vector2(0, 96),
+                new Vector2(480, 80));
             _hostButton.onClick.AddListener(OnHostClicked);
 
             _joinButton = CreateButton(
@@ -452,17 +466,26 @@ public class MultiplayerUI : MonoBehaviour
                 "JoinBtn",
                 "Join Game",
                 new Color(0.2f, 0.35f, 0.6f, 1f),
-                new Vector2(0, -64),
-                new Vector2(480, 88));
+                new Vector2(0, 8),
+                new Vector2(480, 80));
             _joinButton.onClick.AddListener(OnJoinClicked);
+
+            _continueButton = CreateButton(
+                _mainPanel.transform,
+                "ContinueBtn",
+                "Continue",
+                new Color(0.4f, 0.35f, 0.55f, 1f),
+                new Vector2(0, -80),
+                new Vector2(480, 80));
+            _continueButton.onClick.AddListener(OnContinueClicked);
 
             var backBtn = CreateButton(
                 _mainPanel.transform,
                 "BackBtn",
                 "Close",
                 new Color(0.35f, 0.2f, 0.2f, 1f),
-                new Vector2(0, -168),
-                new Vector2(480, 88));
+                new Vector2(0, -184),
+                new Vector2(480, 80));
             backBtn.onClick.AddListener(HideOverlay);
         }
 
@@ -1181,6 +1204,7 @@ public class MultiplayerUI : MonoBehaviour
         _joinPanel.SetActive(false);
         _lobbyPanel.SetActive(false);
         _friendListPanel?.SetActive(false);
+        _continuePanel?.SetActive(false);
     }
 
     private void ShowLobby()
@@ -1190,6 +1214,7 @@ public class MultiplayerUI : MonoBehaviour
         _joinPanel.SetActive(false);
         _lobbyPanel.SetActive(true);
         _friendListPanel?.SetActive(false);
+        _continuePanel?.SetActive(false);
         // Hide the waiting panel (MapStateApplier shows it for MainMenu)
         _waitingPanel?.SetActive(false);
 
@@ -1269,8 +1294,206 @@ public class MultiplayerUI : MonoBehaviour
         _joinPanel.SetActive(true);
         _lobbyPanel.SetActive(false);
         _friendListPanel?.SetActive(false);
+        _continuePanel?.SetActive(false);
 
         _statusText.text = _lastConnectionStatus;
+    }
+
+    private void ShowContinuePanel()
+    {
+        _mainPanel.SetActive(false);
+        _hostPanel.SetActive(false);
+        _joinPanel.SetActive(false);
+        _lobbyPanel.SetActive(false);
+        _friendListPanel?.SetActive(false);
+        _continuePanel?.SetActive(true);
+
+        RefreshContinueList();
+    }
+
+    private void OnContinueClicked()
+    {
+        ShowContinuePanel();
+    }
+
+    /// <summary>
+    /// Build the continue panel: title, list container (rows added by RefreshContinueList),
+    /// status text, back button. Hidden until <see cref="ShowContinuePanel"/>.
+    /// </summary>
+    private void CreateContinuePanel(Transform parent)
+    {
+        _continuePanel = new GameObject("ContinuePanel");
+        _continuePanel.transform.SetParent(parent, false);
+        var panelRect = _continuePanel.AddComponent<RectTransform>();
+        StretchFill(panelRect);
+
+        var header = CreateText(_continuePanel.transform, "ContinueHeader", "Continue Run", 36);
+        header.color = Color.white;
+        header.raycastTarget = false;
+        header.alignment = TextAlignmentOptions.Center;
+        var hRect = header.rectTransform;
+        hRect.anchorMin = new Vector2(0.5f, 1);
+        hRect.anchorMax = new Vector2(0.5f, 1);
+        hRect.pivot = new Vector2(0.5f, 1);
+        hRect.anchoredPosition = new Vector2(0, -100);
+        hRect.sizeDelta = new Vector2(800, 50);
+
+        _continueListContent = new GameObject("ContinueListContent");
+        _continueListContent.transform.SetParent(_continuePanel.transform, false);
+        var listRect = _continueListContent.AddComponent<RectTransform>();
+        listRect.anchorMin = new Vector2(0.5f, 1);
+        listRect.anchorMax = new Vector2(0.5f, 1);
+        listRect.pivot = new Vector2(0.5f, 1);
+        listRect.anchoredPosition = new Vector2(0, -160);
+        listRect.sizeDelta = new Vector2(820, 600);
+
+        _continueStatusText = CreateText(_continuePanel.transform, "ContinueStatus", string.Empty, 22);
+        _continueStatusText.color = new Color(0.85f, 0.85f, 0.85f);
+        _continueStatusText.raycastTarget = false;
+        _continueStatusText.alignment = TextAlignmentOptions.Center;
+        var stRect = _continueStatusText.rectTransform;
+        stRect.anchorMin = new Vector2(0.5f, 0.5f);
+        stRect.anchorMax = new Vector2(0.5f, 0.5f);
+        stRect.pivot = new Vector2(0.5f, 0.5f);
+        stRect.anchoredPosition = new Vector2(0, -240);
+        stRect.sizeDelta = new Vector2(800, 40);
+
+        var backBtn = CreateButton(
+            _continuePanel.transform,
+            "ContinueBackBtn",
+            "Back",
+            new Color(0.35f, 0.2f, 0.2f, 1f),
+            new Vector2(0, -340),
+            new Vector2(360, 56));
+        backBtn.onClick.AddListener(OnContinueBackClicked);
+
+        _continuePanel.SetActive(false);
+    }
+
+    private void OnContinueBackClicked()
+    {
+        Continue.ContinueSession.Clear();
+        ShowMainPanel();
+    }
+
+    /// <summary>
+    /// Re-scan the continues directory and rebuild the row buttons. Filters by
+    /// matching mod + game version so only runs the user can actually load show up.
+    /// </summary>
+    private void RefreshContinueList()
+    {
+        if (_continueListContent == null)
+        {
+            return;
+        }
+
+        // Tear down existing rows
+        for (var i = _continueListContent.transform.childCount - 1; i >= 0; i--)
+        {
+            UnityEngine.Object.Destroy(_continueListContent.transform.GetChild(i).gameObject);
+        }
+
+        var saves = Continue.ContinueFiles.ListUsableSaves(
+            5,
+            MultiplayerPluginInfo.VERSION,
+            Application.version ?? string.Empty);
+
+        if (saves.Count == 0)
+        {
+            _continueStatusText.text = "No saved coop runs found.";
+            return;
+        }
+
+        _continueStatusText.text = $"{saves.Count} save{(saves.Count == 1 ? string.Empty : "s")} available.";
+
+        const float rowHeight = 96f;
+        const float rowGap = 8f;
+        for (var i = 0; i < saves.Count; i++)
+        {
+            var entry = saves[i];
+            CreateContinueRow(_continueListContent.transform, entry, i, rowHeight, rowGap);
+        }
+    }
+
+    private void CreateContinueRow(Transform parent, Continue.ContinueSaveEntry entry, int index, float rowHeight, float rowGap)
+    {
+        var row = new GameObject($"ContinueRow_{index}");
+        row.transform.SetParent(parent, false);
+        var rect = row.AddComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 1);
+        rect.anchorMax = new Vector2(0.5f, 1);
+        rect.pivot = new Vector2(0.5f, 1);
+        rect.anchoredPosition = new Vector2(0, -index * (rowHeight + rowGap));
+        rect.sizeDelta = new Vector2(820, rowHeight);
+
+        var img = row.AddComponent<Image>();
+        img.color = new Color(0.18f, 0.18f, 0.22f, 1f);
+
+        var btn = row.AddComponent<Button>();
+        var colors = btn.colors;
+        colors.normalColor = new Color(0.18f, 0.18f, 0.22f, 1f);
+        colors.highlightedColor = new Color(0.28f, 0.28f, 0.36f, 1f);
+        colors.pressedColor = new Color(0.12f, 0.12f, 0.18f, 1f);
+        btn.colors = colors;
+        btn.targetGraphic = img;
+        btn.onClick.AddListener(() => OnContinueSaveSelected(entry));
+
+        var nameText = CreateText(row.transform, "Names", entry.DisplayPlayerNames, 26);
+        nameText.color = Color.white;
+        nameText.raycastTarget = false;
+        nameText.alignment = TextAlignmentOptions.MidlineLeft;
+        var nRect = nameText.rectTransform;
+        nRect.anchorMin = new Vector2(0, 0.5f);
+        nRect.anchorMax = new Vector2(1, 0.5f);
+        nRect.pivot = new Vector2(0, 0.5f);
+        nRect.anchoredPosition = new Vector2(20, 18);
+        nRect.sizeDelta = new Vector2(-40, 36);
+
+        var stageText = CreateText(row.transform, "Stage", entry.DisplayStageLabel, 20);
+        stageText.color = new Color(0.75f, 0.85f, 0.95f);
+        stageText.raycastTarget = false;
+        stageText.alignment = TextAlignmentOptions.MidlineLeft;
+        var sRect = stageText.rectTransform;
+        sRect.anchorMin = new Vector2(0, 0.5f);
+        sRect.anchorMax = new Vector2(1, 0.5f);
+        sRect.pivot = new Vector2(0, 0.5f);
+        sRect.anchoredPosition = new Vector2(20, -18);
+        sRect.sizeDelta = new Vector2(-40, 30);
+    }
+
+    /// <summary>
+    /// User clicked a continue row: arm <see cref="Continue.ContinueSession"/> with
+    /// the chosen save and start hosting. The lobby gates start until the saved
+    /// roster shows up; the handshake handler places joiners into their saved slots.
+    /// </summary>
+    private void OnContinueSaveSelected(Continue.ContinueSaveEntry entry)
+    {
+        try
+        {
+            if (entry?.Data == null)
+            {
+                MultiplayerPlugin.Logger?.LogWarning("[ContinueUI] selected entry has no data");
+                return;
+            }
+
+            Continue.ContinueSession.Begin(entry.Data, entry.FilePath);
+            MultiplayerPlugin.Logger?.LogInfo($"[ContinueUI] Continue armed: {entry.FileName} (expecting {Continue.ContinueSession.ExpectedPlayerCount} players)");
+
+            // Reuse the normal hosting startup. Prefer Steam if available so saved
+            // friends can re-invite via the in-lobby invite flow.
+            if (_steamTransport != null)
+            {
+                OnHostSteamClicked();
+            }
+            else
+            {
+                OnHostClicked();
+            }
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogError($"[ContinueUI] OnContinueSaveSelected failed: {ex}");
+        }
     }
 
     private void ShowHostingState()

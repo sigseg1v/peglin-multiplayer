@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Multipeglin.Events;
 using Multipeglin.Events.Handlers.Lobby;
 using Multipeglin.Events.Network.Lobby;
@@ -337,8 +338,28 @@ public static class LobbyUI
                     }
 
                     var hasClients = players.Count > 1;
-                    _startButton.interactable = allReady && hasClients;
-                    _startButtonText.text = "Start Game";
+
+                    if (Continue.ContinueSession.IsActive)
+                    {
+                        var presentNames = players.Select(p => p.PlayerName);
+                        var allExpectedHere = Continue.ContinueSession.AllExpectedPlayersPresent(presentNames);
+                        _startButton.interactable = allReady && allExpectedHere;
+                        if (!allExpectedHere)
+                        {
+                            var have = players.Count;
+                            var want = Continue.ContinueSession.ExpectedPlayerCount;
+                            _startButtonText.text = $"Waiting for saved players ({have}/{want})";
+                        }
+                        else
+                        {
+                            _startButtonText.text = "Continue Run";
+                        }
+                    }
+                    else
+                    {
+                        _startButton.interactable = allReady && hasClients;
+                        _startButtonText.text = "Start Game";
+                    }
                 }
             }
         }
@@ -672,7 +693,12 @@ public static class LobbyUI
         }
 
         // Broadcast game start (include the lobby-selected cruciball level)
-        eventRegistry.Dispatch(new GameStartEvent { FinalPlayers = finalPlayers, CruciballLevel = _hostCruciballLevel });
+        eventRegistry.Dispatch(new GameStartEvent
+        {
+            FinalPlayers = finalPlayers,
+            CruciballLevel = _hostCruciballLevel,
+            IsContinue = Continue.ContinueSession.IsActive,
+        });
 
         // Host sets its own class and starts the game
         var hostSlot = registry.GetHostSlot();
@@ -682,14 +708,35 @@ public static class LobbyUI
             StaticGameData.chosenClass = hostClass;
             Patches.MultiplayerClientPatches.SetCruciballManagerClass(hostClass);
             Patches.MultiplayerClientPatches.SetCruciballManagerLevel(_hostCruciballLevel);
-            MultiplayerPlugin.Logger?.LogInfo($"[Lobby] Starting game: host class={hostSlot.ChosenClass}, cruciball={_hostCruciballLevel}, {finalPlayers.Count} players");
+            MultiplayerPlugin.Logger?.LogInfo($"[Lobby] Starting game: host class={hostSlot.ChosenClass}, cruciball={_hostCruciballLevel}, {finalPlayers.Count} players, continue={Continue.ContinueSession.IsActive}");
+        }
+
+        _gameStartReceived = true;
+        _gameStartEvent = new GameStartEvent
+        {
+            FinalPlayers = finalPlayers,
+            CruciballLevel = _hostCruciballLevel,
+            IsContinue = Continue.ContinueSession.IsActive,
+        };
+
+        // Continue mode: skip the character-select detour and drive the loader.
+        if (Continue.ContinueSession.IsActive)
+        {
+            var saved = Continue.ContinueSession.ActiveSave;
+            if (saved != null)
+            {
+                Continue.ContinueLoader.LaunchScene(saved);
+            }
+            else
+            {
+                MultiplayerPlugin.Logger?.LogWarning("[Lobby] Continue mode but ActiveSave is null");
+            }
+
+            return;
         }
 
         // Start the game by calling PlayButton.MovetoCharacterSelect()
         // The class select screen will be skipped by a patch since we already chose
-        _gameStartReceived = true;
-        _gameStartEvent = new GameStartEvent { FinalPlayers = finalPlayers, CruciballLevel = _hostCruciballLevel };
-
         var playButton = UnityEngine.Object.FindObjectOfType<PeglinUI.MainMenu.PlayButton>();
         if (playButton != null)
         {
