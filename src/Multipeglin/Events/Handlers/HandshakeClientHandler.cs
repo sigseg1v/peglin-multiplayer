@@ -51,7 +51,8 @@ public sealed class HandshakeClientHandler : IClientHandler<HandshakeEvent>
                     var name = networkEvent.PlayerName ?? "Unknown";
 
                     // Continue mode: only roster members may join, and they go to
-                    // the slot they had when the save was written.
+                    // the slot they had when the save was written, with their
+                    // saved class locked in (no class-select in continue lobby).
                     if (Continue.ContinueSession.IsActive)
                     {
                         var expectedSlot = Continue.ContinueSession.GetSlotForPlayer(name);
@@ -61,8 +62,9 @@ public sealed class HandshakeClientHandler : IClientHandler<HandshakeEvent>
                             return;
                         }
 
-                        var newSlot = registry.RegisterClientWithSlot(senderPeerId, name, expectedSlot, networkEvent.RuntimeGameVersion ?? "unknown", networkEvent.ModVersion ?? "unknown");
-                        log.LogInfo($"[Lobby] Continue: registered '{name}' into saved slot {newSlot.SlotIndex} (peerId={senderPeerId})");
+                        var savedClass = Continue.ContinueSession.GetClassForPlayer(name);
+                        var newSlot = registry.RegisterClientWithSlot(senderPeerId, name, expectedSlot, savedClass, networkEvent.RuntimeGameVersion ?? "unknown", networkEvent.ModVersion ?? "unknown");
+                        log.LogInfo($"[Lobby] Continue: registered '{name}' into saved slot {newSlot.SlotIndex} class={savedClass} (peerId={senderPeerId}, joinOrder={registry.SlotCount - 1})");
                     }
                     else
                     {

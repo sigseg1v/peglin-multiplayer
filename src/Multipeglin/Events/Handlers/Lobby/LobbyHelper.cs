@@ -35,6 +35,7 @@ public static class LobbyHelper
                 ModVersion = s.ModVersion,
             }).ToList(),
             CruciballLevel = LobbyUI.HostCruciballLevel,
+            IsContinue = Continue.ContinueSession.IsActive,
         };
 
         eventRegistry.Dispatch(lobbyState);

@@ -234,6 +234,19 @@ public static class ServiceRegistration
             playerRegistry.RemoveByPeerId(peerId);
             log.LogInfo($"[Disconnect] Removed peer {peerId} from PlayerRegistry. Remaining slots: {playerRegistry.SlotCount}");
 
+            // Rebroadcast lobby state so remaining clients see the freed slot
+            // (in continue mode this re-renders the absent player as MISSING,
+            // letting them rejoin into the same saved slot).
+            try
+            {
+                var eventRegistry = container.Resolve<IGameEventRegistry>();
+                LobbyHandlers.LobbyHelper.BroadcastLobbyState(playerRegistry, eventRegistry);
+            }
+            catch (System.Exception ex)
+            {
+                log.LogWarning($"[Disconnect] BroadcastLobbyState failed: {ex.Message}");
+            }
+
             // If a parallel-shoot navigate phase is running, drop the leaver
             // from the expected voter count so the resolver doesn't deadlock
             // waiting for a vote that will never arrive.

@@ -119,8 +119,29 @@ public static class LobbyUI
         if (state != null)
         {
             _hostCruciballLevel = state.CruciballLevel;
+
+            // Continue lobby: snap the local class to whatever the host says our
+            // slot's locked class is, so the local-player ClassText display matches
+            // the saved roster. Non-continue lobbies ignore this — the local class
+            // is driven by user input.
+            if (state.IsContinue && state.Players != null && !_isHost && !string.IsNullOrEmpty(MultiplayerUI.LocalPlayerName))
+            {
+                foreach (var entry in state.Players)
+                {
+                    if (!entry.IsHost && entry.PlayerName == MultiplayerUI.LocalPlayerName)
+                    {
+                        _localChosenClass = entry.ChosenClass;
+                        break;
+                    }
+                }
+            }
         }
     }
+
+    /// <summary>Forced setter used by the host when entering a continue lobby —
+    /// the host's local class is the saved class, not whatever the user last
+    /// selected before clicking Continue.</summary>
+    public static void SetLocalChosenClass(int classIndex) => _localChosenClass = classIndex;
 
     /// <summary>Called by GameStartClientHandler when host starts the game.</summary>
     public static void OnGameStartReceived(GameStartEvent evt)
@@ -318,9 +339,14 @@ public static class LobbyUI
                 ? LobbyHelper.GetClassName(_localChosenClass)
                 : (entry.ChosenClassName ?? LobbyHelper.GetClassName(entry.ChosenClass));
 
-            // Show arrows only for local player
-            row.LeftArrow.gameObject.SetActive(row.IsLocalPlayer);
-            row.RightArrow.gameObject.SetActive(row.IsLocalPlayer);
+            // Show arrows only for local player. Continue lobbies lock every
+            // slot's class to the saved roster, so hide the selector entirely.
+            var classLocked = isHost
+                ? Continue.ContinueSession.IsActive
+                : (_latestLobbyState?.IsContinue ?? false);
+            var showArrows = row.IsLocalPlayer && !classLocked;
+            row.LeftArrow.gameObject.SetActive(showArrows);
+            row.RightArrow.gameObject.SetActive(showArrows);
 
             // Ready status text in column 3
             if (entry.IsHost)
@@ -664,6 +690,14 @@ public static class LobbyUI
 
     private static void OnClassArrow(int rowIndex, int direction)
     {
+        // Continue mode locks the class to the saved roster — ignore arrow clicks.
+        if (_isHost
+            ? Continue.ContinueSession.IsActive
+            : (_latestLobbyState?.IsContinue ?? false))
+        {
+            return;
+        }
+
         _localChosenClass = (_localChosenClass + direction + ClassNames.Length) % ClassNames.Length;
 
         var services = MultiplayerPlugin.Services;

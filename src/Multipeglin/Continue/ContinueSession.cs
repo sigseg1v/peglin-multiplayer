@@ -71,6 +71,29 @@ public static class ContinueSession
     /// <summary>True if this name was on the saved roster.</summary>
     public static bool IsExpected(string playerName) => GetSlotForPlayer(playerName) >= 0;
 
+    /// <summary>
+    /// Saved class index for the given player name, or 0 (Peglin) if not found.
+    /// Class is locked in continue mode — saved players keep their original class.
+    /// </summary>
+    public static int GetClassForPlayer(string playerName)
+    {
+        if (!IsActive || ActiveSave?.Players == null)
+        {
+            return 0;
+        }
+
+        var key = ContinueFiles.Sanitize(playerName ?? string.Empty);
+        foreach (var p in ActiveSave.Players)
+        {
+            if (string.Equals(ContinueFiles.Sanitize(p.PlayerName ?? string.Empty), key, StringComparison.OrdinalIgnoreCase))
+            {
+                return p.ChosenClass;
+            }
+        }
+
+        return 0;
+    }
+
     /// <summary>The set of sanitized names we're waiting for.</summary>
     public static IReadOnlyCollection<string> ExpectedSanitizedNames => _expectedNameToSlot.Keys;
 

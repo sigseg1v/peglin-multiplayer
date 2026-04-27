@@ -43,6 +43,16 @@ public sealed class ClassSelectClientHandler : IClientHandler<ClassSelectEvent>
             return;
         }
 
+        // Continue lobbies lock the class to the saved roster — silently drop
+        // any client-sent class change so an out-of-date client UI can't
+        // diverge a player from their saved class.
+        if (Multipeglin.Continue.ContinueSession.IsActive)
+        {
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[ClassSelect] Ignoring class change from {slot.PlayerName} (continue lobby — class locked at {slot.ChosenClass})");
+            return;
+        }
+
         slot.ChosenClass = networkEvent.ChosenClass;
         MultiplayerPlugin.Logger?.LogInfo($"[ClassSelect] {slot.PlayerName} chose class {networkEvent.ChosenClass}");
 

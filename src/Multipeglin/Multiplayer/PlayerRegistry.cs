@@ -48,9 +48,11 @@ public class PlayerRegistry
     /// <summary>
     /// Register a client into a specific (Continue-restored) slot. If the slot is
     /// already occupied or invalid, falls back to AllocateFreeSlotIndex so the
-    /// caller never gets a null result.
+    /// caller never gets a null result. <paramref name="chosenClass"/> is the
+    /// saved class the player was using; it is locked at the slot level so the
+    /// continue-mode lobby cannot accidentally diverge from the saved roster.
     /// </summary>
-    public PlayerSlot RegisterClientWithSlot(int peerId, string playerName, int desiredSlotIndex, string gameVersion, string modVersion)
+    public PlayerSlot RegisterClientWithSlot(int peerId, string playerName, int desiredSlotIndex, int chosenClass, string gameVersion, string modVersion)
     {
         var occupied = new HashSet<int>(_allSlots.Select(s => s.SlotIndex));
         var slotIndex = (desiredSlotIndex > 0 && !occupied.Contains(desiredSlotIndex))
@@ -63,7 +65,7 @@ public class PlayerRegistry
             PeerId = peerId,
             PlayerName = playerName,
             IsHost = false,
-            ChosenClass = 0,
+            ChosenClass = chosenClass,
             IsReady = false,
             GameVersion = gameVersion,
             ModVersion = modVersion,

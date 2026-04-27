@@ -176,6 +176,22 @@ public sealed class PostBattleCompleteClientHandler : IClientHandler<PostBattleC
                 if (pbc != null)
                 {
                     CoopRewardState.PendingPostBattleController = null;
+
+                    // Enter the parallel-shoot navigate phase BEFORE invoking native
+                    // StartNavigation. The prefix on PostBattleController.StartNavigation
+                    // bails out early now that HostRewardPhaseActive is false, so we
+                    // must dispatch the phase-start event here ourselves — otherwise
+                    // only the host arms a nav ball and clients sit waiting forever.
+                    try
+                    {
+                        var childCount = StaticGameData.currentNode?.ChildNodes?.Length ?? 0;
+                        CoopNavigateResolver.StartPhase("post_battle", childCount);
+                    }
+                    catch (Exception sx)
+                    {
+                        MultiplayerPlugin.Logger?.LogWarning($"[PostBattleComplete] StartPhase failed: {sx.Message}");
+                    }
+
                     // Use reflection to call the private StartNavigation method
                     var navMethod = HarmonyLib.AccessTools.Method(typeof(global::Battle.PostBattleController), "StartNavigation");
                     navMethod?.Invoke(pbc, new object[] { true });

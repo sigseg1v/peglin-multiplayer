@@ -1503,6 +1503,19 @@ public class MultiplayerUI : MonoBehaviour
 
     // --- Button handlers ---
 
+    private static void LockHostClassFromContinue(Multiplayer.PlayerSlot hostSlot)
+    {
+        if (hostSlot == null || !Continue.ContinueSession.IsActive)
+        {
+            return;
+        }
+
+        var savedClass = Continue.ContinueSession.GetClassForPlayer(hostSlot.PlayerName);
+        hostSlot.ChosenClass = savedClass;
+        UI.LobbyUI.SetLocalChosenClass(savedClass);
+        MultiplayerPlugin.Logger?.LogInfo($"[Lobby] Continue: locked host '{hostSlot.PlayerName}' to saved class {savedClass}");
+    }
+
     private void OnHostClicked()
     {
         try
@@ -1515,7 +1528,8 @@ public class MultiplayerUI : MonoBehaviour
             // Register host in PlayerRegistry
             if (MultiplayerPlugin.Services?.TryResolve<Multiplayer.PlayerRegistry>(out var registry) == true)
             {
-                registry.RegisterHost(LocalPlayerName, Application.version ?? "unknown", MultiplayerPluginInfo.VERSION);
+                var hostSlot = registry.RegisterHost(LocalPlayerName, Application.version ?? "unknown", MultiplayerPluginInfo.VERSION);
+                LockHostClassFromContinue(hostSlot);
             }
 
             Log.LogInfo($"Started hosting on port {NetworkConfig.DefaultPort}");
@@ -1546,7 +1560,8 @@ public class MultiplayerUI : MonoBehaviour
 
             if (MultiplayerPlugin.Services?.TryResolve<Multiplayer.PlayerRegistry>(out var registry) == true)
             {
-                registry.RegisterHost(LocalPlayerName, Application.version ?? "unknown", MultiplayerPluginInfo.VERSION);
+                var hostSlot = registry.RegisterHost(LocalPlayerName, Application.version ?? "unknown", MultiplayerPluginInfo.VERSION);
+                LockHostClassFromContinue(hostSlot);
             }
 
             Log.LogInfo("Started Steam lobby hosting");
