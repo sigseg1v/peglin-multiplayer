@@ -83,6 +83,14 @@ internal static class GameInitPatches
                 MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Players already initialized ({coopState.TotalPlayerCount}), re-capturing state");
             }
 
+            // Debug-only: when MULTIPEGLIN_DEBUG is set, grant the host the two
+            // easter-egg orbs so they can be tested without rolling them in shops.
+            // Must run BEFORE CaptureInitialState so the snapshot includes them.
+            if (IsHosting)
+            {
+                Debug.DebugStartingDeck.TryGrantHostDebugOrbs();
+            }
+
             // Capture/re-capture host's state (slot 0) after GameInit has set up deck/relics/health.
             // This runs on every GameInit.Start() so the host's deck is always current.
             coopState.CaptureInitialState(0);
