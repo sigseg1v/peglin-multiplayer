@@ -203,6 +203,53 @@ public static class LobbyUI
             return; // No state yet
         }
 
+        // Continue mode (host): pad and reorder the row list so every saved slot
+        // is visible — present players show normally, absent players show as
+        // gray "MISSING" placeholders so the host can see who they're waiting on.
+        var missingFlags = new bool[players.Count];
+        if (isHost && Continue.ContinueSession.IsActive && Continue.ContinueSession.ActiveSave?.Players != null)
+        {
+            var presentByName = new Dictionary<string, LobbyPlayerEntry>(StringComparer.OrdinalIgnoreCase);
+            foreach (var p in players)
+            {
+                var key = Continue.ContinueFiles.Sanitize(p.PlayerName ?? string.Empty);
+                if (!presentByName.ContainsKey(key))
+                {
+                    presentByName[key] = p;
+                }
+            }
+
+            var ordered = new List<LobbyPlayerEntry>();
+            var flags = new List<bool>();
+            foreach (var saved in Continue.ContinueSession.ActiveSave.Players.OrderBy(p => p.SlotIndex))
+            {
+                var key = Continue.ContinueFiles.Sanitize(saved.PlayerName ?? string.Empty);
+                if (presentByName.TryGetValue(key, out var present))
+                {
+                    ordered.Add(present);
+                    flags.Add(false);
+                }
+                else
+                {
+                    ordered.Add(new LobbyPlayerEntry
+                    {
+                        SlotIndex = saved.SlotIndex,
+                        PlayerName = saved.PlayerName,
+                        ChosenClass = saved.ChosenClass,
+                        ChosenClassName = LobbyHelper.GetClassName(saved.ChosenClass),
+                        IsReady = false,
+                        IsHost = saved.SlotIndex == 0,
+                        GameVersion = string.Empty,
+                        ModVersion = string.Empty,
+                    });
+                    flags.Add(true);
+                }
+            }
+
+            players = ordered;
+            missingFlags = flags.ToArray();
+        }
+
         // Ensure we have the right number of rows
         while (_playerRows.Count < players.Count)
         {
@@ -226,6 +273,7 @@ public static class LobbyUI
         {
             var entry = players[i];
             var row = _playerRows[i];
+            var isMissing = i < missingFlags.Length && missingFlags[i];
             row.Root.SetActive(true);
             row.SlotIndex = entry.SlotIndex;
 
@@ -248,7 +296,22 @@ public static class LobbyUI
             }
 
             row.NameText.text = entry.PlayerName ?? "???";
+
+            if (isMissing)
+            {
+                var gray = new Color(0.55f, 0.55f, 0.55f);
+                row.NameText.color = gray;
+                row.ClassText.text = entry.ChosenClassName ?? LobbyHelper.GetClassName(entry.ChosenClass);
+                row.ClassText.color = gray;
+                row.LeftArrow.gameObject.SetActive(false);
+                row.RightArrow.gameObject.SetActive(false);
+                row.ReadyText.text = "<color=#888888>MISSING</color>";
+                row.VersionText.text = string.Empty;
+                continue;
+            }
+
             row.NameText.color = row.IsLocalPlayer ? new Color(0.53f, 1f, 0.53f) : new Color(0.53f, 0.67f, 1f);
+            row.ClassText.color = Color.white;
 
             // For local player, show _localChosenClass directly (no round-trip delay)
             row.ClassText.text = row.IsLocalPlayer
