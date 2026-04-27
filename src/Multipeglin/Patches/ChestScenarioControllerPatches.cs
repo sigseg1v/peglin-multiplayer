@@ -6,6 +6,47 @@ namespace Multipeglin.Patches;
 [HarmonyPatch]
 internal static class ChestScenarioControllerPatches
 {
+    /// <summary>
+    /// Suppress the treasure-room "hit all bombs to spawn a bonus chest" easter
+    /// egg in coop. The native flow reloads the Treasure scene only on whoever
+    /// detonated the last bomb (the host, since clients can't shoot here), and
+    /// the second chest reuses the treasure-phase reward gating that's already
+    /// been marked complete — so the host opens a second chest the client never
+    /// sees, both ends end up waiting on each other, and neither Force Skip nor
+    /// natural completion can recover. Until we wire a real second-pass through
+    /// CoopRewardState, just stop the bonus chest from triggering when a lobby
+    /// is active.
+    /// </summary>
+    [HarmonyPatch(typeof(Scenarios.ChestScenarioController), "HandlePegDestruction")]
+    [HarmonyPrefix]
+    public static bool ChestScenarioController_HandlePegDestruction_Prefix(
+        Scenarios.ChestScenarioController __instance,
+        Peg.PegType type)
+    {
+        if (!UI.LobbyUI.GameStartReceived)
+        {
+            return true;
+        }
+
+        if (type != Peg.PegType.BOMB)
+        {
+            return true;
+        }
+
+        var bombsRemainingField = AccessTools.Field(
+            typeof(Scenarios.ChestScenarioController), "_bombsRemaining");
+        if (bombsRemainingField == null)
+        {
+            return true;
+        }
+
+        var current = (int)bombsRemainingField.GetValue(__instance);
+        bombsRemainingField.SetValue(__instance, current - 1);
+        MultiplayerPlugin.Logger?.LogInfo(
+            $"[ClientPatch] Coop: bonus-chest bomb suppressed (remaining {current - 1})");
+        return false;
+    }
+
     [HarmonyPatch(typeof(Scenarios.ChestScenarioController), "OpenChest")]
     [HarmonyPrefix]
     public static bool ChestScenarioController_OpenChest_Prefix()
