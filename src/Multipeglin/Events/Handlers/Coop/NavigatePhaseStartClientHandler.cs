@@ -78,7 +78,7 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
 
         try
         {
-            InvokePostBattleStartNavigation(log);
+            InvokePostBattleStartNavigation(log, networkEvent.ChildNodeCount);
         }
         catch (System.Exception ex)
         {
@@ -94,7 +94,7 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
         ScheduleVerifyArmed(log);
     }
 
-    private static void InvokePostBattleStartNavigation(BepInEx.Logging.ManualLogSource log)
+    private static void InvokePostBattleStartNavigation(BepInEx.Logging.ManualLogSource log, int childNodeCount)
     {
         var pbcs = Resources.FindObjectsOfTypeAll<global::Battle.PostBattleController>();
         global::Battle.PostBattleController target = null;
@@ -122,28 +122,165 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
         }
 
         log?.LogInfo(
-            $"[CoopNavigate] Found PostBattleController '{target.name}' (active={target.gameObject.activeInHierarchy}) — invoking SkipMimicNavigation");
+            $"[CoopNavigate] Found PostBattleController '{target.name}' (active={target.gameObject.activeInHierarchy}) — running client nav setup (children={childNodeCount})");
 
-        // Make sure the PBC GameObject is active. PostBattleStartClientHandler
-        // activated it earlier for the reward UI; if anything deactivated it
-        // we re-activate here so OnEnable's SerializeField hookups are valid.
         if (!target.gameObject.activeInHierarchy)
         {
             target.gameObject.SetActive(true);
         }
 
-        // Use SkipMimicNavigation: it calls private StartNavigation(movePeglin:false)
-        // and then BattleController.ArmNavigationBall() synchronously. The default
-        // StartNavigation(true) path relies on a DOTween player-move whose
-        // OnComplete fires MoveFinished → ArmNavigationBall — this tween chain
-        // is unreliable on the client (BattleController.Update is fully blocked,
-        // and the player transform is at its rest position so the tween becomes
-        // a 0-duration no-op whose onComplete never fires in some DOTween
-        // versions). Result: nav ball was never armed, clients sat on black
-        // screens with only the heartbeat-synced aimer sprite. Bypassing the
-        // tween and arming the ball directly fixes that.
-        target.SkipMimicNavigation();
-        log?.LogInfo("[CoopNavigate] Client invoked PostBattleController.SkipMimicNavigation");
+        // CRITICAL: do NOT call SkipMimicNavigation / StartNavigation on the client.
+        // Both go through PostBattleController.StartNavigation, which has this guard:
+        //   if (StaticGameData.currentNode == null || ChildNodes.Length == 0)
+        //   { _winTimeline.SetActive(true); return; }
+        // On the client, currentNode is ALWAYS null (the map is heartbeat-synced;
+        // the live MapNode tree is host-only). The guard would activate the
+        // floor-victory _winTimeline (which fades the screen to black for the
+        // cinematic), skip slot-manager setup entirely, and leave us aiming a
+        // nav ball at a black screen. That was the symptom: clients in AIMING
+        // state, nav ball alive, but the win timeline overlay covered everything.
+        //
+        // Instead, replicate just the safe pieces of StartNavigation manually:
+        //   1. Force-deactivate _winTimeline (in case it was already turned on).
+        //   2. Run the public peg-prep methods that StartNavigation would call.
+        //   3. Activate the three SlotManagers using childNodeCount from the
+        //      network event (host's authoritative count) and a neutral color
+        //      (clients don't have the real ChildNodes / RoomType).
+        //   4. Arm the nav ball.
+
+        ForceDeactivateWinTimeline(target, log);
+
+        var bc = HarmonyLib.AccessTools.Field(typeof(global::Battle.PostBattleController), "_battleController")
+            ?.GetValue(target) as global::Battle.BattleController;
+        if (bc == null)
+        {
+            log?.LogWarning("[CoopNavigate] Client: PostBattleController._battleController is null");
+            return;
+        }
+
+        try
+        {
+            bc.RemoveClearedPegs();
+            bc.ResetDamageTally();
+            bc.PreparePegsForNavigation();
+        }
+        catch (System.Exception ex)
+        {
+            log?.LogWarning($"[CoopNavigate] Client peg-prep failed: {ex.Message}");
+        }
+
+        ActivateSlotManagers(target, childNodeCount, log);
+
+        try
+        {
+            bc.ArmNavigationBall();
+            log?.LogInfo("[CoopNavigate] Client armed nav ball");
+        }
+        catch (System.Exception ex)
+        {
+            log?.LogError($"[CoopNavigate] Client ArmNavigationBall threw: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Force-deactivate PostBattleController._winTimeline. The native
+    /// StartNavigation(currentNode==null) path may have already turned it on
+    /// before we got here, and even if it didn't, defensively flipping it off
+    /// prevents any stale activation from leaving a black-screen overlay.
+    /// </summary>
+    private static void ForceDeactivateWinTimeline(global::Battle.PostBattleController pbc, BepInEx.Logging.ManualLogSource log)
+    {
+        try
+        {
+            var f = HarmonyLib.AccessTools.Field(typeof(global::Battle.PostBattleController), "_winTimeline");
+            var go = f?.GetValue(pbc) as GameObject;
+            if (go != null && go.activeInHierarchy)
+            {
+                go.SetActive(false);
+                log?.LogInfo("[CoopNavigate] Force-deactivated PostBattleController._winTimeline");
+            }
+        }
+        catch (System.Exception ex)
+        {
+            log?.LogWarning($"[CoopNavigate] ForceDeactivateWinTimeline failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Activate left/center/right SlotManagers based on the network-event child
+    /// count. Mirrors PostBattleController.StartNavigation's slot setup but
+    /// without depending on StaticGameData.currentNode (null on clients) — uses
+    /// a neutral white tint and the first available MapNode icon as a stand-in.
+    /// </summary>
+    private static void ActivateSlotManagers(
+        global::Battle.PostBattleController pbc,
+        int childCount,
+        BepInEx.Logging.ManualLogSource log)
+    {
+        try
+        {
+            var leftField = HarmonyLib.AccessTools.Field(typeof(global::Battle.PostBattleController), "_leftSlotManager");
+            var centerField = HarmonyLib.AccessTools.Field(typeof(global::Battle.PostBattleController), "_centerSlotManager");
+            var rightField = HarmonyLib.AccessTools.Field(typeof(global::Battle.PostBattleController), "_rightSlotManager");
+
+            var left = leftField?.GetValue(pbc) as global::Battle.SlotManager;
+            var center = centerField?.GetValue(pbc) as global::Battle.SlotManager;
+            var right = rightField?.GetValue(pbc) as global::Battle.SlotManager;
+
+            if (left == null || center == null || right == null)
+            {
+                log?.LogWarning("[CoopNavigate] Client: SlotManagers not all wired on PBC");
+                return;
+            }
+
+            var color = Color.white;
+            Sprite icon = null;
+            try
+            {
+                var anyNode = Resources.FindObjectsOfTypeAll<global::Worldmap.MapNode>();
+                if (anyNode != null && anyNode.Length > 0)
+                {
+                    icon = anyNode[0].activeIcon;
+                }
+            }
+            catch
+            {
+                // Best-effort icon lookup — fine if it fails.
+            }
+
+            left.gameObject.SetActive(true);
+            right.gameObject.SetActive(true);
+            center.gameObject.SetActive(true);
+
+            // childCount of 1 → all three slots point to the same room (HalfNav
+            // on left/right, ConfigureForNavigation on center). childCount > 1 →
+            // left/right are independent; center is dud unless > 2.
+            if (childCount <= 1)
+            {
+                left.ConfigureHalfNavigation(color);
+                right.ConfigureHalfNavigation(color);
+                center.ConfigureForNavigation(icon, color);
+            }
+            else
+            {
+                left.ConfigureForNavigation(icon, color);
+                right.ConfigureForNavigation(icon, color);
+                if (childCount > 2)
+                {
+                    center.ConfigureForNavigation(icon, color);
+                }
+                else
+                {
+                    center.ConfigureDudNavigation();
+                }
+            }
+
+            log?.LogInfo($"[CoopNavigate] Client activated {childCount} slot manager(s)");
+        }
+        catch (System.Exception ex)
+        {
+            log?.LogWarning($"[CoopNavigate] ActivateSlotManagers failed: {ex.Message}");
+        }
     }
 
     private static void ForceCloseBattleUpgradeCanvas(BepInEx.Logging.ManualLogSource log)
