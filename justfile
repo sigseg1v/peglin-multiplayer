@@ -24,6 +24,7 @@ publish:
     New-Item -ItemType Directory -Path '{{root}}/build' -Force | Out-Null; \
     Copy-Item '{{src}}/Multipeglin.Core/bin/Release/netstandard2.1/Multipeglin.Core.dll' '{{root}}/build/'; \
     Copy-Item '{{src}}/Multipeglin/bin/Release/netstandard2.1/Multipeglin.dll' '{{root}}/build/'; \
+    Copy-Item '{{src}}/Multipeglin.CustomOrbs/bin/Release/netstandard2.1/Multipeglin.CustomOrbs.dll' '{{root}}/build/'; \
     Write-Host "`nPublish output:"; \
     Get-ChildItem '{{root}}/build/*.dll' | Format-Table Name, Length
 
@@ -66,7 +67,8 @@ copy-plugins config="Debug":
     Copy-Item '{{src}}/Multipeglin.Core/bin/{{config}}/netstandard2.1/Multipeglin.Core.dll' '{{plugins}}/'; \
     Copy-Item "$bin/Multipeglin.dll" '{{plugins}}/'; \
     Copy-Item "$bin/LiteNetLib.dll" '{{plugins}}/'; \
-    Copy-Item "$bin/NLog.dll" '{{plugins}}/'
+    Copy-Item "$bin/NLog.dll" '{{plugins}}/'; \
+    Copy-Item '{{src}}/Multipeglin.CustomOrbs/bin/{{config}}/netstandard2.1/Multipeglin.CustomOrbs.dll' '{{plugins}}/'
 
 # Build debug, deploy to game dir, launch game, tail logs
 dev: setup _restore-appid
