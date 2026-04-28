@@ -1088,6 +1088,123 @@ public class CoopStateManager
         }
     }
 
+    // Effects added by MergeAllRelicsForNavPhase — popped by UnmergeNavPhaseRelics.
+    private readonly List<RelicEffect> _navPhaseMergedEffects = new List<RelicEffect>();
+
+    /// <summary>
+    /// Nav-phase only: merge ALL non-active players' relics into slot 0's RelicManager
+    /// so the parallel-shoot phase runs against a unified relic set. Tracks every
+    /// effect added so UnmergeNavPhaseRelics can remove exactly those (and not
+    /// stomp the host's own relics).
+    /// </summary>
+    public void MergeAllRelicsForNavPhase()
+    {
+        _navPhaseMergedEffects.Clear();
+
+        if (TotalPlayerCount < 2)
+        {
+            return;
+        }
+
+        try
+        {
+            var relicMgr = Resources.FindObjectsOfTypeAll<RelicManager>()?.FirstOrDefault();
+            if (relicMgr == null)
+            {
+                return;
+            }
+
+            var ownedField = AccessTools.Field(typeof(RelicManager), "_ownedRelics");
+            var owned = ownedField?.GetValue(relicMgr) as Dictionary<RelicEffect, Relic>;
+            if (owned == null)
+            {
+                return;
+            }
+
+            var allRelicAssets = Resources.FindObjectsOfTypeAll<Relic>();
+
+            foreach (var kvp in PlayerStates)
+            {
+                if (kvp.Key == ActivePlayerSlot)
+                {
+                    continue;
+                }
+
+                foreach (var entry in kvp.Value.OwnedRelics)
+                {
+                    var effect = (RelicEffect)entry.Effect;
+                    if (effect == RelicEffect.NONE || owned.ContainsKey(effect))
+                    {
+                        continue;
+                    }
+
+                    var relicAsset = allRelicAssets.FirstOrDefault(r => r.effect == effect)
+                        ?? allRelicAssets.FirstOrDefault(r => r.locKey == entry.LocKey);
+                    if (relicAsset == null)
+                    {
+                        continue;
+                    }
+
+                    owned[effect] = relicAsset;
+                    _navPhaseMergedEffects.Add(effect);
+                }
+            }
+
+            _log.LogInfo($"[CoopState] MergeAllRelicsForNavPhase: merged {_navPhaseMergedEffects.Count} relics from non-active players");
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[CoopState] MergeAllRelicsForNavPhase failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Nav-phase only: pop the relics added by MergeAllRelicsForNavPhase. Safe to
+    /// call when no merge happened (no-op).
+    /// </summary>
+    public void UnmergeNavPhaseRelics()
+    {
+        if (_navPhaseMergedEffects.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            var relicMgr = Resources.FindObjectsOfTypeAll<RelicManager>()?.FirstOrDefault();
+            if (relicMgr == null)
+            {
+                _navPhaseMergedEffects.Clear();
+                return;
+            }
+
+            var ownedField = AccessTools.Field(typeof(RelicManager), "_ownedRelics");
+            var owned = ownedField?.GetValue(relicMgr) as Dictionary<RelicEffect, Relic>;
+            if (owned == null)
+            {
+                _navPhaseMergedEffects.Clear();
+                return;
+            }
+
+            var removed = 0;
+            foreach (var effect in _navPhaseMergedEffects)
+            {
+                if (owned.Remove(effect))
+                {
+                    removed++;
+                }
+            }
+
+            _log.LogInfo($"[CoopState] UnmergeNavPhaseRelics: removed {removed}/{_navPhaseMergedEffects.Count} merged relics");
+            _navPhaseMergedEffects.Clear();
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[CoopState] UnmergeNavPhaseRelics failed: {ex.Message}");
+            _navPhaseMergedEffects.Clear();
+        }
+    }
+
     // --- Health save/load ---
 
     private void SaveHealthState(CoopPlayerState state)

@@ -49,6 +49,62 @@ public static class CoopNavigateResolver
 
         CoopNavigateState.StartPhase(source, childNodeCount, totalVoters, Time.unscaledTime);
 
+        // =====================================================================
+        // NAV-PHASE RELIC MERGE — DELIBERATE SIMPLIFICATION
+        // =====================================================================
+        // During the post-battle parallel-shoot navigate phase, we force slot 0
+        // (the host) to be the ACTIVE player and we MERGE every other player's
+        // owned relics into slot 0's RelicManager for the duration of the phase.
+        //   - No turn swapping. Slot 0 stays active until the phase resolves.
+        //   - All players still fire their own nav-ball (parallel) — nav balls
+        //     have NO orb effects, so we don't merge decks/orbs/status effects.
+        //   - The merged relic set is what the singleton sees while any nav
+        //     ball is in flight. UnmergeNavPhaseRelics() pops exactly the added
+        //     relics off in TryResolveIfDone() before the scene transition, so
+        //     each player keeps their own relic loadout for the next stage.
+        //
+        // WHY: the alternative (per-player active swaps mid-phase, separate
+        // RelicManager state per nav ball) was a deadlock-prone tarpit — saw
+        // 0/4 votes after 35s, black-screen clients, "Your turn!" banner stuck
+        // on the host. Players want to shoot and go; this avoids the wait.
+        //
+        // TRADEOFF: any relic with battle-time side effects (peg-spawn, ball-
+        // spawn, on-shot triggers) will fire under the union set during the
+        // nav phase. Acceptable because nav balls don't trigger most of these
+        // (no peg interactions in the same way, no orb attached). If a future
+        // relic breaks under this model, see "TO UNDO" below.
+        //
+        // TO UNDO this design (revert to per-player nav state):
+        //   1. Remove the MergeAllRelicsForNavPhase()/UnmergeNavPhaseRelics()
+        //      calls below and in TryResolveIfDone (search for both).
+        //   2. Drop the SwapToPlayer(0) force here. Re-enable turn swapping
+        //      for the nav phase in TurnManager (search for nav-phase guards
+        //      added when this was introduced).
+        //   3. Make NavigatePhaseStartClientHandler load each client's own
+        //      CoopPlayerState into their local singletons before arming the
+        //      nav ball — clients currently shoot under whatever state was
+        //      last loaded; a per-player model needs explicit state load.
+        //   4. Restore vote-resolution wait for ALL slots. Today the resolver
+        //      still expects N votes (TotalVotersExpected = SlotCount), so a
+        //      per-player model wouldn't change the resolver — but you'd want
+        //      to surface per-player aim/spawn positions in the network event
+        //      so each client renders independently.
+        //   5. Delete MergeAllRelicsForNavPhase / UnmergeNavPhaseRelics from
+        //      CoopStateManager once nothing references them.
+        // =====================================================================
+        if (services.TryResolve<GameState.CoopStateManager>(out var stateMgr))
+        {
+            if (stateMgr.ActivePlayerSlot != 0)
+            {
+                stateMgr.SwapToPlayer(0);
+            }
+
+            stateMgr.MergeAllRelicsForNavPhase();
+        }
+
+        // Clear the host's turn banner — there are no turns during parallel-shoot.
+        TurnChangeClientHandler.TurnMessage = string.Empty;
+
         if (services.TryResolve<IGameEventRegistry>(out var reg))
         {
             reg.Dispatch(new NavigatePhaseStartEvent
@@ -228,6 +284,15 @@ public static class CoopNavigateResolver
         }
 
         StaticGameData.chosenNextNodeIndex = winner;
+
+        // Pop the relics we merged into slot 0 at StartPhase BEFORE the scene
+        // transition — see the big comment in StartPhase for the design. This
+        // restores slot 0's own relic loadout; non-host players keep theirs in
+        // CoopPlayerState untouched (we never wrote to them during the phase).
+        if (services?.TryResolve<GameState.CoopStateManager>(out var stateMgr) == true)
+        {
+            stateMgr.UnmergeNavPhaseRelics();
+        }
 
         // Capture the source before resetting — the native invocation below
         // reads the phase, but Reset() clears it. Resetting here (before the
