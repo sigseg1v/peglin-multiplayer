@@ -12,7 +12,7 @@ namespace Multipeglin.Events.Handlers.Coop;
 ///   Each player (host + clients) arms a nav ball locally and shoots.
 ///   Each slot-hit becomes a vote: clients via NavigateVoteEvent, host via direct call to RecordVote.
 ///   Host tallies; broadcasts NavigateVoteUpdateEvent on every vote.
-///   When all expected voters voted (or 60s force-skip), host picks winner (max votes;
+///   When all expected voters voted (or FORCE_SKIP_SECONDS force-skip), host picks winner (max votes;
 ///   ties -> Random.Range), broadcasts NavigateResolvedEvent, then calls native nav flow.
 /// </summary>
 public static class CoopNavigateState
@@ -44,7 +44,7 @@ public static class CoopNavigateState
     /// <summary>Client-side: true after this client has cast its vote (used to suppress further votes).</summary>
     public static bool LocalVoteCast;
 
-    /// <summary>Time (Time.unscaledTime) when the phase started; for the 60s host force-skip.</summary>
+    /// <summary>Time (Time.unscaledTime) when the phase started; for the FORCE_SKIP_SECONDS host force-skip.</summary>
     public static float PhaseStartedAt = -1f;
 
     public static bool AllVotesIn => TotalVotersExpected > 0 && VotedSlots.Count >= TotalVotersExpected;

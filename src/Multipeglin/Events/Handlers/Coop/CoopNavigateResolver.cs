@@ -228,7 +228,7 @@ public static class CoopNavigateResolver
     }
 
     /// <summary>
-    /// Host force-skip (60s button). Resolves with whatever votes exist. If zero
+    /// Host force-skip (FORCE_SKIP_SECONDS button). Resolves with whatever votes exist. If zero
     /// votes, picks a random child index.
     /// </summary>
     public static void ForceResolve()

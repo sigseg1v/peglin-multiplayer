@@ -47,16 +47,16 @@ public class CoopRewardUI : MonoBehaviour
     // Track scene changes to auto-hide the overlay when leaving a battle
     private string _lastSceneName;
 
-    // Host-side force-continue: after 60s of waiting on the same phase, show a
+    // Host-side force-continue: after FORCE_SKIP_SECONDS of waiting on the same phase, show a
     // "Force Continue" button so the host can break out of any client-side softlock.
-    private const float ForceContinueDelaySeconds = 60f;
+    public const int FORCE_SKIP_SECONDS = 45;
     private float _hostWaitingStartTime = -1f;
     private string _hostWaitingPhaseKey;
     private GameObject _forceContinueButton;
 
     // Navigate-phase standalone force button: shown independent of the dimmed
     // overlay so the host can keep aiming while the timer runs out, but force-
-    // resolve once 60s elapse without all players shooting.
+    // resolve once FORCE_SKIP_SECONDS elapse without all players shooting.
     private GameObject _navForceButton;
     private float _navPhaseStartedAt = -1f;
 
@@ -419,7 +419,7 @@ public class CoopRewardUI : MonoBehaviour
         _overlayPanel.SetActive(true);
         _currentState = DisplayState.Waiting;
 
-        // Track host-side waiting phase for the 60s force-continue button.
+        // Track host-side waiting phase for the FORCE_SKIP_SECONDS force-continue button.
         // Reset the timer whenever the host transitions between distinct phases.
         if (isHost)
         {
@@ -518,7 +518,7 @@ public class CoopRewardUI : MonoBehaviour
     }
 
     /// <summary>
-    /// Once the host has been waiting on the same phase for 60s, spawn a
+    /// Once the host has been waiting on the same phase for FORCE_SKIP_SECONDS, spawn a
     /// "Force Continue" button so the host can resume past a stuck client.
     /// </summary>
     private void TickHostForceContinue()
@@ -547,7 +547,7 @@ public class CoopRewardUI : MonoBehaviour
             return;
         }
 
-        if (Time.unscaledTime - _hostWaitingStartTime < ForceContinueDelaySeconds)
+        if (Time.unscaledTime - _hostWaitingStartTime < FORCE_SKIP_SECONDS)
         {
             return;
         }
@@ -733,7 +733,7 @@ public class CoopRewardUI : MonoBehaviour
 
     /// <summary>
     /// Standalone navigate-phase force-skip button. Appears in the bottom-right
-    /// of the screen on the host after 60s in-phase, regardless of whether the
+    /// of the screen on the host after FORCE_SKIP_SECONDS in-phase, regardless of whether the
     /// host has voted. Independent of the dimmed waiting overlay so the host
     /// can keep aiming while the timer runs out.
     /// </summary>
@@ -768,7 +768,7 @@ public class CoopRewardUI : MonoBehaviour
             return;
         }
 
-        if (Time.unscaledTime - _navPhaseStartedAt < ForceContinueDelaySeconds)
+        if (Time.unscaledTime - _navPhaseStartedAt < FORCE_SKIP_SECONDS)
         {
             return;
         }
