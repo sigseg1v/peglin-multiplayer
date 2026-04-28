@@ -608,16 +608,32 @@ public static class LobbyUI
             return;
         }
 
-        _cruciballValueText.text = _hostCruciballLevel.ToString();
-        // Client never sees the arrows — display is read-only.
-        _cruciballLeftBtn?.gameObject.SetActive(isHost);
+        // Continue lobbies lock the cruciball level to whatever was saved —
+        // host can't bump it up/down, the value is just whatever the save says.
+        var continueLocked = isHost && Continue.ContinueSession.IsActive;
+        if (continueLocked && Continue.ContinueSession.ActiveSave != null)
+        {
+            _hostCruciballLevel = Continue.ContinueSession.ActiveSave.CruciballLevel;
+        }
 
-        _cruciballRightBtn?.gameObject.SetActive(isHost);
+        _cruciballValueText.text = _hostCruciballLevel.ToString();
+        // Client never sees the arrows — display is read-only. Host hides them
+        // too in continue mode since the value comes from the save.
+        var showArrows = isHost && !continueLocked;
+        _cruciballLeftBtn?.gameObject.SetActive(showArrows);
+
+        _cruciballRightBtn?.gameObject.SetActive(showArrows);
     }
 
     private static void OnCruciballArrow(int direction)
     {
         if (!_isHost)
+        {
+            return;
+        }
+
+        // Defensive: continue lobby locks the cruciball to the saved value.
+        if (Continue.ContinueSession.IsActive)
         {
             return;
         }

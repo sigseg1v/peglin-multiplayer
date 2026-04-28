@@ -176,6 +176,10 @@ public static class ContinueLoader
                 return; // Leave ApplyPending true so we retry on the next hook fire
             }
 
+            // Continue lobby strictly assigns each player to their saved slot
+            // (PlayerRegistry rejects mismatches), so the saved SlotIndex is
+            // the authoritative key — direct assignment lines up PlayerStates
+            // with PlayerRegistry one-to-one.
             coopState.PlayerStates.Clear();
             foreach (var p in data.Players)
             {
@@ -184,8 +188,6 @@ public static class ContinueLoader
                     continue;
                 }
 
-                // Defensive: re-stamp slot/name from the outer record in case the
-                // inner CoopPlayerState was serialized with stale fields.
                 p.State.SlotIndex = p.SlotIndex;
                 if (string.IsNullOrEmpty(p.State.PlayerName))
                 {
@@ -195,8 +197,10 @@ public static class ContinueLoader
                 coopState.PlayerStates[p.SlotIndex] = p.State;
             }
 
-            // Active slot is the host (slot 0) — singletons hold host data after
-            // the game's continue restoration.
+            // The game's continue path restored the ORIGINAL host's RUN bytes
+            // into the singletons (deck, relics, hp, gold, status effects). If
+            // a different player is now the host, those singletons hold the
+            // wrong player's data — overwrite from the spliced PlayerStates[0].
             try
             {
                 AccessTools.Property(typeof(CoopStateManager), nameof(CoopStateManager.ActivePlayerSlot))
@@ -204,6 +208,18 @@ public static class ContinueLoader
             }
             catch
             {
+            }
+
+            try
+            {
+                if (coopState.PlayerStates.ContainsKey(0))
+                {
+                    coopState.LoadPlayerState(0);
+                }
+            }
+            catch (Exception loadEx)
+            {
+                MultiplayerPlugin.Logger?.LogWarning($"[ContinueLoader] LoadPlayerState(0) threw: {loadEx.Message}");
             }
 
             MultiplayerPlugin.Logger?.LogInfo($"[ContinueLoader] restored {coopState.PlayerStates.Count} coop player states");

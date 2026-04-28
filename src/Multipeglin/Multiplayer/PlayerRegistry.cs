@@ -46,22 +46,31 @@ public class PlayerRegistry
     }
 
     /// <summary>
-    /// Register a client into a specific (Continue-restored) slot. If the slot is
-    /// already occupied or invalid, falls back to AllocateFreeSlotIndex so the
-    /// caller never gets a null result. <paramref name="chosenClass"/> is the
-    /// saved class the player was using; it is locked at the slot level so the
-    /// continue-mode lobby cannot accidentally diverge from the saved roster.
+    /// Register a client into a specific (Continue-restored) slot. STRICT: the
+    /// caller must supply a non-negative slot that is not already occupied; if
+    /// either check fails, returns null. Continue mode requires every player to
+    /// land on their saved slot — silently re-allocating to a free index would
+    /// scramble per-slot game state (decks, classes, relics) across players.
+    /// <paramref name="chosenClass"/> is the saved class the player was using;
+    /// it is locked at the slot level so the continue-mode lobby cannot
+    /// accidentally diverge from the saved roster.
     /// </summary>
     public PlayerSlot RegisterClientWithSlot(int peerId, string playerName, int desiredSlotIndex, int chosenClass, string gameVersion, string modVersion)
     {
+        if (desiredSlotIndex < 0)
+        {
+            return null;
+        }
+
         var occupied = new HashSet<int>(_allSlots.Select(s => s.SlotIndex));
-        var slotIndex = (desiredSlotIndex > 0 && !occupied.Contains(desiredSlotIndex))
-            ? desiredSlotIndex
-            : AllocateFreeSlotIndex();
+        if (occupied.Contains(desiredSlotIndex))
+        {
+            return null;
+        }
 
         var slot = new PlayerSlot
         {
-            SlotIndex = slotIndex,
+            SlotIndex = desiredSlotIndex,
             PeerId = peerId,
             PlayerName = playerName,
             IsHost = false,

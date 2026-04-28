@@ -64,6 +64,16 @@ public sealed class HandshakeClientHandler : IClientHandler<HandshakeEvent>
 
                         var savedClass = Continue.ContinueSession.GetClassForPlayer(name);
                         var newSlot = registry.RegisterClientWithSlot(senderPeerId, name, expectedSlot, savedClass, networkEvent.RuntimeGameVersion ?? "unknown", networkEvent.ModVersion ?? "unknown");
+                        if (newSlot == null)
+                        {
+                            // Saved slot is already occupied — almost always means the
+                            // wrong player is hosting (saved slot 0 belongs to someone
+                            // other than the lobby host). Reject so the slot stays
+                            // visible as MISSING and the host can hand off.
+                            log.LogWarning($"[Lobby] Continue: rejecting '{name}' — saved slot {expectedSlot} occupied or invalid");
+                            return;
+                        }
+
                         log.LogInfo($"[Lobby] Continue: registered '{name}' into saved slot {newSlot.SlotIndex} class={savedClass} (peerId={senderPeerId}, joinOrder={registry.SlotCount - 1})");
                     }
                     else
