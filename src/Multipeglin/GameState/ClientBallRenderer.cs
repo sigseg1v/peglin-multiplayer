@@ -29,22 +29,48 @@ public class ClientBallRenderer : MonoBehaviour
     private string _currentOrbName;
 
     // --- Flight visuals, one per host-assigned GUID ---
+    private struct HistoryEntry
+    {
+        public float Timestamp;     // local Time.time when the snapshot for this entry arrived
+        public Vector2 Pos;
+        public float ScaleX;
+        public float ScaleY;
+    }
+
     private class FlightVisual
     {
         public GameObject GameObject;
         public SpriteRenderer Renderer;
         public TrailRenderer Trail;
         public string OrbName;
-        public Vector2 TargetPos;
-        public Vector2 Velocity;
-        public float LastUpdateTime;
-        public bool HasReceivedPosition;
+
+        // Sorted ASC by Timestamp. Update() interpolates between two entries
+        // straddling (Time.time - RenderDelay), so the client always plays
+        // back motion that already happened on the host instead of dead-
+        // reckoning ahead. ~10 Hz host snapshots × 200 ms delay → 2 entries
+        // always available to lerp between, which absorbs latency jitter.
+        public readonly List<HistoryEntry> History = new List<HistoryEntry>();
+
+        // True once the host stops including this GUID in snapshots. The
+        // visual keeps replaying buffered history (so it doesn't pop out of
+        // existence 200 ms early) and is destroyed when render-time passes
+        // the final entry's timestamp.
+        public bool Departing;
     }
 
     private readonly Dictionary<string, FlightVisual> _flightBalls = new Dictionary<string, FlightVisual>();
 
-    // Higher = snappier, lower = smoother. ~25 hides 50 ms-spaced packets.
-    private const float PositionSmoothRate = 25f;
+    // Render the client visual this many seconds behind real time. With the
+    // host snapshotting at ~10 Hz (100 ms), 200 ms gives a 2-entry buffer so
+    // we can always interpolate between two known host states. Larger values
+    // smooth more but feel more sluggish; 200 ms is the sweet spot for a peg
+    // game where shot pacing is human-driven, not twitch-reactive.
+    private const float RenderDelay = 0.2f;
+
+    // Trim history older than (RenderDelay + this) seconds. Keeps memory
+    // bounded while leaving a small grace buffer for slightly out-of-order
+    // arrivals or render-time underruns.
+    private const float HistoryRetention = 0.5f;
 
     private void Awake() { Instance = this; }
 
@@ -136,6 +162,7 @@ public class ClientBallRenderer : MonoBehaviour
             _isAiming = false;
         }
 
+        var now = Time.time;
         var seen = new HashSet<string>();
         if (snap.Balls != null)
         {
@@ -160,41 +187,35 @@ public class ClientBallRenderer : MonoBehaviour
                     v.OrbName = entry.OrbName;
                 }
 
-                v.TargetPos = new Vector2(entry.PosX, entry.PosY);
-                v.Velocity = new Vector2(entry.VelX, entry.VelY);
-                v.LastUpdateTime = Time.time;
-                v.GameObject?.transform.localScale = new Vector3(entry.ScaleX, entry.ScaleY, 1f);
-
-                if (!v.HasReceivedPosition)
+                // If this GUID had previously departed and is now back (very
+                // rare — host destroyed and recreated under the same GUID),
+                // clear the buffer so we don't lerp across the gap.
+                if (v.Departing)
                 {
-                    v.HasReceivedPosition = true;
-                    v.GameObject?.transform.position = new Vector3(entry.PosX, entry.PosY, -1f);
-
+                    v.Departing = false;
+                    v.History.Clear();
                     v.Trail?.Clear();
                 }
+
+                v.History.Add(new HistoryEntry
+                {
+                    Timestamp = now,
+                    Pos = new Vector2(entry.PosX, entry.PosY),
+                    ScaleX = entry.ScaleX,
+                    ScaleY = entry.ScaleY,
+                });
             }
         }
 
-        // Destroy any flight visuals that the host didn't include this tick.
-        if (_flightBalls.Count != seen.Count)
+        // Mark visuals not in this tick as departing. They keep replaying
+        // their buffered history for ~RenderDelay more so the visual's last
+        // motion lands at the host-authoritative final position before it
+        // disappears (no teleport, no premature pop).
+        foreach (var kvp in _flightBalls)
         {
-            var toRemove = new List<string>();
-            foreach (var kvp in _flightBalls)
+            if (!seen.Contains(kvp.Key))
             {
-                if (!seen.Contains(kvp.Key))
-                {
-                    toRemove.Add(kvp.Key);
-                }
-            }
-
-            foreach (var guid in toRemove)
-            {
-                if (_flightBalls.TryGetValue(guid, out var v) && v.GameObject != null)
-                {
-                    Destroy(v.GameObject);
-                }
-
-                _flightBalls.Remove(guid);
+                kvp.Value.Departing = true;
             }
         }
     }
@@ -215,18 +236,18 @@ public class ClientBallRenderer : MonoBehaviour
             GameObject = go,
             Renderer = sr,
             OrbName = entry.OrbName,
-            TargetPos = new Vector2(entry.PosX, entry.PosY),
-            Velocity = new Vector2(entry.VelX, entry.VelY),
-            LastUpdateTime = Time.time,
-            HasReceivedPosition = false,
         };
 
         ApplyOrbSprite(sr, go, entry.OrbName, scaleFactor: 1f, wantTrail: true);
         // ApplyOrbSprite may have added a TrailRenderer.
         v.Trail = go.GetComponent<TrailRenderer>();
 
+        // Place the visual at the entry's position so the spawn frame draws
+        // it correctly — Update() will start interpolating once the second
+        // history entry arrives (after one snapshot interval).
         go.transform.position = new Vector3(entry.PosX, entry.PosY, -1f);
         go.transform.localScale = new Vector3(entry.ScaleX, entry.ScaleY, 1f);
+        v.Trail?.Clear();
         return v;
     }
 
@@ -400,26 +421,100 @@ public class ClientBallRenderer : MonoBehaviour
             return;
         }
 
-        foreach (var v in _flightBalls.Values)
+        var renderTime = Time.time - RenderDelay;
+        var prunedBefore = renderTime - HistoryRetention;
+        List<string> toDestroy = null;
+
+        foreach (var kvp in _flightBalls)
         {
-            if (v?.GameObject == null || !v.HasReceivedPosition)
+            var v = kvp.Value;
+            if (v?.GameObject == null)
             {
                 continue;
             }
 
-            var dt = Time.time - v.LastUpdateTime;
-            if (dt > 0.25f)
+            // Drop history older than the retention window — but always keep at
+            // least one entry so a visual stuck waiting for renderTime to catch
+            // up to its first snapshot has something to anchor to.
+            while (v.History.Count > 1 && v.History[0].Timestamp < prunedBefore
+                   && v.History[1].Timestamp < prunedBefore)
             {
-                dt = 0.25f;
+                v.History.RemoveAt(0);
             }
 
-            var predicted = v.TargetPos + v.Velocity * dt;
-            predicted.y += -9.81f * dt * dt * 0.5f;
+            if (v.History.Count == 0)
+            {
+                if (v.Departing)
+                {
+                    (toDestroy ??= new List<string>()).Add(kvp.Key);
+                }
 
-            var current = (Vector2)v.GameObject.transform.position;
-            var t = 1f - Mathf.Exp(-PositionSmoothRate * Time.deltaTime);
-            var lerped = Vector2.Lerp(current, predicted, t);
-            v.GameObject.transform.position = new Vector3(lerped.x, lerped.y, -1f);
+                continue;
+            }
+
+            HistoryEntry rendered;
+            var last = v.History[v.History.Count - 1];
+
+            if (renderTime <= v.History[0].Timestamp)
+            {
+                // Render-time hasn't reached the buffer yet (just spawned —
+                // sit at the first known host position until the delay fills).
+                rendered = v.History[0];
+            }
+            else if (renderTime >= last.Timestamp)
+            {
+                // No future entry to interpolate toward. Snap to the most
+                // recent host-authoritative state — this is the convergence
+                // point that prevents drift after a ball stops updating.
+                rendered = last;
+
+                // Departing balls hold here for one extra renderDelay window
+                // (covered by HistoryRetention pruning) before being cleaned
+                // up so the final motion lands cleanly at the last position.
+                if (v.Departing && renderTime > last.Timestamp + 0.05f)
+                {
+                    (toDestroy ??= new List<string>()).Add(kvp.Key);
+                }
+            }
+            else
+            {
+                // Bracket renderTime between two history entries and lerp.
+                var i = 1;
+                while (i < v.History.Count && v.History[i].Timestamp < renderTime)
+                {
+                    i++;
+                }
+
+                var a = v.History[i - 1];
+                var b = v.History[i];
+                var span = b.Timestamp - a.Timestamp;
+                var t = span > 1e-5f ? (renderTime - a.Timestamp) / span : 0f;
+                rendered = new HistoryEntry
+                {
+                    Pos = Vector2.Lerp(a.Pos, b.Pos, t),
+                    ScaleX = Mathf.Lerp(a.ScaleX, b.ScaleX, t),
+                    ScaleY = Mathf.Lerp(a.ScaleY, b.ScaleY, t),
+                };
+            }
+
+            v.GameObject.transform.position = new Vector3(rendered.Pos.x, rendered.Pos.y, -1f);
+            if (rendered.ScaleX > 0f && rendered.ScaleY > 0f)
+            {
+                v.GameObject.transform.localScale = new Vector3(rendered.ScaleX, rendered.ScaleY, 1f);
+            }
+        }
+
+        if (toDestroy != null)
+        {
+            foreach (var guid in toDestroy)
+            {
+                if (_flightBalls.TryGetValue(guid, out var v) && v.GameObject != null)
+                {
+                    Destroy(v.GameObject);
+                }
+
+                _flightBalls.Remove(guid);
+            }
         }
     }
 

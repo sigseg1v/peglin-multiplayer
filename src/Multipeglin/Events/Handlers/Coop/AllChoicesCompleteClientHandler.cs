@@ -65,7 +65,11 @@ public sealed class AllChoicesCompleteClientHandler : IClientHandler<AllChoicesC
             CoopRewardState.WaitingForOtherPlayers = true;
             Patches.MultiplayerClientPatches.AllowTreasureLogic = false;
             Patches.MultiplayerClientPatches.AllowRelicSync = false;
-            CoopRewardState.ClientTreasureChoiceSent = false;
+            // Keep ClientTreasureChoiceSent=true so the BattleUpgradeCanvas's
+            // OnBattleUpgradeOver -> ChestScenarioController.Skip auto-fire that
+            // happens hundreds of ms after AcceptRelic doesn't re-send a duplicate
+            // (skip-with-effect=-1) TreasureCompleteEvent. The latch is reset on
+            // GameInit (new run) and on the next treasure room's relic-choice arrival.
             MultiplayerPlugin.Logger?.LogInfo("[CoopReward] Treasure phase ended — awaiting host navigation shot");
         }
         else if (networkEvent.Phase == "peg_minigame")

@@ -31,6 +31,21 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
         MultiplayerPlugin.Logger?.LogInfo(
             $"[CoopNavigate] Client received navigate phase start: source={networkEvent.Source}, children={networkEvent.ChildNodeCount}");
 
+        // Defensive: nav_only sources (treasure/shop/text/peg-minigame) are
+        // host-solo by contract — the host runs the nav-shot natively after
+        // AllChoicesComplete and the scene transitions. Clients do NOT have
+        // NavOnlyController properly wired (no chest Skip / shop CloseStore
+        // ran locally) so arming a nav ball here NREs. If a stray nav_only
+        // event arrives anyway (older host build / out-of-order delivery),
+        // log it and stay in the awaiting-host overlay; the map sync will
+        // pull us onto the next scene shortly.
+        if (networkEvent.Source == "nav_only")
+        {
+            MultiplayerPlugin.Logger?.LogWarning(
+                "[CoopNavigate] Ignoring nav_only phase start on client — host runs nav-shot solo by lockstep contract");
+            return;
+        }
+
         CoopNavigateState.StartPhase(
             networkEvent.Source,
             networkEvent.ChildNodeCount,
@@ -40,25 +55,14 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
         Patches.MultiplayerClientPatches.AllowNavigateLogic = true;
 
         // Drop the post-rewards "waiting for other players" overlay so the player
-        // can see and use their nav ball. Scene change later closes the overlay
-        // for nav_only flows naturally; we clear the awaiting-host flags here too.
+        // can see and use their nav ball. (post_battle path only — nav_only
+        // returned above so these flags stay set and the overlay persists.)
         CoopRewardState.WaitingForOtherPlayers = false;
         CoopRewardState.AllChoicesComplete = true;
-        CoopRewardState.ShopAwaitingHostNavigation = false;
-        CoopRewardState.TreasureAwaitingHostNavigation = false;
-        CoopRewardState.TextScenarioAwaitingHostNavigation = false;
-        CoopRewardState.PegMinigameAwaitingHostNavigation = false;
 
         try
         {
-            if (networkEvent.Source == "nav_only")
-            {
-                InvokeNavOnlyPrepareForNavigation();
-            }
-            else
-            {
-                InvokePostBattleStartNavigation();
-            }
+            InvokePostBattleStartNavigation();
         }
         catch (System.Exception ex)
         {
@@ -103,36 +107,5 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
 
         startNavigation.Invoke(target, new object[] { true });
         MultiplayerPlugin.Logger?.LogInfo("[CoopNavigate] Client invoked PostBattleController.StartNavigation");
-    }
-
-    private static void InvokeNavOnlyPrepareForNavigation()
-    {
-        var nocs = Resources.FindObjectsOfTypeAll<global::NavOnlyController>();
-        global::NavOnlyController target = null;
-        if (nocs != null)
-        {
-            foreach (var n in nocs)
-            {
-                if (n != null && n.gameObject != null && n.gameObject.activeInHierarchy)
-                {
-                    target = n;
-                    break;
-                }
-            }
-
-            if (target == null && nocs.Length > 0)
-            {
-                target = nocs[0];
-            }
-        }
-
-        if (target == null)
-        {
-            MultiplayerPlugin.Logger?.LogWarning("[CoopNavigate] Client: no NavOnlyController to prepare for navigation");
-            return;
-        }
-
-        target.PrepareForNavigation();
-        MultiplayerPlugin.Logger?.LogInfo("[CoopNavigate] Client invoked NavOnlyController.PrepareForNavigation");
     }
 }
