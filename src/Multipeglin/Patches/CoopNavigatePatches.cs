@@ -41,7 +41,13 @@ internal static class CoopNavigatePatches
             return false;
         }
 
-        var childCount = StaticGameData.currentNode?.ChildNodes?.Length ?? 0;
+        // StaticGameData.currentNode is null on clients (the live MapNode tree
+        // is host-only). Trust CoopNavigateState.ChildNodeCount, which the host
+        // sent in NavigatePhaseStartEvent. Falling back to currentNode here
+        // returned 0 → every shot resolved as a miss → no vote was ever sent.
+        var childCount = ShouldSuppressClientLogic
+            ? CoopNavigateState.ChildNodeCount
+            : (StaticGameData.currentNode?.ChildNodes?.Length ?? CoopNavigateState.ChildNodeCount);
         var childIndex = ResolvePostBattleChildIndex(index, childCount);
 
         if (childIndex < 0)
@@ -51,6 +57,7 @@ internal static class CoopNavigatePatches
             // misnav run (host has authoritative health).
             if (ShouldSuppressClientLogic)
             {
+                MultiplayerPlugin.Logger?.LogInfo($"[CoopNavigate] Client miss: triggerIndex={index}, childCount={childCount}");
                 SafeDestroyBall(pBall);
                 return false;
             }
@@ -116,7 +123,10 @@ internal static class CoopNavigatePatches
             return false;
         }
 
-        var childCount = StaticGameData.currentNode?.ChildNodes?.Length ?? 0;
+        // See note in PostBattle_HandleSlot_Prefix — currentNode is null on clients.
+        var childCount = ShouldSuppressClientLogic
+            ? CoopNavigateState.ChildNodeCount
+            : (StaticGameData.currentNode?.ChildNodes?.Length ?? CoopNavigateState.ChildNodeCount);
         var childIndex = ResolveNavOnlyChildIndex(index, childCount);
 
         if (childIndex < 0)
