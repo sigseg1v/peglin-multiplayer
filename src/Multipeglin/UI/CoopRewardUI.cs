@@ -244,27 +244,17 @@ public class CoopRewardUI : MonoBehaviour
             // Repaint slot tally colors (everyone, every frame the tally changes).
             CoopNavigateSlotPainter.Tick();
 
-            // Check if all choices are complete -- hide overlay
-            if (CoopRewardState.AllChoicesComplete)
-            {
-                if (_currentState != DisplayState.Hidden)
-                {
-                    HideOverlay();
-                    CoopRewardState.Reset();
-                }
-
-                return;
-            }
-
-            // Check if we're waiting for other players (reward/relic phases) OR
-            // we're in the parallel-shoot navigate phase having already voted.
+            // Nav-phase precedence: if we've voted and the navigate phase is
+            // still open, show the top banner (no dim) so we can keep watching
+            // the slot tally update. This must run BEFORE the AllChoicesComplete
+            // early-return — clients latch AllChoicesComplete=true at the end
+            // of the post-battle reward phase and that flag stays true through
+            // the navigate phase, so without this ordering clients never reach
+            // the banner branch.
             var inNavigateWait = CoopNavigateState.PhaseActive
                 && CoopNavigateState.LocalVoteCast
                 && !CoopNavigateState.Resolved;
 
-            // Nav-phase wait gets a non-obtrusive top banner instead of the
-            // full-screen dim overlay — players want to keep seeing the
-            // pegboard and the slot tally as votes come in.
             var navWaitOnly = inNavigateWait && !CoopRewardState.WaitingForOtherPlayers;
             if (navWaitOnly)
             {
@@ -279,6 +269,18 @@ public class CoopRewardUI : MonoBehaviour
             }
 
             HideNavWaitBanner();
+
+            // Check if all choices are complete -- hide overlay
+            if (CoopRewardState.AllChoicesComplete)
+            {
+                if (_currentState != DisplayState.Hidden)
+                {
+                    HideOverlay();
+                    CoopRewardState.Reset();
+                }
+
+                return;
+            }
 
             if (CoopRewardState.WaitingForOtherPlayers || inNavigateWait)
             {

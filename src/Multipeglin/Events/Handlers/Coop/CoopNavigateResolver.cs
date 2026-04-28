@@ -261,7 +261,7 @@ public static class CoopNavigateResolver
             return;
         }
 
-        if (!forceSkip && !CoopNavigateState.AllVotesIn)
+        if (!forceSkip && !CoopNavigateState.AllVotesIn && !LeaderIsUncatchable())
         {
             return;
         }
@@ -313,6 +313,55 @@ public static class CoopNavigateResolver
         {
             InvokeNavOnlyFadeAndLoad();
         }
+    }
+
+    /// <summary>
+    /// True when the current leader (unique max-vote child) cannot be caught
+    /// or tied by the remaining voters. Lets the phase resolve early so
+    /// players don't wait for a foregone-conclusion last vote.
+    ///
+    /// Rule: max >= secondMax + remainingVotes AND there is a unique leader.
+    /// With "=", a leader who can at worst be tied still wins — matches
+    /// the intent that the deciding-moment leader holds. If multiple
+    /// children are tied at max, no early resolution (the tally itself
+    /// hasn't decided anything).
+    /// </summary>
+    private static bool LeaderIsUncatchable()
+    {
+        var votes = CoopNavigateState.VoteCounts;
+        if (votes == null || votes.Count == 0)
+        {
+            return false;
+        }
+
+        var remaining = CoopNavigateState.TotalVotersExpected - CoopNavigateState.VotedSlots.Count;
+        if (remaining <= 0)
+        {
+            return false; // AllVotesIn handles this path
+        }
+
+        var max = -1;
+        var secondMax = 0;
+        var leaderUnique = false;
+        for (var i = 0; i < votes.Count; i++)
+        {
+            if (votes[i] > max)
+            {
+                secondMax = max < 0 ? 0 : max;
+                max = votes[i];
+                leaderUnique = true;
+            }
+            else if (votes[i] == max)
+            {
+                leaderUnique = false;
+            }
+            else if (votes[i] > secondMax)
+            {
+                secondMax = votes[i];
+            }
+        }
+
+        return leaderUnique && max >= secondMax + remaining;
     }
 
     private static int PickWinner(List<int> votes)
