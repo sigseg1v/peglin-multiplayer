@@ -192,6 +192,14 @@ public class CoopRewardUI : MonoBehaviour
             // Standalone navigate-phase force button (host only; independent of overlay).
             TickNavigateStandaloneForce(mode);
 
+            // Host-only deadlock watchdog: log every 5s while navigate is unresolved.
+            CoopNavigateResolver.TickWatchdog();
+
+            // Generic "everyone is waiting" deadlock detector — logs when the
+            // local view shows a wait overlay and no progress has been made for
+            // a while, so a stuck lockstep is visible without grepping for it.
+            CoopWaitWatchdog.Tick(mode);
+
             // Repaint slot tally colors (everyone, every frame the tally changes).
             CoopNavigateSlotPainter.Tick();
 

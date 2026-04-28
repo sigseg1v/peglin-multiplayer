@@ -116,6 +116,61 @@ public static class CoopNavigateResolver
         }
     }
 
+    private static float _lastWatchdogLogAt;
+
+    /// <summary>
+    /// Host-only deadlock watchdog. Call from a periodic UI tick. Every 5s while
+    /// the navigate phase is active but unresolved, logs the current tally,
+    /// expected voter count, and which slot indices haven't voted yet — so a
+    /// hung phase is visible in the host log instead of silently waiting forever.
+    /// </summary>
+    public static void TickWatchdog()
+    {
+        if (!CoopNavigateState.PhaseActive || CoopNavigateState.Resolved)
+        {
+            _lastWatchdogLogAt = 0f;
+            return;
+        }
+
+        var services = MultiplayerPlugin.Services;
+        if (services == null
+            || !services.TryResolve<IMultiplayerMode>(out var mode)
+            || !mode.IsHosting)
+        {
+            return;
+        }
+
+        var now = Time.unscaledTime;
+        if (_lastWatchdogLogAt > 0f && now - _lastWatchdogLogAt < 5f)
+        {
+            return;
+        }
+
+        _lastWatchdogLogAt = now;
+        var elapsed = CoopNavigateState.PhaseStartedAt > 0f
+            ? now - CoopNavigateState.PhaseStartedAt
+            : -1f;
+
+        var pending = new List<int>();
+        if (services.TryResolve<PlayerRegistry>(out var registry))
+        {
+            foreach (var slot in registry.GetAllSlots())
+            {
+                if (!CoopNavigateState.VotedSlots.Contains(slot.SlotIndex))
+                {
+                    pending.Add(slot.SlotIndex);
+                }
+            }
+        }
+
+        var pendingStr = pending.Count > 0 ? string.Join(",", pending) : "(none)";
+        MultiplayerPlugin.Logger?.LogWarning(
+            $"[CoopNavigate/Watchdog] Phase '{CoopNavigateState.Source}' unresolved after {elapsed:F1}s: " +
+            $"votes={CoopNavigateState.VotedSlots.Count}/{CoopNavigateState.TotalVotersExpected}, " +
+            $"tally=[{string.Join(",", CoopNavigateState.VoteCounts)}], " +
+            $"pendingSlots={pendingStr}");
+    }
+
     /// <summary>
     /// Host force-skip (60s button). Resolves with whatever votes exist. If zero
     /// votes, picks a random child index.
