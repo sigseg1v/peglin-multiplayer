@@ -60,6 +60,12 @@ public class CoopRewardUI : MonoBehaviour
     private GameObject _navForceButton;
     private float _navPhaseStartedAt = -1f;
 
+    // Non-obtrusive top banner used during the nav-phase wait (after the local
+    // player voted). Avoids dimming the screen so everyone can still see the
+    // pegboard / slot tally update as votes arrive.
+    private GameObject _navWaitBanner;
+    private TextMeshProUGUI _navWaitBannerText;
+
     private void Start()
     {
         try
@@ -136,6 +142,41 @@ public class CoopRewardUI : MonoBehaviour
         statusRect.sizeDelta = new Vector2(800, 48);
 
         _overlayPanel.SetActive(false);
+
+        CreateNavWaitBanner();
+    }
+
+    private void CreateNavWaitBanner()
+    {
+        _navWaitBanner = new GameObject("NavWaitBanner");
+        _navWaitBanner.transform.SetParent(_canvasObj.transform, false);
+
+        var bgImg = _navWaitBanner.AddComponent<Image>();
+        bgImg.color = new Color(0f, 0f, 0f, 0.55f);
+        bgImg.raycastTarget = false;
+
+        var bannerRect = _navWaitBanner.GetComponent<RectTransform>();
+        bannerRect.anchorMin = new Vector2(0.5f, 1f);
+        bannerRect.anchorMax = new Vector2(0.5f, 1f);
+        bannerRect.pivot = new Vector2(0.5f, 1f);
+        bannerRect.anchoredPosition = new Vector2(0, -24);
+        bannerRect.sizeDelta = new Vector2(720, 60);
+
+        var textObj = new GameObject("Text");
+        textObj.transform.SetParent(_navWaitBanner.transform, false);
+        _navWaitBannerText = textObj.AddComponent<TextMeshProUGUI>();
+        _navWaitBannerText.text = "Waiting for other players to navigate...";
+        _navWaitBannerText.fontSize = 28;
+        _navWaitBannerText.alignment = TextAlignmentOptions.Center;
+        _navWaitBannerText.color = new Color(1f, 0.92f, 0.6f);
+        _navWaitBannerText.raycastTarget = false;
+        var textRect = _navWaitBannerText.rectTransform;
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = new Vector2(16, 4);
+        textRect.offsetMax = new Vector2(-16, -4);
+
+        _navWaitBanner.SetActive(false);
     }
 
     private void Update()
@@ -220,6 +261,25 @@ public class CoopRewardUI : MonoBehaviour
             var inNavigateWait = CoopNavigateState.PhaseActive
                 && CoopNavigateState.LocalVoteCast
                 && !CoopNavigateState.Resolved;
+
+            // Nav-phase wait gets a non-obtrusive top banner instead of the
+            // full-screen dim overlay — players want to keep seeing the
+            // pegboard and the slot tally as votes come in.
+            var navWaitOnly = inNavigateWait && !CoopRewardState.WaitingForOtherPlayers;
+            if (navWaitOnly)
+            {
+                if (_currentState != DisplayState.Hidden)
+                {
+                    HideOverlay();
+                }
+
+                ShowNavWaitBanner();
+                TickHostForceContinue();
+                return;
+            }
+
+            HideNavWaitBanner();
+
             if (CoopRewardState.WaitingForOtherPlayers || inNavigateWait)
             {
                 if (_currentState != DisplayState.Waiting)
@@ -358,6 +418,32 @@ public class CoopRewardUI : MonoBehaviour
         Log?.LogInfo($"[CoopRewardUI] Showing {choices.Options.Count} reward choices");
     }
 
+    private void ShowNavWaitBanner()
+    {
+        if (_navWaitBanner == null)
+        {
+            return;
+        }
+
+        if (!_navWaitBanner.activeSelf)
+        {
+            _navWaitBanner.SetActive(true);
+        }
+
+        if (_navWaitBannerText)
+        {
+            _navWaitBannerText.text = "Waiting for other players to navigate...";
+        }
+    }
+
+    private void HideNavWaitBanner()
+    {
+        if (_navWaitBanner != null && _navWaitBanner.activeSelf)
+        {
+            _navWaitBanner.SetActive(false);
+        }
+    }
+
     private void ShowWaiting()
     {
         ClearButtons();
@@ -450,6 +536,7 @@ public class CoopRewardUI : MonoBehaviour
         DestroyForceContinueButton();
         ClearHostWaitingTimer();
         _overlayPanel.SetActive(false);
+        HideNavWaitBanner();
         _currentState = DisplayState.Hidden;
         _displayedRelicCount = 0;
         _displayedRewardCount = 0;
