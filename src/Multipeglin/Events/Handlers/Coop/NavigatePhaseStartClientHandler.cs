@@ -98,14 +98,52 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
             return;
         }
 
-        var startNavigation = AccessTools.Method(typeof(global::Battle.PostBattleController), "StartNavigation");
-        if (startNavigation == null)
-        {
-            MultiplayerPlugin.Logger?.LogWarning("[CoopNavigate] Client: StartNavigation method not found");
-            return;
-        }
+        // Use SkipMimicNavigation: it calls private StartNavigation(movePeglin:false)
+        // and then BattleController.ArmNavigationBall() synchronously. The default
+        // StartNavigation(true) path relies on a DOTween player-move whose
+        // OnComplete fires MoveFinished → ArmNavigationBall — this tween chain
+        // is unreliable on the client (BattleController.Update is fully blocked,
+        // and the player transform is at its rest position so the tween becomes
+        // a 0-duration no-op whose onComplete never fires in some DOTween
+        // versions). Result: nav ball was never armed, clients sat on black
+        // screens with only the heartbeat-synced aimer sprite. Bypassing the
+        // tween and arming the ball directly fixes that.
+        target.SkipMimicNavigation();
+        MultiplayerPlugin.Logger?.LogInfo("[CoopNavigate] Client invoked PostBattleController.SkipMimicNavigation");
 
-        startNavigation.Invoke(target, new object[] { true });
-        MultiplayerPlugin.Logger?.LogInfo("[CoopNavigate] Client invoked PostBattleController.StartNavigation");
+        // Belt-and-braces: confirm a nav ball is actually live. If
+        // ArmNavigationBall silently NRE'd inside SkipMimicNavigation (some
+        // [SerializeField] reference null after our heavy Awake patches), we
+        // retry the arm directly via reflection so the player still gets a
+        // clickable nav ball instead of a hung lobby.
+        EnsureNavBallArmed();
+    }
+
+    private static void EnsureNavBallArmed()
+    {
+        try
+        {
+            var bc = Object.FindObjectOfType<global::Battle.BattleController>();
+            if (bc == null)
+            {
+                MultiplayerPlugin.Logger?.LogWarning("[CoopNavigate] Client: no BattleController to verify nav ball arm");
+                return;
+            }
+
+            var activeBallField = AccessTools.Field(typeof(global::Battle.BattleController), "_activePachinkoBall");
+            var activeBall = activeBallField?.GetValue(bc) as GameObject;
+            if (activeBall != null && activeBall.activeInHierarchy)
+            {
+                return; // nav ball is live, all good
+            }
+
+            MultiplayerPlugin.Logger?.LogWarning(
+                "[CoopNavigate] Client: nav ball not armed after SkipMimicNavigation — retrying ArmNavigationBall directly");
+            bc.ArmNavigationBall();
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogError($"[CoopNavigate] Client: EnsureNavBallArmed failed: {ex.Message}");
+        }
     }
 }

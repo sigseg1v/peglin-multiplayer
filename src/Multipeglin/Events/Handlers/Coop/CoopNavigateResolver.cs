@@ -174,12 +174,22 @@ public static class CoopNavigateResolver
 
         StaticGameData.chosenNextNodeIndex = winner;
 
+        // Capture the source before resetting — the native invocation below
+        // reads the phase, but Reset() clears it. Resetting here (before the
+        // native scene transition starts) is what fixes the "host stuck at
+        // shooter on Treasure" softlock: PachinkoBall_Fire_NavigateGuard
+        // blocks Fire when LocalVoteCast || Resolved is set, so a stale phase
+        // here would silently kill the host's next nav-ball click after we
+        // arrive at Treasure / Shop / TextScenario / etc.
+        var capturedSource = CoopNavigateState.Source;
+        CoopNavigateState.Reset();
+
         // Trigger native scene transition based on phase source.
-        if (CoopNavigateState.Source == "post_battle")
+        if (capturedSource == "post_battle")
         {
             InvokePostBattleVictory();
         }
-        else if (CoopNavigateState.Source == "nav_only")
+        else if (capturedSource == "nav_only")
         {
             InvokeNavOnlyFadeAndLoad();
         }
