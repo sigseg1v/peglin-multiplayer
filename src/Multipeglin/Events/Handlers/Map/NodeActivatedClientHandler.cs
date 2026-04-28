@@ -68,6 +68,7 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
                 if (scenarioData != null)
                 {
                     log?.LogInfo($"[NodeActivated] TextScenario node — loading scene for spectating (asset={e.MapDataName})");
+                    ScenarioVisualAssigner.Assign(scenarioData, log, "NodeActivated");
                     StaticGameData.dataToLoad = scenarioData;
                     TextScenarioHoverTracker.Reset();
                     GameState.Appliers.MapStateApplier.AwaitingHostSceneConfirmation = "TextScenario";
@@ -81,6 +82,7 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
                 if (shopData != null)
                 {
                     log?.LogInfo($"[NodeActivated] ShopScenario node — loading scene for interactive shopping (asset={e.MapDataName})");
+                    ScenarioVisualAssigner.Assign(shopData, log, "NodeActivated");
                     StaticGameData.dataToLoad = shopData;
                     GameState.Appliers.MapStateApplier.AwaitingHostSceneConfirmation = "ShopScenario";
                     MultiplayerClientPatches.AllowNextSceneLoad = true;
@@ -93,6 +95,7 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
                 if (treasureData != null)
                 {
                     log?.LogInfo($"[NodeActivated] Treasure node — loading scene for native relic selection (asset={e.MapDataName})");
+                    ScenarioVisualAssigner.Assign(treasureData, log, "NodeActivated");
                     StaticGameData.dataToLoad = treasureData;
                     GameState.Appliers.MapStateApplier.AwaitingHostSceneConfirmation = "Treasure";
                     MultiplayerClientPatches.AllowNextSceneLoad = true;
@@ -275,7 +278,10 @@ internal static class PegMinigameVisualAssigner
             var bgData = bgDataField?.GetValue(mc) as Array;
             var bgIndex = bgIndexField != null ? (int)bgIndexField.GetValue(mc) : 0;
 
-            if (data.background == null && bgData != null && bgIndex >= 0 && bgIndex < bgData.Length)
+            // Always overwrite — the asset is shared across acts, so a stale
+            // forest background can leak into a Core run if we don't refresh it
+            // each time we resolve the node on the client.
+            if (bgData != null && bgIndex >= 0 && bgIndex < bgData.Length)
             {
                 var bgEntry = bgData.GetValue(bgIndex);
                 if (bgEntry != null)
@@ -291,7 +297,6 @@ internal static class PegMinigameVisualAssigner
                 }
             }
 
-            if (data.pegboardFrame == null)
             {
                 var frameField = AccessTools.Field(typeof(MapController), "pegMinigamePegboardFrame");
                 var frames = frameField?.GetValue(mc) as GameObject[];
@@ -358,7 +363,10 @@ internal static class BattleVisualAssigner
             var bgData = bgDataField?.GetValue(mc) as Array;
             var bgIndex = bgIndexField != null ? (int)bgIndexField.GetValue(mc) : 0;
 
-            if (battle.background == null && bgData != null && bgIndex >= 0 && bgIndex < bgData.Length)
+            // Always overwrite — the asset is shared across acts, so a stale
+            // forest background can leak into a Core run if we don't refresh it
+            // each time we resolve the node on the client.
+            if (bgData != null && bgIndex >= 0 && bgIndex < bgData.Length)
             {
                 var bgEntry = bgData.GetValue(bgIndex);
                 if (bgEntry != null)
@@ -374,7 +382,6 @@ internal static class BattleVisualAssigner
                 }
             }
 
-            if (battle.pegboardFrame == null)
             {
                 var frameField = AccessTools.Field(typeof(MapController), "battlePegboardFrame");
                 var frames = frameField?.GetValue(mc) as GameObject[];
@@ -393,6 +400,67 @@ internal static class BattleVisualAssigner
         catch (Exception ex)
         {
             log?.LogWarning($"[{tag}] AssignBattleVisuals failed: {ex.Message}");
+        }
+    }
+}
+
+/// <summary>
+/// Assigns background and pegboardFrame on a MapData (scenario / shop / treasure)
+/// from MapController's act-specific arrays. Without this, the shared MapData
+/// ScriptableObject keeps whatever .background was last assigned by the host —
+/// which on continue-load can leak a forest background into a Core "?" room.
+/// </summary>
+internal static class ScenarioVisualAssigner
+{
+    public static void Assign(MapData md, BepInEx.Logging.ManualLogSource log, string tag)
+    {
+        try
+        {
+            if (md == null)
+            {
+                return;
+            }
+
+            var mc = MapController.instance;
+            if (mc == null)
+            {
+                log?.LogWarning($"[{tag}] MapController.instance is null — cannot assign scenario visuals");
+                return;
+            }
+
+            var bgDataField = AccessTools.Field(typeof(MapController), "backgroundData");
+            var bgIndexField = AccessTools.Field(typeof(MapController), "backgroundIndex");
+            var bgData = bgDataField?.GetValue(mc) as Array;
+            var bgIndex = bgIndexField != null ? (int)bgIndexField.GetValue(mc) : 0;
+
+            if (bgData != null && bgIndex >= 0 && bgIndex < bgData.Length)
+            {
+                var bgEntry = bgData.GetValue(bgIndex);
+                if (bgEntry != null)
+                {
+                    var bgGo = bgEntry.GetType().GetField("Background")?.GetValue(bgEntry) as GameObject
+                        ?? bgEntry.GetType().GetProperty("Background")?.GetValue(bgEntry) as GameObject;
+
+                    if (bgGo != null)
+                    {
+                        md.background = bgGo;
+                        log?.LogInfo($"[{tag}] Assigned scenario background ({md.GetType().Name}): {bgGo.name}");
+                    }
+                }
+            }
+
+            var frameField = AccessTools.Field(typeof(MapController), "scenarioPegboardFrame");
+            var frames = frameField?.GetValue(mc) as GameObject[];
+            if (frames != null && frames.Length > 0)
+            {
+                var idx = bgIndex >= 0 && bgIndex < frames.Length ? bgIndex : 0;
+                md.pegboardFrame = frames[idx];
+                log?.LogInfo($"[{tag}] Assigned scenario pegboardFrame: {frames[idx]?.name ?? "NULL"}");
+            }
+        }
+        catch (Exception ex)
+        {
+            log?.LogWarning($"[{tag}] ScenarioVisualAssigner.Assign failed: {ex.Message}");
         }
     }
 }

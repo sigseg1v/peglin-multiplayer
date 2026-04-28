@@ -187,7 +187,9 @@ public static class LobbyUI
         List<LobbyPlayerEntry> players;
         if (isHost)
         {
-            // Host builds lobby state from PlayerRegistry
+            // Host builds lobby state from PlayerRegistry, then runs it through
+            // the same continue-mode reorder as the broadcast so host UI and
+            // client UI always render in identical order.
             var services = MultiplayerPlugin.Services;
             if (services == null)
             {
@@ -199,10 +201,10 @@ public static class LobbyUI
                 return;
             }
 
-            players = new List<LobbyPlayerEntry>();
+            var present = new List<LobbyPlayerEntry>();
             foreach (var slot in registry.GetAllSlots())
             {
-                players.Add(new LobbyPlayerEntry
+                present.Add(new LobbyPlayerEntry
                 {
                     SlotIndex = slot.SlotIndex,
                     PlayerName = slot.PlayerName,
@@ -214,61 +216,18 @@ public static class LobbyUI
                     ModVersion = slot.ModVersion,
                 });
             }
+
+            players = LobbyHelper.BuildOrderedRoster(present);
         }
         else if (_latestLobbyState?.Players != null)
         {
+            // Client receives the list already ordered + padded with MISSING
+            // placeholders by the host's BroadcastLobbyState.
             players = _latestLobbyState.Players;
         }
         else
         {
             return; // No state yet
-        }
-
-        // Continue mode (host): pad and reorder the row list so every saved slot
-        // is visible — present players show normally, absent players show as
-        // gray "MISSING" placeholders so the host can see who they're waiting on.
-        var missingFlags = new bool[players.Count];
-        if (isHost && Continue.ContinueSession.IsActive && Continue.ContinueSession.ActiveSave?.Players != null)
-        {
-            var presentByName = new Dictionary<string, LobbyPlayerEntry>(StringComparer.OrdinalIgnoreCase);
-            foreach (var p in players)
-            {
-                var key = Continue.ContinueFiles.Sanitize(p.PlayerName ?? string.Empty);
-                if (!presentByName.ContainsKey(key))
-                {
-                    presentByName[key] = p;
-                }
-            }
-
-            var ordered = new List<LobbyPlayerEntry>();
-            var flags = new List<bool>();
-            foreach (var saved in Continue.ContinueSession.ActiveSave.Players.OrderBy(p => p.SlotIndex))
-            {
-                var key = Continue.ContinueFiles.Sanitize(saved.PlayerName ?? string.Empty);
-                if (presentByName.TryGetValue(key, out var present))
-                {
-                    ordered.Add(present);
-                    flags.Add(false);
-                }
-                else
-                {
-                    ordered.Add(new LobbyPlayerEntry
-                    {
-                        SlotIndex = saved.SlotIndex,
-                        PlayerName = saved.PlayerName,
-                        ChosenClass = saved.ChosenClass,
-                        ChosenClassName = LobbyHelper.GetClassName(saved.ChosenClass),
-                        IsReady = false,
-                        IsHost = saved.SlotIndex == 0,
-                        GameVersion = string.Empty,
-                        ModVersion = string.Empty,
-                    });
-                    flags.Add(true);
-                }
-            }
-
-            players = ordered;
-            missingFlags = flags.ToArray();
         }
 
         // Ensure we have the right number of rows
@@ -294,7 +253,7 @@ public static class LobbyUI
         {
             var entry = players[i];
             var row = _playerRows[i];
-            var isMissing = i < missingFlags.Length && missingFlags[i];
+            var isMissing = entry.IsMissing;
             row.Root.SetActive(true);
             row.SlotIndex = entry.SlotIndex;
 
