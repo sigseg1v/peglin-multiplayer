@@ -238,6 +238,27 @@ public static class ContinueLoader
                 }
             }
 
+            // FINAL STEP: re-anchor UnityEngine.Random.state to the cursor we
+            // snapshotted right after map-load on save. Everything above this
+            // (LoadPlayerState's deck shuffles, BuildTurnOrder, etc.) consumes
+            // RNG that the original session never spent, so without this rewind
+            // the next battle's pegboard / enemy spawn diverges from the
+            // original run. Must run last so nothing else can consume RNG
+            // before scene-driven game logic does.
+            if (!string.IsNullOrEmpty(data.RandomStateJson))
+            {
+                try
+                {
+                    var st = JsonUtility.FromJson<UnityEngine.Random.State>(data.RandomStateJson);
+                    UnityEngine.Random.state = st;
+                    MultiplayerPlugin.Logger?.LogInfo("[ContinueLoader] restored UnityEngine.Random.state");
+                }
+                catch (Exception ex)
+                {
+                    MultiplayerPlugin.Logger?.LogWarning($"[ContinueLoader] restore Random.state failed: {ex.Message}");
+                }
+            }
+
             ApplyPending = false;
         }
         catch (Exception ex)

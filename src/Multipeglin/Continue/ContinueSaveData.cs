@@ -55,6 +55,18 @@ public sealed class ContinueSaveData
     /// </summary>
     public string GameRunSaveBase64 { get; set; }
 
+    /// <summary>
+    /// JSON-serialized <c>UnityEngine.Random.state</c> captured right after the
+    /// post-stage map load, before any continue-side coop restoration runs.
+    /// The loader restores this as the final step of ApplyPendingCoopState so
+    /// the next battle's pegboard / enemy spawn / shuffles consume RNG from
+    /// the exact state the original session would have. Without this, the
+    /// continue path's <c>TurnManager.BuildTurnOrder</c> + per-slot deck
+    /// shuffles in <c>LoadPlayerState</c> consume RNG that the original run
+    /// did not, so the next battle's layout drifts even with the same seed.
+    /// </summary>
+    public string RandomStateJson { get; set; }
+
     public DateTime ParsedSavedAt
     {
         get

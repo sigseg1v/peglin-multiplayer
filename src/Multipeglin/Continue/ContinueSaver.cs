@@ -125,6 +125,19 @@ public static class ContinueSaver
 
             var stageLabel = BuildStageLabel(mapNameLocKey, act, floor, cruciball);
 
+            // Snapshot UnityEngine.Random.state at the moment of save so the
+            // continue path can re-anchor to the same RNG cursor before the
+            // next battle starts. See ContinueSaveData.RandomStateJson.
+            var randomStateJson = (string)null;
+            try
+            {
+                randomStateJson = JsonUtility.ToJson(UnityEngine.Random.state);
+            }
+            catch (Exception ex)
+            {
+                MultiplayerPlugin.Logger?.LogWarning($"[ContinueSaver] capture Random.state failed: {ex.Message}");
+            }
+
             var data = new ContinueSaveData
             {
                 SchemaVersion = ContinueSaveData.SCHEMA_VERSION_CURRENT,
@@ -138,6 +151,7 @@ public static class ContinueSaver
                 MapScene = mapScene,
                 StageLabel = stageLabel,
                 GameRunSaveBase64 = runSaveBase64,
+                RandomStateJson = randomStateJson,
             };
 
             foreach (var kvp in coopState.PlayerStates.OrderBy(p => p.Key))
