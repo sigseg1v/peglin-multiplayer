@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using HarmonyLib;
 using Multipeglin.Events.Network.Coop;
 using Multipeglin.Multiplayer;
@@ -15,6 +16,10 @@ namespace Multipeglin.Events.Handlers.Coop;
 /// </summary>
 public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePhaseStartEvent>
 {
+    // Track ShopManager instances we've already spawned shop blocks for so a
+    // second NavigatePhaseStart in the same scene doesn't double-spawn.
+    private static readonly HashSet<int> _spawnedShopBlockIds = new();
+
     public void Handle(NavigatePhaseStartEvent networkEvent)
     {
         var log = MultiplayerPlugin.Logger;
@@ -382,9 +387,10 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
                 shop.shopUI.gameObject.SetActive(false);
             }
 
-            if (shop.fadeCurtain != null && shop.fadeCurtain.enabled)
+            if (shop.fadeCurtain != null)
             {
                 shop.fadeCurtain.enabled = false;
+                shop.fadeCurtain.raycastTarget = false;
             }
 
             // navCurtain is the black overlay that covers the playfield while
@@ -392,12 +398,15 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
             // to alpha=0 then DisableCurtain disables the Image. CloseStore
             // never ran on the client, so without this the playfield (pegs,
             // bumpers, slot triggers, aimer) is hidden behind a solid black
-            // image.
+            // image — and even after we hide the Image the GameObject's
+            // GraphicRaycaster can still intercept clicks unless raycastTarget
+            // is also false.
             if (shop.navCurtain != null)
             {
                 var c = shop.navCurtain.color;
                 shop.navCurtain.color = new Color(c.r, c.g, c.b, 0f);
                 shop.navCurtain.enabled = false;
+                shop.navCurtain.raycastTarget = false;
             }
 
             // DisableCurtain also activates the playfield mouse detector so the
@@ -421,10 +430,10 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
             // the top and the bottom looks empty. Run them now.
             try
             {
-                if (shop.pegLayout != null)
+                if (shop.pegLayout != null && _spawnedShopBlockIds.Add(shop.GetInstanceID()))
                 {
                     var spawner = shop.pegLayout.GetComponent<global::Scenarios.Shop.SpawnBlocksToMatchShopItems>();
-                    if (spawner != null && spawner.transform.childCount == 0)
+                    if (spawner != null)
                     {
                         var orbsField = AccessTools.Field(typeof(global::Scenarios.Shop.ShopManager), "_purchasableOrbs");
                         var relicsField = AccessTools.Field(typeof(global::Scenarios.Shop.ShopManager), "_purchasableRelics");

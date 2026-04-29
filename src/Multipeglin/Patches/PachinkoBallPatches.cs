@@ -45,6 +45,8 @@ internal static class PachinkoBallPatches
             if (AllowNavigateLogic)
             {
                 // End-of-stage navigate phase — nav ball is local, slot hit becomes a vote.
+                MultiplayerPlugin.Logger?.LogInfo(
+                    $"[ClientPatches] Nav Fire allowed: aim=({__instance.aimVector.x:F2},{__instance.aimVector.y:F2})");
                 return true;
             }
 
