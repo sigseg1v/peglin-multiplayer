@@ -90,6 +90,30 @@ public static class ContinueFiles
         => Path.Combine(ContinuesDirectory, BuildFileName(playerNames, seed));
 
     /// <summary>
+    /// Best-effort delete of the canonical continue file for a roster + seed.
+    /// Called when a run finishes (victory or full-party defeat) so the save
+    /// doesn't linger past the run it belongs to. No-op if the file doesn't
+    /// exist or can't be deleted.
+    /// </summary>
+    public static bool DeleteForRoster(IEnumerable<string> playerNames, string seed)
+    {
+        try
+        {
+            var path = BuildFilePath(playerNames, seed);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+                return true;
+            }
+        }
+        catch
+        {
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Atomically write a continue save (write to .tmp then rename).
     /// </summary>
     public static void Write(string filePath, ContinueSaveData data)

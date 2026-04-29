@@ -61,6 +61,28 @@ public static class RunSummaryOnEnablePatch
                     $"[RunStatsSync] Host dispatched RunStatsSnapshot: won={snapshot.HasWon}, " +
                     $"dmg={snapshot.TotalDamageDealt}, players={snapshot.Players.Count}");
             }
+
+            // Run is over (victory or full-party defeat) — delete the continue save
+            // so it doesn't linger past the run it belongs to. The host's own
+            // ContinueSession is also cleared.
+            try
+            {
+                if (services.TryResolve<CoopStateManager>(out var coop) && coop != null)
+                {
+                    var names = coop.PlayerStates.OrderBy(p => p.Key)
+                        .Select(p => p.Value?.PlayerName ?? string.Empty);
+                    var seed = StaticGameData.currentSeed ?? string.Empty;
+                    var deleted = Continue.ContinueFiles.DeleteForRoster(names, seed);
+                    MultiplayerPlugin.Logger?.LogInfo(
+                        $"[ContinueSaver] run-end (won={snapshot.HasWon}): continue file deleted={deleted}");
+                }
+
+                Continue.ContinueSession.Clear();
+            }
+            catch (Exception delEx)
+            {
+                MultiplayerPlugin.Logger?.LogWarning($"[ContinueSaver] run-end delete failed: {delEx.Message}");
+            }
         }
         catch (Exception ex)
         {
