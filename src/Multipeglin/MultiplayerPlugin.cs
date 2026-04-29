@@ -77,6 +77,7 @@ public class MultiplayerPlugin : BaseUnityPlugin
             _modObject.AddComponent<SkipTurnButton>();
 
             _modObject.AddComponent<CoopRewardUI>();
+            _modObject.AddComponent<Events.Handlers.Coop.CoopNavigateClientInput>();
             _modObject.AddComponent<ClientRelicChoiceApplier>();
             _modObject.AddComponent<Debug.DebugHotkeys>();
 
