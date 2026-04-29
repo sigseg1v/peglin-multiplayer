@@ -116,7 +116,7 @@ public sealed class CoopNavigateClientInput : MonoBehaviour
                 MultiplayerPlugin.Logger?.LogInfo(
                     $"[CoopNavigate/ClientInput] Sent NavigateVoteEvent: child={childIndex}");
 
-                DestroyNavBall();
+                FireNavBall();
             }
         }
         catch (Exception ex)
@@ -164,51 +164,80 @@ public sealed class CoopNavigateClientInput : MonoBehaviour
         return 1; // center
     }
 
-    private static void DestroyNavBall()
+    /// <summary>
+    /// Fire whichever nav ball we can find (NavOnlyController._ball for shop→nav,
+    /// or BattleController._activePachinkoBall for post-battle nav). Going through
+    /// PachinkoBall.Fire() gives the player visual feedback — the orb actually
+    /// shoots in the aim direction. PachinkoBallPatches.AllowNavigateLogic lets
+    /// the call through. We don't need the slot trigger to fire (the vote is
+    /// already sent); we just want the visual.
+    /// </summary>
+    private static void FireNavBall()
     {
         try
         {
+            var fired = false;
+
             var nocs = Resources.FindObjectsOfTypeAll<global::NavOnlyController>();
-            if (nocs == null)
+            if (nocs != null)
             {
-                return;
+                var ballField = HarmonyLib.AccessTools.Field(typeof(global::NavOnlyController), "_ball");
+                foreach (var noc in nocs)
+                {
+                    if (noc == null || noc.gameObject == null || !noc.gameObject.scene.IsValid())
+                    {
+                        continue;
+                    }
+
+                    var ballGO = ballField?.GetValue(noc) as GameObject;
+                    var pb = ballGO?.GetComponent<PachinkoBall>();
+                    if (pb != null && TryFire(pb))
+                    {
+                        fired = true;
+                    }
+                }
             }
 
-            foreach (var noc in nocs)
+            if (!fired)
             {
-                if (noc == null || noc.gameObject == null || !noc.gameObject.scene.IsValid())
+                var bc = UnityEngine.Object.FindObjectOfType<global::Battle.BattleController>();
+                if (bc != null)
                 {
-                    continue;
-                }
-
-                var ballField = HarmonyLib.AccessTools.Field(typeof(global::NavOnlyController), "_ball");
-                var ballGO = ballField?.GetValue(noc) as GameObject;
-                if (ballGO == null)
-                {
-                    continue;
-                }
-
-                var pb = ballGO.GetComponent<PachinkoBall>();
-                if (pb != null)
-                {
-                    try
+                    var activeField = HarmonyLib.AccessTools.Field(typeof(global::Battle.BattleController), "_activePachinkoBall");
+                    var activeGO = activeField?.GetValue(bc) as GameObject;
+                    var pb = activeGO?.GetComponent<PachinkoBall>();
+                    if (pb != null)
                     {
-                        pb.StartDestroy();
+                        TryFire(pb);
                     }
-                    catch
-                    {
-                        UnityEngine.Object.Destroy(ballGO);
-                    }
-                }
-                else
-                {
-                    UnityEngine.Object.Destroy(ballGO);
                 }
             }
         }
         catch (Exception ex)
         {
-            MultiplayerPlugin.Logger?.LogWarning($"[CoopNavigate/ClientInput] DestroyNavBall failed: {ex.Message}");
+            MultiplayerPlugin.Logger?.LogWarning($"[CoopNavigate/ClientInput] FireNavBall failed: {ex.Message}");
+        }
+    }
+
+    private static bool TryFire(PachinkoBall pb)
+    {
+        try
+        {
+            if (pb.CurrentState != PachinkoBall.FireballState.AIMING)
+            {
+                var stateProp = HarmonyLib.AccessTools.Property(typeof(PachinkoBall), "CurrentState");
+                stateProp?.GetSetMethod(true)?.Invoke(pb, new object[] { PachinkoBall.FireballState.AIMING });
+            }
+
+            pb.Fire();
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[CoopNavigate/ClientInput] Fired nav ball: aim=({pb.aimVector.x:F2},{pb.aimVector.y:F2})");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[CoopNavigate/ClientInput] TryFire failed: {ex.Message}");
+            return false;
         }
     }
 }
