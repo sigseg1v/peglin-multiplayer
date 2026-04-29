@@ -81,6 +81,20 @@ internal static class ChestScenarioControllerPatches
 
         if (ShouldSuppressClientLogic)
         {
+            // If the treasure phase already completed (host moved on, nav phase
+            // already started), do nothing — just block. Without this guard the
+            // chest's Skip-tween coroutine can fire after CoopRewardUI.Reset()
+            // clears ClientTreasureChoiceSent, causing a duplicate
+            // TreasureCompleteEvent AND re-setting WaitingForOtherPlayers=true
+            // which leaves the overlay stuck on top of the nav playfield.
+            if (Events.Handlers.Coop.CoopRewardState.AllChoicesComplete
+                || Events.Handlers.Coop.CoopNavigateState.PhaseActive
+                || Events.Handlers.Coop.CoopNavigateState.Resolved)
+            {
+                AllowTreasureLogic = false;
+                return false;
+            }
+
             // CLIENT: send treasure complete if not already sent
             if (!Events.Handlers.Coop.CoopRewardState.ClientTreasureChoiceSent)
             {

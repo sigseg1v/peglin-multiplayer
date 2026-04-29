@@ -610,6 +610,31 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
                 chest.playfieldMouseDetection.SetActive(true);
             }
 
+            // Mirror ChestScenarioController.Skip's prediction-manager bootstrap.
+            // Without these the trajectory line has no peg cache so the aimer is
+            // invisible (the ball still rotates but you can't tell where it's
+            // pointed). Same fix as DismissShopForNavigation.
+            try
+            {
+                var pm = Object.FindObjectOfType<global::PredictionManager>();
+                var mapDataTreasure = StaticGameData.dataToLoad as global::MapDataTreasure;
+                var pegFrame = mapDataTreasure?.pegboardFrame;
+                if (pm != null && chest.pegLayout != null && chest.relicManager != null && pegFrame != null)
+                {
+                    pm.Initialize(chest.pegLayout, pegFrame, chest.relicManager, navigation: true);
+                    pm.CreateFakePegboard();
+                    log?.LogInfo($"[CoopNavigate] Client initialized chest PredictionManager (pegLayout={chest.pegLayout.name}, frame={pegFrame.name})");
+                }
+                else
+                {
+                    log?.LogWarning($"[CoopNavigate] Cannot init chest PredictionManager (pm={(pm != null ? "ok" : "null")}, pegLayout={(chest.pegLayout != null ? "ok" : "null")}, relicMgr={(chest.relicManager != null ? "ok" : "null")}, frame={(pegFrame != null ? "ok" : "null")})");
+                }
+            }
+            catch (System.Exception ex)
+            {
+                log?.LogWarning($"[CoopNavigate] Chest PredictionManager.Initialize failed: {ex.Message}");
+            }
+
             if (Camera.main != null)
             {
                 var pos = Camera.main.transform.position;
