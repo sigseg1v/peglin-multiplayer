@@ -246,36 +246,33 @@ internal static class CoopNavigatePatches
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Host-side: when the native nav-only flow arms the navigation ball
-    /// (after shop / treasure / text / peg-minigame), the host runs the
-    /// nav-shot SOLO. Clients have no NavOnlyController/ball wiring after
-    /// the relic/event UI closes (Skip never ran on their side), so any
-    /// attempt to arm a nav ball there NREs and the host's resolver hangs
-    /// forever waiting for client votes.
-    ///
-    /// LOCKSTEP CONTRACT for nav_only scenes (treasure/shop/text/peg-minigame):
-    ///   1) ALL players (host + clients) must finish their relic/event choice
-    ///      before anyone proceeds. This is enforced by the host gating its
-    ///      Skip()/Continue handlers on AllClient*ChoicesReceived.
-    ///   2) After all choices are in, the host dispatches AllChoicesComplete
-    ///      with phase ∈ {treasure, shop, text_scenario, peg_minigame}. Clients
-    ///      receive that and switch their overlay to "Waiting for host…".
-    ///   3) The host runs NavOnlyController.PrepareForNavigation natively and
-    ///      shoots the nav ball alone. We do NOT engage CoopNavigateResolver
-    ///      here — clients stay in the awaiting-host overlay until the scene
-    ///      actually transitions and the map sync follows them onto the next
-    ///      room.
-    ///
-    /// post_battle is different: that flow uses the parallel-shoot resolver
-    /// because PostBattleController properly arms a nav ball on every client.
-    /// This postfix is intentionally a no-op so the native nav-only flow runs
-    /// unmodified on the host.
+    /// Host-side: after the host's native PrepareForNavigation arms its own
+    /// nav ball, kick off the parallel-shoot resolver and broadcast a
+    /// NavigatePhaseStartEvent so every client arms their own ball too.
+    /// HandleSlotTriggerActivated on each side then funnels slot hits through
+    /// CoopNavigateResolver as votes; majority wins.
     /// </summary>
     [HarmonyPatch(typeof(global::NavOnlyController), "PrepareForNavigation")]
     [HarmonyPostfix]
     public static void NavOnlyController_PrepareForNavigation_Postfix(global::NavOnlyController __instance)
     {
-        // Intentionally empty. See doc-comment above.
+        if (!UI.LobbyUI.GameStartReceived || !IsHosting)
+        {
+            return;
+        }
+
+        if (CoopNavigateState.PhaseActive)
+        {
+            return;
+        }
+
+        var childCount = StaticGameData.currentNode?.ChildNodes?.Length ?? 1;
+        if (childCount < 1)
+        {
+            childCount = 1;
+        }
+
+        CoopNavigateResolver.StartPhase("nav_only", childCount);
     }
 
     // -------------------------------------------------------------------------

@@ -34,21 +34,6 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
         log?.LogInfo(
             $"[CoopNavigate] === Client received navigate phase start: source={networkEvent.Source}, children={networkEvent.ChildNodeCount} ===");
 
-        // Defensive: nav_only sources (treasure/shop/text/peg-minigame) are
-        // host-solo by contract — the host runs the nav-shot natively after
-        // AllChoicesComplete and the scene transitions. Clients do NOT have
-        // NavOnlyController properly wired (no chest Skip / shop CloseStore
-        // ran locally) so arming a nav ball here NREs. If a stray nav_only
-        // event arrives anyway (older host build / out-of-order delivery),
-        // log it and stay in the awaiting-host overlay; the map sync will
-        // pull us onto the next scene shortly.
-        if (networkEvent.Source == "nav_only")
-        {
-            log?.LogWarning(
-                "[CoopNavigate] Ignoring nav_only phase start on client — host runs nav-shot solo by lockstep contract");
-            return;
-        }
-
         CoopNavigateState.StartPhase(
             networkEvent.Source,
             networkEvent.ChildNodeCount,
@@ -63,6 +48,14 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
         CoopRewardState.WaitingForOtherPlayers = false;
         CoopRewardState.AllChoicesComplete = true;
         CoopRewardState.ClientInNativeRewardPhase = false;
+        CoopRewardState.TreasureAwaitingHostNavigation = false;
+        CoopRewardState.TextScenarioAwaitingHostNavigation = false;
+        CoopRewardState.ShopAwaitingHostNavigation = false;
+        CoopRewardState.PegMinigameAwaitingHostNavigation = false;
+        CoopRewardState.TreasurePhaseActive = false;
+        CoopRewardState.TextScenarioPhaseActive = false;
+        CoopRewardState.ShopPhaseActive = false;
+        CoopRewardState.PegMinigamePhaseActive = false;
         TurnChangeClientHandler.TurnMessage = string.Empty;
         log?.LogInfo("[CoopNavigate] Cleared WaitingForOtherPlayers / TurnMessage / ClientInNativeRewardPhase");
 
@@ -78,7 +71,14 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
 
         try
         {
-            InvokePostBattleStartNavigation(log, networkEvent.ChildNodeCount);
+            if (networkEvent.Source == "nav_only")
+            {
+                InvokeNavOnlyArm(log, networkEvent.ChildNodeCount);
+            }
+            else
+            {
+                InvokePostBattleStartNavigation(log, networkEvent.ChildNodeCount);
+            }
         }
         catch (System.Exception ex)
         {
@@ -92,6 +92,222 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
         // host: any active MonoBehaviour. We piggyback on MultiplayerPlugin's
         // existing manager object via a one-shot helper.
         ScheduleVerifyArmed(log);
+    }
+
+    /// <summary>
+    /// Client-side: arm a nav ball using the local NavOnlyController. Used by
+    /// nav_only phases (treasure / shop / text_scenario / peg_minigame). The
+    /// native NavOnlyController.PrepareForNavigation can't run here because it
+    /// reads StaticGameData.currentNode (null on clients) and falls through to
+    /// LoadSelectedScene — so we replicate the safe parts manually using the
+    /// host-authoritative ChildNodeCount.
+    /// </summary>
+    private static void InvokeNavOnlyArm(BepInEx.Logging.ManualLogSource log, int childNodeCount)
+    {
+        var nocs = Resources.FindObjectsOfTypeAll<global::NavOnlyController>();
+        global::NavOnlyController target = null;
+        if (nocs != null)
+        {
+            foreach (var n in nocs)
+            {
+                if (n == null)
+                {
+                    continue;
+                }
+
+                if (n.gameObject != null && n.gameObject.scene.IsValid())
+                {
+                    target = n;
+                    if (n.gameObject.activeInHierarchy)
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (target == null)
+        {
+            log?.LogWarning("[CoopNavigate] Client: no NavOnlyController found to arm");
+            return;
+        }
+
+        log?.LogInfo(
+            $"[CoopNavigate] Found NavOnlyController '{target.name}' (active={target.gameObject.activeInHierarchy}, treasure={target.isTreasureScene}) — arming (children={childNodeCount})");
+
+        if (!target.gameObject.activeInHierarchy)
+        {
+            target.gameObject.SetActive(true);
+        }
+
+        // Hide the dialogue/event/relic UI overlay if the scenario controller
+        // didn't dismiss it — we're entering nav phase regardless.
+        TryFadeOutNavCurtain(log);
+
+        // Reflect _ball; if the scenario's Initialize never ran (rare path),
+        // call it now to spawn the orb at the configured start transform.
+        var ballField = AccessTools.Field(typeof(global::NavOnlyController), "_ball");
+        var ball = ballField?.GetValue(target) as GameObject;
+        if (ball == null)
+        {
+            log?.LogInfo("[CoopNavigate] Client: NavOnlyController._ball is null — calling Initialize()");
+            try
+            {
+                target.Initialize();
+                ball = ballField?.GetValue(target) as GameObject;
+            }
+            catch (System.Exception ex)
+            {
+                log?.LogError($"[CoopNavigate] Client: NavOnlyController.Initialize() threw: {ex.Message}");
+            }
+        }
+
+        if (ball == null)
+        {
+            log?.LogError("[CoopNavigate] Client: nav ball still null after Initialize — cannot arm");
+            return;
+        }
+
+        var pb = ball.GetComponent<PachinkoBall>();
+        if (pb == null)
+        {
+            log?.LogError("[CoopNavigate] Client: nav ball has no PachinkoBall component");
+            return;
+        }
+
+        try
+        {
+            pb.Arm();
+        }
+        catch (System.Exception ex)
+        {
+            log?.LogError($"[CoopNavigate] Client: PachinkoBall.Arm threw: {ex.Message}");
+        }
+
+        var traj = ball.GetComponent<TrajectorySimulation>();
+        if (traj)
+        {
+            traj.enabled = true;
+        }
+
+        ConfigureNavOnlySlotManagers(target, childNodeCount, log);
+
+        log?.LogInfo("[CoopNavigate] Client armed NavOnly nav ball");
+    }
+
+    /// <summary>
+    /// Activate left/center/right SlotManagers on NavOnlyController based on
+    /// the host-authoritative child count. Mirrors the slot-config branches in
+    /// NavOnlyController.PrepareForNavigation but uses a neutral icon/color
+    /// since clients have no live MapNode tree.
+    /// </summary>
+    private static void ConfigureNavOnlySlotManagers(
+        global::NavOnlyController noc,
+        int childCount,
+        BepInEx.Logging.ManualLogSource log)
+    {
+        try
+        {
+            var leftField = AccessTools.Field(typeof(global::NavOnlyController), "_leftSlotManager");
+            var rightField = AccessTools.Field(typeof(global::NavOnlyController), "_rightSlotManager");
+            var centerField = AccessTools.Field(typeof(global::NavOnlyController), "_centreSlotManager");
+
+            var left = leftField?.GetValue(noc) as global::Battle.SlotManager;
+            var right = rightField?.GetValue(noc) as global::Battle.SlotManager;
+            var center = centerField?.GetValue(noc) as global::Battle.SlotManager;
+
+            if (left == null || right == null)
+            {
+                log?.LogWarning("[CoopNavigate] Client: NavOnlyController slot managers not wired");
+                return;
+            }
+
+            var color = Color.white;
+            Sprite icon = null;
+            try
+            {
+                var anyNode = Resources.FindObjectsOfTypeAll<global::Worldmap.MapNode>();
+                if (anyNode != null && anyNode.Length > 0)
+                {
+                    icon = anyNode[0].activeIcon;
+                }
+            }
+            catch
+            {
+                // Best-effort icon lookup.
+            }
+
+            left.gameObject.SetActive(true);
+            right.gameObject.SetActive(true);
+
+            if (childCount <= 1)
+            {
+                left.ConfigureForNavigation(icon, color);
+                right.ConfigureForNavigation(icon, color);
+                left.ToggleNavigationIconVisibility(visible: false);
+                right.ToggleNavigationIconVisibility(visible: false);
+                if (center != null)
+                {
+                    center.gameObject.SetActive(true);
+                    center.ConfigureForIconOnly(icon);
+                }
+            }
+            else
+            {
+                left.ConfigureForNavigation(icon, color);
+                right.ConfigureForNavigation(icon, color);
+                if (center != null)
+                {
+                    center.gameObject.SetActive(true);
+                    if (childCount > 2)
+                    {
+                        center.ConfigureForNavigation(icon, color);
+                    }
+                    else
+                    {
+                        center.ConfigureDudNavigation();
+                    }
+                }
+            }
+
+            log?.LogInfo($"[CoopNavigate] Client activated NavOnly slot managers (children={childCount})");
+        }
+        catch (System.Exception ex)
+        {
+            log?.LogWarning($"[CoopNavigate] ConfigureNavOnlySlotManagers failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Fade out the nav curtain if any scenario controller has one wired up.
+    /// Clients never ran Skip/StartNavigation, so the curtain may still be
+    /// covering the playfield. Best-effort — fall through if not found.
+    /// </summary>
+    private static void TryFadeOutNavCurtain(BepInEx.Logging.ManualLogSource log)
+    {
+        try
+        {
+            var chests = Resources.FindObjectsOfTypeAll<global::Scenarios.ChestScenarioController>();
+            if (chests != null)
+            {
+                foreach (var c in chests)
+                {
+                    if (c == null || c.navCurtain == null)
+                    {
+                        continue;
+                    }
+
+                    if (c.gameObject.activeInHierarchy)
+                    {
+                        c.navCurtain.enabled = false;
+                    }
+                }
+            }
+        }
+        catch (System.Exception ex)
+        {
+            log?.LogWarning($"[CoopNavigate] TryFadeOutNavCurtain failed: {ex.Message}");
+        }
     }
 
     private static void InvokePostBattleStartNavigation(BepInEx.Logging.ManualLogSource log, int childNodeCount)
