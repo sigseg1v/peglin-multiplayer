@@ -309,26 +309,61 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
 
         try
         {
-            var shop = noc.GetComponentInParent<global::Scenarios.Shop.ShopManager>(true);
-            if (shop != null)
+            // The scenario controllers reference navController via [SerializeField]
+            // as a sibling, not as a parent — so GetComponentInParent returns null.
+            // Find them globally and match by reference identity to noc.
+            var shops = Resources.FindObjectsOfTypeAll<global::Scenarios.Shop.ShopManager>();
+            foreach (var s in shops)
             {
-                DismissShopForNavigation(shop, log);
-                return;
+                if (s == null || s.gameObject == null)
+                {
+                    continue;
+                }
+
+                if (s.gameObject.scene.IsValid() && s.navController == noc)
+                {
+                    DismissShopForNavigation(s, log);
+                    return;
+                }
             }
 
-            var chest = noc.GetComponentInParent<global::Scenarios.ChestScenarioController>(true);
-            if (chest != null)
+            var chests = Resources.FindObjectsOfTypeAll<global::Scenarios.ChestScenarioController>();
+            foreach (var c in chests)
             {
-                DismissChestForNavigation(chest, log);
-                return;
+                if (c == null || c.gameObject == null)
+                {
+                    continue;
+                }
+
+                if (c.gameObject.scene.IsValid() && c.navController == noc)
+                {
+                    DismissChestForNavigation(c, log);
+                    return;
+                }
             }
 
-            var dialogue = noc.GetComponentInParent<global::RNG.Scenarios.DialogueSystemScenario>(true);
-            if (dialogue != null)
+            var dialogues = Resources.FindObjectsOfTypeAll<global::RNG.Scenarios.DialogueSystemScenario>();
+            foreach (var d in dialogues)
             {
-                DismissDialogueForNavigation(dialogue, log);
-                return;
+                if (d == null || d.gameObject == null)
+                {
+                    continue;
+                }
+
+                if (!d.gameObject.scene.IsValid())
+                {
+                    continue;
+                }
+
+                var dnav = d.navController?.GetComponent<global::NavOnlyController>();
+                if (dnav == noc)
+                {
+                    DismissDialogueForNavigation(d, log);
+                    return;
+                }
             }
+
+            log?.LogWarning("[CoopNavigate] DismissActiveScenarioForNavigation: no matching scenario controller found for this NavOnlyController");
         }
         catch (System.Exception ex)
         {
