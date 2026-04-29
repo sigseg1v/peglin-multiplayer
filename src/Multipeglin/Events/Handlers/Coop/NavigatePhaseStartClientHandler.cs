@@ -415,6 +415,45 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
                 shop.pegLayout.SetActive(true);
             }
 
+            // CloseStore spawns one PegBlock per shop orb on the orb row and
+            // one per shop relic on the relic row (SpawnBlocksToMatchShopItems).
+            // Without these the playfield only has the static layout pegs at
+            // the top and the bottom looks empty. Run them now.
+            try
+            {
+                if (shop.pegLayout != null)
+                {
+                    var spawner = shop.pegLayout.GetComponent<global::Scenarios.Shop.SpawnBlocksToMatchShopItems>();
+                    if (spawner != null && spawner.transform.childCount == 0)
+                    {
+                        var orbsField = AccessTools.Field(typeof(global::Scenarios.Shop.ShopManager), "_purchasableOrbs");
+                        var relicsField = AccessTools.Field(typeof(global::Scenarios.Shop.ShopManager), "_purchasableRelics");
+                        var orbRemovedField = AccessTools.Field(typeof(global::Scenarios.Shop.ShopManager), "_orbRemoved");
+
+                        var orbs = orbsField?.GetValue(shop) as global::Scenarios.Shop.IPurchasableItem[];
+                        var relics = relicsField?.GetValue(shop) as global::Scenarios.Shop.IPurchasableItem[];
+                        var orbRemoved = (bool?)orbRemovedField?.GetValue(shop) ?? false;
+
+                        if (orbs != null)
+                        {
+                            spawner.SpawnOrbBlocks(orbs);
+                        }
+
+                        if (relics != null)
+                        {
+                            spawner.SpawnRelicBlocks(relics);
+                        }
+
+                        spawner.ToggleRemoveOrbRow(orbRemoved);
+                        log?.LogInfo($"[CoopNavigate] Client spawned shop blocks: orbs={orbs?.Length ?? 0}, relics={relics?.Length ?? 0}, orbRemoved={orbRemoved}");
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                log?.LogWarning($"[CoopNavigate] SpawnBlocksToMatchShopItems failed: {ex.Message}");
+            }
+
             // Camera was sitting at shop-Y; the host tweened to cameraNavY
             // during CloseStore. Snap to match so the playfield + nav ball
             // are framed identically to the host.
@@ -426,6 +465,36 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
 
             global::Scenarios.Shop.ShopManager.isOpen = false;
             global::PauseMenu.PauseBlock = false;
+
+            // Mark the store closed so ShopManager.Update stops trying to claim
+            // EventSystem focus for the shop's first selectable. exitStoreButton
+            // also gets disabled to mirror the host's CloseStore.
+            try
+            {
+                AccessTools.Field(typeof(global::Scenarios.Shop.ShopManager), "_storeClosed")
+                    ?.SetValue(shop, true);
+            }
+            catch (System.Exception ex)
+            {
+                log?.LogWarning($"[CoopNavigate] set _storeClosed failed: {ex.Message}");
+            }
+
+            try
+            {
+                shop.exitStoreButton.interactable = false;
+            }
+            catch
+            {
+            }
+
+            // No active selection; let the playfield receive mouse clicks.
+            try
+            {
+                UnityEngine.EventSystems.EventSystem.current?.SetSelectedGameObject(null);
+            }
+            catch
+            {
+            }
 
             // Clear the wait-for-shop flags so CoopRewardUI doesn't redraw the
             // overlay over the nav playfield.
