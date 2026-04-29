@@ -122,6 +122,17 @@ public class PegEntry
     /// component. Signals the applier to prefer (ParentName, SiblingIndex) over
     /// (ParentName, LocalPos) when resolving the structural match.</summary>
     public bool HasLpm { get; set; }
+
+    /// <summary>
+    /// Local Z rotation in degrees. Captured per peg so the applier can align
+    /// rotation alongside position. Without this, when a peg is taken from the
+    /// available pool and snapped to a host slot intended for an angled peg
+    /// (e.g. a rotated LongPeg prefab variant), the snapped peg keeps its
+    /// source rotation and visually appears at the right (x,y) but at the
+    /// wrong angle. Local (not world) so per-frame parent rotators
+    /// (RotatingPegCircle) don't leak into the value.
+    /// </summary>
+    public float RotZ { get; set; }
 }
 
 public class VineEntry

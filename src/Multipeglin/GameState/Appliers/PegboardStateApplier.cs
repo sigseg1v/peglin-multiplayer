@@ -708,6 +708,20 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 }
             }
         }
+
+        // Sync local Z rotation. Reposition / POS-bind paths take a peg from
+        // an arbitrary slot in the unmatched pool and snap it to host (x,y);
+        // without this, a straight-rotation peg snapped to a host slot that
+        // expected an angled prefab variant (e.g. rotated LongPeg) keeps its
+        // source rotation and visually appears at the right position but
+        // wrong angle. Subsequent heartbeats GUID-match the peg and never
+        // re-enter the reposition branch, so the drift is permanent.
+        // Local (not world) so per-frame parent rotators don't fight us.
+        var le = finalPeg.transform.localEulerAngles;
+        if (Mathf.Abs(Mathf.DeltaAngle(le.z, entry.RotZ)) > 0.1f)
+        {
+            finalPeg.transform.localEulerAngles = new Vector3(le.x, le.y, entry.RotZ);
+        }
     }
 
     private GameObject _cachedBombPrefab;
