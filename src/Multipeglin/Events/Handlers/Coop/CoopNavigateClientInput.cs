@@ -7,38 +7,79 @@ using UnityEngine;
 namespace Multipeglin.Events.Handlers.Coop;
 
 /// <summary>
-/// Client-side fallback that turns a left-click into a NavigateVoteEvent during
-/// the parallel-shoot navigate phase. The native pipeline
-/// (click -> PlayfieldMouseDetector -> PachinkoBall.Fire -> SlotTrigger ->
-/// NavOnlyController.HandleSlotTriggerActivated -> our patch -> SubmitVote)
-/// has been observed to silently break on the client when the scenario UI
-/// tear-down doesn't perfectly match what the host's native CloseStore would
-/// have done — the aimer renders, but no Fire ever runs and no vote is sent.
-///
-/// Rather than chase every possible UI/raycast edge case, this component
-/// reads the raw mouse click and submits a vote directly from screen-space
-/// position so the parallel phase always resolves. The visible nav ball is
-/// destroyed too so the player gets feedback that their vote landed.
+/// Client-side click→vote handler for the parallel-shoot navigate phase.
+/// Mirrors the working battle client-aim pattern in
+/// MultiplayerClientPatches.HandleClientAiming + TrySendDirectShot:
+/// rather than rely on the native PlayfieldMouseDetector → PachinkoBall.Fire
+/// → SlotTrigger → NavOnlyController.HandleSlotTriggerActivated chain (which
+/// has been observed to silently fail on the client during shop→nav because
+/// the EventSystem raycaster path doesn't always reach PlayfieldMouseDetector
+/// after the scenario UI tear-down), we read raw mouse input each frame and
+/// turn the click's screen position into a vote. The native chain is still
+/// allowed to run as a "best case" path; whichever fires first wins thanks
+/// to CoopNavigateState.LocalVoteCast.
 /// </summary>
 public sealed class CoopNavigateClientInput : MonoBehaviour
 {
+    private bool _phaseEntryLogged;
+    private float _diagTimer;
+
     private void Update()
     {
         try
         {
-            if (!CoopNavigateState.PhaseActive
-                || CoopNavigateState.Resolved
-                || CoopNavigateState.LocalVoteCast)
+            // Reset entry-log latch when a phase ends so each new phase gets one log.
+            if (!CoopNavigateState.PhaseActive)
+            {
+                _phaseEntryLogged = false;
+                return;
+            }
+
+            if (CoopNavigateState.Resolved)
             {
                 return;
             }
 
             var services = MultiplayerPlugin.Services;
-            if (services == null
-                || !services.TryResolve<IMultiplayerMode>(out var mode)
-                || !mode.IsSpectating)
+            if (services == null)
             {
-                return; // Host uses the native slot-trigger path.
+                return;
+            }
+
+            if (!services.TryResolve<IMultiplayerMode>(out var mode) || mode.IsHosting)
+            {
+                return; // Host uses native slot-trigger path.
+            }
+
+            // One-shot diagnostic per phase so we know this component is live.
+            if (!_phaseEntryLogged)
+            {
+                _phaseEntryLogged = true;
+                MultiplayerPlugin.Logger?.LogInfo(
+                    $"[CoopNavigate/ClientInput] Active: phase={CoopNavigateState.Source}, " +
+                    $"children={CoopNavigateState.ChildNodeCount}, " +
+                    $"isSpectating={mode.IsSpectating}, voteCast={CoopNavigateState.LocalVoteCast}");
+            }
+
+            // Periodic state diagnostic — once every 2s while phase active and
+            // local vote not yet cast — so we can see if the click handler is
+            // even running.
+            _diagTimer += Time.unscaledDeltaTime;
+            if (_diagTimer >= 2f)
+            {
+                _diagTimer = 0f;
+                if (!CoopNavigateState.LocalVoteCast)
+                {
+                    MultiplayerPlugin.Logger?.LogInfo(
+                        $"[CoopNavigate/ClientInput] Waiting for click: " +
+                        $"phaseActive={CoopNavigateState.PhaseActive} resolved={CoopNavigateState.Resolved} " +
+                        $"voteCast={CoopNavigateState.LocalVoteCast}");
+                }
+            }
+
+            if (CoopNavigateState.LocalVoteCast)
+            {
+                return;
             }
 
             if (!Input.GetMouseButtonDown(0))
@@ -46,14 +87,23 @@ public sealed class CoopNavigateClientInput : MonoBehaviour
                 return;
             }
 
-            // Ignore clicks consumed by interactive UI (buttons etc).
+            // Ignore clicks consumed by interactive UI (Buttons). Non-interactive
+            // overlays (raycast-blocking sprites, peg layout frames) do NOT count.
             if (Patches.MultiplayerClientPatches.IsPointerOverInteractiveUI())
             {
+                MultiplayerPlugin.Logger?.LogInfo(
+                    "[CoopNavigate/ClientInput] Click ignored — pointer over interactive UI");
                 return;
             }
 
             var childCount = Math.Max(1, CoopNavigateState.ChildNodeCount);
             var childIndex = ResolveChildIndexFromMouse(childCount);
+
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[CoopNavigate/ClientInput] Click detected at " +
+                $"x={Input.mousePosition.x:F0}/{Screen.width} -> child={childIndex} " +
+                $"(childCount={childCount})");
+
             if (childIndex < 0)
             {
                 return;
@@ -64,14 +114,15 @@ public sealed class CoopNavigateClientInput : MonoBehaviour
                 CoopNavigateState.LocalVoteCast = true;
                 sender.Send(new NavigateVoteEvent { ChildIndex = childIndex });
                 MultiplayerPlugin.Logger?.LogInfo(
-                    $"[CoopNavigate] Client click->vote: child={childIndex} (childCount={childCount})");
+                    $"[CoopNavigate/ClientInput] Sent NavigateVoteEvent: child={childIndex}");
 
                 DestroyNavBall();
             }
         }
         catch (Exception ex)
         {
-            MultiplayerPlugin.Logger?.LogWarning($"[CoopNavigate] Client click->vote failed: {ex.Message}");
+            MultiplayerPlugin.Logger?.LogWarning(
+                $"[CoopNavigate/ClientInput] Update failed: {ex.Message}");
         }
     }
 
@@ -157,7 +208,7 @@ public sealed class CoopNavigateClientInput : MonoBehaviour
         }
         catch (Exception ex)
         {
-            MultiplayerPlugin.Logger?.LogWarning($"[CoopNavigate] DestroyNavBall failed: {ex.Message}");
+            MultiplayerPlugin.Logger?.LogWarning($"[CoopNavigate/ClientInput] DestroyNavBall failed: {ex.Message}");
         }
     }
 }

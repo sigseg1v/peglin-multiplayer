@@ -200,10 +200,43 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
             log?.LogError($"[CoopNavigate] Client: PachinkoBall.Arm threw: {ex.Message}");
         }
 
+        // Defensive: Arm() only transitions WAITING -> AIMING. If the ball was
+        // somehow left in another state (e.g. the prediction manager was null
+        // when Arm ran), force the state directly so PachinkoBall.LateUpdate's
+        // AIMING branch (where mouse rotation + Fire() lives) actually runs.
+        try
+        {
+            if (pb.CurrentState != PachinkoBall.FireballState.AIMING)
+            {
+                var stateProp = AccessTools.Property(typeof(PachinkoBall), "CurrentState");
+                stateProp?.GetSetMethod(true)?.Invoke(pb, new object[] { PachinkoBall.FireballState.AIMING });
+                log?.LogInfo($"[CoopNavigate] Forced ball state -> AIMING (was {pb.CurrentState})");
+            }
+        }
+        catch (System.Exception ex)
+        {
+            log?.LogWarning($"[CoopNavigate] Force-AIMING failed: {ex.Message}");
+        }
+
         var traj = ball.GetComponent<TrajectorySimulation>();
         if (traj)
         {
             traj.enabled = true;
+        }
+
+        // PachinkoBall.AIMING in PredictionManager.Predict expects CopyAllPegs
+        // to have run, otherwise the trajectory line renderer collides with
+        // stale peg state and reports a flat empty path. PrepareForNavigation
+        // does this on the host; mirror it here.
+        try
+        {
+            var pm = Object.FindObjectOfType<global::PredictionManager>();
+            pm?.CopyAllPegs();
+            log?.LogInfo($"[CoopNavigate] Client called PredictionManager.CopyAllPegs (pm={(pm != null ? "ok" : "null")})");
+        }
+        catch (System.Exception ex)
+        {
+            log?.LogWarning($"[CoopNavigate] CopyAllPegs failed: {ex.Message}");
         }
 
         ConfigureNavOnlySlotManagers(target, childNodeCount, log);
@@ -422,6 +455,33 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
             if (shop.pegLayout != null && !shop.pegLayout.activeSelf)
             {
                 shop.pegLayout.SetActive(true);
+            }
+
+            // CloseStore's first line on the host is:
+            //   _predictionManager.Initialize(pegLayout, _pegboardFrame, relicManager, navigation: true)
+            // Without this, _predictionManager has no peg cache, so the
+            // trajectory line renderer that tells the player where the nav
+            // ball will go has nothing to render — the aimer is invisible
+            // even though the ball is alive and PachinkoBall.Update is
+            // rotating it with the cursor. This was the "no aimer" symptom.
+            try
+            {
+                var pm = Object.FindObjectOfType<global::PredictionManager>();
+                if (pm != null && shop.pegLayout != null && shop.relicManager != null)
+                {
+                    var pegFrameField = AccessTools.Field(typeof(global::Scenarios.Shop.ShopManager), "_pegboardFrame");
+                    var pegFrame = pegFrameField?.GetValue(shop) as GameObject;
+                    pm.Initialize(shop.pegLayout, pegFrame, shop.relicManager, navigation: true);
+                    log?.LogInfo($"[CoopNavigate] Client initialized PredictionManager (pegLayout={shop.pegLayout.name}, frame={(pegFrame != null ? pegFrame.name : "null")})");
+                }
+                else
+                {
+                    log?.LogWarning($"[CoopNavigate] Client: cannot init PredictionManager (pm={(pm != null ? "ok" : "null")}, pegLayout={(shop.pegLayout != null ? "ok" : "null")}, relicMgr={(shop.relicManager != null ? "ok" : "null")})");
+                }
+            }
+            catch (System.Exception ex)
+            {
+                log?.LogWarning($"[CoopNavigate] PredictionManager.Initialize failed: {ex.Message}");
             }
 
             // CloseStore spawns one PegBlock per shop orb on the orb row and
