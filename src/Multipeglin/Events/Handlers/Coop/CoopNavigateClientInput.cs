@@ -111,12 +111,16 @@ public sealed class CoopNavigateClientInput : MonoBehaviour
 
             if (services.TryResolve<IMessageSender>(out var sender))
             {
+                // Fire FIRST while LocalVoteCast is still false — the
+                // CoopNavigatePatches.PachinkoBall_Fire_NavigateGuard prefix
+                // blocks Fire() once LocalVoteCast=true, so we'd suppress our
+                // own shot if we set the flag before firing.
+                FireNavBall();
+
                 CoopNavigateState.LocalVoteCast = true;
                 sender.Send(new NavigateVoteEvent { ChildIndex = childIndex });
                 MultiplayerPlugin.Logger?.LogInfo(
                     $"[CoopNavigate/ClientInput] Sent NavigateVoteEvent: child={childIndex}");
-
-                FireNavBall();
             }
         }
         catch (Exception ex)
