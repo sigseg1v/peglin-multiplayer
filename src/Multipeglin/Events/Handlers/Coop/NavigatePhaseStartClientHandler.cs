@@ -140,6 +140,17 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
             target.gameObject.SetActive(true);
         }
 
+        // Dismiss whichever scenario UI is still covering the playfield.
+        // The native CloseStore / Skip / ConversationEnded paths that would
+        // hide the shopUI, fade chest UI elements, or close the dialogue
+        // canvas were all blocked on the client (we sent a Complete event
+        // and returned false). Without this dismiss step the player sees the
+        // shop / chest / dialogue UI on top of the freshly-armed nav ball
+        // and they can't aim — the symptom for shop was "clicked Exit Store
+        // and went right back into the store". Camera also gets repositioned
+        // to the nav Y the host's tween would have driven to.
+        DismissActiveScenarioForNavigation(target, log);
+
         // Hide the dialogue/event/relic UI overlay if the scenario controller
         // didn't dismiss it — we're entering nav phase regardless.
         TryFadeOutNavCurtain(log);
@@ -275,6 +286,182 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
         catch (System.Exception ex)
         {
             log?.LogWarning($"[CoopNavigate] ConfigureNavOnlySlotManagers failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Find the scenario controller that owns this NavOnlyController and force
+    /// its visual close-out. The host's CloseStore / Skip / NavigationDelay
+    /// already animated shopUI / chest UI / dialogue canvas off-screen and
+    /// panned the camera up to the nav playfield before broadcasting this
+    /// event; the client never ran any of that because each scenario's exit
+    /// hook returned false to gate on the wait-for-all. Snap the visuals into
+    /// the post-transition state so the nav ball is actually aimable.
+    /// </summary>
+    private static void DismissActiveScenarioForNavigation(
+        global::NavOnlyController noc,
+        BepInEx.Logging.ManualLogSource log)
+    {
+        if (noc == null)
+        {
+            return;
+        }
+
+        try
+        {
+            var shop = noc.GetComponentInParent<global::Scenarios.Shop.ShopManager>(true);
+            if (shop != null)
+            {
+                DismissShopForNavigation(shop, log);
+                return;
+            }
+
+            var chest = noc.GetComponentInParent<global::Scenarios.ChestScenarioController>(true);
+            if (chest != null)
+            {
+                DismissChestForNavigation(chest, log);
+                return;
+            }
+
+            var dialogue = noc.GetComponentInParent<global::RNG.Scenarios.DialogueSystemScenario>(true);
+            if (dialogue != null)
+            {
+                DismissDialogueForNavigation(dialogue, log);
+                return;
+            }
+        }
+        catch (System.Exception ex)
+        {
+            log?.LogWarning($"[CoopNavigate] DismissActiveScenarioForNavigation failed: {ex.Message}");
+        }
+    }
+
+    private static void DismissShopForNavigation(
+        global::Scenarios.Shop.ShopManager shop,
+        BepInEx.Logging.ManualLogSource log)
+    {
+        try
+        {
+            if (shop.shopUI != null && shop.shopUI.gameObject.activeInHierarchy)
+            {
+                shop.shopUI.gameObject.SetActive(false);
+            }
+
+            if (shop.fadeCurtain != null && shop.fadeCurtain.enabled)
+            {
+                shop.fadeCurtain.enabled = false;
+            }
+
+            // Camera was sitting at shop-Y; the host tweened to cameraNavY
+            // during CloseStore. Snap to match so the playfield + nav ball
+            // are framed identically to the host.
+            if (Camera.main != null)
+            {
+                var pos = Camera.main.transform.position;
+                Camera.main.transform.position = new UnityEngine.Vector3(pos.x, shop.cameraNavY, pos.z);
+            }
+
+            global::Scenarios.Shop.ShopManager.isOpen = false;
+            global::PauseMenu.PauseBlock = false;
+
+            // Clear the wait-for-shop flags so CoopRewardUI doesn't redraw the
+            // overlay over the nav playfield.
+            CoopRewardState.ShopPhaseActive = false;
+            CoopRewardState.ShopAwaitingHostNavigation = false;
+            CoopRewardState.WaitingForOtherPlayers = false;
+
+            log?.LogInfo("[CoopNavigate] Client dismissed ShopManager UI for navigation");
+        }
+        catch (System.Exception ex)
+        {
+            log?.LogWarning($"[CoopNavigate] DismissShopForNavigation failed: {ex.Message}");
+        }
+    }
+
+    private static void DismissChestForNavigation(
+        global::Scenarios.ChestScenarioController chest,
+        BepInEx.Logging.ManualLogSource log)
+    {
+        try
+        {
+            if (chest.skipButton != null && chest.skipButton.gameObject.activeInHierarchy)
+            {
+                chest.skipButton.gameObject.SetActive(false);
+            }
+
+            if (chest.clickTextContainer != null && chest.clickTextContainer.activeInHierarchy)
+            {
+                chest.clickTextContainer.SetActive(false);
+            }
+
+            if (chest.relicGrantPopup != null && chest.relicGrantPopup.gameObject.activeInHierarchy)
+            {
+                chest.relicGrantPopup.gameObject.SetActive(false);
+            }
+
+            if (chest.navCurtain != null && chest.navCurtain.enabled)
+            {
+                chest.navCurtain.enabled = false;
+            }
+
+            if (chest.playfieldMouseDetection != null && !chest.playfieldMouseDetection.activeSelf)
+            {
+                chest.playfieldMouseDetection.SetActive(true);
+            }
+
+            if (Camera.main != null)
+            {
+                var pos = Camera.main.transform.position;
+                Camera.main.transform.position = new UnityEngine.Vector3(pos.x, chest.cameraNavY, pos.z);
+            }
+
+            global::PauseMenu.PauseBlock = false;
+
+            CoopRewardState.TreasurePhaseActive = false;
+            CoopRewardState.TreasureAwaitingHostNavigation = false;
+            CoopRewardState.WaitingForOtherPlayers = false;
+
+            log?.LogInfo("[CoopNavigate] Client dismissed ChestScenarioController UI for navigation");
+        }
+        catch (System.Exception ex)
+        {
+            log?.LogWarning($"[CoopNavigate] DismissChestForNavigation failed: {ex.Message}");
+        }
+    }
+
+    private static void DismissDialogueForNavigation(
+        global::RNG.Scenarios.DialogueSystemScenario dialogue,
+        BepInEx.Logging.ManualLogSource log)
+    {
+        try
+        {
+            if (dialogue.mainTextAnimatorCanvas != null
+                && dialogue.mainTextAnimatorCanvas.gameObject.activeInHierarchy)
+            {
+                dialogue.mainTextAnimatorCanvas.gameObject.SetActive(false);
+            }
+
+            if (dialogue.navCurtain != null && dialogue.navCurtain.enabled)
+            {
+                dialogue.navCurtain.enabled = false;
+            }
+
+            if (dialogue.fullCurtain != null && dialogue.fullCurtain.enabled)
+            {
+                dialogue.fullCurtain.enabled = false;
+            }
+
+            global::PauseMenu.PauseBlock = false;
+
+            CoopRewardState.TextScenarioPhaseActive = false;
+            CoopRewardState.TextScenarioAwaitingHostNavigation = false;
+            CoopRewardState.WaitingForOtherPlayers = false;
+
+            log?.LogInfo("[CoopNavigate] Client dismissed DialogueSystemScenario UI for navigation");
+        }
+        catch (System.Exception ex)
+        {
+            log?.LogWarning($"[CoopNavigate] DismissDialogueForNavigation failed: {ex.Message}");
         }
     }
 
