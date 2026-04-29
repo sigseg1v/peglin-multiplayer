@@ -778,6 +778,55 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
         try
         {
             bc.ArmNavigationBall();
+            // ArmNavigationBall instantiates the nav orb in WAITING state and
+            // wires the actual Arm() (WAITING -> AIMING) to the 0.4s scale-in
+            // tween's onComplete (-> ArmNavigationBallForShot). On the client
+            // that callback path has been observed to never reach Arm() — the
+            // verifier sees the ball stuck at WAITING, so PachinkoBall.LateUpdate's
+            // AIMING branch (mouse aim + click->Fire) never runs. Skip the
+            // tween: call ArmNavigationBallForShot directly so the ball is
+            // AIMING immediately, the trajectory line renders, and the next
+            // click goes through Fire().
+            try
+            {
+                bc.ArmNavigationBallForShot();
+            }
+            catch (System.Exception armShotEx)
+            {
+                log?.LogWarning($"[CoopNavigate] ArmNavigationBallForShot failed: {armShotEx.Message}");
+            }
+
+            // Defensive: force AIMING via reflection if ArmNavigationBallForShot's
+            // Arm() saw a non-WAITING state and silently no-oped.
+            try
+            {
+                var activeBallField = AccessTools.Field(typeof(global::Battle.BattleController), "_activePachinkoBall");
+                var activeBall = activeBallField?.GetValue(bc) as GameObject;
+                var activePb = activeBall?.GetComponent<PachinkoBall>();
+                if (activePb != null && activePb.CurrentState != PachinkoBall.FireballState.AIMING)
+                {
+                    var stateProp = AccessTools.Property(typeof(PachinkoBall), "CurrentState");
+                    stateProp?.GetSetMethod(true)?.Invoke(activePb, new object[] { PachinkoBall.FireballState.AIMING });
+                    log?.LogInfo($"[CoopNavigate] Forced post_battle ball state -> AIMING (was {activePb.CurrentState})");
+                }
+            }
+            catch (System.Exception forceEx)
+            {
+                log?.LogWarning($"[CoopNavigate] Force-AIMING (post_battle) failed: {forceEx.Message}");
+            }
+
+            // PredictionManager.Predict needs CopyAllPegs to have run — without
+            // it the trajectory line renderer has nothing to test against and
+            // the aimer is invisible.
+            try
+            {
+                bc.PredictionManager?.CopyAllPegs();
+            }
+            catch (System.Exception copyEx)
+            {
+                log?.LogWarning($"[CoopNavigate] post_battle CopyAllPegs failed: {copyEx.Message}");
+            }
+
             log?.LogInfo("[CoopNavigate] Client armed nav ball");
         }
         catch (System.Exception ex)
