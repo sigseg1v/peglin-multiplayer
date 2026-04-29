@@ -130,9 +130,14 @@ public static class ContinueFiles
     /// <summary>
     /// Enumerate continue save files, newest first. Files that fail to parse,
     /// have a wrong schema version, or come from a different mod/game version
-    /// are filtered out.
+    /// are filtered out. When <paramref name="requiredHostName"/> is non-empty,
+    /// saves whose slot-0 player (the host of the saved run) is a different
+    /// player are filtered out — the host has to remain the same across a
+    /// continue, since the game's RUN save is host-authored and assumes the
+    /// host's deck/relics/health sit in singletons. Other players can rotate
+    /// freely; only host identity is locked.
     /// </summary>
-    public static IReadOnlyList<ContinueSaveEntry> ListUsableSaves(int maxCount, string requiredModVersion, string requiredGameVersion)
+    public static IReadOnlyList<ContinueSaveEntry> ListUsableSaves(int maxCount, string requiredModVersion, string requiredGameVersion, string requiredHostName = null)
     {
         var dir = ContinuesDirectory;
         if (!Directory.Exists(dir))
@@ -183,6 +188,15 @@ public static class ContinueFiles
             if (!string.Equals(data.GameVersion, requiredGameVersion, StringComparison.Ordinal))
             {
                 continue;
+            }
+
+            if (!string.IsNullOrEmpty(requiredHostName))
+            {
+                var savedHost = data.Players?.FirstOrDefault(p => p != null && p.SlotIndex == 0)?.PlayerName;
+                if (!string.Equals(savedHost, requiredHostName, StringComparison.Ordinal))
+                {
+                    continue;
+                }
             }
 
             entries.Add(new ContinueSaveEntry { FilePath = file, ModifiedUtc = mtime, Data = data });

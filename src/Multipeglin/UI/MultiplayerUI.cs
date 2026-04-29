@@ -1396,7 +1396,8 @@ public class MultiplayerUI : MonoBehaviour
         var saves = Continue.ContinueFiles.ListUsableSaves(
             5,
             MultiplayerPluginInfo.VERSION,
-            Application.version ?? string.Empty);
+            Application.version ?? string.Empty,
+            LocalPlayerName);
 
         if (saves.Count == 0)
         {
