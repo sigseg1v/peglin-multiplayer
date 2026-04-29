@@ -387,6 +387,34 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
                 shop.fadeCurtain.enabled = false;
             }
 
+            // navCurtain is the black overlay that covers the playfield while
+            // the shop is open. The multi-child StartNavigation path fades it
+            // to alpha=0 then DisableCurtain disables the Image. CloseStore
+            // never ran on the client, so without this the playfield (pegs,
+            // bumpers, slot triggers, aimer) is hidden behind a solid black
+            // image.
+            if (shop.navCurtain != null)
+            {
+                var c = shop.navCurtain.color;
+                shop.navCurtain.color = new Color(c.r, c.g, c.b, 0f);
+                shop.navCurtain.enabled = false;
+            }
+
+            // DisableCurtain also activates the playfield mouse detector so the
+            // player can aim by moving the cursor. Without this the trajectory
+            // simulation has nothing to track against.
+            if (shop.playfieldMouseDetector != null && !shop.playfieldMouseDetector.gameObject.activeSelf)
+            {
+                shop.playfieldMouseDetector.gameObject.SetActive(true);
+            }
+
+            // pegLayout holds the prediction pegboard for nav. Awake doesn't
+            // disable it but defensive — make sure it's active.
+            if (shop.pegLayout != null && !shop.pegLayout.activeSelf)
+            {
+                shop.pegLayout.SetActive(true);
+            }
+
             // Camera was sitting at shop-Y; the host tweened to cameraNavY
             // during CloseStore. Snap to match so the playfield + nav ball
             // are framed identically to the host.
