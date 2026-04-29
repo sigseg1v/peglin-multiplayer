@@ -61,6 +61,7 @@ public static class CoopNavigateState
         ChosenChildIndex = -1;
         LocalVoteCast = false;
         PhaseStartedAt = now;
+        Patches.PachinkoBallPatches.ResetNavBallBroadcastLatch();
     }
 
     /// <summary>Records a vote, returns true if the vote was accepted (slot wasn't already voted).</summary>

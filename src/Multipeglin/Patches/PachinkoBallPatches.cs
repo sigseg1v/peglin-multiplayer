@@ -123,8 +123,50 @@ internal static class PachinkoBallPatches
             return;
         }
 
+        // Nav phase: broadcast the host's own nav-ball shot so every client can
+        // spawn a ghost ball and see it. The host fires through the native
+        // pipeline (NavOnlyController arms, PlayfieldMouseDetector triggers
+        // Fire) so this is the only choke point we get.
+        if (Events.Handlers.Coop.CoopNavigateState.PhaseActive
+            && !Events.Handlers.Coop.CoopNavigateState.Resolved
+            && !_navBallBroadcastThisPhase)
+        {
+            try
+            {
+                var services = MultiplayerPlugin.Services;
+                if (services?.TryResolve<Events.IGameEventRegistry>(out var reg) == true)
+                {
+                    var pos = __instance.transform.position;
+                    var aim = __instance.aimVector;
+                    reg.Dispatch(new Events.Network.Coop.NavBallShotEvent
+                    {
+                        Slot = 0, // host
+                        OriginX = pos.x,
+                        OriginY = pos.y,
+                        AimX = aim.x,
+                        AimY = aim.y,
+                    });
+                    _navBallBroadcastThisPhase = true;
+                    MultiplayerPlugin.Logger?.LogInfo(
+                        $"[ClientPatches] Host nav fire broadcast: aim=({aim.x:F2},{aim.y:F2})");
+                }
+            }
+            catch (System.Exception ex)
+            {
+                MultiplayerPlugin.Logger?.LogWarning(
+                    $"[ClientPatches] Host nav fire broadcast failed: {ex.Message}");
+            }
+        }
+
         _firedBallGO = __instance.gameObject;
         _firedBallTimer = 0f;
         _firedBallLogCount = 0;
+    }
+
+    private static bool _navBallBroadcastThisPhase;
+
+    public static void ResetNavBallBroadcastLatch()
+    {
+        _navBallBroadcastThisPhase = false;
     }
 }

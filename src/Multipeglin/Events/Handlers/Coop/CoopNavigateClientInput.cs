@@ -229,15 +229,46 @@ public sealed class CoopNavigateClientInput : MonoBehaviour
                 stateProp?.GetSetMethod(true)?.Invoke(pb, new object[] { PachinkoBall.FireballState.AIMING });
             }
 
+            var origin = pb.transform.position;
+            var aim = pb.aimVector;
+
             pb.Fire();
             MultiplayerPlugin.Logger?.LogInfo(
-                $"[CoopNavigate/ClientInput] Fired nav ball: aim=({pb.aimVector.x:F2},{pb.aimVector.y:F2})");
+                $"[CoopNavigate/ClientInput] Fired nav ball: aim=({aim.x:F2},{aim.y:F2})");
+
+            BroadcastShot(origin, aim);
             return true;
         }
         catch (Exception ex)
         {
             MultiplayerPlugin.Logger?.LogWarning($"[CoopNavigate/ClientInput] TryFire failed: {ex.Message}");
             return false;
+        }
+    }
+
+    private static void BroadcastShot(Vector3 origin, Vector2 aim)
+    {
+        try
+        {
+            var services = MultiplayerPlugin.Services;
+            if (services == null || !services.TryResolve<IMessageSender>(out var sender))
+            {
+                return;
+            }
+
+            var slot = CoopSlotHelper.GetLocalSlotIndex(services);
+            sender.Send(new NavBallShotEvent
+            {
+                Slot = slot,
+                OriginX = origin.x,
+                OriginY = origin.y,
+                AimX = aim.x,
+                AimY = aim.y,
+            });
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[CoopNavigate/ClientInput] BroadcastShot failed: {ex.Message}");
         }
     }
 }
