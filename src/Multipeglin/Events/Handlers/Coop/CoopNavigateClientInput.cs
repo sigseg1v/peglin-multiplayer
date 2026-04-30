@@ -7,31 +7,36 @@ using UnityEngine;
 namespace Multipeglin.Events.Handlers.Coop;
 
 /// <summary>
-/// Client-side click→vote handler for the parallel-shoot navigate phase.
-/// Mirrors the working battle client-aim pattern in
-/// MultiplayerClientPatches.HandleClientAiming + TrySendDirectShot:
-/// rather than rely on the native PlayfieldMouseDetector → PachinkoBall.Fire
-/// → SlotTrigger → NavOnlyController.HandleSlotTriggerActivated chain (which
-/// has been observed to silently fail on the client during shop→nav because
-/// the EventSystem raycaster path doesn't always reach PlayfieldMouseDetector
-/// after the scenario UI tear-down), we read raw mouse input each frame and
-/// turn the click's screen position into a vote. The native chain is still
-/// allowed to run as a "best case" path; whichever fires first wins thanks
-/// to CoopNavigateState.LocalVoteCast.
+/// Client-side click handler for the parallel-shoot navigate phase. Reads raw
+/// mouse input each frame and fires the local nav ball; the vote itself is
+/// submitted only when the ball physically lands in a slot trigger
+/// (CoopNavigatePatches.NavOnly_HandleSlot_Prefix /
+/// PostBattle_HandleSlot_Prefix), so the slot-tally colors don't change until
+/// the ball actually arrives — matching the behavior on the host. If the ball
+/// fails to land within FALLBACK_SECONDS, we send a screen-position vote so
+/// the phase can still resolve.
 /// </summary>
 public sealed class CoopNavigateClientInput : MonoBehaviour
 {
+    private const float FallbackSeconds = 8f;
+
     private bool _phaseEntryLogged;
     private float _diagTimer;
+    private bool _shotFired;
+    private float _shotFiredAt = -1f;
+    private int _pendingFallbackChildIndex = -1;
 
     private void Update()
     {
         try
         {
-            // Reset entry-log latch when a phase ends so each new phase gets one log.
+            // Reset entry-log + shot latch when a phase ends so each new phase gets one log/shot.
             if (!CoopNavigateState.PhaseActive)
             {
                 _phaseEntryLogged = false;
+                _shotFired = false;
+                _shotFiredAt = -1f;
+                _pendingFallbackChildIndex = -1;
                 return;
             }
 
@@ -82,6 +87,26 @@ public sealed class CoopNavigateClientInput : MonoBehaviour
                 return;
             }
 
+            // After firing, watch for the slot trigger to submit the real vote.
+            // If it doesn't fire within FallbackSeconds (ball got stuck/lost), send
+            // the screen-position vote so the phase can still resolve.
+            if (_shotFired)
+            {
+                if (_pendingFallbackChildIndex >= 0
+                    && _shotFiredAt > 0f
+                    && Time.unscaledTime - _shotFiredAt > FallbackSeconds
+                    && services.TryResolve<IMessageSender>(out var fallbackSender))
+                {
+                    MultiplayerPlugin.Logger?.LogWarning(
+                        $"[CoopNavigate/ClientInput] Slot trigger never fired after {FallbackSeconds:F0}s — sending fallback vote child={_pendingFallbackChildIndex}");
+                    CoopNavigateState.LocalVoteCast = true;
+                    fallbackSender.Send(new NavigateVoteEvent { ChildIndex = _pendingFallbackChildIndex });
+                    _pendingFallbackChildIndex = -1;
+                }
+
+                return;
+            }
+
             if (!Input.GetMouseButtonDown(0))
             {
                 return;
@@ -109,19 +134,16 @@ public sealed class CoopNavigateClientInput : MonoBehaviour
                 return;
             }
 
-            if (services.TryResolve<IMessageSender>(out var sender))
-            {
-                // Fire FIRST while LocalVoteCast is still false — the
-                // CoopNavigatePatches.PachinkoBall_Fire_NavigateGuard prefix
-                // blocks Fire() once LocalVoteCast=true, so we'd suppress our
-                // own shot if we set the flag before firing.
-                FireNavBall();
+            // Fire the ball locally and let the slot-trigger Harmony prefix
+            // (CoopNavigatePatches.NavOnly_HandleSlot_Prefix /
+            // PostBattle_HandleSlot_Prefix) submit the vote when the ball
+            // actually lands. We DON'T send the vote on click — that would
+            // reveal the chosen side before the ball physically arrives.
+            FireNavBall();
 
-                CoopNavigateState.LocalVoteCast = true;
-                sender.Send(new NavigateVoteEvent { ChildIndex = childIndex });
-                MultiplayerPlugin.Logger?.LogInfo(
-                    $"[CoopNavigate/ClientInput] Sent NavigateVoteEvent: child={childIndex}");
-            }
+            _shotFired = true;
+            _shotFiredAt = Time.unscaledTime;
+            _pendingFallbackChildIndex = childIndex;
         }
         catch (Exception ex)
         {
