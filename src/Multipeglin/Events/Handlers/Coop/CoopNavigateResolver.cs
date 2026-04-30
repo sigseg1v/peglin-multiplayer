@@ -285,7 +285,10 @@ public static class CoopNavigateResolver
             return;
         }
 
-        if (!forceSkip && !CoopNavigateState.AllVotesIn && !LeaderIsUncatchable())
+        // Wait for every player to shoot — no early resolution on "leader
+        // uncatchable". The watchdog still force-skips an AFK player after its
+        // timeout so a stuck lobby can recover.
+        if (!forceSkip && !CoopNavigateState.AllVotesIn)
         {
             return;
         }

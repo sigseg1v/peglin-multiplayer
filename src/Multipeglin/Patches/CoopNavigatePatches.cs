@@ -36,6 +36,13 @@ internal static class CoopNavigatePatches
             return true;
         }
 
+        // Ghost balls are remote players' shots rendered locally — they must
+        // not register as our vote. Swallow the trigger silently.
+        if (pBall != null && pBall.IsDummy)
+        {
+            return false;
+        }
+
         if (CoopNavigateState.LocalVoteCast)
         {
             return false;
@@ -116,6 +123,13 @@ internal static class CoopNavigatePatches
         if (!CoopNavigateState.PhaseActive || CoopNavigateState.Resolved)
         {
             return true;
+        }
+
+        // Ghost balls are remote players' shots rendered locally — they must
+        // not register as our vote. Swallow the trigger silently.
+        if (pBall != null && pBall.IsDummy)
+        {
+            return false;
         }
 
         if (CoopNavigateState.LocalVoteCast)
