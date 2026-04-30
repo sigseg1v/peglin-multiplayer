@@ -272,7 +272,7 @@ internal static class CoopNavigatePatches
             childCount = 1;
         }
 
-        CoopNavigateResolver.StartPhase("nav_only", childCount);
+        CoopNavigateResolver.StartPhase("nav_only", childCount, CoopNavigateResolver.CaptureChildRoomTypes());
     }
 
     // -------------------------------------------------------------------------

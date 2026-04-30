@@ -43,7 +43,8 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
             networkEvent.Source,
             networkEvent.ChildNodeCount,
             totalVoters: 1, // client only knows about itself; not used for resolution on client
-            now: Time.unscaledTime);
+            now: Time.unscaledTime,
+            childRoomTypes: networkEvent.ChildRoomTypes);
 
         Patches.MultiplayerClientPatches.AllowNavigateLogic = true;
 
@@ -271,46 +272,38 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
                 return;
             }
 
-            var color = Color.white;
-            Sprite icon = null;
-            try
-            {
-                var anyNode = Resources.FindObjectsOfTypeAll<global::Worldmap.MapNode>();
-                if (anyNode != null && anyNode.Length > 0)
-                {
-                    icon = anyNode[0].activeIcon;
-                }
-            }
-            catch
-            {
-                // Best-effort icon lookup.
-            }
+            var leftIcon = LookupIconForChildSlot(0, childCount);
+            var leftColor = LookupColorForChildSlot(0, childCount);
+            var rightIcon = LookupIconForChildSlot(childCount - 1, childCount);
+            var rightColor = LookupColorForChildSlot(childCount - 1, childCount);
 
             left.gameObject.SetActive(true);
             right.gameObject.SetActive(true);
 
             if (childCount <= 1)
             {
-                left.ConfigureForNavigation(icon, color);
-                right.ConfigureForNavigation(icon, color);
+                left.ConfigureForNavigation(leftIcon, leftColor);
+                right.ConfigureForNavigation(rightIcon, rightColor);
                 left.ToggleNavigationIconVisibility(visible: false);
                 right.ToggleNavigationIconVisibility(visible: false);
                 if (center != null)
                 {
                     center.gameObject.SetActive(true);
-                    center.ConfigureForIconOnly(icon);
+                    center.ConfigureForIconOnly(leftIcon);
                 }
             }
             else
             {
-                left.ConfigureForNavigation(icon, color);
-                right.ConfigureForNavigation(icon, color);
+                left.ConfigureForNavigation(leftIcon, leftColor);
+                right.ConfigureForNavigation(rightIcon, rightColor);
                 if (center != null)
                 {
                     center.gameObject.SetActive(true);
                     if (childCount > 2)
                     {
-                        center.ConfigureForNavigation(icon, color);
+                        var centerIcon = LookupIconForChildSlot(1, childCount);
+                        var centerColor = LookupColorForChildSlot(1, childCount);
+                        center.ConfigureForNavigation(centerIcon, centerColor);
                     }
                     else
                     {
@@ -319,12 +312,99 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
                 }
             }
 
-            log?.LogInfo($"[CoopNavigate] Client activated NavOnly slot managers (children={childCount})");
+            log?.LogInfo($"[CoopNavigate] Client activated NavOnly slot managers (children={childCount}, types=[{FormatRoomTypes(CoopNavigateState.ChildRoomTypes)}])");
         }
         catch (System.Exception ex)
         {
             log?.LogWarning($"[CoopNavigate] ConfigureNavOnlySlotManagers failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Resolve an activeIcon Sprite for the given child index using
+    /// CoopNavigateState.ChildRoomTypes. Finds any loaded MapNode with the
+    /// matching RoomType and copies its activeIcon (icon assets are baked into
+    /// the prefabs, so any MapNode of the same RoomType has the right sprite).
+    /// </summary>
+    private static Sprite LookupIconForChildSlot(int childIndex, int childCount)
+    {
+        var types = CoopNavigateState.ChildRoomTypes;
+        if (types == null || childIndex < 0 || childIndex >= types.Length)
+        {
+            return AnyMapNodeIcon();
+        }
+
+        var target = (global::Worldmap.RoomType)types[childIndex];
+        try
+        {
+            var nodes = Resources.FindObjectsOfTypeAll<global::Worldmap.MapNode>();
+            if (nodes != null)
+            {
+                foreach (var n in nodes)
+                {
+                    if (n != null && n.RoomType == target && n.activeIcon != null)
+                    {
+                        return n.activeIcon;
+                    }
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        return AnyMapNodeIcon();
+    }
+
+    private static Sprite AnyMapNodeIcon()
+    {
+        try
+        {
+            var nodes = Resources.FindObjectsOfTypeAll<global::Worldmap.MapNode>();
+            if (nodes != null && nodes.Length > 0)
+            {
+                return nodes[0].activeIcon;
+            }
+        }
+        catch
+        {
+        }
+
+        return null;
+    }
+
+    private static Color LookupColorForChildSlot(int childIndex, int childCount)
+    {
+        var types = CoopNavigateState.ChildRoomTypes;
+        if (types == null || childIndex < 0 || childIndex >= types.Length)
+        {
+            return Color.white;
+        }
+
+        try
+        {
+            return global::Worldmap.MapNode.GetColorForNodeType((global::Worldmap.RoomType)types[childIndex]);
+        }
+        catch
+        {
+            return Color.white;
+        }
+    }
+
+    private static string FormatRoomTypes(int[] types)
+    {
+        if (types == null || types.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var parts = new string[types.Length];
+        for (var i = 0; i < types.Length; i++)
+        {
+            parts[i] = ((global::Worldmap.RoomType)types[i]).ToString();
+        }
+
+        return string.Join(",", parts);
     }
 
     /// <summary>
@@ -911,20 +991,10 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
                 return;
             }
 
-            var color = Color.white;
-            Sprite icon = null;
-            try
-            {
-                var anyNode = Resources.FindObjectsOfTypeAll<global::Worldmap.MapNode>();
-                if (anyNode != null && anyNode.Length > 0)
-                {
-                    icon = anyNode[0].activeIcon;
-                }
-            }
-            catch
-            {
-                // Best-effort icon lookup — fine if it fails.
-            }
+            var leftIcon = LookupIconForChildSlot(0, childCount);
+            var leftColor = LookupColorForChildSlot(0, childCount);
+            var rightIcon = LookupIconForChildSlot(childCount - 1, childCount);
+            var rightColor = LookupColorForChildSlot(childCount - 1, childCount);
 
             left.gameObject.SetActive(true);
             right.gameObject.SetActive(true);
@@ -935,17 +1005,19 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
             // left/right are independent; center is dud unless > 2.
             if (childCount <= 1)
             {
-                left.ConfigureHalfNavigation(color);
-                right.ConfigureHalfNavigation(color);
-                center.ConfigureForNavigation(icon, color);
+                left.ConfigureHalfNavigation(leftColor);
+                right.ConfigureHalfNavigation(leftColor);
+                center.ConfigureForNavigation(leftIcon, leftColor);
             }
             else
             {
-                left.ConfigureForNavigation(icon, color);
-                right.ConfigureForNavigation(icon, color);
+                left.ConfigureForNavigation(leftIcon, leftColor);
+                right.ConfigureForNavigation(rightIcon, rightColor);
                 if (childCount > 2)
                 {
-                    center.ConfigureForNavigation(icon, color);
+                    var centerIcon = LookupIconForChildSlot(1, childCount);
+                    var centerColor = LookupColorForChildSlot(1, childCount);
+                    center.ConfigureForNavigation(centerIcon, centerColor);
                 }
                 else
                 {
@@ -953,7 +1025,7 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
                 }
             }
 
-            log?.LogInfo($"[CoopNavigate] Client activated {childCount} slot manager(s)");
+            log?.LogInfo($"[CoopNavigate] Client activated {childCount} slot manager(s) (types=[{FormatRoomTypes(CoopNavigateState.ChildRoomTypes)}])");
         }
         catch (System.Exception ex)
         {

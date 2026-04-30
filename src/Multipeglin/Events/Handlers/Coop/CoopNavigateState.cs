@@ -26,6 +26,9 @@ public static class CoopNavigateState
     /// <summary>Number of available child node choices for this navigate (1..3).</summary>
     public static int ChildNodeCount;
 
+    /// <summary>Per-child RoomType ints (Worldmap.RoomType). Length == ChildNodeCount. Drives client slot icon/tint.</summary>
+    public static int[] ChildRoomTypes = System.Array.Empty<int>();
+
     /// <summary>Current tally indexed by child index. Length == ChildNodeCount.</summary>
     public static List<int> VoteCounts = new List<int>();
 
@@ -49,7 +52,7 @@ public static class CoopNavigateState
 
     public static bool AllVotesIn => TotalVotersExpected > 0 && VotedSlots.Count >= TotalVotersExpected;
 
-    public static void StartPhase(string source, int childNodeCount, int totalVoters, float now)
+    public static void StartPhase(string source, int childNodeCount, int totalVoters, float now, int[] childRoomTypes = null)
     {
         PhaseActive = true;
         Source = source ?? "post_battle";
@@ -61,6 +64,7 @@ public static class CoopNavigateState
         ChosenChildIndex = -1;
         LocalVoteCast = false;
         PhaseStartedAt = now;
+        ChildRoomTypes = childRoomTypes ?? System.Array.Empty<int>();
         Patches.PachinkoBallPatches.ResetNavBallBroadcastLatch();
     }
 
@@ -98,5 +102,6 @@ public static class CoopNavigateState
         ChosenChildIndex = -1;
         LocalVoteCast = false;
         PhaseStartedAt = -1f;
+        ChildRoomTypes = System.Array.Empty<int>();
     }
 }

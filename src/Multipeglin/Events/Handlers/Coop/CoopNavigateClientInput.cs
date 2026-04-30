@@ -25,6 +25,8 @@ public sealed class CoopNavigateClientInput : MonoBehaviour
     private bool _shotFired;
     private float _shotFiredAt = -1f;
     private int _pendingFallbackChildIndex = -1;
+    private float _lastBallWorldX = float.NaN;
+    private float _lastBallWorldY = float.NaN;
 
     private void Update()
     {
@@ -37,6 +39,8 @@ public sealed class CoopNavigateClientInput : MonoBehaviour
                 _shotFired = false;
                 _shotFiredAt = -1f;
                 _pendingFallbackChildIndex = -1;
+                _lastBallWorldX = float.NaN;
+                _lastBallWorldY = float.NaN;
                 return;
             }
 
@@ -89,19 +93,33 @@ public sealed class CoopNavigateClientInput : MonoBehaviour
 
             // After firing, watch for the slot trigger to submit the real vote.
             // If it doesn't fire within FallbackSeconds (ball got stuck/lost), send
-            // the screen-position vote so the phase can still resolve.
+            // a fallback vote based on the ball's last known world X compared to
+            // slot-manager world X positions — NOT the original click position.
             if (_shotFired)
             {
-                if (_pendingFallbackChildIndex >= 0
-                    && _shotFiredAt > 0f
+                TrackActiveBallPosition();
+
+                if (_shotFiredAt > 0f
                     && Time.unscaledTime - _shotFiredAt > FallbackSeconds
                     && services.TryResolve<IMessageSender>(out var fallbackSender))
                 {
-                    MultiplayerPlugin.Logger?.LogWarning(
-                        $"[CoopNavigate/ClientInput] Slot trigger never fired after {FallbackSeconds:F0}s — sending fallback vote child={_pendingFallbackChildIndex}");
-                    CoopNavigateState.LocalVoteCast = true;
-                    fallbackSender.Send(new NavigateVoteEvent { ChildIndex = _pendingFallbackChildIndex });
-                    _pendingFallbackChildIndex = -1;
+                    var fallbackChild = ResolveFallbackChildFromBallPosition();
+                    if (fallbackChild < 0)
+                    {
+                        // Ball never tracked + no slot manager geometry available — use the
+                        // pre-shot click child as last resort so the phase doesn't deadlock.
+                        fallbackChild = _pendingFallbackChildIndex;
+                    }
+
+                    if (fallbackChild >= 0)
+                    {
+                        MultiplayerPlugin.Logger?.LogWarning(
+                            $"[CoopNavigate/ClientInput] Slot trigger never fired after {FallbackSeconds:F0}s — " +
+                            $"sending fallback vote child={fallbackChild} (ballX={_lastBallWorldX:F2})");
+                        CoopNavigateState.LocalVoteCast = true;
+                        fallbackSender.Send(new NavigateVoteEvent { ChildIndex = fallbackChild });
+                        _pendingFallbackChildIndex = -1;
+                    }
                 }
 
                 return;
@@ -150,6 +168,194 @@ public sealed class CoopNavigateClientInput : MonoBehaviour
             MultiplayerPlugin.Logger?.LogWarning(
                 $"[CoopNavigate/ClientInput] Update failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Track the active nav ball's world position each frame after firing.
+    /// Stores the latest non-spawn-point sample so the fallback vote can use
+    /// where the ball actually was, not the initial click position.
+    /// </summary>
+    private void TrackActiveBallPosition()
+    {
+        try
+        {
+            var pb = FindActiveNavBall();
+            if (pb == null || pb.transform == null)
+            {
+                return;
+            }
+
+            var pos = pb.transform.position;
+            _lastBallWorldX = pos.x;
+            _lastBallWorldY = pos.y;
+        }
+        catch
+        {
+        }
+    }
+
+    private static PachinkoBall FindActiveNavBall()
+    {
+        try
+        {
+            var nocs = Resources.FindObjectsOfTypeAll<global::NavOnlyController>();
+            if (nocs != null)
+            {
+                var ballField = HarmonyLib.AccessTools.Field(typeof(global::NavOnlyController), "_ball");
+                foreach (var noc in nocs)
+                {
+                    if (noc == null || noc.gameObject == null || !noc.gameObject.scene.IsValid())
+                    {
+                        continue;
+                    }
+
+                    var go = ballField?.GetValue(noc) as GameObject;
+                    var pb = go?.GetComponent<PachinkoBall>();
+                    if (pb != null)
+                    {
+                        return pb;
+                    }
+                }
+            }
+
+            var bc = UnityEngine.Object.FindObjectOfType<global::Battle.BattleController>();
+            if (bc != null)
+            {
+                var activeField = HarmonyLib.AccessTools.Field(typeof(global::Battle.BattleController), "_activePachinkoBall");
+                var go = activeField?.GetValue(bc) as GameObject;
+                return go?.GetComponent<PachinkoBall>();
+            }
+        }
+        catch
+        {
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Pick the child index whose slot manager is horizontally closest to the
+    /// ball's last known world X. Returns -1 when slot managers aren't available
+    /// or no ball position was ever sampled — caller should fall back to the
+    /// pre-shot click index.
+    /// </summary>
+    private int ResolveFallbackChildFromBallPosition()
+    {
+        if (float.IsNaN(_lastBallWorldX))
+        {
+            return -1;
+        }
+
+        var childCount = Math.Max(1, CoopNavigateState.ChildNodeCount);
+        var slotXs = TryGetSlotManagerWorldX();
+        if (slotXs == null)
+        {
+            return -1;
+        }
+
+        int leftSlot = 0, centerSlot = 1, rightSlot = 2;
+        if (slotXs[leftSlot] > slotXs[rightSlot])
+        {
+            (leftSlot, rightSlot) = (rightSlot, leftSlot);
+        }
+
+        // Closest of the three slot X positions to the ball's X.
+        var bestSlot = leftSlot;
+        var bestDist = Mathf.Abs(_lastBallWorldX - slotXs[leftSlot]);
+        var dCenter = Mathf.Abs(_lastBallWorldX - slotXs[centerSlot]);
+        if (dCenter < bestDist)
+        {
+            bestDist = dCenter;
+            bestSlot = centerSlot;
+        }
+
+        var dRight = Mathf.Abs(_lastBallWorldX - slotXs[rightSlot]);
+        if (dRight < bestDist)
+        {
+            bestSlot = rightSlot;
+        }
+
+        // Map slot → child. Mirrors ResolvePostBattleChildIndex / ResolveNavOnlyChildIndex.
+        if (bestSlot == leftSlot)
+        {
+            return 0;
+        }
+
+        if (bestSlot == rightSlot)
+        {
+            return childCount - 1;
+        }
+
+        // center
+        if (childCount == 1)
+        {
+            return 0;
+        }
+
+        if (childCount > 2)
+        {
+            return 1;
+        }
+
+        // childCount == 2: center is dud — pick whichever side the ball is closer to.
+        return _lastBallWorldX < slotXs[centerSlot] ? 0 : (childCount - 1);
+    }
+
+    /// <summary>
+    /// Returns world X of [left, center, right] slot managers, in that order
+    /// (NOT spatially sorted). Caller normalizes orientation. Returns null when
+    /// slot managers can't be found (event scenes that don't have them, or the
+    /// scene was already torn down).
+    /// </summary>
+    private static float[] TryGetSlotManagerWorldX()
+    {
+        try
+        {
+            // Try PostBattleController first — battle nav source.
+            var bc = UnityEngine.Object.FindObjectOfType<global::Battle.PostBattleController>();
+            if (bc != null)
+            {
+                var leftF = HarmonyLib.AccessTools.Field(typeof(global::Battle.PostBattleController), "_leftSlotManager");
+                var centerF = HarmonyLib.AccessTools.Field(typeof(global::Battle.PostBattleController), "_centerSlotManager");
+                var rightF = HarmonyLib.AccessTools.Field(typeof(global::Battle.PostBattleController), "_rightSlotManager");
+                var l = leftF?.GetValue(bc) as global::Battle.SlotManager;
+                var c = centerF?.GetValue(bc) as global::Battle.SlotManager;
+                var r = rightF?.GetValue(bc) as global::Battle.SlotManager;
+                if (l != null && c != null && r != null)
+                {
+                    return new[] { l.transform.position.x, c.transform.position.x, r.transform.position.x };
+                }
+            }
+
+            var nocs = Resources.FindObjectsOfTypeAll<global::NavOnlyController>();
+            if (nocs != null)
+            {
+                var leftF = HarmonyLib.AccessTools.Field(typeof(global::NavOnlyController), "_leftSlotManager");
+                var centerF = HarmonyLib.AccessTools.Field(typeof(global::NavOnlyController), "_centreSlotManager");
+                var rightF = HarmonyLib.AccessTools.Field(typeof(global::NavOnlyController), "_rightSlotManager");
+                foreach (var noc in nocs)
+                {
+                    if (noc == null || noc.gameObject == null || !noc.gameObject.scene.IsValid())
+                    {
+                        continue;
+                    }
+
+                    var l = leftF?.GetValue(noc) as global::Battle.SlotManager;
+                    var c = centerF?.GetValue(noc) as global::Battle.SlotManager;
+                    var r = rightF?.GetValue(noc) as global::Battle.SlotManager;
+                    if (l != null && r != null)
+                    {
+                        var cx = c != null ? c.transform.position.x : (l.transform.position.x + r.transform.position.x) * 0.5f;
+                        return new[] { l.transform.position.x, cx, r.transform.position.x };
+                    }
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        return null;
     }
 
     /// <summary>

@@ -15,4 +15,7 @@ public class NavigatePhaseStartEvent
 
     /// <summary>Number of available child node choices (1..3). Drives slot tallying.</summary>
     public int ChildNodeCount { get; set; }
+
+    /// <summary>Per-child RoomType ints (Worldmap.RoomType cast to int). Length == ChildNodeCount. Drives client slot icon/tint.</summary>
+    public int[] ChildRoomTypes { get; set; }
 }

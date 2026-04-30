@@ -185,7 +185,7 @@ public sealed class PostBattleCompleteClientHandler : IClientHandler<PostBattleC
                     try
                     {
                         var childCount = StaticGameData.currentNode?.ChildNodes?.Length ?? 0;
-                        CoopNavigateResolver.StartPhase("post_battle", childCount);
+                        CoopNavigateResolver.StartPhase("post_battle", childCount, CoopNavigateResolver.CaptureChildRoomTypes());
                     }
                     catch (Exception sx)
                     {

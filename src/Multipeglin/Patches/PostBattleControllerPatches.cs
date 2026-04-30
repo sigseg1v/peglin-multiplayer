@@ -71,7 +71,7 @@ internal static class PostBattleControllerPatches
                 // Enter parallel-shoot navigate phase. Returns false in solo / single-player
                 // contexts (no clients), in which case the host runs the native flow alone.
                 var childCount = StaticGameData.currentNode?.ChildNodes?.Length ?? 0;
-                CoopNavigateResolver.StartPhase("post_battle", childCount);
+                CoopNavigateResolver.StartPhase("post_battle", childCount, CoopNavigateResolver.CaptureChildRoomTypes());
 
                 return true; // let StartNavigation run
             }

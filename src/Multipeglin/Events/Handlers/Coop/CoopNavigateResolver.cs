@@ -18,7 +18,30 @@ public static class CoopNavigateResolver
     /// the parallel-shoot phase started; false if no clients are connected or coop
     /// is inactive (caller should let native flow proceed normally).
     /// </summary>
-    public static bool StartPhase(string source, int childNodeCount)
+    /// <summary>
+    /// Capture per-child RoomType ints from StaticGameData.currentNode (host-only).
+    /// Length matches the live child count; falls back to all-zero (NONE) if the
+    /// node tree is missing.
+    /// </summary>
+    public static int[] CaptureChildRoomTypes()
+    {
+        var node = StaticGameData.currentNode;
+        if (node?.ChildNodes == null || node.ChildNodes.Length == 0)
+        {
+            return System.Array.Empty<int>();
+        }
+
+        var result = new int[node.ChildNodes.Length];
+        for (var i = 0; i < node.ChildNodes.Length; i++)
+        {
+            var child = node.ChildNodes[i];
+            result[i] = child != null ? (int)child.RoomType : 0;
+        }
+
+        return result;
+    }
+
+    public static bool StartPhase(string source, int childNodeCount, int[] childRoomTypes = null)
     {
         var services = MultiplayerPlugin.Services;
         if (services == null)
@@ -47,7 +70,7 @@ public static class CoopNavigateResolver
             childNodeCount = 1;
         }
 
-        CoopNavigateState.StartPhase(source, childNodeCount, totalVoters, Time.unscaledTime);
+        CoopNavigateState.StartPhase(source, childNodeCount, totalVoters, Time.unscaledTime, childRoomTypes);
 
         // =====================================================================
         // NAV-PHASE RELIC MERGE — DELIBERATE SIMPLIFICATION
@@ -111,6 +134,7 @@ public static class CoopNavigateResolver
             {
                 Source = source,
                 ChildNodeCount = childNodeCount,
+                ChildRoomTypes = childRoomTypes ?? System.Array.Empty<int>(),
             });
         }
 
