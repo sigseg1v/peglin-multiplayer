@@ -1093,10 +1093,33 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
         }
     }
 
+    private static GameObject _verifierGo;
+
+    public static void DestroyActiveVerifier()
+    {
+        if (_verifierGo != null)
+        {
+            try
+            {
+                Object.Destroy(_verifierGo);
+            }
+            catch
+            {
+            }
+
+            _verifierGo = null;
+        }
+    }
+
     private static void ScheduleVerifyArmed(BepInEx.Logging.ManualLogSource log)
     {
         try
         {
+            // Tear down any prior verifier first — it may be from a previous
+            // nav phase that ended without finding a ball, and would otherwise
+            // call ArmNavigationBall on the next scene's BattleController.
+            DestroyActiveVerifier();
+
             var go = new GameObject("CoopNavVerify")
             {
                 hideFlags = HideFlags.HideAndDontSave,
@@ -1104,6 +1127,7 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
             Object.DontDestroyOnLoad(go);
             var helper = go.AddComponent<NavBallArmVerifier>();
             helper.Log = log;
+            _verifierGo = go;
         }
         catch (System.Exception ex)
         {
@@ -1126,6 +1150,23 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
             }
 
             _t = 0f;
+
+            // If the nav phase has ended (resolved, reset, or a new phase took
+            // over), self-terminate. Without this guard, a verifier scheduled
+            // in a prior phase would happily call ArmNavigationBall on the next
+            // Battle scene's BattleController, leaving a peglin-face nav orb
+            // overlaying the real battle aimer.
+            if (!CoopNavigateState.PhaseActive || CoopNavigateState.Resolved)
+            {
+                Destroy(gameObject);
+                if (_verifierGo == gameObject)
+                {
+                    _verifierGo = null;
+                }
+
+                return;
+            }
+
             try
             {
                 var bc = FindObjectOfType<global::Battle.BattleController>();
@@ -1143,6 +1184,11 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
                         $"[CoopNavigate] Verify: nav ball alive at {activeBall.transform.position} " +
                         $"state={(pb != null ? pb.CurrentState.ToString() : "noPB")}");
                     Destroy(gameObject);
+                    if (_verifierGo == gameObject)
+                    {
+                        _verifierGo = null;
+                    }
+
                     return;
                 }
 
@@ -1165,12 +1211,20 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
                 {
                     Log?.LogError("[CoopNavigate] Verify: gave up after 6s — nav ball never armed on client");
                     Destroy(gameObject);
+                    if (_verifierGo == gameObject)
+                {
+                    _verifierGo = null;
+                }
                 }
             }
             catch (System.Exception ex)
             {
                 Log?.LogError($"[CoopNavigate] Verify Update failed: {ex.Message}");
                 Destroy(gameObject);
+                if (_verifierGo == gameObject)
+                {
+                    _verifierGo = null;
+                }
             }
         }
     }

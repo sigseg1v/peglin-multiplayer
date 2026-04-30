@@ -57,6 +57,7 @@ public static class CoopNavigateState
         // Destroy any ghost balls from a prior phase that did not get cleaned up
         // (for example if the previous phase resolved before Reset ran).
         NavBallShotClientHandler.DestroyAllGhostBalls();
+        NavigatePhaseStartClientHandler.DestroyActiveVerifier();
 
         PhaseActive = true;
         Source = source ?? "post_battle";
@@ -97,6 +98,7 @@ public static class CoopNavigateState
     public static void Reset()
     {
         NavBallShotClientHandler.DestroyAllGhostBalls();
+        NavigatePhaseStartClientHandler.DestroyActiveVerifier();
 
         PhaseActive = false;
         Source = null;
