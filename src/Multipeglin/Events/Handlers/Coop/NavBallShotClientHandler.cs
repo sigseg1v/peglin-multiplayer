@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using HarmonyLib;
 using Multipeglin.Events.Network.Coop;
 using UnityEngine;
@@ -15,6 +16,47 @@ namespace Multipeglin.Events.Handlers.Coop;
 /// </summary>
 public sealed class NavBallShotClientHandler : IClientHandler<NavBallShotEvent>
 {
+    private static readonly List<GameObject> _spawnedGhosts = new List<GameObject>();
+
+    /// <summary>
+    /// Destroys every ghost nav ball spawned during the current phase. Called on
+    /// phase reset so leftover ghosts (sticky AIMING-state navigation orbs that
+    /// would otherwise show a peglin-face aimer on the host during the next
+    /// scene's idle moments) cannot persist past the nav phase.
+    /// </summary>
+    public static void DestroyAllGhostBalls()
+    {
+        if (_spawnedGhosts.Count == 0)
+        {
+            return;
+        }
+
+        var destroyed = 0;
+        foreach (var go in _spawnedGhosts)
+        {
+            if (go == null)
+            {
+                continue;
+            }
+
+            try
+            {
+                UnityEngine.Object.Destroy(go);
+                destroyed++;
+            }
+            catch
+            {
+            }
+        }
+
+        _spawnedGhosts.Clear();
+
+        if (destroyed > 0)
+        {
+            MultiplayerPlugin.Logger?.LogInfo($"[NavBallShot] Destroyed {destroyed} leftover ghost nav balls");
+        }
+    }
+
     public void Handle(NavBallShotEvent networkEvent)
     {
         try
@@ -77,6 +119,12 @@ public sealed class NavBallShotClientHandler : IClientHandler<NavBallShotEvent>
             return;
         }
 
+        // Mark as dummy BEFORE firing: skips PredictionManager poking, skips
+        // mouse-driven aim updates in DoLateUpdate (so the host's mouse won't
+        // rotate this ghost mid-flight), and lets the auto-transition to FIRING
+        // kick in if anything leaves it in AIMING.
+        pb.IsDummy = true;
+
         try
         {
             var aimVecField = AccessTools.Field(typeof(PachinkoBall), "_aimVector");
@@ -86,32 +134,28 @@ public sealed class NavBallShotClientHandler : IClientHandler<NavBallShotEvent>
         {
         }
 
+        // Fire(notifyFire: false) sets state=FIRING, simulated=true, and applies
+        // force in one go. With IsDummy=true the OnShotFired/PredictionManager
+        // side effects are skipped. FireDummy alone leaves _rigid.simulated as
+        // whatever the prefab had, which can be false — the ball then sits at
+        // its spawn position rotating with the host's mouse cursor.
         try
         {
-            var stateProp = AccessTools.Property(typeof(PachinkoBall), "CurrentState");
-            stateProp?.GetSetMethod(true)?.Invoke(pb, new object[] { PachinkoBall.FireballState.AIMING });
-        }
-        catch
-        {
-        }
-
-        // FireDummy applies physics force without firing OnShotFired delegates
-        // and without poking PredictionManager — clean for a remote ghost.
-        try
-        {
-            pb.FireDummy();
+            pb.Fire(notifyFire: false);
         }
         catch
         {
             try
             {
-                pb.Fire(notifyFire: false);
+                pb.FireDummy();
             }
             catch
             {
                 // give up; leave the ball sitting at origin
             }
         }
+
+        _spawnedGhosts.Add(go);
 
         MultiplayerPlugin.Logger?.LogInfo(
             $"[NavBallShot] ghost spawned for slot={ev.Slot} at ({ev.OriginX:F2},{ev.OriginY:F2}) aim=({ev.AimX:F2},{ev.AimY:F2})");

@@ -54,6 +54,10 @@ public static class CoopNavigateState
 
     public static void StartPhase(string source, int childNodeCount, int totalVoters, float now, int[] childRoomTypes = null)
     {
+        // Destroy any ghost balls from a prior phase that did not get cleaned up
+        // (for example if the previous phase resolved before Reset ran).
+        NavBallShotClientHandler.DestroyAllGhostBalls();
+
         PhaseActive = true;
         Source = source ?? "post_battle";
         ChildNodeCount = Math.Max(1, childNodeCount);
@@ -92,6 +96,8 @@ public static class CoopNavigateState
 
     public static void Reset()
     {
+        NavBallShotClientHandler.DestroyAllGhostBalls();
+
         PhaseActive = false;
         Source = null;
         ChildNodeCount = 0;
