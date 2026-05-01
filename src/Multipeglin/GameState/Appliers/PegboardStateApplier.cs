@@ -635,6 +635,60 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         {
             var parentT = lpm.transform;
             // Only sync each parent once per heartbeat
+            //
+            // ============================================================
+            // Analysis and future potential fixes:
+            // ============================================================
+            // LinearPegMovement runs on EVERY peer (host + all clients) —
+            // there's no client-side block. Each peer's Unity physics ticks
+            // LPM independently. The wrap-around in LinearPegMovement.FixedUpdate
+            // (lines ~78-100 of the decomp) teleports the row across the
+            // arena (≈16 units) when position crosses leftBoundary/rightBoundary.
+            // Each peer hits its own wrap on its own physics tick.
+            //
+            // Below we hard-snap the LPM parent to the host's position once
+            // per heartbeat (~1 Hz). Steady-state drift in one heartbeat is
+            // velocity * 1s (a small fraction of a peg) — invisible. That's
+            // why 90% of LPM rows on most stages look smooth.
+            //
+            // The visible "teleport" the user reports is a wrap-edge window:
+            // host has wrapped, client hasn't (or vice versa), so for ~one
+            // physics frame they disagree by an entire arena width. If the
+            // heartbeat fires during that window, the hard-snap drags the
+            // row across the screen.
+            //
+            // Per-client variation comes from each peer starting its LPM
+            // physics at a slightly different absolute time (scene-load,
+            // handshake, frame arrival). Their wrap-edge moments fall at
+            // different absolute times, so the same heartbeat hits a wrap
+            // window on some clients and steady-state on others. Bind
+            // logs confirm GUID/sibling matching is deterministic across
+            // clients — only the per-peer LPM physics phase isn't.
+            //
+            // Why the obvious fixes don't ship as-is:
+            //   1. Lerp the parent (t≈0.15) instead of hard-snap. Hides the
+            //      small steady-drift snap but BREAKS wrap-edge correction:
+            //      a 16-unit delta lerped over many frames drags the row
+            //      across the screen — visually worse than the current
+            //      one-frame snap.
+            //   2. Disable LPM on client and drive purely from heartbeat.
+            //      Becomes a 1 Hz stutter for everyone.
+            //   3. Wrap-aware snap: if |client.x - host.x| > arenaWidth/2,
+            //      treat as a wrap mismatch and hard-snap; otherwise lerp.
+            //      This is the clean fix but it changes behavior for the
+            //      90% of LPM rows that already look smooth, so it needs
+            //      a careful test pass across every LPM stage before
+            //      shipping.
+            //   4. Send LPM velocity in the snapshot and pin the client's
+            //      _rigid.velocity each heartbeat. Doesn't fix wrap-edge
+            //      desync (wraps still happen on independent physics
+            //      ticks) but stops cumulative speed drift if it ever
+            //      becomes a factor.
+            //   5. Bump heartbeat rate (e.g. 4 Hz) when any LPM is active.
+            //      Shrinks the wrap-edge window proportionally; cheap on
+            //      bandwidth (LPM-only delta would be tiny). Lowest-risk
+            //      partial mitigation.
+            // ============================================================
             if (_syncedMovementParents.Add(parentT))
             {
                 if (entry.LpmParentPosX.HasValue && entry.LpmParentPosY.HasValue)
