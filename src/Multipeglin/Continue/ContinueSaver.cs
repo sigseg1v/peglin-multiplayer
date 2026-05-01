@@ -101,8 +101,37 @@ public static class ContinueSaver
 
             var seed = StaticGameData.currentSeed ?? string.Empty;
 
-            // Read the game's RUN save bytes (already written by SaveManager.SaveRun
-            // earlier in this same MapController.OnSceneLoaded call).
+            // Force the current MapController to flush its node state to disk
+            // before we read the bytes. The game's OnSceneLoaded SaveRun is gated
+            // on `!_firstLoad`, so on the very first node activation in a fresh
+            // act (act-1 → act-2 transition) disk still holds the previous act's
+            // node data. Reading disk at that moment captures a stale snapshot
+            // where most current-map node names don't exist as keys, and on
+            // continue load LoadNode silently early-exits via `!HasKey(name)` —
+            // leaving 23 of 27 nodes at default RoomType.NONE with no icons,
+            // no DrawLinesToChildren, no playable map.
+            try
+            {
+                if (mc != null)
+                {
+                    var nodesField = AccessTools.Field(typeof(MapController), "_nodes");
+                    if (nodesField?.GetValue(mc) is Worldmap.MapNode[] mapNodes)
+                    {
+                        foreach (var mn in mapNodes)
+                        {
+                            mn?.SaveNode();
+                        }
+                    }
+                }
+
+                ToolBox.Serialization.DataSerializer.SaveFile(ToolBox.Serialization.DataSerializer.SaveType.RUN);
+            }
+            catch (Exception ex)
+            {
+                MultiplayerPlugin.Logger?.LogWarning($"[ContinueSaver] Pre-read SaveRun failed: {ex.Message}");
+            }
+
+            // Read the game's RUN save bytes (now freshly flushed above).
             var runSaveBase64 = (string)null;
             try
             {

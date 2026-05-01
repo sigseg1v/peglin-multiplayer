@@ -191,6 +191,61 @@ internal static class MapControllerPatches
                 }
             }
 
+            // Continue-load recovery: when the embedded RUN bytes were captured
+            // during a `_firstLoad=true` window (e.g. the first node activation
+            // after an act transition), they hold the previous act's per-node
+            // keys instead of the current map's. LoadNode then early-exits via
+            // `!HasKey(name)` for every Castle/Mines/etc node, leaving most at
+            // RoomType.NONE — no icons, no lines, only prefab-baked types
+            // (root/boss) survive.
+            //
+            // Detect that condition (overwhelming majority of nodes are NONE
+            // after Start completed) and rerun the NewGame initialization steps
+            // — rootNode.SetActiveState(NEXT, recursive: true) populates types
+            // via GenerateRoomType, SeedMapContents seeds them, SaveNode flushes
+            // a clean dict so future continue saves are valid.
+            try
+            {
+                var nodesField = AccessTools.Field(typeof(Map.MapController), "_nodes");
+                if (nodesField?.GetValue(__instance) is Worldmap.MapNode[] mapNodes && mapNodes.Length > 0)
+                {
+                    var noneCount = 0;
+                    foreach (var n in mapNodes)
+                    {
+                        if (n != null && n.RoomType == Worldmap.RoomType.NONE)
+                        {
+                            noneCount++;
+                        }
+                    }
+
+                    if (noneCount > mapNodes.Length / 2)
+                    {
+                        MultiplayerPlugin.Logger?.LogWarning(
+                            $"[ClientPatches] Continue-load detected {noneCount}/{mapNodes.Length} NONE nodes — regenerating map types");
+                        try
+                        {
+                            __instance.rootNode.SetActiveState(Worldmap.RoomState.NEXT);
+                            AccessTools.Method(typeof(Map.MapController), "SeedMapContents")?.Invoke(__instance, null);
+                            foreach (var n in mapNodes)
+                            {
+                                n?.SaveNode();
+                            }
+
+                            ToolBox.Serialization.DataSerializer.SaveFile(ToolBox.Serialization.DataSerializer.SaveType.RUN);
+                            MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Map regen complete — types rebuilt and flushed to disk");
+                        }
+                        catch (Exception regenEx)
+                        {
+                            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] Map regen failed: {regenEx.Message}");
+                        }
+                    }
+                }
+            }
+            catch (Exception checkEx)
+            {
+                MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] Continue-load NONE check failed: {checkEx.Message}");
+            }
+
             try
             {
                 if (MultiplayerPlugin.Services?.TryResolve<GameState.IGameStateSyncService>(out var sync) == true)
