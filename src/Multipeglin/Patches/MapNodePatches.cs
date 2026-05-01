@@ -84,5 +84,18 @@ internal static class MapNodePatches
             MapDataName = mapDataName,
         });
         MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Host activated node at ({pos.x:F1}, {pos.y:F1}), battle={battleName}, mapData={mapDataName}");
+
+        // Auto-save the coop continue file at every node entry. The previous
+        // map view's SaveRun has already written Save_<profile>r.data to disk
+        // (MapController.OnSceneLoaded → SaveRun), so the bytes ContinueSaver
+        // reads reflect the just-finished map state. The MapController-level
+        // OnSceneLoaded postfix that used to trigger this was unreliable on
+        // cross-act DDoL'd MCs and silently stopped firing — hook the node
+        // activation directly so every battle / treasure / shop / event / boss
+        // refresh updates the continue file.
+        var nodeLabel = !string.IsNullOrEmpty(battleName)
+            ? battleName
+            : (!string.IsNullOrEmpty(mapDataName) ? mapDataName : "node");
+        Continue.ContinueSaver.Save($"node-activated:{nodeLabel}");
     }
 }
