@@ -100,6 +100,29 @@ internal static class DialogueSystemScenarioPatches
     /// </summary>
 
     /// <summary>
+    /// Force the TextScenario peg layout to load on the client.
+    ///
+    /// Native ShouldSkipNavigation returns true when StaticGameData.currentNode
+    /// is null — and currentNode is host-only (the live MapNode tree never
+    /// exists on clients). That gates the call to PegLayoutLoader.TryLoadPegLayout
+    /// inside DialogueSystemScenario.LoadData, so the client's TextScenario
+    /// scene comes up with the dialogue UI and slot triggers but no pegs for
+    /// the nav ball to bounce on. Override here so the layout loads.
+    /// </summary>
+    [HarmonyPatch(typeof(DialogueSystemScenario), "ShouldSkipNavigation")]
+    [HarmonyPrefix]
+    public static bool DialogueSystemScenario_ShouldSkipNavigation_Prefix(ref bool __result)
+    {
+        if (!ShouldSuppressClientLogic)
+        {
+            return true;
+        }
+
+        __result = false;
+        return false;
+    }
+
+    /// <summary>
     /// Track navigation state on host; block navigation on client unless we
     /// explicitly enable it for spectating the navigation shot.
     /// </summary>
