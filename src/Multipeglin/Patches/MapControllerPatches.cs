@@ -147,14 +147,14 @@ internal static class MapControllerPatches
     /// </summary>
     [HarmonyPatch(typeof(Map.MapController), "LoadSceneFromMapData")]
     [HarmonyPostfix]
-    public static void MapController_LoadSceneFromMapData_Postfix(MapData mapData)
+    public static void MapController_LoadSceneFromMapData_Postfix(MapData data)
     {
         if (!IsHosting)
         {
             return;
         }
 
-        MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Host LoadSceneFromMapData: mapData={mapData?.name ?? "(null)"}");
+        MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Host LoadSceneFromMapData: mapData={data?.name ?? "(null)"}");
     }
 
     /// <summary>
