@@ -273,8 +273,75 @@ internal static class BattleControllerPatches
             var activeBallGO = activeBallField?.GetValue(bc) as UnityEngine.GameObject;
             if (activeBallGO == null)
             {
-                MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] PendingShot from {pending.PlayerName} but _activePachinkoBall is null");
+                // Recovery path: _activePachinkoBall going null mid-coop is almost
+                // always a symptom of DrawBall throwing partway through (the typical
+                // culprit is DeckInfoManager.PersistBallDrawFinished walking a stale
+                // _nextOrb after a slot swap and crashing inside Attack.GetNameWithLevel).
+                // Without recovery, the client's pending shot retries forever and
+                // the game softlocks. We track the stuck state and re-invoke
+                // DrawBall after a short hold, with the deck-tube callbacks
+                // disconnected so the same crash path is short-circuited.
+                var nowT = UnityEngine.Time.unscaledTime;
+                if (_stuckPendingShotSlot != pending.SlotIndex)
+                {
+                    _stuckPendingShotSlot = pending.SlotIndex;
+                    _stuckPendingShotSinceUnscaledTime = nowT;
+                    _stuckPendingShotRedraws = 0;
+                    _stuckPendingShotLastWarnTime = 0f;
+                }
+
+                if (nowT - _stuckPendingShotLastWarnTime >= 1f)
+                {
+                    _stuckPendingShotLastWarnTime = nowT;
+                    MultiplayerPlugin.Logger?.LogWarning(
+                        $"[ClientPatches] PendingShot from {pending.PlayerName} but _activePachinkoBall is null " +
+                        $"(stuck for {nowT - _stuckPendingShotSinceUnscaledTime:F1}s, retries={_stuckPendingShotRedraws})");
+                }
+
+                var stuckFor = nowT - _stuckPendingShotSinceUnscaledTime;
+                if (stuckFor >= 1.5f && _stuckPendingShotRedraws < 3)
+                {
+                    _stuckPendingShotRedraws++;
+                    _stuckPendingShotSinceUnscaledTime = nowT;
+
+                    var savedOnBallUsed = DeckManager.onBallUsed;
+                    var savedOnDeckShuffled = DeckManager.onDeckShuffled;
+                    var savedOnPersistBallUsed = DeckManager.onPersistBallUsed;
+                    DeckManager.onBallUsed = _ => { };
+                    DeckManager.onDeckShuffled = _ => { };
+                    DeckManager.onPersistBallUsed = () => { };
+                    DeckInfoManager.populatingDisplayOrb = false;
+                    try
+                    {
+                        var drawBallMethod = HarmonyLib.AccessTools.Method(typeof(BattleController), "DrawBall");
+                        drawBallMethod?.Invoke(bc, null);
+                        MultiplayerPlugin.Logger?.LogWarning(
+                            $"[ClientPatches] Retried DrawBall for stuck slot {pending.SlotIndex} (attempt {_stuckPendingShotRedraws})");
+                    }
+                    catch (Exception drawEx)
+                    {
+                        MultiplayerPlugin.Logger?.LogWarning(
+                            $"[ClientPatches] DrawBall retry failed for slot {pending.SlotIndex}: {drawEx.InnerException?.Message ?? drawEx.Message}");
+                    }
+                    finally
+                    {
+                        DeckManager.onBallUsed = savedOnBallUsed;
+                        DeckManager.onDeckShuffled = savedOnDeckShuffled;
+                        DeckManager.onPersistBallUsed = savedOnPersistBallUsed;
+                    }
+                }
+
                 return;
+            }
+
+            // Ball recovered (or never went null) — clear stuck-state tracking.
+            if (_stuckPendingShotSlot != -1)
+            {
+                MultiplayerPlugin.Logger?.LogInfo(
+                    $"[ClientPatches] Stuck pending shot recovered for slot {_stuckPendingShotSlot} after {_stuckPendingShotRedraws} retry(ies)");
+                _stuckPendingShotSlot = -1;
+                _stuckPendingShotRedraws = 0;
+                _stuckPendingShotLastWarnTime = 0f;
             }
 
             var activeBall = activeBallGO.GetComponent<PachinkoBall>();

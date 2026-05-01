@@ -610,15 +610,23 @@ public sealed class CoopSubscriptions
 
         // Silence DeckInfoManager callbacks during the non-host shuffle/draw so
         // they don't corrupt the host's deck tube display (same guard as
-        // OnShotComplete).
+        // OnShotComplete). onPersistBallUsed MUST be silenced too: it fires
+        // PersistBallDrawFinished → ShotDetailsWidget.UpdateDetailsWithoutAnim
+        // → Attack.GetNameWithLevel on DeckInfoManager._nextOrb. After a swap,
+        // _nextOrb still points at the previous slot's destroyed orb GameObject
+        // and GetComponent throws — the throw aborts DrawBall mid-flight,
+        // leaving _activePachinkoBall null and softlocking the next shot.
         DeckManager.BallDrawn savedOnBallUsed = null;
         DeckManager.Shuffled savedOnDeckShuffled = null;
+        DeckManager.PersistBallUsed savedOnPersistBallUsed = null;
         try
         {
             savedOnBallUsed = DeckManager.onBallUsed;
             savedOnDeckShuffled = DeckManager.onDeckShuffled;
+            savedOnPersistBallUsed = DeckManager.onPersistBallUsed;
             DeckManager.onBallUsed = _ => { };
             DeckManager.onDeckShuffled = _ => { };
+            DeckManager.onPersistBallUsed = () => { };
         }
         catch (Exception cbEx)
         {
@@ -662,6 +670,11 @@ public sealed class CoopSubscriptions
                 if (savedOnDeckShuffled != null)
                 {
                     DeckManager.onDeckShuffled = savedOnDeckShuffled;
+                }
+
+                if (savedOnPersistBallUsed != null)
+                {
+                    DeckManager.onPersistBallUsed = savedOnPersistBallUsed;
                 }
             }
             catch (Exception restoreEx)
@@ -956,12 +969,15 @@ public sealed class CoopSubscriptions
             // tube display. By disconnecting first, the reshuffle is silent.
             DeckManager.BallDrawn savedOnBallUsed = null;
             DeckManager.Shuffled savedOnDeckShuffled = null;
+            DeckManager.PersistBallUsed savedOnPersistBallUsed = null;
             try
             {
                 savedOnBallUsed = DeckManager.onBallUsed;
                 savedOnDeckShuffled = DeckManager.onDeckShuffled;
+                savedOnPersistBallUsed = DeckManager.onPersistBallUsed;
                 DeckManager.onBallUsed = _ => { }; // no-op during non-host operations
                 DeckManager.onDeckShuffled = _ => { }; // no-op during non-host shuffle
+                DeckManager.onPersistBallUsed = () => { }; // PersistBallDrawFinished crashes on stale _nextOrb post-swap
             }
             catch (Exception cbEx)
             {
@@ -1004,6 +1020,11 @@ public sealed class CoopSubscriptions
                     if (savedOnDeckShuffled != null)
                     {
                         DeckManager.onDeckShuffled = savedOnDeckShuffled;
+                    }
+
+                    if (savedOnPersistBallUsed != null)
+                    {
+                        DeckManager.onPersistBallUsed = savedOnPersistBallUsed;
                     }
                 }
                 catch (Exception restoreEx)
@@ -1558,12 +1579,15 @@ public sealed class CoopSubscriptions
             // Disconnect DeckInfoManager callbacks to avoid corrupting host UI
             DeckManager.BallDrawn savedOnBallUsed = null;
             DeckManager.Shuffled savedOnDeckShuffled = null;
+            DeckManager.PersistBallUsed savedOnPersistBallUsed = null;
             try
             {
                 savedOnBallUsed = DeckManager.onBallUsed;
                 savedOnDeckShuffled = DeckManager.onDeckShuffled;
+                savedOnPersistBallUsed = DeckManager.onPersistBallUsed;
                 DeckManager.onBallUsed = _ => { };
                 DeckManager.onDeckShuffled = _ => { };
+                DeckManager.onPersistBallUsed = () => { };
             }
             catch (Exception cbEx)
             {
@@ -1601,6 +1625,11 @@ public sealed class CoopSubscriptions
                     if (savedOnDeckShuffled != null)
                     {
                         DeckManager.onDeckShuffled = savedOnDeckShuffled;
+                    }
+
+                    if (savedOnPersistBallUsed != null)
+                    {
+                        DeckManager.onPersistBallUsed = savedOnPersistBallUsed;
                     }
                 }
                 catch (Exception restoreEx)

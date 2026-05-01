@@ -765,6 +765,19 @@ public static class MultiplayerClientPatches
     /// </summary>
     internal static bool _executingPendingDiscard;
 
+    /// <summary>
+    /// Recovery state for the host's pending-shot loop when _activePachinkoBall
+    /// is unexpectedly null. Tracks the slot we're stuck on, when the stuck
+    /// state began, and how many redraw retries we've attempted, so that
+    /// BattleController_Update_Postfix can escalate from "warn and wait" to
+    /// "retry DrawBall" to "skip the slot" rather than spamming a warning
+    /// thousands of times until the round eventually times out.
+    /// </summary>
+    internal static int _stuckPendingShotSlot = -1;
+    internal static float _stuckPendingShotSinceUnscaledTime;
+    internal static int _stuckPendingShotRedraws;
+    internal static float _stuckPendingShotLastWarnTime;
+
     // =========================================================================
     // BLOCK CLIENT SCENE LOADS — only our sync handlers may load scenes
     // =========================================================================
