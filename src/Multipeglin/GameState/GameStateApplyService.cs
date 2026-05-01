@@ -133,6 +133,19 @@ public class GameStateApplyService
         Events.Handlers.Coop.CoopRewardState.ClientTextScenarioChoiceSent = false;
         Events.Handlers.Coop.CoopRewardState.PegMinigameAwaitingHostNavigation = false;
 
+        // Force-clear any stale parallel-shoot navigate phase. Normally the phase
+        // resolves before the scene changes, but on act-end the host's
+        // PostBattleController.StartNavigation kicks off a phase that's then
+        // bypassed by the ForestWinScene/CastleMap cutscene transition. Without
+        // this reset, PhaseActive stays true into the next act's first battle,
+        // ghost nav balls keep spawning on every NavBallShotEvent, and the local
+        // aimer is locked to the NavigationOrb (peglin-face) prefab.
+        if (Events.Handlers.Coop.CoopNavigateState.PhaseActive)
+        {
+            _log.LogInfo($"[ApplyService] Clearing stale CoopNavigateState (phase='{Events.Handlers.Coop.CoopNavigateState.Source}', resolved={Events.Handlers.Coop.CoopNavigateState.Resolved}) on scene '{scene.name}'");
+            Events.Handlers.Coop.CoopNavigateState.Reset();
+        }
+
         var svc = MultiplayerPlugin.Services;
         IMultiplayerMode mpModeRef = null;
         svc?.TryResolve(out mpModeRef);
