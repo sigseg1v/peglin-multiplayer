@@ -27,7 +27,17 @@ internal static class CustomOrbRegistry
 
     public static void EnsureBuilt()
     {
-        CustomOrbLocalization.EnsureRegistered();
+        // Localization is best-effort — if I2.Loc isn't initialized yet (early
+        // in GameInit), don't let it block orb-prefab building. Worst case the
+        // orb name shows up as the loc key; better than no orbs at all.
+        try
+        {
+            CustomOrbLocalization.EnsureRegistered();
+        }
+        catch (System.Exception ex)
+        {
+            Plugin.Logger?.LogWarning($"[CustomOrbs] localization registration failed (non-fatal): {ex.Message}");
+        }
 
         if (IsInitialized)
         {
@@ -56,6 +66,43 @@ internal static class CustomOrbRegistry
 
     private static GameObject[] FindOrbPrefabs(string namePrefix)
     {
+        // Primary: scan all OrbPool ScriptableObjects. These hold hard refs to
+        // orb prefabs via [SerializeField], so they're reliably loaded as soon
+        // as any pool asset is referenced — no scene/instance dependency.
+        var poolMatches = new Dictionary<string, GameObject>(System.StringComparer.OrdinalIgnoreCase);
+        foreach (var pool in Resources.FindObjectsOfTypeAll<OrbPool>())
+        {
+            if (pool?.AvailableOrbs == null)
+            {
+                continue;
+            }
+
+            foreach (var go in pool.AvailableOrbs)
+            {
+                if (go == null)
+                {
+                    continue;
+                }
+
+                if (!go.name.StartsWith(namePrefix + "-Lvl", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (!poolMatches.ContainsKey(go.name))
+                {
+                    poolMatches[go.name] = go;
+                }
+            }
+        }
+
+        if (poolMatches.Count >= 3)
+        {
+            return poolMatches.Values.OrderBy(g => g.name).Take(3).ToArray();
+        }
+
+        // Fallback: Resources.FindObjectsOfTypeAll<Attack> for any prefab not
+        // referenced by a pool (orphaned upgrade-only prefabs).
         var matches = Resources.FindObjectsOfTypeAll<Attack>()
             .Where(a => a != null && a.gameObject != null
                 && a.gameObject.name.StartsWith(namePrefix + "-Lvl", System.StringComparison.OrdinalIgnoreCase)

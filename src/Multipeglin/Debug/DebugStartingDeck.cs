@@ -55,6 +55,20 @@ internal static class DebugStartingDeck
     [HarmonyPostfix]
     public static void MapController_Awake_Postfix()
     {
+        TryRetry("MapController");
+    }
+
+    [HarmonyPatch(typeof(Battle.BattleController), "Awake")]
+    [HarmonyPostfix]
+    public static void BattleController_Awake_Postfix()
+    {
+        // BattleController.Awake is the latest reliable hook before the host
+        // takes its first shot — orb prefabs are guaranteed loaded by now.
+        TryRetry("BattleController");
+    }
+
+    private static void TryRetry(string reason)
+    {
         if (!IsEnabled() || !_runStarted)
         {
             return;
@@ -72,7 +86,7 @@ internal static class DebugStartingDeck
             return;
         }
 
-        TryGrantPending(reason: "MapController");
+        TryGrantPending(reason);
     }
 
     private static void TryGrantPending(string reason)
@@ -155,9 +169,15 @@ internal static class DebugStartingDeck
                 | System.Reflection.BindingFlags.Static);
             method?.Invoke(null, null);
         }
+        catch (System.Reflection.TargetInvocationException tie)
+        {
+            // Unwrap so the underlying EnsureBuilt failure is actually visible.
+            var inner = tie.InnerException ?? tie;
+            MultiplayerPlugin.Logger?.LogWarning($"[DebugDeck] CustomOrbRegistry.EnsureBuilt nudge failed: {inner.GetType().Name}: {inner.Message}\n{inner.StackTrace}");
+        }
         catch (Exception ex)
         {
-            MultiplayerPlugin.Logger?.LogWarning($"[DebugDeck] CustomOrbRegistry.EnsureBuilt nudge failed: {ex.Message}");
+            MultiplayerPlugin.Logger?.LogWarning($"[DebugDeck] CustomOrbRegistry.EnsureBuilt nudge failed: {ex}");
         }
     }
 
