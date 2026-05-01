@@ -37,11 +37,23 @@ public sealed class MapSubscriptions
             return;
         }
 
-        _registry.Dispatch(new NodeSelectedEvent
+        // Wrapped in try/catch because this is invoked from inside MapController's
+        // NodeSelected coroutine (line 1052 in decomp). If Dispatch throws, the
+        // exception propagates up the iterator and kills the coroutine before it
+        // can reach DoNodeSelectionFadeOut → LoadSceneFromMapData — softlocking
+        // the host on the map screen with no visible error.
+        try
         {
-            MapName = mapName,
-            Floor = floor,
-            CruciballLevel = cruciballLevel
-        });
+            _registry.Dispatch(new NodeSelectedEvent
+            {
+                MapName = mapName,
+                Floor = floor,
+                CruciballLevel = cruciballLevel
+            });
+        }
+        catch (System.Exception ex)
+        {
+            _log.LogWarning($"MapSubscriptions: NodeSelectedEvent dispatch threw: {ex}");
+        }
     }
 }

@@ -75,6 +75,8 @@ internal static class MapNodePatches
         var pos = __instance.transform.position;
         var battleName = (__instance.MapData as MapDataBattle)?.name;
         var mapDataName = string.IsNullOrEmpty(battleName) ? __instance.MapData?.name : null;
+        var roomStatus = AccessTools.Field(typeof(MapNode), "_roomStatus")?.GetValue(__instance);
+        var roomStatusName = roomStatus?.ToString() ?? "?";
         registry.Dispatch(new NodeActivatedEvent
         {
             PosX = pos.x,
@@ -83,7 +85,37 @@ internal static class MapNodePatches
             RngState = SerializeRandomState(Random.state),
             MapDataName = mapDataName,
         });
-        MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Host activated node at ({pos.x:F1}, {pos.y:F1}), battle={battleName}, mapData={mapDataName}");
+        MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Host activated node at ({pos.x:F1}, {pos.y:F1}), battle={battleName}, mapData={mapDataName}, roomStatus={roomStatusName}");
+
+        // Recovery for the act-2 continue softlock: the auto-walked-to node may
+        // not be in NEXT state (continue load can leave _roomStatus at TRAVERSED
+        // or UPCOMING if SetUpPreviousAndNextNodes mis-derived _previousNode).
+        // ActivateNode silently bails with "Room Not Available", NodeSelected
+        // never fires, host is stuck on the map. If we have valid MapData and
+        // the room isn't NEXT, force the scene transition manually.
+        if (roomStatus is Worldmap.RoomState rs
+            && rs != Worldmap.RoomState.NEXT
+            && __instance.MapData != null)
+        {
+            MultiplayerPlugin.Logger?.LogWarning(
+                $"[ClientPatches] Host node activate had roomStatus={rs} (expected NEXT). Forcing scene transition to {__instance.MapData?.name}");
+
+            try
+            {
+                StaticGameData.seededNodeData = __instance.seededNodeData;
+                if (Map.MapController.instance != null)
+                {
+                    AccessTools.Field(typeof(Map.MapController), "_previousNode")?.SetValue(Map.MapController.instance, __instance);
+                }
+
+                AccessTools.Method(typeof(Map.MapController), "LoadSceneFromMapData")
+                    ?.Invoke(Map.MapController.instance, new object[] { __instance.MapData });
+            }
+            catch (System.Exception ex)
+            {
+                MultiplayerPlugin.Logger?.LogError($"[ClientPatches] Forced LoadSceneFromMapData failed: {ex}");
+            }
+        }
 
         // Auto-save the coop continue file at every node entry. The previous
         // map view's SaveRun has already written Save_<profile>r.data to disk

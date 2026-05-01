@@ -1,4 +1,5 @@
 using System;
+using Data;
 using HarmonyLib;
 using Map;
 using UnityEngine;
@@ -118,6 +119,42 @@ internal static class MapControllerPatches
 
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked MapController.ResolveNode (client — scene handled by NodeActivatedClientHandler)");
         return false;
+    }
+
+    /// <summary>
+    /// Diagnostic: log when ResolveNode fires on host. If we see a "Host activated node"
+    /// without this log appearing, ActivateNode took the "Room Not Available" branch
+    /// (i.e. _roomStatus != NEXT).
+    /// </summary>
+    [HarmonyPatch(typeof(Map.MapController), "ResolveNode")]
+    [HarmonyPostfix]
+    public static void MapController_ResolveNode_Postfix(Worldmap.MapNode node)
+    {
+        if (!IsHosting)
+        {
+            return;
+        }
+
+        var name = node != null ? node.gameObject.name : "(null)";
+        var battle = (node?.MapData as MapDataBattle)?.name;
+        MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Host ResolveNode: node={name}, battle={battle ?? "(none)"}");
+    }
+
+    /// <summary>
+    /// Diagnostic: log when LoadSceneFromMapData fires on host. The pair
+    /// (ResolveNode → LoadSceneFromMapData) confirms the NodeSelected
+    /// coroutine completed successfully.
+    /// </summary>
+    [HarmonyPatch(typeof(Map.MapController), "LoadSceneFromMapData")]
+    [HarmonyPostfix]
+    public static void MapController_LoadSceneFromMapData_Postfix(MapData mapData)
+    {
+        if (!IsHosting)
+        {
+            return;
+        }
+
+        MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Host LoadSceneFromMapData: mapData={mapData?.name ?? "(null)"}");
     }
 
     /// <summary>
