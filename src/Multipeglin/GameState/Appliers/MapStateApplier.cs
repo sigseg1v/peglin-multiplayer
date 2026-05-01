@@ -1062,8 +1062,18 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 applied++;
             }
 
+            // Roll up host-sent types so we can confirm "host snapshot has the
+            // expected mix of BATTLE / TREASURE / etc." instead of guessing
+            // from a single Node-0 log line.
+            var hostTypeCounts = new Dictionary<int, int>();
+            foreach (var entry in hostNodes)
+            {
+                hostTypeCounts[entry.RoomType] = hostTypeCounts.TryGetValue(entry.RoomType, out var tc) ? tc + 1 : 1;
+            }
+
+            var hostTypeSummary = string.Join(", ", hostTypeCounts.Select(kv => $"{(RoomType)kv.Key}={kv.Value}"));
             _log.LogInfo($"[MapApplier] Applied {applied} node types ({unchanged} unchanged) from host, {skipped} skipped " +
-                $"(host={hostNodes.Count}, client={clientNodes.Length})");
+                $"(host={hostNodes.Count}, client={clientNodes.Length}) hostTypes[{hostTypeSummary}]");
 
             // Stash the last successful apply so MapController.Awake can restore state
             // before the first rendered frame on the next scene load.

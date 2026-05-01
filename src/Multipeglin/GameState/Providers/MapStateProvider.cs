@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using BepInEx.Logging;
 using HarmonyLib;
 using Multipeglin.GameState.Snapshots;
@@ -354,7 +355,24 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
                 });
             }
 
-            _log.LogInfo($"[MapProvider] Captured {nodes.Count} map nodes");
+            // Per-type rollup so we can spot "host has 27 nodes but most are NONE / UPCOMING"
+            // regressions in continue loads at a glance.
+            var typeCounts = new Dictionary<int, int>();
+            var stateCounts = new Dictionary<int, int>();
+            var noneOrHidden = 0;
+            foreach (var entry in nodes)
+            {
+                typeCounts[entry.RoomType] = typeCounts.TryGetValue(entry.RoomType, out var tc) ? tc + 1 : 1;
+                stateCounts[entry.RoomState] = stateCounts.TryGetValue(entry.RoomState, out var sc) ? sc + 1 : 1;
+                if (entry.RoomType == 0 || entry.RoomState == 0)
+                {
+                    noneOrHidden++;
+                }
+            }
+
+            var typeSummary = string.Join(", ", typeCounts.Select(kv => $"{(RoomType)kv.Key}={kv.Value}"));
+            var stateSummary = string.Join(", ", stateCounts.Select(kv => $"{(kv.Key >= 0 ? ((RoomState)kv.Key).ToString() : "?")}={kv.Value}"));
+            _log.LogInfo($"[MapProvider] Captured {nodes.Count} map nodes — types[{typeSummary}] states[{stateSummary}] noneOrHidden={noneOrHidden}");
         }
         catch (Exception ex)
         {
