@@ -9,6 +9,7 @@ Cooperative multiplayer mod for Peglin. Play through runs together with friends!
 - Per-player decks, relics, health, and gold in coop
 - Turn-based combat, ball physics synchronization
 - Shop, treasure, and event scene synchronization
+- Multiplayer save-and-continue system
 
 ## Installation
 
@@ -21,7 +22,7 @@ Install via [r2modman](https://thunderstore.io/package/ebkr/r2modman/) or
 
 1. Launch Peglin with the mod installed
 2. Click "Multiplayer" on the main menu
-3. **Host**: Click "Host" to start a session. It will host on Steam.
+3. **Host**: Click "Host" to start a session. It will host on Steam. Or click "Continue" if you had a previous run you want to continue with the same players.
 4. **Join**: Select a hosted game from your Steam friends list and join.
 5. All clients select their class and click Ready.
 6. Host selects Cruciball level, and clicks start game.
