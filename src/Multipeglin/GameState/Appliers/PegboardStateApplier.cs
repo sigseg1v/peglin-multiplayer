@@ -86,7 +86,15 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             // because it's baked into the prefab hierarchy — unlike
             // pm.allPegs ordering which is non-deterministic (race condition
             // during PegLayoutLoader, especially for MinotaurLayout).
-            var structIndex = BuildStructIndex(clientPegs, clientBombs, clientBouncers);
+            //
+            // Steady-state optimization: once every peg has a GUID, phase 0
+            // can never bind anything new (the GetGuid check below filters out
+            // all candidates). Skip the full hierarchy-walk index build — the
+            // empty index makes ResolveByStructKey return null and we fall
+            // through to phase 1 (GUID match) which is the steady-state path.
+            var structIndex = AllPegsHaveGuids(clientPegs, clientBombs, clientBouncers)
+                ? _emptyStructIndex
+                : BuildStructIndex(clientPegs, clientBombs, clientBouncers);
 
             // ===== PHASE 0, 1 & 2: Struct, GUID, then type-aware position =====
             foreach (var entry in snapshot.Pegs)
@@ -872,6 +880,46 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
         public Dictionary<string, List<Peg>> BySibling =
             new Dictionary<string, List<Peg>>(System.StringComparer.Ordinal);
+    }
+
+    private static readonly StructIndex _emptyStructIndex = new StructIndex();
+
+    private bool AllPegsHaveGuids(List<Peg> clientPegs, List<Bomb> clientBombs, List<BouncerPeg> clientBouncers)
+    {
+        if (clientPegs != null)
+        {
+            foreach (var p in clientPegs)
+            {
+                if (p != null && string.IsNullOrEmpty(_pegId.GetGuid(p)))
+                {
+                    return false;
+                }
+            }
+        }
+
+        if (clientBombs != null)
+        {
+            foreach (var b in clientBombs)
+            {
+                if (b != null && string.IsNullOrEmpty(_pegId.GetGuid(b)))
+                {
+                    return false;
+                }
+            }
+        }
+
+        if (clientBouncers != null)
+        {
+            foreach (var bo in clientBouncers)
+            {
+                if (bo != null && string.IsNullOrEmpty(_pegId.GetGuid(bo)))
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     private static StructIndex BuildStructIndex(
@@ -2431,20 +2479,24 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         }
     }
 
+    [ThreadStatic]
+    private static List<string> _hierarchyPathBuf;
+
     private static string BuildHierarchyPath(Transform t)
     {
-        var sb = new System.Text.StringBuilder();
+        // Walk parent->root collecting names, then reverse-join. Avoids
+        // StringBuilder.Insert(0,...) which copies the whole buffer per ancestor
+        // (O(D^2) on a deeply-nested transform). This is called per-peg per
+        // heartbeat, so the savings compound across ~300 pegs.
+        var buf = _hierarchyPathBuf ??= new List<string>(8);
+        buf.Clear();
         for (var cur = t; cur != null; cur = cur.parent)
         {
-            if (sb.Length > 0)
-            {
-                sb.Insert(0, '/');
-            }
-
-            sb.Insert(0, cur.name);
+            buf.Add(cur.name);
         }
 
-        return sb.ToString();
+        buf.Reverse();
+        return string.Join("/", buf);
     }
 
     private static GameObject FindBlackHolePrefab()

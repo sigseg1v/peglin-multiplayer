@@ -594,24 +594,69 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
         return HierarchyPath(parent);
     }
 
+    // Caches keyed on Transform InstanceID. Both the parent ancestor chain
+    // and the "has moving ancestor" predicate are stable for the lifetime of
+    // a transform (peg parents never re-parent, movement components never get
+    // added/removed at runtime). InstanceID is unique per object lifetime, so
+    // a destroyed-and-replaced parent gets a different ID — no stale reads.
+    // Cleared on battle init via ClearHierarchyCaches.
+    private static readonly System.Collections.Generic.Dictionary<int, string> _hierarchyPathCache
+        = new System.Collections.Generic.Dictionary<int, string>(256);
+
+    private static readonly System.Collections.Generic.Dictionary<int, bool> _movingAncestorCache
+        = new System.Collections.Generic.Dictionary<int, bool>(256);
+
+    [System.ThreadStatic]
+    private static System.Collections.Generic.List<string> _hierarchyPathBuf;
+
+    public static void ClearHierarchyCaches()
+    {
+        _hierarchyPathCache.Clear();
+        _movingAncestorCache.Clear();
+    }
+
     private static string HierarchyPath(UnityEngine.Transform t)
     {
-        var sb = new System.Text.StringBuilder();
-        for (var cur = t; cur != null; cur = cur.parent)
+        if (t == null)
         {
-            if (sb.Length > 0)
-            {
-                sb.Insert(0, '/');
-            }
-
-            sb.Insert(0, cur.name);
+            return string.Empty;
         }
 
-        return sb.ToString();
+        var id = t.GetInstanceID();
+        if (_hierarchyPathCache.TryGetValue(id, out var cached))
+        {
+            return cached;
+        }
+
+        // Forward-build then reverse-join: avoids StringBuilder.Insert(0,...)
+        // which copies the whole buffer per ancestor (O(D^2)).
+        var buf = _hierarchyPathBuf ??= new System.Collections.Generic.List<string>(8);
+        buf.Clear();
+        for (var cur = t; cur != null; cur = cur.parent)
+        {
+            buf.Add(cur.name);
+        }
+
+        buf.Reverse();
+        var path = string.Join("/", buf);
+        _hierarchyPathCache[id] = path;
+        return path;
     }
 
     private static bool HasMovingAncestor(UnityEngine.Transform t)
     {
+        if (t == null)
+        {
+            return false;
+        }
+
+        var id = t.GetInstanceID();
+        if (_movingAncestorCache.TryGetValue(id, out var cached))
+        {
+            return cached;
+        }
+
+        var result = false;
         for (var cur = t; cur != null; cur = cur.parent)
         {
             if (cur.GetComponent<LinearPegMovement>() != null
@@ -623,10 +668,12 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                 || cur.GetComponent<SimpleMovablePeg>() != null
                 || cur.GetComponent<FireworkMovement>() != null)
             {
-                return true;
+                result = true;
+                break;
             }
         }
 
-        return false;
+        _movingAncestorCache[id] = result;
+        return result;
     }
 }

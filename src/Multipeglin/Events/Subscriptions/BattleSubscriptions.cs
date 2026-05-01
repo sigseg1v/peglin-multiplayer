@@ -62,6 +62,11 @@ public sealed class BattleEventSubscriptions
 
     private void OnBattleStarted()
     {
+        // Drop cached parent-chain / moving-ancestor lookups from prior battle.
+        // Transforms get destroyed across scene changes; cached InstanceID keys
+        // from the old battle are dead weight (correct, but unbounded growth).
+        GameState.Providers.PegboardStateProvider.ClearHierarchyCaches();
+
         if (_multiplayerMode.IsHosting)
         {
             _registry.Dispatch(new BattleStartedEvent());
