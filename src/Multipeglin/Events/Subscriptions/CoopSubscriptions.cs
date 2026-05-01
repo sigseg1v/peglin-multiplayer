@@ -89,6 +89,17 @@ public sealed class CoopSubscriptions
     private float _damageDistributedSinceAttackStart;
 
     /// <summary>
+    /// Idempotency guard for OnVictory. BattleController.OnVictory can fire
+    /// repeatedly after a boss kill (the BossHeal cascade and the post-battle
+    /// canvas re-enable can re-trigger CompleteVictory), which would otherwise
+    /// re-broadcast PostBattleStartEvent every ~250ms — causing the host to
+    /// stall on "Your Turn! Aim and shoot" and clients to be reset into
+    /// post-battle screens repeatedly. Cleared in OnBattleStarted so the next
+    /// battle's victory works normally.
+    /// </summary>
+    private bool _victoryHandledThisBattle;
+
+    /// <summary>
     /// Singleton instance so the BattleController.Awake Postfix can re-subscribe.
     /// The game's static delegates may lose subscribers across scene loads,
     /// so we re-subscribe at the start of every battle.
@@ -413,6 +424,7 @@ public sealed class CoopSubscriptions
 
         _accumulatedShotData.Clear();
         Multipeglin.UI.PendingDamageOverlay.ClearAll();
+        _victoryHandledThisBattle = false;
         _turnManager.BuildTurnOrder();
         _turnManager.StartNewRound();
         BroadcastTurnChange();
@@ -1227,6 +1239,16 @@ public sealed class CoopSubscriptions
         {
             return;
         }
+
+        // Guard against re-entrant OnVictory firings (boss-kill BossHeal cascade
+        // re-triggers CompleteVictory; without this guard PostBattleStartEvent
+        // gets spammed every ~250ms, softlocking the host and lagging everyone).
+        if (_victoryHandledThisBattle)
+        {
+            return;
+        }
+
+        _victoryHandledThisBattle = true;
 
         try
         {
