@@ -197,7 +197,10 @@ internal static class BattleControllerPatches
                     {
                         _stuckCompletionScanTimer = 0f;
 
-                        var allBalls = UnityEngine.Object.FindObjectsOfType<PachinkoBall>();
+                        // includeInactive=true: SC satellites can end up parented
+                        // under an inactive root, deactivated, or otherwise hidden
+                        // from the default active-only scan. We need to see them.
+                        var allBalls = UnityEngine.Object.FindObjectsOfType<PachinkoBall>(true);
                         var firingCount = 0;
                         for (var i = 0; i < allBalls.Length; i++)
                         {
@@ -238,8 +241,10 @@ internal static class BattleControllerPatches
                                     var rb = b.GetComponent<UnityEngine.Rigidbody2D>();
                                     var vel = rb != null ? rb.velocity : UnityEngine.Vector2.zero;
                                     var pos = b.transform.position;
+                                    var sceneName = b.gameObject.scene.IsValid() ? b.gameObject.scene.name : "<no-scene>";
+                                    var parentName = b.transform.parent != null ? b.transform.parent.name : "<root>";
                                     MultiplayerPlugin.Logger?.LogWarning(
-                                        $"[ShotWatchdog] Diag ball#{i} name='{b.gameObject.name}' state={b.CurrentState} dummy={b.IsDummy} firing={b.IsFiring()} pos=({pos.x:F2},{pos.y:F2}) vel=({vel.x:F2},{vel.y:F2}) |v|={vel.magnitude:F2} active={b.gameObject.activeInHierarchy}");
+                                        $"[ShotWatchdog] Diag ball#{i} name='{b.gameObject.name}' state={b.CurrentState} dummy={b.IsDummy} firing={b.IsFiring()} pos=({pos.x:F2},{pos.y:F2}) vel=({vel.x:F2},{vel.y:F2}) |v|={vel.magnitude:F2} active={b.gameObject.activeInHierarchy} selfActive={b.gameObject.activeSelf} scene='{sceneName}' parent='{parentName}'");
                                 }
 
                                 foreach (var kv in stateBuckets)
