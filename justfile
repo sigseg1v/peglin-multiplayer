@@ -7,7 +7,7 @@ root := justfile_directory()
 src := root / "src"
 game := root / "release"
 plugins := game / "BepInEx" / "plugins" / "Multipeglin"
-logfile := game / "BepInEx" / "logs" / "multipeglin_shared.log"
+logfile := game / "BepInEx" / "logs" / "multipeglin_log.log"
 
 bepinex_version := "5.4.23.2"
 bepinex_zip := "BepInEx_win_x64_" + bepinex_version + ".zip"
@@ -84,7 +84,7 @@ dev: setup _restore-appid
     Get-Content '{{logfile}}' -Wait
 
 # Build, deploy, launch N windowed instances for multiplayer testing.
-# All instances write to multipeglin_shared.log with [HOST]/[CLIENT] tags.
+# Each instance writes to its own multipeglin_PEGLIN<N>.log with [HOST]/[CLIENT] tags.
 # Optional: pass level to force a starting act, e.g. just dev-multi 3 (Mines)
 #   Acts: 1=Forest, 2=Castle, 3=Mines, 4=Core
 #   With floor: just dev-multi 3-2
@@ -96,8 +96,8 @@ dev-multi level="" players="2": setup _restore-appid
     just copy-plugins Debug; \
     $logsDir = Split-Path '{{logfile}}'; \
     New-Item -ItemType Directory -Path $logsDir -Force | Out-Null; \
-    $sharedLog = Join-Path $logsDir 'multipeglin_shared.log'; \
-    [IO.File]::Create($sharedLog).Close(); \
+    $hostLog = Join-Path $logsDir 'multipeglin_PEGLIN1.log'; \
+    [IO.File]::Create($hostLog).Close(); \
     $windowArgs = @('-screen-fullscreen','0','-screen-width','1280','-screen-height','720'); \
     $compatBase = "$HOME/.steam/steam/steamapps/compatdata"; \
     $playerCount = [int]'{{players}}'; \
@@ -117,16 +117,18 @@ dev-multi level="" players="2": setup _restore-appid
         Write-Host "==> Launching $name (windowed, compatdata=$compatId)..."; \
         $env:MULTIPEGLIN_INSTANCE = $name; \
         $env:MULTIPEGLIN_PLAYER_NAME = $name; \
+        $env:MULTIPEGLIN_LOGNAME = "multipeglin_$name.log"; \
         $env:STEAM_COMPAT_DATA_PATH = "$compatBase/$compatId"; \
         Start-Process pwsh -ArgumentList (@('-NoProfile','-File','{{root}}/launch.ps1') + $windowArgs); \
         if ($i -lt $playerCount) { Start-Sleep 5 } \
     } \
     if (Test-Path $steamAppIdBak) { Move-Item $steamAppIdBak $steamAppId -Force } \
-    Remove-Item Env:\MULTIPEGLIN_INSTANCE,Env:\MULTIPEGLIN_PLAYER_NAME,Env:\STEAM_COMPAT_DATA_PATH,Env:\PEGLIN_MULTI_DEBUG_FORCE_LEVEL,Env:\SKIP_STEAM_INIT -ErrorAction SilentlyContinue; \
-    Write-Host "==> Tailing shared log (Ctrl+C to stop)"; \
-    Write-Host "    Log: $sharedLog`n"; \
+    Remove-Item Env:\MULTIPEGLIN_INSTANCE,Env:\MULTIPEGLIN_PLAYER_NAME,Env:\MULTIPEGLIN_LOGNAME,Env:\STEAM_COMPAT_DATA_PATH,Env:\PEGLIN_MULTI_DEBUG_FORCE_LEVEL,Env:\SKIP_STEAM_INIT -ErrorAction SilentlyContinue; \
+    Write-Host "==> Tailing host log (Ctrl+C to stop)"; \
+    Write-Host "    Host: $hostLog"; \
+    Write-Host "    Clients: $logsDir/multipeglin_PEGLIN<N>.log`n"; \
     Start-Sleep 1; \
-    Get-Content $sharedLog -Wait
+    Get-Content $hostLog -Wait
 
 # Launch one game instance with Steam enabled against Spacewar AppID (480).
 # Run this on TWO machines (e.g. main PC + laptop/VM with a free Steam account) to

@@ -4,6 +4,7 @@ using BepInEx.Logging;
 using NLog;
 using NLog.Config;
 using NLog.Targets;
+using NLog.Targets.Wrappers;
 using LogLevel = BepInEx.Logging.LogLevel;
 
 namespace Multipeglin.Utility;
@@ -16,25 +17,51 @@ public sealed class FileLogger : IDisposable
     public FileLogger(string logsDirectory)
     {
         Directory.CreateDirectory(logsDirectory);
-        _filePath = Path.Combine(logsDirectory, "multipeglin_shared.log");
 
-        // Set initial instance tag from env var (e.g. PEGLIN1, PEGLIN2)
+        // Filename comes from MULTIPEGLIN_LOGNAME (set per-instance by `just
+        // dev-multi`). Default is shared between solo runs / Thunderstore
+        // installs that don't set the env var. Each process owns its own file
+        // so we can use exclusive, buffered, file-kept-open writes — no need
+        // to coordinate with other processes via Mutex/lockfile.
+        var fileName = Environment.GetEnvironmentVariable("MULTIPEGLIN_LOGNAME");
+        if (string.IsNullOrEmpty(fileName))
+        {
+            fileName = "multipeglin_log.log";
+        }
+
+        _filePath = Path.Combine(logsDirectory, fileName);
+
         var instance = Environment.GetEnvironmentVariable("MULTIPEGLIN_INSTANCE");
         if (!string.IsNullOrEmpty(instance))
         {
             RoleTag = instance;
         }
 
-        // Configure NLog with concurrent file writes
+        // High-perf single-process file target. NLog 6.x already chooses an
+        // exclusive-lock appender by default (no ConcurrentWrites toggle), so
+        // we just disable per-write flushing and let OpenFileFlushTimeout cap
+        // crash-loss to ~2s. AsyncTargetWrapper hands events to a background
+        // writer so the game thread never blocks on disk I/O.
         var config = new LoggingConfiguration();
-        var fileTarget = new FileTarget("sharedLog")
+        var fileTarget = new FileTarget("multipeglinFile")
         {
             FileName = _filePath,
-            Layout = "${message}",        // We format lines ourselves
-            KeepFileOpen = false,         // Close after each write for multi-process safety
-            AutoFlush = true,
+            Layout = "${message}",
+            KeepFileOpen = true,
+            AutoFlush = false,
+            OpenFileFlushTimeout = 2,
+            BufferSize = 32768,
         };
-        config.AddRule(NLog.LogLevel.Trace, NLog.LogLevel.Fatal, fileTarget);
+
+        var asyncTarget = new AsyncTargetWrapper("multipeglinFileAsync", fileTarget)
+        {
+            QueueLimit = 10000,
+            BatchSize = 200,
+            TimeToSleepBetweenBatches = 0,
+            OverflowAction = AsyncTargetWrapperOverflowAction.Discard,
+        };
+
+        config.AddRule(NLog.LogLevel.Trace, NLog.LogLevel.Fatal, asyncTarget);
         LogManager.Configuration = config;
 
         _nlog = LogManager.GetLogger("Multipeglin");
@@ -71,6 +98,7 @@ public sealed class FileLogger : IDisposable
             {
                 return baseTag;
             }
+
             // Extract a trailing numeric suffix (e.g. PEGLIN3 -> "3").
             var i = instance.Length;
             while (i > 0 && char.IsDigit(instance[i - 1]))
