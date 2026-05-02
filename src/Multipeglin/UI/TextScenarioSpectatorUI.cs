@@ -181,8 +181,6 @@ public class TextScenarioSpectatorUI : MonoBehaviour
             var arrowText = item.transform.Find("Arrow")?.GetComponent<TextMeshProUGUI>();
             var responseText = item.transform.Find("Text")?.GetComponent<TextMeshProUGUI>();
 
-            responseText?.text = responses[i];
-
             var isHighlighted = i == highlightedIndex;
             if (arrowText != null)
             {
@@ -190,7 +188,11 @@ public class TextScenarioSpectatorUI : MonoBehaviour
                 arrowText.color = ArrowColor;
             }
 
-            responseText?.color = isHighlighted ? HighlightColor : NormalColor;
+            if (responseText != null)
+            {
+                responseText.text = responses[i];
+                responseText.color = isHighlighted ? HighlightColor : NormalColor;
+            }
         }
 
         _lastHighlightIndex = highlightedIndex;
