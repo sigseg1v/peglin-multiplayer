@@ -583,7 +583,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
     private static System.Reflection.FieldInfo _obscurerGridField;
     private static System.Reflection.FieldInfo _obscurerWidthField;
     private static System.Reflection.FieldInfo _obscurerHeightField;
-    private bool _loggedObscurerOnce;
+    private (int w, int h, int revealedCount) _lastObscurerCaptureSig = (-1, -1, -1);
 
     /// <summary>
     /// SuperSapper boss only: capture the minesweeper obscurer grid's revealed
@@ -591,12 +591,17 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
     /// from <c>_bossMechanicsRandomStatesPerAct[2]</c> on both host and client,
     /// so cell coordinates align across machines — we only need to ship the
     /// revealed/colour state. Sparse: list only revealed cells.
+    ///
+    /// PredictionManager clones the live grid into a simulation tree with
+    /// <c>isDummy=true</c>; that clone never runs CreatePegs so its
+    /// <c>_pegGrid</c> is null. Filter it out — <c>FindObjectOfType</c> can
+    /// return either copy depending on hierarchy iteration order.
     /// </summary>
     private void CaptureObscurerGrid(PegboardStateSnapshot snapshot)
     {
         try
         {
-            var grid = UnityEngine.Object.FindObjectOfType<RandomObscuredPegGrid>();
+            var grid = FindLiveObscurerGrid();
             if (grid == null)
             {
                 return;
@@ -645,9 +650,10 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
 
             snapshot.ObscurerGrid = entry;
 
-            if (!_loggedObscurerOnce)
+            var sig = (w, h, entry.RevealedCells.Count);
+            if (!sig.Equals(_lastObscurerCaptureSig))
             {
-                _loggedObscurerOnce = true;
+                _lastObscurerCaptureSig = sig;
                 _log.LogInfo($"[PegProvider] Captured obscurer grid {w}x{h} ({entry.RevealedCells.Count} revealed)");
             }
         }
@@ -655,6 +661,27 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
         {
             _log.LogWarning($"[PegProvider] Failed to capture obscurer grid: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Returns the live (non-dummy) <see cref="RandomObscuredPegGrid"/> in the
+    /// scene, or null. Excludes PredictionManager's dummy clone (whose
+    /// <c>_pegGrid</c> is null because <c>CreatePegs</c> is gated on
+    /// <c>!isDummy</c>).
+    /// </summary>
+    private static RandomObscuredPegGrid FindLiveObscurerGrid()
+    {
+        var all = UnityEngine.Object.FindObjectsOfType<RandomObscuredPegGrid>(includeInactive: true);
+        for (var i = 0; i < all.Length; i++)
+        {
+            var g = all[i];
+            if (g != null && !g.isDummy)
+            {
+                return g;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

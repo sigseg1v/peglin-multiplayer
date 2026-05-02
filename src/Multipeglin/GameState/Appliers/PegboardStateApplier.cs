@@ -2617,7 +2617,11 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 return;
             }
 
-            var localGrid = UnityEngine.Object.FindObjectOfType<Battle.PegBehaviour.RandomObscuredPegGrid>();
+            // PredictionManager spawns a dummy clone of the grid (isDummy=true)
+            // whose CreatePegs never runs — _pegGrid stays null. FindObjectOfType
+            // can return either copy depending on hierarchy iteration order, so
+            // explicitly pick the live one.
+            var localGrid = FindLiveObscurerGrid();
             if (localGrid == null)
             {
                 return;
@@ -2736,6 +2740,21 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         {
             _log.LogWarning($"[PegboardApplier] SyncObscurerGrid failed: {ex.Message}");
         }
+    }
+
+    private static Battle.PegBehaviour.RandomObscuredPegGrid FindLiveObscurerGrid()
+    {
+        var all = UnityEngine.Object.FindObjectsOfType<Battle.PegBehaviour.RandomObscuredPegGrid>(includeInactive: true);
+        for (var i = 0; i < all.Length; i++)
+        {
+            var g = all[i];
+            if (g != null && !g.isDummy)
+            {
+                return g;
+            }
+        }
+
+        return null;
     }
 
     private static void ApplyObscurerColor(
