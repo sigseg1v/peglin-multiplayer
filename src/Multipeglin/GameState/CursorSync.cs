@@ -59,13 +59,13 @@ public class CursorSync : MonoBehaviour
             return;
         }
 
-        var cam = Camera.main;
-        if (cam == null)
+        if (Time.unscaledTime - _lastSendTime < SendInterval)
         {
             return;
         }
 
-        if (Time.unscaledTime - _lastSendTime < SendInterval)
+        var cam = Camera.main;
+        if (cam == null)
         {
             return;
         }
