@@ -1,7 +1,7 @@
 {
     "name": "Multipeglin",
     "version_number": "0.1.8",
-    "website_url": "",
+    "website_url": "https://github.com/sigseg1v/peglin-multiplayer",
     "description": "Cooperative multiplayer for Peglin. Play through runs together with friends!",
     "dependencies": [
         "BepInEx-BepInExPack_Peglin-5.4.2100"
