@@ -343,6 +343,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
 
             CaptureBlackHoles(snapshot);
             CaptureSplineGenerators(snapshot);
+            CaptureObscurerGrid(snapshot);
 
             var bombsListCount = bombs?.Count ?? -1;
             // Composition signature — log only when any count changes vs the
@@ -576,6 +577,83 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
         catch (Exception ex)
         {
             _log.LogWarning($"[PegProvider] Failed to capture spline generators: {ex.Message}");
+        }
+    }
+
+    private static System.Reflection.FieldInfo _obscurerGridField;
+    private static System.Reflection.FieldInfo _obscurerWidthField;
+    private static System.Reflection.FieldInfo _obscurerHeightField;
+    private bool _loggedObscurerOnce;
+
+    /// <summary>
+    /// SuperSapper boss only: capture the minesweeper obscurer grid's revealed
+    /// cells. <see cref="RandomObscuredPegGrid"/> places pegs deterministically
+    /// from <c>_bossMechanicsRandomStatesPerAct[2]</c> on both host and client,
+    /// so cell coordinates align across machines — we only need to ship the
+    /// revealed/colour state. Sparse: list only revealed cells.
+    /// </summary>
+    private void CaptureObscurerGrid(PegboardStateSnapshot snapshot)
+    {
+        try
+        {
+            var grid = UnityEngine.Object.FindObjectOfType<RandomObscuredPegGrid>();
+            if (grid == null)
+            {
+                return;
+            }
+
+            _obscurerGridField ??= HarmonyLib.AccessTools.Field(typeof(RandomObscuredPegGrid), "_pegGrid");
+            _obscurerWidthField ??= HarmonyLib.AccessTools.Field(typeof(RandomObscuredPegGrid), "_gridWidth");
+            _obscurerHeightField ??= HarmonyLib.AccessTools.Field(typeof(RandomObscuredPegGrid), "_gridHeight");
+            if (_obscurerGridField == null || _obscurerWidthField == null || _obscurerHeightField == null)
+            {
+                return;
+            }
+
+            var pegGrid = _obscurerGridField.GetValue(grid) as PegGridObscurer[,];
+            if (pegGrid == null)
+            {
+                return;
+            }
+
+            var w = (int)(_obscurerWidthField.GetValue(grid) ?? 0);
+            var h = (int)(_obscurerHeightField.GetValue(grid) ?? 0);
+            if (w <= 0 || h <= 0)
+            {
+                return;
+            }
+
+            var entry = new Snapshots.ObscurerGridSnapshot { Width = w, Height = h };
+            for (var x = 0; x < w; x++)
+            {
+                for (var y = 0; y < h; y++)
+                {
+                    var cell = pegGrid[x, y];
+                    if (cell == null || !cell.isRevealed)
+                    {
+                        continue;
+                    }
+
+                    entry.RevealedCells.Add(new Snapshots.ObscurerCellEntry
+                    {
+                        X = x,
+                        Y = y,
+                        RevealedPegType = (int)cell.revealedPegType,
+                    });
+                }
+            }
+
+            snapshot.ObscurerGrid = entry;
+
+            if (!_loggedObscurerOnce)
+            {
+                _loggedObscurerOnce = true;
+                _log.LogInfo($"[PegProvider] Captured obscurer grid {w}x{h} ({entry.RevealedCells.Count} revealed)");
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[PegProvider] Failed to capture obscurer grid: {ex.Message}");
         }
     }
 

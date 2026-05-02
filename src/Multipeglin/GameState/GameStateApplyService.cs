@@ -116,7 +116,7 @@ public class GameStateApplyService
         _wasNavigating = false;
         _lastAppliedHighlightIndex = -1;
         _lastAppliedSubtitle = null;
-        _lastAppliedResponseCount = -1;
+        _lastAppliedResponses = null;
         if (UI.MirrorEventUI.IsActive)
         {
             UI.MirrorEventUI.Hide();
@@ -790,7 +790,7 @@ public class GameStateApplyService
 
     private bool _wasNavigating;
     private string _lastAppliedSubtitle;
-    private int _lastAppliedResponseCount = -1;
+    private List<string> _lastAppliedResponses;
 
     private void ApplyTextScenarioState(FullGameStateSnapshot snapshot)
     {
@@ -801,7 +801,7 @@ public class GameStateApplyService
         {
             _wasNavigating = false;
             _lastAppliedSubtitle = null;
-            _lastAppliedResponseCount = -1;
+            _lastAppliedResponses = null;
             return;
         }
 
@@ -833,9 +833,18 @@ public class GameStateApplyService
         try
         {
             var subtitleChanged = subtitleText != _lastAppliedSubtitle;
-            var responsesChanged = (responses?.Count ?? 0) != _lastAppliedResponseCount;
+            var snapshotResponsesChanged = !ResponsesEqual(responses, _lastAppliedResponses);
 
-            if (!subtitleChanged && !responsesChanged)
+            // Even if the snapshot hasn't changed, the client's local Lua may have
+            // rendered buttons later than our last apply (e.g., HelpfulSpirits sets
+            // [var(orb1Name)] to nil when the local deck lacks a Lvl2 orb). Detect
+            // a live mismatch between the rendered buttons and the host-authoritative
+            // text so we re-apply and overwrite the stale "nil" labels.
+            var liveButtonsMismatch = !subtitleChanged && !snapshotResponsesChanged
+                && responses != null && responses.Count > 0
+                && LiveButtonsDifferFrom(responses);
+
+            if (!subtitleChanged && !snapshotResponsesChanged && !liveButtonsMismatch)
             {
                 return;
             }
@@ -858,7 +867,7 @@ public class GameStateApplyService
             }
 
             // Update response buttons
-            if (responsesChanged && responses != null)
+            if ((snapshotResponsesChanged || liveButtonsMismatch) && responses != null)
             {
                 var menuPanel = dialogueUI.conversationUIElements?.defaultMenuPanel;
                 if (menuPanel?.buttons != null)
@@ -883,7 +892,7 @@ public class GameStateApplyService
                         }
                     }
 
-                    _lastAppliedResponseCount = responses.Count;
+                    _lastAppliedResponses = new List<string>(responses);
                 }
             }
         }
@@ -891,6 +900,58 @@ public class GameStateApplyService
         {
             _log.LogWarning($"[ApplyService] ApplyDialogueText failed: {ex.Message}");
         }
+    }
+
+    private static bool ResponsesEqual(List<string> a, List<string> b)
+    {
+        if (ReferenceEquals(a, b))
+        {
+            return true;
+        }
+
+        if (a == null || b == null || a.Count != b.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < a.Count; i++)
+        {
+            if (!string.Equals(a[i], b[i], StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool LiveButtonsDifferFrom(List<string> responses)
+    {
+        var dialogueUI = UnityEngine.Object.FindObjectOfType<PixelCrushers.DialogueSystem.StandardDialogueUI>();
+        var menuPanel = dialogueUI?.conversationUIElements?.defaultMenuPanel;
+        if (menuPanel?.buttons == null)
+        {
+            return false;
+        }
+
+        var idx = 0;
+        for (var i = 0; i < menuPanel.buttons.Length && idx < responses.Count; i++)
+        {
+            var btn = menuPanel.buttons[i];
+            if (btn == null || !btn.gameObject.activeInHierarchy || !btn.isVisible)
+            {
+                continue;
+            }
+
+            if (!string.Equals(btn.text ?? string.Empty, responses[idx] ?? string.Empty, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            idx++;
+        }
+
+        return false;
     }
 
     /// <summary>

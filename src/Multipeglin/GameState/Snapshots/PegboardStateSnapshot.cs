@@ -12,6 +12,13 @@ public class PegboardStateSnapshot
 
     public List<SplineGeneratorEntry> SplineGenerators { get; set; } = new List<SplineGeneratorEntry>();
 
+    /// <summary>
+    /// SuperSapper boss minesweeper-style obscurer grid (RandomObscuredPegGrid).
+    /// Null when no such grid exists in the current battle. Sparse — only
+    /// revealed cells are listed; all other cells are assumed unrevealed.
+    /// </summary>
+    public ObscurerGridSnapshot ObscurerGrid { get; set; }
+
     public int TotalPegCount { get; set; }
 
     public int CritPegCount { get; set; }
@@ -180,6 +187,35 @@ public class SplineGeneratorEntry
     /// <summary>True if the generator actually has a parent. When false, the parent-pos fields
     /// are not meaningful and the applier should skip the parent-pos correction.</summary>
     public bool HasParent { get; set; }
+}
+
+/// <summary>
+/// SuperSapper-only minesweeper grid state. Each cell is either unrevealed
+/// (the default — the "full block") or revealed with a specific neighbour-peg
+/// colour code. Both host and client run RandomObscuredPegGrid.CreatePegs
+/// deterministically (boss-RNG-seeded), so cell coordinates and assignedPeg
+/// references match across machines — only the revealed/colour state needs
+/// syncing.
+/// </summary>
+public class ObscurerGridSnapshot
+{
+    /// <summary>Total grid dimensions (sanity-check the local grid before applying).</summary>
+    public int Width { get; set; }
+
+    public int Height { get; set; }
+
+    /// <summary>Sparse list of revealed cells. Cells not in this list are unrevealed.</summary>
+    public List<ObscurerCellEntry> RevealedCells { get; set; } = new List<ObscurerCellEntry>();
+}
+
+public class ObscurerCellEntry
+{
+    public int X { get; set; }
+
+    public int Y { get; set; }
+
+    /// <summary>Cast of <see cref="Battle.PegBehaviour.RandomObscuredPegGrid.CellPegType"/>.</summary>
+    public int RevealedPegType { get; set; }
 }
 
 /// <summary>

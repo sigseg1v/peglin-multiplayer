@@ -404,6 +404,21 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     matchedPegs.Add(peg);
                     ApplyPegState(peg, entry, clientBombs, ref typeChanged, ref destroyed, ref reactivated, ref cleared);
                     SyncPegPosition(peg, entry);
+
+                    // BOMB FROM REGULAR: ApplyPegState's ConvertPegToType(BOMB) instantiated a
+                    // child Bomb GameObject and registered it under entry.Guid. The original
+                    // regular peg above is in matchedPegs, but the new child bomb is not — and
+                    // the stale-bombs cleanup below will purge any clientBombs entry that's
+                    // neither in matchedPegs nor parented under a matched peg. Add the new bomb
+                    // explicitly so it survives.
+                    if (entry.IsBomb && !string.IsNullOrEmpty(entry.Guid))
+                    {
+                        var registeredBomb = _pegId.Find(entry.Guid);
+                        if (registeredBomb != null && registeredBomb != peg)
+                        {
+                            matchedPegs.Add(registeredBomb);
+                        }
+                    }
                 }
             }
 
@@ -532,6 +547,11 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             // Sync PegSplineFollow phases so the client's spline-driven pegs
             // don't drift around the loop relative to the host's.
             SyncSplineGenerators(snapshot);
+
+            // Sync SuperSapper boss minesweeper obscurer grid (revealed cells +
+            // colours). Independent of normal peg sync — these obscurer cells
+            // sit on top of the pegboard and never appear in pm.allPegs.
+            SyncObscurerGrid(snapshot);
 
             // Per-bomb dump previously logged 6 lines per heartbeat. Gate on
             // the count of *active* client bombs vs host's reported count —
@@ -2566,5 +2586,174 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         }
 
         return null;
+    }
+
+    private static System.Reflection.FieldInfo _obscurerGridField;
+    private static System.Reflection.FieldInfo _obscurerWidthField;
+    private static System.Reflection.FieldInfo _obscurerHeightField;
+    private (int w, int h, int revealedCount) _lastObscurerSig = (-1, -1, -1);
+
+    /// <summary>
+    /// SuperSapper boss only. Walk the local <see cref="Battle.PegBehaviour.RandomObscuredPegGrid"/>
+    /// and reconcile each cell against the host snapshot:
+    ///   * Snapshot revealed but local not  → call public RevealCell() (which
+    ///     swaps sprite, disables the collider, sets sortingLayer, and runs
+    ///     the neighbour-colour cascade). Both sides have the same deterministic
+    ///     <c>_pegGrid</c> layout so the cascade produces matching colours.
+    ///   * Local revealed but snapshot not  → call public ResetCell() to revert.
+    ///   * Both revealed but type differs   → re-apply the host's pegType colour
+    ///     via SetRevealedCellColour.
+    /// Defensive: any exception is swallowed and the rest of the apply path
+    /// continues. Sparse snapshots: cells absent from RevealedCells are treated
+    /// as unrevealed.
+    /// </summary>
+    private void SyncObscurerGrid(PegboardStateSnapshot snapshot)
+    {
+        try
+        {
+            var hostGrid = snapshot.ObscurerGrid;
+            if (hostGrid == null)
+            {
+                return;
+            }
+
+            var localGrid = UnityEngine.Object.FindObjectOfType<Battle.PegBehaviour.RandomObscuredPegGrid>();
+            if (localGrid == null)
+            {
+                return;
+            }
+
+            _obscurerGridField ??= HarmonyLib.AccessTools.Field(
+                typeof(Battle.PegBehaviour.RandomObscuredPegGrid), "_pegGrid");
+            _obscurerWidthField ??= HarmonyLib.AccessTools.Field(
+                typeof(Battle.PegBehaviour.RandomObscuredPegGrid), "_gridWidth");
+            _obscurerHeightField ??= HarmonyLib.AccessTools.Field(
+                typeof(Battle.PegBehaviour.RandomObscuredPegGrid), "_gridHeight");
+            if (_obscurerGridField == null || _obscurerWidthField == null || _obscurerHeightField == null)
+            {
+                return;
+            }
+
+            var pegGrid = _obscurerGridField.GetValue(localGrid) as Battle.PegBehaviour.PegGridObscurer[,];
+            if (pegGrid == null)
+            {
+                return;
+            }
+
+            var w = (int)(_obscurerWidthField.GetValue(localGrid) ?? 0);
+            var h = (int)(_obscurerHeightField.GetValue(localGrid) ?? 0);
+            if (w <= 0 || h <= 0 || w != hostGrid.Width || h != hostGrid.Height)
+            {
+                // Mismatched dimensions — bail rather than risk OOB; the next
+                // heartbeat will retry once the local grid finishes initialising.
+                return;
+            }
+
+            // Build a sparse lookup of host-revealed cells.
+            var hostMap = new Dictionary<int, int>(hostGrid.RevealedCells.Count);
+            for (var i = 0; i < hostGrid.RevealedCells.Count; i++)
+            {
+                var c = hostGrid.RevealedCells[i];
+                if (c == null)
+                {
+                    continue;
+                }
+
+                if (c.X < 0 || c.X >= w || c.Y < 0 || c.Y >= h)
+                {
+                    continue;
+                }
+
+                hostMap[c.X * 1000 + c.Y] = c.RevealedPegType;
+            }
+
+            int revealed = 0, hidden = 0, recolored = 0;
+            for (var x = 0; x < w; x++)
+            {
+                for (var y = 0; y < h; y++)
+                {
+                    var cell = pegGrid[x, y];
+                    if (cell == null)
+                    {
+                        continue;
+                    }
+
+                    var hostHasCell = hostMap.TryGetValue(x * 1000 + y, out var hostType);
+                    var localRevealed = cell.isRevealed;
+
+                    if (hostHasCell && !localRevealed)
+                    {
+                        try
+                        {
+                            cell.RevealCell();
+                            revealed++;
+                            // Defensive: cascade computes colour from neighbour
+                            // pegs; on the off chance neighbour state diverges,
+                            // overwrite with the host's reported colour.
+                            ApplyObscurerColor(localGrid, cell, hostType);
+                        }
+                        catch (Exception ex)
+                        {
+                            _log.LogWarning($"[PegboardApplier] obscurer reveal ({x},{y}) failed: {ex.Message}");
+                        }
+                    }
+                    else if (!hostHasCell && localRevealed)
+                    {
+                        try
+                        {
+                            cell.ResetCell();
+                            hidden++;
+                        }
+                        catch (Exception ex)
+                        {
+                            _log.LogWarning($"[PegboardApplier] obscurer reset ({x},{y}) failed: {ex.Message}");
+                        }
+                    }
+                    else if (hostHasCell && localRevealed && (int)cell.revealedPegType != hostType)
+                    {
+                        try
+                        {
+                            ApplyObscurerColor(localGrid, cell, hostType);
+                            recolored++;
+                        }
+                        catch (Exception ex)
+                        {
+                            _log.LogWarning($"[PegboardApplier] obscurer recolor ({x},{y}) failed: {ex.Message}");
+                        }
+                    }
+                }
+            }
+
+            var sig = (w, h, hostGrid.RevealedCells.Count);
+            if (!sig.Equals(_lastObscurerSig) || revealed > 0 || hidden > 0 || recolored > 0)
+            {
+                _lastObscurerSig = sig;
+                _log.LogInfo($"[PegboardApplier] Obscurer grid {w}x{h} hostRevealed={hostGrid.RevealedCells.Count} " +
+                    $"applied: revealed+={revealed} hidden+={hidden} recolored+={recolored}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[PegboardApplier] SyncObscurerGrid failed: {ex.Message}");
+        }
+    }
+
+    private static void ApplyObscurerColor(
+        Battle.PegBehaviour.RandomObscuredPegGrid grid,
+        Battle.PegBehaviour.PegGridObscurer cell,
+        int rawPegType)
+    {
+        var pegType = (Battle.PegBehaviour.RandomObscuredPegGrid.CellPegType)rawPegType;
+        var color = pegType switch
+        {
+            Battle.PegBehaviour.RandomObscuredPegGrid.CellPegType.Refresh => grid.adjacentRefreshColor,
+            Battle.PegBehaviour.RandomObscuredPegGrid.CellPegType.Rigged => grid.adjacentRiggedColor,
+            Battle.PegBehaviour.RandomObscuredPegGrid.CellPegType.Crit => grid.adjacentCritColor,
+            Battle.PegBehaviour.RandomObscuredPegGrid.CellPegType.Bomb => grid.adjacentBombColor,
+            Battle.PegBehaviour.RandomObscuredPegGrid.CellPegType.Peg => grid.adjacentPegColor,
+            Battle.PegBehaviour.RandomObscuredPegGrid.CellPegType.None => grid.nothingAdjacentColor,
+            _ => UnityEngine.Color.white,
+        };
+        cell.SetRevealedCellColour(pegType, color);
     }
 }
