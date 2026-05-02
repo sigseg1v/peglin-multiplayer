@@ -66,7 +66,10 @@ public static class MenuButtonInjector
 
             // Change the text
             var tmp = _multiplayerButton.GetComponentInChildren<TextMeshProUGUI>(true);
-            tmp?.text = "Multiplayer";
+            if (tmp != null)
+            {
+                tmp.text = "Multiplayer";
+            }
 
             // Remove localization so it doesn't overwrite our text
             foreach (var comp in _multiplayerButton.GetComponentsInChildren<Component>(true))

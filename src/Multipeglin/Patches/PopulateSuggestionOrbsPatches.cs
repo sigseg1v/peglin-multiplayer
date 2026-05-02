@@ -132,7 +132,10 @@ internal static class PopulateSuggestionOrbsPatches
                 {
                     var hookup = (res as UnityEngine.MonoBehaviour)
                         ?.GetComponent<PeglinUI.ControllerSupport.ControllerMenuHookup>();
-                    hookup?.LastSelected = addOrbButtons[0].gameObject;
+                    if (hookup != null)
+                    {
+                        hookup.LastSelected = addOrbButtons[0].gameObject;
+                    }
                 }
             }
             catch

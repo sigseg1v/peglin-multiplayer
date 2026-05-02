@@ -582,7 +582,10 @@ public static class RunStatisticsDetailsInitializePatch
         foreach (Transform child in parent)
         {
             var img = child.GetComponentInChildren<UnityEngine.UI.Image>();
-            img?.enabled = i != 0;
+            if (img != null)
+            {
+                img.enabled = i != 0;
+            }
 
             i = 1 - i;
         }

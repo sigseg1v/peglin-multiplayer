@@ -87,7 +87,10 @@ public class TurnManager
         foreach (var slot in TurnOrder)
         {
             var state = _coopState.GetPlayerState(slot);
-            state?.HasShotThisRound = false;
+            if (state != null)
+            {
+                state.HasShotThisRound = false;
+            }
         }
 
         // Skip dead players at the start of the round
@@ -134,7 +137,10 @@ public class TurnManager
         }
 
         var state = _coopState.GetPlayerState(slot);
-        state?.HasShotThisRound = true;
+        if (state != null)
+        {
+            state.HasShotThisRound = true;
+        }
 
         Phase = TurnPhase.SHOT_IN_FLIGHT;
         UpdateSnapshot();

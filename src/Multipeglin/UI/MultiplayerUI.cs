@@ -513,7 +513,10 @@ public class MultiplayerUI : MonoBehaviour
         if (_advancedToggleButton != null)
         {
             var label = _advancedToggleButton.GetComponentInChildren<TextMeshProUGUI>();
-            label?.text = "Advanced: Direct IP";
+            if (label != null)
+            {
+                label.text = "Advanced: Direct IP";
+            }
         }
     }
 

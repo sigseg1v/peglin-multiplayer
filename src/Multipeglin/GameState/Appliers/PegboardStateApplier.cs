@@ -1817,7 +1817,10 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         anim?.SetInteger(UnityEngine.Animator.StringToHash("HitCount"), entry.ShieldHitCount);
                         // Hide if broken
                         var rend = overlay.GetComponent<UnityEngine.SpriteRenderer>();
-                        rend?.enabled = entry.ShieldHitCount < entry.ShieldHitLimit;
+                        if (rend != null)
+                        {
+                            rend.enabled = entry.ShieldHitCount < entry.ShieldHitLimit;
+                        }
                     }
                     catch
                     {
@@ -1963,7 +1966,10 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
                 var colliderField = HarmonyLib.AccessTools.Field(typeof(RegularPeg), "_specialPegCollider");
                 var coll = colliderField?.GetValue(peg) as Collider2D;
-                coll?.enabled = true;
+                if (coll != null)
+                {
+                    coll.enabled = true;
+                }
             }
             else if (peg is LongPeg)
             {

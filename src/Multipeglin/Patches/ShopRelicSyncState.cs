@@ -116,7 +116,10 @@ public static class ShopRelicSyncState
                 if (rewired != null)
                 {
                     var arrow = item.GetComponentInChildren<ArrowSelection>();
-                    arrow?.rewiredEventSystem = rewired;
+                    if (arrow != null)
+                    {
+                        arrow.rewiredEventSystem = rewired;
+                    }
                 }
 
                 if (purchasable != null && slot < purchasable.Length)

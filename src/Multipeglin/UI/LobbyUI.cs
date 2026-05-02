@@ -687,7 +687,10 @@ public static class LobbyUI
             if (services.TryResolve<PlayerRegistry>(out var registry))
             {
                 var hostSlot = registry.GetHostSlot();
-                hostSlot?.ChosenClass = _localChosenClass;
+                if (hostSlot != null)
+                {
+                    hostSlot.ChosenClass = _localChosenClass;
+                }
             }
 
             if (services.TryResolve<PlayerRegistry>(out var reg2) && services.TryResolve<IGameEventRegistry>(out var er))

@@ -50,7 +50,10 @@ public class EnemyStateApplier : IGameStateApplier<EnemyStateSnapshot>
             if (snapshot.BallSpawnX != 0f || snapshot.BallSpawnY != 0f)
             {
                 var spawnBc = UnityEngine.Object.FindObjectOfType<Battle.BattleController>();
-                spawnBc?.pachinkoBallSpawnLocation = new UnityEngine.Vector2(snapshot.BallSpawnX, snapshot.BallSpawnY);
+                if (spawnBc != null)
+                {
+                    spawnBc.pachinkoBallSpawnLocation = new UnityEngine.Vector2(snapshot.BallSpawnX, snapshot.BallSpawnY);
+                }
             }
 
             if (snapshot.Enemies == null || snapshot.Enemies.Count == 0)

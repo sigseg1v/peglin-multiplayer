@@ -1083,9 +1083,15 @@ public class CoopPlayerVisuals : MonoBehaviour
         }
 
         // Update texts
-        visual.HpText?.text = $"{summary.CurrentHealth:F0}/{summary.MaxHealth:F0}";
+        if (visual.HpText != null)
+        {
+            visual.HpText.text = $"{summary.CurrentHealth:F0}/{summary.MaxHealth:F0}";
+        }
 
-        visual.NameText?.text = FormatName(summary.PlayerName, summary.SlotIndex);
+        if (visual.NameText != null)
+        {
+            visual.NameText.text = FormatName(summary.PlayerName, summary.SlotIndex);
+        }
 
         // Position name above character, HP below, arrow to the right-middle
         PositionPanelAtWorld(visual.NamePanel, charPos + new Vector3(0, 2.0f, 0), cam);
@@ -1119,7 +1125,10 @@ public class CoopPlayerVisuals : MonoBehaviour
                 var scale = Mathf.Lerp(0.85f, 1.15f, pulse);
                 visual.ArrowPanel.transform.localScale = new Vector3(scale, scale, 1f);
 
-                visual.ArrowText?.color = Color.Lerp(_arrowColorDim, _arrowColorBright, pulse);
+                if (visual.ArrowText != null)
+                {
+                    visual.ArrowText.color = Color.Lerp(_arrowColorDim, _arrowColorBright, pulse);
+                }
             }
         }
 
@@ -1197,9 +1206,12 @@ public class CoopPlayerVisuals : MonoBehaviour
             if (visual.StatusIcons.TryGetValue(e.EffectType, out var existing))
             {
                 // Update intensity text
-                existing.IntensityText?.text = e.Intensity > 999
-                        ? (e.Intensity / 1000) + "K"
-                        : e.Intensity.ToString();
+                if (existing.IntensityText != null)
+                {
+                    existing.IntensityText.text = e.Intensity > 999
+                            ? (e.Intensity / 1000) + "K"
+                            : e.Intensity.ToString();
+                }
             }
             else
             {
@@ -1224,7 +1236,10 @@ public class CoopPlayerVisuals : MonoBehaviour
         var tooltipAnchor = charPos + new Vector3(0, 2.2f, 0);
         foreach (var kvp in visual.StatusIcons)
         {
-            kvp.Value.Hover?.WorldAnchor = tooltipAnchor;
+            if (kvp.Value.Hover != null)
+            {
+                kvp.Value.Hover.WorldAnchor = tooltipAnchor;
+            }
         }
     }
 
@@ -1240,7 +1255,10 @@ public class CoopPlayerVisuals : MonoBehaviour
             icon.transform.SetParent(parent, false);
 
             var rect = icon.GetComponent<RectTransform>();
-            rect?.sizeDelta = new Vector2(50, 50);
+            if (rect != null)
+            {
+                rect.sizeDelta = new Vector2(50, 50);
+            }
 
             // Add LayoutElement so HorizontalLayoutGroup respects preferred size
             var le = icon.AddComponent<LayoutElement>();

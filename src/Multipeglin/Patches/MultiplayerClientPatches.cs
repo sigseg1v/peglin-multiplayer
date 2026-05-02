@@ -466,7 +466,10 @@ public static class MultiplayerClientPatches
                 }
 
                 // Disable physics so ball doesn't fall
-                rb?.simulated = false;
+                if (rb != null)
+                {
+                    rb.simulated = false;
+                }
 
                 // Set as BattleController._activePachinkoBall so the native prediction
                 // system can find it. Init + Arm set up PredictionManager for the aimer line.

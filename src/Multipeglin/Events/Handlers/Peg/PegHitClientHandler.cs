@@ -88,7 +88,10 @@ public sealed class PegHitClientHandler : IClientHandler<PegHitEvent>
                             var anim = shield.GetComponent<Animator>();
                             anim?.SetInteger(Animator.StringToHash("HitCount"), e.ShieldHitCount);
                             var rend = shield.GetComponent<SpriteRenderer>();
-                            rend?.enabled = e.ShieldHitCount < e.ShieldHitLimit;
+                            if (rend != null)
+                            {
+                                rend.enabled = e.ShieldHitCount < e.ShieldHitLimit;
+                            }
                         }
                         catch
                         {

@@ -480,7 +480,10 @@ public class CoopStateManager
                     if (orb.RemainingPersistence >= 0)
                     {
                         var persist = instance.GetComponent<Battle.Pachinko.PersistentOrb>();
-                        persist?.remainingPersistence = orb.RemainingPersistence;
+                        if (persist != null)
+                        {
+                            persist.remainingPersistence = orb.RemainingPersistence;
+                        }
                     }
 
                     DeckManager.completeDeck.Add(instance);
@@ -527,7 +530,10 @@ public class CoopStateManager
                     if (orb.RemainingPersistence >= 0)
                     {
                         var persist = instance.GetComponent<Battle.Pachinko.PersistentOrb>();
-                        persist?.remainingPersistence = orb.RemainingPersistence;
+                        if (persist != null)
+                        {
+                            persist.remainingPersistence = orb.RemainingPersistence;
+                        }
                     }
 
                     deckMgr.battleDeck.Add(instance);
@@ -706,7 +712,10 @@ public class CoopStateManager
             var yAccum = (float)arr.Length * -orbSpriteOffset;
 
             // Position the plunger graphic to the starting offset
-            plungerGraphic?.localPosition = new UnityEngine.Vector3(startPos.x, yAccum + startPos.y);
+            if (plungerGraphic != null)
+            {
+                plungerGraphic.localPosition = new UnityEngine.Vector3(startPos.x, yAccum + startPos.y);
+            }
 
             var created = 0;
             for (var i = arr.Length - 1; i >= 0; i--)

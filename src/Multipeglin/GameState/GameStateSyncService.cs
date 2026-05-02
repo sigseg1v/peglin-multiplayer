@@ -74,11 +74,20 @@ public class GameStateSyncService : IGameStateSyncService
 
             // Tag per-player snapshots with the active slot so the client knows
             // whose data this is and can avoid applying another player's state.
-            snapshot.Player?.ActiveSlotIndex = activeSlot;
+            if (snapshot.Player != null)
+            {
+                snapshot.Player.ActiveSlotIndex = activeSlot;
+            }
 
-            snapshot.Deck?.ActiveSlotIndex = activeSlot;
+            if (snapshot.Deck != null)
+            {
+                snapshot.Deck.ActiveSlotIndex = activeSlot;
+            }
 
-            snapshot.Relics?.ActiveSlotIndex = activeSlot;
+            if (snapshot.Relics != null)
+            {
+                snapshot.Relics.ActiveSlotIndex = activeSlot;
+            }
 
             // Add co-op multi-player data if available
             if (_coopStateManager != null && _coopStateManager.TotalPlayerCount > 0)

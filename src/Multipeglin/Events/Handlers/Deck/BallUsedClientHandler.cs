@@ -159,7 +159,10 @@ public sealed class BallUsedClientHandler : IClientHandler<BallUsedEvent>
 
             // Enable the animator
             var animator = nextOrb.GetComponentInChildren<Animator>();
-            animator?.speed = 1f;
+            if (animator != null)
+            {
+                animator.speed = 1f;
+            }
 
             // Fire events for any listeners
             DeckInfoManager.onActiveOrbScaleStarted?.Invoke(nextOrb);

@@ -1288,7 +1288,10 @@ internal static class BattleControllerPatches
                 }
 
                 var hostState = coopState.GetPlayerState(0);
-                hostState?.CurrentHealth = 1;
+                if (hostState != null)
+                {
+                    hostState.CurrentHealth = 1;
+                }
 
                 MultiplayerPlugin.Logger?.LogInfo(
                     "[ClientPatches] TriggerVictory: host was dead but others alive — revived host PHC to 1 HP so victory fires");
