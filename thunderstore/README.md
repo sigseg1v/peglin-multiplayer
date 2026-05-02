@@ -31,9 +31,9 @@ Install via [r2modman](https://thunderstore.io/package/ebkr/r2modman/) or
 
 - Most of the game works. There is some slight desync possible on super complex peg layouts such as complex moving pegs, but it is 90% correct.
 - Some event choices don't make sense so it defaults to host choice (eg. if host selects to skip an event, but 1 player selects to do a battle, it's just going to use what the host picked)
-- End-of-battle shot to determine navigation is host-only until I figure out a good way to let clients participate in that
+- End-of-battle shot to determine navigation let all players participate at the same time and will choose the slot that got the most hits
 - Most relics apply their logic correctly for the owner players shot, but some with really crazy effects might have been missed; let me know if you find anything broken
-- If an event is really bad and softlocks, there is a 60 second timeout after which the host will be able to select "Force continue" to force the clients to go to the next map node
+- If an event is really bad and softlocks, there is a 45 second timeout after which the host will be able to select "Force continue" to force the clients to go to the next map node. There is also a 15 second timeout after a shot occurs where if there are no orbs on the board anymore it will pass to the next players turn.
 
 ## Requirements
 
