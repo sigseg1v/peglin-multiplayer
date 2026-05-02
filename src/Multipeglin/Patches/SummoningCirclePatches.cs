@@ -73,7 +73,7 @@ internal static class SummoningCirclePatches
     public static void PachinkoBall_SpawnMultiballFromLocation_Postfix(
         PachinkoBall __instance,
         UnityEngine.GameObject multiballGameObject,
-        PachinkoBall __result)
+        UnityEngine.GameObject __result)
     {
         if (!IsHosting)
         {
@@ -87,15 +87,16 @@ internal static class SummoningCirclePatches
 
         if (__result == null)
         {
-            MultiplayerPlugin.Logger?.LogError("[SC] SpawnFromLocation returned null PachinkoBall");
+            MultiplayerPlugin.Logger?.LogError("[SC] SpawnFromLocation returned null GameObject");
             return;
         }
 
-        var go = __result.gameObject;
+        var go = __result;
+        var pb = go.GetComponent<PachinkoBall>();
         var srcSelf = multiballGameObject != null && multiballGameObject.activeSelf;
         var srcInHier = multiballGameObject != null && multiballGameObject.activeInHierarchy;
         MultiplayerPlugin.Logger?.LogInfo(
-            $"[SC] SpawnFromLocation post: result name='{go.name}' activeSelf={go.activeSelf} activeInHierarchy={go.activeInHierarchy} state={__result.CurrentState} dummy={__result.IsDummy} srcSelf={srcSelf} srcInHier={srcInHier}");
+            $"[SC] SpawnFromLocation post: result name='{go.name}' activeSelf={go.activeSelf} activeInHierarchy={go.activeInHierarchy} state={(pb != null ? pb.CurrentState.ToString() : "<no-pb>")} dummy={(pb != null ? pb.IsDummy.ToString() : "<no-pb>")} srcSelf={srcSelf} srcInHier={srcInHier}");
 
         // Root cause: SC instantiates clones of `_orbToSummon` (a GameObject taken
         // from `deckManager.shuffledDeck`). Those source orbs are parented to
