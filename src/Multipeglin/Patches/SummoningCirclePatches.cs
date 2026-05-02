@@ -69,6 +69,50 @@ internal static class SummoningCirclePatches
     }
 
     [HarmonyPatch(typeof(PachinkoBall), nameof(PachinkoBall.SpawnMultiballFromLocation))]
+    [HarmonyPostfix]
+    public static void PachinkoBall_SpawnMultiballFromLocation_Postfix(
+        PachinkoBall __instance,
+        UnityEngine.GameObject multiballGameObject,
+        PachinkoBall __result)
+    {
+        if (!IsHosting)
+        {
+            return;
+        }
+
+        if (__instance is not SummoningCirclePachinkoBall)
+        {
+            return;
+        }
+
+        if (__result == null)
+        {
+            MultiplayerPlugin.Logger?.LogError("[SC] SpawnFromLocation returned null PachinkoBall");
+            return;
+        }
+
+        var go = __result.gameObject;
+        var srcSelf = multiballGameObject != null && multiballGameObject.activeSelf;
+        var srcInHier = multiballGameObject != null && multiballGameObject.activeInHierarchy;
+        MultiplayerPlugin.Logger?.LogInfo(
+            $"[SC] SpawnFromLocation post: result name='{go.name}' activeSelf={go.activeSelf} activeInHierarchy={go.activeInHierarchy} state={__result.CurrentState} dummy={__result.IsDummy} srcSelf={srcSelf} srcInHier={srcInHier}");
+
+        // Root cause: SC instantiates clones of `_orbToSummon` (a GameObject taken
+        // from `deckManager.shuffledDeck`). Those source orbs are parented to
+        // `battleDeckOrbContainerInstance`, which can be inactive. `Instantiate`
+        // preserves the source's `activeSelf`, so when the source is inactive the
+        // satellite spawns inactive — its Update never runs, the ball never decays,
+        // OnPachinkoBallDestroyed never fires, BC._remainingPachinkoBalls stays > 0,
+        // and the turn softlocks. Force the satellite active so its physics tick.
+        if (!go.activeSelf)
+        {
+            go.SetActive(true);
+            MultiplayerPlugin.Logger?.LogWarning(
+                $"[SC] SpawnFromLocation forced result active: '{go.name}'");
+        }
+    }
+
+    [HarmonyPatch(typeof(PachinkoBall), nameof(PachinkoBall.SpawnMultiballFromLocation))]
     [HarmonyFinalizer]
     public static System.Exception PachinkoBall_SpawnMultiballFromLocation_Finalizer(
         PachinkoBall __instance,
