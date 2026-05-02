@@ -21,8 +21,6 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
     {
         try
         {
-            _log.LogInfo($"[RelicApplier] Syncing {snapshot.TotalRelicCount} relics from host");
-
             var rms = Resources.FindObjectsOfTypeAll<RelicManager>();
             var rm = rms.Length > 0 ? rms[0] : null;
             if (rm == null)
@@ -114,7 +112,10 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
                 }
             }
 
-            _log.LogInfo($"[RelicApplier] Result: added={added}, alreadyOwned={alreadyOwned}, total={owned.Count}");
+            if (added > 0)
+            {
+                _log.LogInfo($"[RelicApplier] Result: added={added}, alreadyOwned={alreadyOwned}, total={owned.Count}");
+            }
 
             // Countdown counters (e.g., "X/Y" displays on Trash Can, LIFESTEAL_PEG_HITS,
             // HEAL_ON_PEG_HITS, REFRESH_BUFF, etc.). AddRelic initializes these to the
@@ -246,11 +247,6 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
 
                     updated++;
                 }
-            }
-
-            if (updated > 0)
-            {
-                _log.LogInfo($"[RelicApplier] Applied countdowns for {updated} relic(s)");
             }
         }
         catch (Exception ex)

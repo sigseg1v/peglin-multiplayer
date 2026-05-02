@@ -37,6 +37,12 @@ public class GameStateApplyService
 
     private readonly RelicStateApplier _relicApplier;
     private readonly EnemyIdentifier _enemyId;
+
+    private string _lastCoopDeckSig = string.Empty;
+
+    private string _lastCoopRelicSig = string.Empty;
+
+    private string _lastNonBattleSceneSig = string.Empty;
     private readonly PegIdentifier _pegId;
 
     // --- Authoritative host state ---
@@ -661,8 +667,15 @@ public class GameStateApplyService
 
                 if (myDeck != null)
                 {
-                    var deckOrbs = myDeck.CompleteDeck != null ? string.Join(", ", myDeck.CompleteDeck.Select(o => o.Name)) : "NULL";
-                    _log.LogInfo($"[ApplyService] Coop deck for mySlot={mySlotIdx}: {myDeck.CompleteDeck?.Count ?? 0} orbs [{deckOrbs}] shuffled={myDeck.ShuffledOrder?.Count ?? 0}");
+                    var deckSig = $"{mySlotIdx}|{myDeck.CompleteDeck?.Count ?? 0}|{myDeck.ShuffledOrder?.Count ?? 0}|"
+                        + (myDeck.CompleteDeck != null ? string.Join(",", myDeck.CompleteDeck.Select(o => o.Name)) : string.Empty);
+                    if (deckSig != _lastCoopDeckSig)
+                    {
+                        _lastCoopDeckSig = deckSig;
+                        var deckOrbs = myDeck.CompleteDeck != null ? string.Join(", ", myDeck.CompleteDeck.Select(o => o.Name)) : "NULL";
+                        _log.LogInfo($"[ApplyService] Coop deck for mySlot={mySlotIdx}: {myDeck.CompleteDeck?.Count ?? 0} orbs [{deckOrbs}] shuffled={myDeck.ShuffledOrder?.Count ?? 0}");
+                    }
+
                     SafeApply("Deck(coop-own)", () => _deckApplier.Apply(myDeck));
                 }
                 else if (snapshot.Deck != null)
@@ -677,7 +690,13 @@ public class GameStateApplyService
                 // snapshot.Relics field for back-compat with older hosts.
                 if (myRelics != null)
                 {
-                    _log.LogInfo($"[ApplyService] Coop relics for mySlot={mySlotIdx}: {myRelics.OwnedRelics?.Count ?? 0} relics");
+                    var relicSig = $"{mySlotIdx}|{myRelics.OwnedRelics?.Count ?? 0}";
+                    if (relicSig != _lastCoopRelicSig)
+                    {
+                        _lastCoopRelicSig = relicSig;
+                        _log.LogInfo($"[ApplyService] Coop relics for mySlot={mySlotIdx}: {myRelics.OwnedRelics?.Count ?? 0} relics");
+                    }
+
                     SafeApply("Relics(coop-own)", () => _relicApplier.Apply(myRelics));
                 }
                 else if (snapshot.Relics != null)
@@ -777,7 +796,12 @@ public class GameStateApplyService
                 }
             }
 
-            _log.LogInfo($"[ApplyService] Non-battle scene '{currentScene}': applied player/deck/relics, skipped enemies/pegs{(isCoop ? " (coop: own relics applied)" : string.Empty)}");
+            var nbSig = $"{currentScene}|{isCoop}";
+            if (nbSig != _lastNonBattleSceneSig)
+            {
+                _lastNonBattleSceneSig = nbSig;
+                _log.LogInfo($"[ApplyService] Non-battle scene '{currentScene}': applied player/deck/relics, skipped enemies/pegs{(isCoop ? " (coop: own relics applied)" : string.Empty)}");
+            }
         }
 
         // TextScenario spectator UI — driven by heartbeat
@@ -1140,10 +1164,6 @@ public class GameStateApplyService
                     _log.LogWarning($"[Consistency] ENEMY COUNT MISMATCH: host={hostEnemies}, client={clientEnemies}");
                     _enemyId.DumpState("ConsistencyCheck");
                 }
-                else
-                {
-                    _log.LogInfo($"[Consistency] Enemies OK: {clientEnemies} match");
-                }
             }
 
             if (snapshot.Pegboard?.Pegs != null)
@@ -1210,10 +1230,6 @@ public class GameStateApplyService
                 if (System.Math.Abs(clientPegs - hostActivePegs) > 5)
                 {
                     _log.LogWarning($"[Consistency] PEG COUNT MISMATCH: host_active={hostActivePegs}, client_active={clientPegs}");
-                }
-                else
-                {
-                    _log.LogInfo($"[Consistency] Pegs OK: host={hostActivePegs}, client={clientPegs}");
                 }
             }
         }

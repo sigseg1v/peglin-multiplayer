@@ -40,7 +40,6 @@ internal static class CurrencyManagerPatches
             return true;
         }
 
-        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked CurrencyManager.AddGold on client");
         return false;
     }
 

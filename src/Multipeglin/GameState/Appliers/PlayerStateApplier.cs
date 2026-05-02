@@ -33,14 +33,25 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
         }
     }
 
+    private bool _warnedNoHealthCtrl;
+
+    private string _lastStatusEffectsSig = string.Empty;
+
     private void ApplyHealth(PlayerStateSnapshot snapshot)
     {
         var ctrl = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
         if (ctrl == null)
         {
-            _log.LogWarning("[PlayerApplier] PlayerHealthController not found in scene.");
+            if (!_warnedNoHealthCtrl)
+            {
+                _warnedNoHealthCtrl = true;
+                _log.LogWarning("[PlayerApplier] PlayerHealthController not found in scene.");
+            }
+
             return;
         }
+
+        _warnedNoHealthCtrl = false;
 
         var healthField = AccessTools.Field(typeof(PlayerHealthController), "_playerHealth");
         var maxHealthField = AccessTools.Field(typeof(PlayerHealthController), "_maxPlayerHealth");
@@ -74,7 +85,10 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
             }
         }
 
-        _log.LogInfo($"[PlayerApplier] Health set to {snapshot.CurrentHealth}/{snapshot.MaxHealth}");
+        if (System.Math.Abs(prevHealth - snapshot.CurrentHealth) > 0.1f)
+        {
+            _log.LogInfo($"[PlayerApplier] Health set to {snapshot.CurrentHealth}/{snapshot.MaxHealth}");
+        }
     }
 
     private void ApplyGold(PlayerStateSnapshot snapshot)
@@ -106,7 +120,10 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
             Patches.MultiplayerClientPatches.AllowCurrencySync = false;
         }
 
-        _log.LogInfo($"[PlayerApplier] Gold set to {snapshot.Gold} (was {currentGold}, diff={diff})");
+        if (diff != 0)
+        {
+            _log.LogInfo($"[PlayerApplier] Gold set to {snapshot.Gold} (was {currentGold}, diff={diff})");
+        }
     }
 
     private void ApplySpeedup(PlayerStateSnapshot snapshot)
@@ -198,9 +215,19 @@ public class PlayerStateApplier : IGameStateApplier<PlayerStateSnapshot>
 
             if (effects.Count > 0)
             {
-                var names = string.Join(", ", snapshot.StatusEffects.ConvertAll(
-                    e => $"{(Battle.StatusEffects.StatusEffectType)e.EffectType}={e.Intensity}"));
-                _log.LogInfo($"[PlayerApplier] Status effects applied ({effects.Count}): [{names}]");
+                var sig = string.Join(",", snapshot.StatusEffects.ConvertAll(
+                    e => $"{e.EffectType}={e.Intensity}"));
+                if (sig != _lastStatusEffectsSig)
+                {
+                    _lastStatusEffectsSig = sig;
+                    var names = string.Join(", ", snapshot.StatusEffects.ConvertAll(
+                        e => $"{(Battle.StatusEffects.StatusEffectType)e.EffectType}={e.Intensity}"));
+                    _log.LogInfo($"[PlayerApplier] Status effects applied ({effects.Count}): [{names}]");
+                }
+            }
+            else
+            {
+                _lastStatusEffectsSig = string.Empty;
             }
         }
         catch (Exception ex)

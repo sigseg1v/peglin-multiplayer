@@ -27,8 +27,6 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
     {
         try
         {
-            _log.LogInfo($"[DeckApplier] Syncing deck: {snapshot.DeckSize} complete, {snapshot.BattleDeck?.Count ?? 0} battle orbs");
-
             // Find DeckManager (ScriptableObject — not in scene hierarchy)
             var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
             var dm = dms.Length > 0 ? dms[0] : null;
@@ -52,8 +50,11 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                 deckChanged |= SyncBattleDeck(dm, snapshot.BattleDeck);
             }
 
-            _log.LogInfo($"[DeckApplier] Deck sync complete: completeDeck={DeckManager.completeDeck?.Count ?? 0}, " +
-                $"battleDeck={dm.battleDeck?.Count ?? 0}, shuffledDeck={dm.shuffledDeck?.Count ?? 0}");
+            if (deckChanged)
+            {
+                _log.LogInfo($"[DeckApplier] Deck sync: completeDeck={DeckManager.completeDeck?.Count ?? 0}, " +
+                    $"battleDeck={dm.battleDeck?.Count ?? 0}, shuffledDeck={dm.shuffledDeck?.Count ?? 0}");
+            }
 
             // Build shuffledDeck in the host's exact order and trigger visual display.
             // ShuffleCompleteDeck is blocked on client, so we build it manually.
@@ -116,8 +117,6 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                                 dm.shuffledDeck.Push(match);
                             }
                         }
-
-                        _log.LogInfo($"[DeckApplier] Built shuffledDeck in host order: {dm.shuffledDeck.Count} orbs");
                     }
                     else if (needsRebuild && snapshot.ShuffledOrder == null)
                     {
@@ -130,14 +129,11 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                                 dm.shuffledDeck.Push(dm.battleDeck[i]);
                             }
                         }
-
-                        _log.LogInfo($"[DeckApplier] Built shuffledDeck (fallback order): {dm.shuffledDeck.Count} orbs");
                     }
                     else if (needsRebuild && snapshot.ShuffledOrder != null && snapshot.ShuffledOrder.Count == 0)
                     {
                         // Host explicitly says shuffledDeck is empty (all orbs drawn as active)
                         dm.shuffledDeck.Clear();
-                        _log.LogInfo("[DeckApplier] Cleared shuffledDeck — host says deck empty (active orb drawn)");
                     }
 
                     // Adjust shuffledDeck count to match host, and keep _displayOrbs in sync.
@@ -598,7 +594,6 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
 
             if (match)
             {
-                _log.LogInfo("[DeckApplier] Complete deck already matches host");
                 return false;
             }
         }

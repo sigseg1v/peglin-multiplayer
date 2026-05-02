@@ -12,6 +12,8 @@ public class DeckStateProvider : IGameStateProvider<DeckStateSnapshot>
     private readonly ManualLogSource _log;
     private readonly OrbIdentifier _orbId;
 
+    private string _lastCaptureSig = string.Empty;
+
     public DeckStateProvider(ManualLogSource log, OrbIdentifier orbId)
     {
         _log = log;
@@ -110,7 +112,12 @@ public class DeckStateProvider : IGameStateProvider<DeckStateSnapshot>
             }
             catch (Exception activeOrbEx) { _log.LogWarning($"[DeckProvider] Failed to capture active orb: {activeOrbEx.Message}"); }
 
-            _log.LogInfo($"[DeckProvider] Captured {snapshot.CompleteDeck.Count} complete, {snapshot.BattleDeck.Count} battle, {snapshot.ShuffledOrder?.Count ?? 0} shuffled orbs ({_orbId.Count} in registry) activeOrb={snapshot.CurrentOrb ?? "none"}");
+            var sig = $"{snapshot.CompleteDeck.Count}|{snapshot.BattleDeck.Count}|{snapshot.ShuffledOrder?.Count ?? 0}|{_orbId.Count}|{snapshot.CurrentOrb}";
+            if (sig != _lastCaptureSig)
+            {
+                _lastCaptureSig = sig;
+                _log.LogInfo($"[DeckProvider] Captured {snapshot.CompleteDeck.Count} complete, {snapshot.BattleDeck.Count} battle, {snapshot.ShuffledOrder?.Count ?? 0} shuffled orbs ({_orbId.Count} in registry) activeOrb={snapshot.CurrentOrb ?? "none"}");
+            }
 
             return snapshot;
         }

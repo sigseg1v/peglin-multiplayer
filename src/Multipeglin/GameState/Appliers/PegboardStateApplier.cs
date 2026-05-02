@@ -234,13 +234,10 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         {
                         }
 
-                        var stateMatchesHost = pegDisabled == entry.IsDestroyed && bombPeg.HitCount == entry.HitCount;
-                        if (!stateMatchesHost)
-                        {
-                            _log.LogInfo($"[PegboardApplier] BOMB DRIFT: guid={entry.Guid} " +
-                                $"clientDisabled={pegDisabled} hostDestroyed={entry.IsDestroyed} " +
-                                $"clientHits={bombPeg.HitCount} hostHits={entry.HitCount}");
-                        }
+                        // Drift between host/client bomb state is informational only —
+                        // it doesn't drive any reconciliation action, and once a bomb is
+                        // dead on both sides the hit-count mismatch is harmless. Logging
+                        // every heartbeat for every drifted bomb floods the log.
                     }
 
                     SyncPegPosition(peg, entry);
@@ -529,14 +526,18 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
 
             var totalClient = clientPegs.Count + (clientBombs?.Count ?? 0) + (clientBouncers?.Count ?? 0);
-            _log.LogInfo($"[PegboardApplier] StructMatched={structMatched}, IdxMatched={idxMatched}, GUIDMatched={guidMatched}, PosMatched={posMatched}, " +
-                $"Repositioned={repositioned}, TypeChanged={typeChanged}, Destroyed={destroyed}, " +
-                $"Reactivated={reactivated}, Cleared={cleared}, Missed={missed}, GUIDTypeInvalid={guidTypeInvalid}, " +
-                $"ExtrasRemoved={extrasRemoved} " +
-                $"(host={snapshot.TotalPegCount}, client={totalClient}, " +
-                $"crit={snapshot.CritPegCount}, bomb={snapshot.BombPegCount}, " +
-                $"reset={snapshot.ResetPegCount}, bouncer={snapshot.BouncerPegCount}, " +
-                $"registry={_pegId.Count})");
+            var changed = repositioned + typeChanged + destroyed + reactivated + cleared + missed + guidTypeInvalid + extrasRemoved;
+            if (changed > 0)
+            {
+                _log.LogInfo($"[PegboardApplier] StructMatched={structMatched}, IdxMatched={idxMatched}, GUIDMatched={guidMatched}, PosMatched={posMatched}, " +
+                    $"Repositioned={repositioned}, TypeChanged={typeChanged}, Destroyed={destroyed}, " +
+                    $"Reactivated={reactivated}, Cleared={cleared}, Missed={missed}, GUIDTypeInvalid={guidTypeInvalid}, " +
+                    $"ExtrasRemoved={extrasRemoved} " +
+                    $"(host={snapshot.TotalPegCount}, client={totalClient}, " +
+                    $"crit={snapshot.CritPegCount}, bomb={snapshot.BombPegCount}, " +
+                    $"reset={snapshot.ResetPegCount}, bouncer={snapshot.BouncerPegCount}, " +
+                    $"registry={_pegId.Count})");
+            }
 
             // Sync bramball vines
             SyncVines(snapshot, bc);
@@ -2540,10 +2541,10 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 }
             }
 
-            // One-line summary per heartbeat — terse but enough to spot regressions.
-            if (entries.Count > 0)
+            // Only log when something failed to sync — steady-state success is silent.
+            if (entries.Count > 0 && (skippedNoCache > 0 || skippedNoDistances > 0 || countMismatches > 0))
             {
-                _log.LogInfo($"[PegboardApplier] SplineSync synced={synced}/{entries.Count} " +
+                _log.LogWarning($"[PegboardApplier] SplineSync synced={synced}/{entries.Count} " +
                     $"(noCache={skippedNoCache}, noDistances={skippedNoDistances}, countMismatch={countMismatches})");
             }
         }

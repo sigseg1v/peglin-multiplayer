@@ -295,9 +295,6 @@ public static class MultiplayerClientPatches
     internal static float _clientAimSendTimer;
     internal const float ClientAimSendInterval = 0.1f;
 
-    // Throttled diagnostic logging for client aiming state
-    internal static float _clientAimDiagTimer;
-
     // Track whether we've initialized the ball for client aiming this turn
     internal static bool _clientBallInitialized;
 

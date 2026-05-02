@@ -413,10 +413,15 @@ public class CoopStateManager
             // BattleController.activePachinkoBall by DeckStateProvider.
             state.CurrentOrb = string.Empty;
 
-            _log.LogInfo($"[CoopState] SaveDeckState slot {state.SlotIndex}: " +
-                $"complete {prevComplete}->{state.CompleteDeck.Count}, " +
-                $"battle {prevBattle}->{state.BattleDeck.Count}, " +
-                $"shuffled {prevShuffled}->{state.ShuffledOrder.Count}");
+            if (prevComplete != state.CompleteDeck.Count
+                || prevBattle != state.BattleDeck.Count
+                || prevShuffled != state.ShuffledOrder.Count)
+            {
+                _log.LogInfo($"[CoopState] SaveDeckState slot {state.SlotIndex}: " +
+                    $"complete {prevComplete}->{state.CompleteDeck.Count}, " +
+                    $"battle {prevBattle}->{state.BattleDeck.Count}, " +
+                    $"shuffled {prevShuffled}->{state.ShuffledOrder.Count}");
+            }
         }
         catch (Exception ex)
         {
@@ -1215,6 +1220,9 @@ public class CoopStateManager
             var phc = UnityEngine.Object.FindObjectOfType<Battle.PlayerHealthController>();
             if (phc != null)
             {
+                var prevHp = state.CurrentHealth;
+                var prevMax = state.MaxHealth;
+
                 // Clamp negative HP to 0. Enemy attacks exceeding remaining HP set the
                 // FloatVariable to a negative value; without clamping the saved state
                 // shows -5/100 on the client and TurnManager races vs game-over flow.
@@ -1228,7 +1236,11 @@ public class CoopStateManager
                     state.MaxHealth = valProp != null ? (float)valProp.GetValue(maxVar) : 0;
                 }
 
-                _log.LogInfo($"[CoopState] SaveHealthState slot {state.SlotIndex}: hp={state.CurrentHealth}/{state.MaxHealth}");
+                if (Mathf.Abs(prevHp - state.CurrentHealth) > 0.1f || Mathf.Abs(prevMax - state.MaxHealth) > 0.1f)
+                {
+                    _log.LogInfo($"[CoopState] SaveHealthState slot {state.SlotIndex}: hp={state.CurrentHealth}/{state.MaxHealth}");
+                }
+
                 return;
             }
 
@@ -1326,7 +1338,10 @@ public class CoopStateManager
             {
                 var prevGold = state.Gold;
                 state.Gold = currMgr.GoldAmount;
-                _log.LogInfo($"[CoopState] SaveGoldState slot {state.SlotIndex}: gold {prevGold}->{state.Gold}");
+                if (prevGold != state.Gold)
+                {
+                    _log.LogInfo($"[CoopState] SaveGoldState slot {state.SlotIndex}: gold {prevGold}->{state.Gold}");
+                }
             }
         }
         catch (Exception ex)

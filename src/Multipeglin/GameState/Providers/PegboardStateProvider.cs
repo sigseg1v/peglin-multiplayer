@@ -221,9 +221,6 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     {
                         snapshot.BombPegCount++;
                     }
-
-                    _log.LogInfo($"[PegProvider] BOMB[{i}] guid={guid} pos=({bomb.transform.position.x:F1},{bomb.transform.position.y:F1}) " +
-                        $"type={bomb.pegType} active={bomb.gameObject.activeSelf} cleared={cleared} destroyed={destroyed} hits={bomb.HitCount}");
                 }
             }
 

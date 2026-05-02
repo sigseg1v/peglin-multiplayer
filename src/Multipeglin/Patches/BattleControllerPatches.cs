@@ -4,7 +4,6 @@ using Battle;
 using HarmonyLib;
 using Multipeglin.Events;
 using Multipeglin.Events.Subscriptions;
-using PeglinUI;
 using UnityEngine;
 using static Multipeglin.Patches.MultiplayerClientPatches;
 using Random = UnityEngine.Random;
@@ -97,28 +96,6 @@ internal static class BattleControllerPatches
             }
 
             _clientAimSendTimer = 0f;
-        }
-
-        // Per-second diagnostic: log client aiming state (throttled)
-        _clientAimDiagTimer += UnityEngine.Time.unscaledDeltaTime;
-        if (_clientAimDiagTimer >= 2f)
-        {
-            _clientAimDiagTimer = 0f;
-            var ballState = "none";
-            if (_clientBallGO != null)
-            {
-                var ball = _clientBallGO.GetComponent<PachinkoBall>();
-                ballState = ball != null ? ball.CurrentState.ToString() : "noPB";
-            }
-            else if (_clientBallInitialized)
-            {
-                ballState = "destroyed";
-            }
-
-            MultiplayerPlugin.Logger?.LogInfo(
-                $"[ClientAim/Diag] isMyTurn={isMyTurn} shotSent={shotSent} ballInit={_clientBallInitialized} " +
-                $"ballState={ballState} ballGO={(_clientBallGO != null ? "alive" : "null")} " +
-                $"blocking={GameBlockingWindow.wasOpenThisFrame} preBattlePause={BattleController.PreBattlePause}");
         }
 
         return false; // Always block BattleController.Update on the client
@@ -218,40 +195,6 @@ internal static class BattleControllerPatches
                                 _stuckCompletionSinceUnscaledTime = UnityEngine.Time.unscaledTime;
                                 MultiplayerPlugin.Logger?.LogWarning(
                                     $"[ShotWatchdog] AWAITING_SHOT_COMPLETION counter={counter} but no live firing balls (elapsed={elapsedSinceShot:F1}s) — arming unstick timer");
-
-                                // Diagnostic: dump every PachinkoBall in scene so
-                                // we can tell what the phantom balls actually are
-                                // (never spawned vs stuck in AWAITING_RESULTS vs
-                                // IsDummy=true vs some unhandled state).
-                                MultiplayerPlugin.Logger?.LogWarning(
-                                    $"[ShotWatchdog] Diag: {allBalls.Length} PachinkoBall(s) in scene");
-                                var stateBuckets = new System.Collections.Generic.Dictionary<string, int>();
-                                for (var i = 0; i < allBalls.Length; i++)
-                                {
-                                    var b = allBalls[i];
-                                    if (b == null)
-                                    {
-                                        continue;
-                                    }
-
-                                    var key = (b.IsDummy ? "DUMMY/" : string.Empty) + b.CurrentState.ToString();
-                                    stateBuckets.TryGetValue(key, out var c);
-                                    stateBuckets[key] = c + 1;
-
-                                    var rb = b.GetComponent<UnityEngine.Rigidbody2D>();
-                                    var vel = rb != null ? rb.velocity : UnityEngine.Vector2.zero;
-                                    var pos = b.transform.position;
-                                    var sceneName = b.gameObject.scene.IsValid() ? b.gameObject.scene.name : "<no-scene>";
-                                    var parentName = b.transform.parent != null ? b.transform.parent.name : "<root>";
-                                    MultiplayerPlugin.Logger?.LogWarning(
-                                        $"[ShotWatchdog] Diag ball#{i} name='{b.gameObject.name}' state={b.CurrentState} dummy={b.IsDummy} firing={b.IsFiring()} pos=({pos.x:F2},{pos.y:F2}) vel=({vel.x:F2},{vel.y:F2}) |v|={vel.magnitude:F2} active={b.gameObject.activeInHierarchy} selfActive={b.gameObject.activeSelf} scene='{sceneName}' parent='{parentName}'");
-                                }
-
-                                foreach (var kv in stateBuckets)
-                                {
-                                    MultiplayerPlugin.Logger?.LogWarning(
-                                        $"[ShotWatchdog] Diag bucket {kv.Key} = {kv.Value}");
-                                }
                             }
                             else if (UnityEngine.Time.unscaledTime - _stuckCompletionSinceUnscaledTime >= 15f)
                             {

@@ -223,8 +223,6 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
 
             if (string.Equals(currentScene, targetScene, StringComparison.OrdinalIgnoreCase))
             {
-                _log.LogInfo($"[MapApplier] Already on scene '{currentScene}', static data updated.");
-
                 // Host confirmed the scene — clear the awaiting flag
                 if (!string.IsNullOrEmpty(AwaitingHostSceneConfirmation) &&
                     string.Equals(currentScene, AwaitingHostSceneConfirmation, StringComparison.OrdinalIgnoreCase))
@@ -505,8 +503,15 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             }
         }
 
-        _log.LogInfo($"[MapApplier] StaticGameData: seed={seed}, floor={snapshot.TotalFloorCount}, class={StaticGameData.chosenClass}, node={snapshot.ChosenNextNodeIndex}, battle={snapshot.BattleDataName}");
+        var sgdSig = $"{seed}|{snapshot.TotalFloorCount}|{StaticGameData.chosenClass}|{snapshot.ChosenNextNodeIndex}|{snapshot.BattleDataName}";
+        if (sgdSig != _lastStaticGameDataSig)
+        {
+            _lastStaticGameDataSig = sgdSig;
+            _log.LogInfo($"[MapApplier] StaticGameData: seed={seed}, floor={snapshot.TotalFloorCount}, class={StaticGameData.chosenClass}, node={snapshot.ChosenNextNodeIndex}, battle={snapshot.BattleDataName}");
+        }
     }
+
+    private string _lastStaticGameDataSig = string.Empty;
 
     /// <summary>
     /// Capture every MapDataBattle referenced by the current scene's MapController
