@@ -778,6 +778,26 @@ public static class MultiplayerClientPatches
     internal static int _stuckPendingShotRedraws;
     internal static float _stuckPendingShotLastWarnTime;
 
+    /// <summary>
+    /// Host-side watchdog state for AWAITING_SHOT_COMPLETION softlocks. The
+    /// canonical case is SummoningCircle spawning a custom orb (Bob-Orb) whose
+    /// satellites get caught in a Spirit-of-Radia black-hole gravity well: they
+    /// stay above y=-15, never go below the lostBallY threshold, and keep their
+    /// |velocity| above 0.25 indefinitely, so PachinkoBall.Update never calls
+    /// StartDestroy() on them. _remainingPachinkoBalls stays > 0 forever and
+    /// OnShotComplete never fires — turn manager, host, and clients all wait.
+    ///
+    /// _shotFiredUnscaledTime: stamp from BattleController.ShotFired postfix.
+    /// _stuckCompletionSinceUnscaledTime: 0 when the last scan saw at least
+    ///   one live FIRING non-dummy ball; the unscaledTime of the first scan to
+    ///   see zero firing balls (with counter still > 0) otherwise. Sustained
+    ///   for >5s triggers a force-unstick.
+    /// _stuckCompletionScanTimer: throttle the FindObjectsOfType scan to ~2 Hz.
+    /// </summary>
+    internal static float _shotFiredUnscaledTime;
+    internal static float _stuckCompletionSinceUnscaledTime;
+    internal static float _stuckCompletionScanTimer;
+
     // =========================================================================
     // BLOCK CLIENT SCENE LOADS — only our sync handlers may load scenes
     // =========================================================================

@@ -167,6 +167,107 @@ internal static class BattleControllerPatches
             }
         }
 
+        // ---------------------------------------------------------------
+        // Stuck AWAITING_SHOT_COMPLETION watchdog. _remainingPachinkoBalls
+        // can stay > 0 forever when satellite balls (e.g. SummoningCircle ->
+        // a custom orb caught in Spirit-of-Radia black-hole gravity) never
+        // trip PachinkoBall.Update's auto-destroy heuristics — turn manager
+        // hangs, every client sits in (shot) heartbeats with no progress.
+        // After ShotFired we wait until at least 5s of "no live FIRING ball"
+        // is sustained, then force-zero the counter so OnShotComplete fires.
+        // ---------------------------------------------------------------
+        if (BattleController.CurrentBattleState == BattleController.BattleState.AWAITING_SHOT_COMPLETION)
+        {
+            var bcInstance = UnityEngine.Object.FindObjectOfType<BattleController>();
+            if (bcInstance != null)
+            {
+                var remainingField = HarmonyLib.AccessTools.Field(typeof(BattleController), "_remainingPachinkoBalls");
+                var counter = remainingField != null ? (int)remainingField.GetValue(bcInstance) : 0;
+                var elapsedSinceShot = UnityEngine.Time.unscaledTime - _shotFiredUnscaledTime;
+
+                // Don't engage the watchdog inside the SC spawn window — its
+                // FireOrbs coroutine takes ~0.5s × 16 + 1s = ~9s to finish
+                // dispatching satellites, and during the gaps between yields
+                // the live-firing count may briefly drop to zero even though
+                // the shot is progressing normally.
+                if (counter > 0 && elapsedSinceShot >= 10f)
+                {
+                    _stuckCompletionScanTimer += UnityEngine.Time.unscaledDeltaTime;
+                    if (_stuckCompletionScanTimer >= 0.5f)
+                    {
+                        _stuckCompletionScanTimer = 0f;
+
+                        var allBalls = UnityEngine.Object.FindObjectsOfType<PachinkoBall>();
+                        var firingCount = 0;
+                        for (var i = 0; i < allBalls.Length; i++)
+                        {
+                            var b = allBalls[i];
+                            if (b != null && !b.IsDummy && b.IsFiring())
+                            {
+                                firingCount++;
+                            }
+                        }
+
+                        if (firingCount == 0)
+                        {
+                            if (_stuckCompletionSinceUnscaledTime == 0f)
+                            {
+                                _stuckCompletionSinceUnscaledTime = UnityEngine.Time.unscaledTime;
+                                MultiplayerPlugin.Logger?.LogWarning(
+                                    $"[ShotWatchdog] AWAITING_SHOT_COMPLETION counter={counter} but no live firing balls (elapsed={elapsedSinceShot:F1}s) — arming unstick timer");
+                            }
+                            else if (UnityEngine.Time.unscaledTime - _stuckCompletionSinceUnscaledTime >= 15f)
+                            {
+                                MultiplayerPlugin.Logger?.LogWarning(
+                                    $"[ShotWatchdog] Stuck for >15s with no live firing balls — force-zeroing _remainingPachinkoBalls (was {counter}) to release the turn");
+
+                                // Belt-and-suspenders: also call StartDestroy on
+                                // any non-dummy balls still in scene that aren't
+                                // already AWAITING_RESULTS. They'd decrement the
+                                // counter via OnPachinkoBallDestroyed, but since
+                                // we're about to zero the field directly that's
+                                // benign — we just don't want them lingering as
+                                // active physics objects in the next turn.
+                                for (var i = 0; i < allBalls.Length; i++)
+                                {
+                                    var b = allBalls[i];
+                                    if (b != null && !b.IsDummy && b.CurrentState != PachinkoBall.FireballState.AWAITING_RESULTS)
+                                    {
+                                        try
+                                        {
+                                            b.StartDestroy();
+                                        }
+                                        catch (System.Exception ex)
+                                        {
+                                            MultiplayerPlugin.Logger?.LogWarning(
+                                                $"[ShotWatchdog] StartDestroy on lingering ball failed: {ex.Message}");
+                                        }
+                                    }
+                                }
+
+                                remainingField?.SetValue(bcInstance, 0);
+                                _stuckCompletionSinceUnscaledTime = 0f;
+                            }
+                        }
+                        else
+                        {
+                            _stuckCompletionSinceUnscaledTime = 0f;
+                        }
+                    }
+                }
+                else
+                {
+                    _stuckCompletionSinceUnscaledTime = 0f;
+                    _stuckCompletionScanTimer = 0f;
+                }
+            }
+        }
+        else
+        {
+            _stuckCompletionSinceUnscaledTime = 0f;
+            _stuckCompletionScanTimer = 0f;
+        }
+
         // Only process when BattleController is in AWAITING_SHOT
         if (BattleController.CurrentBattleState != BattleController.BattleState.AWAITING_SHOT)
         {
@@ -974,6 +1075,11 @@ internal static class BattleControllerPatches
         Events.Subscriptions.CoopSubscriptions.HighWaterPegTally = 0;
         Events.Subscriptions.CoopSubscriptions.HighWaterDamage = 0;
         Events.Subscriptions.CoopSubscriptions.MultiballSpawnCount = 0;
+
+        // Reset stuck-completion watchdog timestamps for the new shot.
+        _shotFiredUnscaledTime = UnityEngine.Time.unscaledTime;
+        _stuckCompletionSinceUnscaledTime = 0f;
+        _stuckCompletionScanTimer = 0f;
     }
 
     /// <summary>
