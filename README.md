@@ -5,6 +5,12 @@ A cooperative multiplayer mod for [Peglin](https://store.steampowered.com/app/12
 Built with BepInEx 5 + HarmonyX. Cross-platform: Windows (native) and Linux (Proton/Wine).
 All scripts use PowerShell (pwsh) for portability.
 
+Here's 4 players playing the same match together so you can see what it looks like:
+![4 Players playing Multipeglin](multipeglin-4-player.jpg)
+
+Here's just one of the players in a two player match:
+![One player in a 2-player match of Multipeglin](multipeglin-2-player.jpg)
+
 ## Quick Start
 
 If you just want to play the mod, you are at the wrong spot. Go to Thunderstore and search for "Multipeglin" and install via a supported app there. Otherwise, if you want to do development on the mod, continue to the below sections.
