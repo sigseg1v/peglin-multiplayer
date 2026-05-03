@@ -13,7 +13,7 @@ Here's just one of the players in a two player match:
 
 ## Quick Start
 
-If you just want to play the mod, you are at the wrong spot. Go to Thunderstore and search for "Multipeglin" and install via a supported app there. Otherwise, if you want to do development on the mod, continue to the below sections.
+If you just want to play the mod, you are at the wrong spot. Go to Thunderstore and search for "[Multipeglin](https://thunderstore.io/c/peglin/p/sigseg1v/Multipeglin/)" and install via a supported app there. Otherwise, if you want to do development on the mod, continue to the below sections.
 
 ## Quick Start (dev)
 
