@@ -544,13 +544,17 @@ public class ClientBallRenderer : MonoBehaviour
 
         var services = MultiplayerPlugin.Services;
         if (services == null
-            || !services.TryResolve<Network.TransportRouter>(out var router)
-            || router?.InnerLite == null)
+            || !services.TryResolve<Network.IRttProvider>(out var rtt))
         {
             return;
         }
 
-        var rttMs = router.InnerLite.CurrentRttMs;
+        var rttMs = rtt.CurrentRttMs;
+        if (rttMs <= 0)
+        {
+            return; // no measurement yet — keep current delay
+        }
+
         float delay;
         if (rttMs <= 100)
         {

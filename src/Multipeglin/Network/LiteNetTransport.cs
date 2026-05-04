@@ -18,26 +18,6 @@ public class LiteNetTransport : INetworkTransport, INetEventListener
 
     public IReadOnlyList<int> ConnectedPeerIds => _peers.Keys.ToList();
 
-    /// <summary>
-    /// Best-effort RTT in milliseconds against the first connected peer
-    /// (clients only ever have one peer; on the host this returns the first
-    /// client which is fine for the only RTT consumer right now —
-    /// ClientBallRenderer only runs on clients). 0 if no peers / unknown.
-    /// LiteNetLib updates this from OnNetworkLatencyUpdate ticks.
-    /// </summary>
-    public int CurrentRttMs
-    {
-        get
-        {
-            foreach (var peer in _peers.Values)
-            {
-                return peer.Ping * 2;
-            }
-
-            return 0;
-        }
-    }
-
     public event Action<int, byte[]> OnDataReceived;
 
     public event Action<int> OnClientConnected;

@@ -142,6 +142,10 @@ public static class ServiceRegistration
         versionChecker.Check();
         container.RegisterSingleton(versionChecker);
 
+        var rttProvider = new AppLevelRttProvider(container.Resolve<IMultiplayerMode>(), log);
+        container.RegisterSingleton(rttProvider);
+        container.RegisterSingleton<IRttProvider>(rttProvider);
+
         var eventDiscovery = new EventDiscovery(log);
         eventDiscovery.ScanGameDelegates();
         container.RegisterSingleton(eventDiscovery);
@@ -266,6 +270,10 @@ public static class ServiceRegistration
         // Handshake (version exchange) & disconnect
         registry.Register(new HandshakeServerHandler(), new HandshakeClientHandler());
         registry.Register(new DisconnectServerHandler(), new DisconnectClientHandler());
+
+        // RTT probe (client → host → client) — drives adaptive interpolation
+        registry.Register(new PingServerHandler(), new PingNoopClientHandler());
+        registry.Register(new PongServerHandler(), new PongClientHandler());
 
         // Battle events
         registry.Register(new BattleStartedServerHandler(), new BattleStartedClientHandler());
