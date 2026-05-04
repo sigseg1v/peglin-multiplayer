@@ -483,6 +483,25 @@ public static class MultiplayerClientPatches
                     var pm = bc.PredictionManager;
                     var psec = UnityEngine.Object.FindObjectOfType<Battle.StatusEffects.PlayerStatusEffectController>();
                     ball.Init(rm, dm, UnityEngine.Vector2.right, pm, psec);
+
+                    // SummoningCircle: prediction reads _orbToSummon (the satellite orb) for
+                    // trajectory params. Without InitSummoningCircle, hasBeenInitialized stays
+                    // false → InitializeMembers leaves the SC parent's default fireForce, and
+                    // SetTrajectorySimulationRadius NREs on _orbToSummon.localScale — killing
+                    // the dotted aimer and leaving the post-fire ball with no aim vector.
+                    if (ball is SummoningCirclePachinkoBall sc)
+                    {
+                        try
+                        {
+                            sc.InitSummoningCircle(dm, spawnPos);
+                        }
+                        catch (System.Exception scEx)
+                        {
+                            MultiplayerPlugin.Logger?.LogWarning(
+                                $"[ClientAim] InitSummoningCircle failed: {scEx.GetType().Name}: {scEx.Message}");
+                        }
+                    }
+
                     ball.InitializeMembers();
 
                     // Arm the ball — this enables TrajectorySimulation and prediction line
