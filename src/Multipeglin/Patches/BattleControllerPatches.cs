@@ -1056,17 +1056,6 @@ internal static class BattleControllerPatches
         Events.Subscriptions.CoopSubscriptions.HighWaterDamage = 0;
         Events.Subscriptions.CoopSubscriptions.MultiballSpawnCount = 0;
 
-        // Snapshot the shooter's slot for the in-flight shot. Per-peg heals
-        // (Doctorb, lifesteal) fire from end-of-frame coroutines that can run
-        // AFTER OnShotComplete swaps ActivePlayerSlot back to host=0. Without
-        // this snapshot, HandleImmediateHeal would credit the wrong slot.
-        var services = MultiplayerPlugin.Services;
-        if (services?.TryResolve<GameState.CoopStateManager>(out var coop) == true
-            && coop.TotalPlayerCount >= 2)
-        {
-            Events.Subscriptions.CoopSubscriptions.CurrentShotOwnerSlot = coop.ActivePlayerSlot;
-        }
-
         // Reset stuck-completion watchdog timestamps for the new shot.
         _shotFiredUnscaledTime = UnityEngine.Time.unscaledTime;
         _stuckCompletionSinceUnscaledTime = 0f;

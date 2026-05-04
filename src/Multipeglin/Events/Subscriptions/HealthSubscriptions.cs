@@ -80,18 +80,11 @@ public sealed class HealthSubscriptions
         // turn swap when singletons get snapshotted into the per-slot state.
         CoopSubscriptions.Instance?.HandleImmediateHeal(amount);
 
-        // Mirror HandleImmediateHeal's attribution: per-peg heals (Doctorb)
-        // fire from end-of-frame coroutines that may run after the slot has
-        // been swapped back, so prefer the captured shot-owner slot.
-        var targetSlot = CoopSubscriptions.CurrentShotOwnerSlot >= 0
-            ? CoopSubscriptions.CurrentShotOwnerSlot
-            : _coopStateManager?.ActivePlayerSlot ?? -1;
-
         _registry.Dispatch(new PlayerHealedEvent
         {
             Amount = amount,
             RemainingHealth = GetCurrentHealth(),
-            TargetSlotIndex = targetSlot
+            TargetSlotIndex = _coopStateManager?.ActivePlayerSlot ?? -1
         });
     }
 
