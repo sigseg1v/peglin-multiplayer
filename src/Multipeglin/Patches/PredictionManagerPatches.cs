@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Battle;
 using Battle.PegBehaviour;
 using HarmonyLib;
+using Multipeglin.GameState;
 using static Multipeglin.Patches.MultiplayerClientPatches;
 
 namespace Multipeglin.Patches;
@@ -128,7 +129,7 @@ internal static class PredictionManagerPatches
             return true;
         }
 
-        if (Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn)
+        if (IsHostsTurn())
         {
             return true;
         }
@@ -165,7 +166,7 @@ internal static class PredictionManagerPatches
             return true;
         }
 
-        if (Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn)
+        if (IsHostsTurn())
         {
             return true;
         }
@@ -179,5 +180,48 @@ internal static class PredictionManagerPatches
         }
 
         return false; // Not host's turn — don't re-enable prediction line
+    }
+
+    /// <summary>
+    /// True when slot 0 (host) is the active aiming player.
+    ///
+    /// Three converging signals, any of which is sufficient:
+    /// 1. TurnChangeClientHandler.IsMyTurn — set by TurnChangeServerHandler when
+    ///    Phase==PLAYER_AIMING and the active slot is local.
+    /// 2. TurnManager.CurrentPlayerSlot==0 — set inside StartNewRound/AdvanceTurn.
+    /// 3. CoopStateManager.ActivePlayerSlot==0 — set by OnTurnComplete BEFORE
+    ///    DrawBall fires. This is the only signal that's true during the
+    ///    ALL_DONE→DrawBall→Arm()→StartNewRound window: at Arm() time, Phase
+    ///    is still ALL_DONE and CurrentTurnIndex has run past the end, so both
+    ///    (1) and (2) are false. Without this signal we block the one and only
+    ///    SetLineRendererStatus(true) call Arm() makes per turn, and the dotted
+    ///    aimer stays invisible for the rest of the host's turn. ActivePlayerSlot
+    ///    is the singleton-load target, so it cleanly matches "host's deck is
+    ///    currently in the live DeckManager and the host is the next shooter."
+    /// </summary>
+    private static bool IsHostsTurn()
+    {
+        if (Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn)
+        {
+            return true;
+        }
+
+        var services = MultiplayerPlugin.Services;
+        if (services == null)
+        {
+            return false;
+        }
+
+        if (services.TryResolve<TurnManager>(out var tm) && tm.CurrentPlayerSlot == 0)
+        {
+            return true;
+        }
+
+        if (services.TryResolve<CoopStateManager>(out var coop) && coop.ActivePlayerSlot == 0)
+        {
+            return true;
+        }
+
+        return false;
     }
 }

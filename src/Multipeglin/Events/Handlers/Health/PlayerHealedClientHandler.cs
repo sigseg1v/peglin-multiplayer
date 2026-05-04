@@ -1,5 +1,6 @@
 using System;
 using global::Battle;
+using HarmonyLib;
 using Multipeglin.Events.Handlers.Coop;
 using Multipeglin.Events.Network.Health;
 
@@ -17,8 +18,8 @@ public sealed class PlayerHealedClientHandler : IClientHandler<PlayerHealedEvent
                 return;
             }
 
-            // Only fire the heal delegate when the heal targeted *this* player. Otherwise
-            // every client (and host) sees subscribers react to heals that weren't for them.
+            // Only apply the heal when it targeted *this* player. Otherwise every client
+            // (and host) would react to heals that weren't for them.
             if (networkEvent.TargetSlotIndex >= 0)
             {
                 var mySlot = CoopSlotHelper.GetLocalSlotIndex(MultiplayerPlugin.Services);
@@ -26,6 +27,16 @@ public sealed class PlayerHealedClientHandler : IClientHandler<PlayerHealedEvent
                 {
                     return;
                 }
+            }
+
+            // Set health directly from host data — the dumb client never derives its
+            // own state, so we must write the authoritative value into the FloatVariable.
+            var ctrl = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
+            if (ctrl != null)
+            {
+                var healthField = AccessTools.Field(typeof(PlayerHealthController), "_playerHealth");
+                var healthVar = healthField?.GetValue(ctrl) as FloatVariable;
+                healthVar?.Set(networkEvent.RemainingHealth);
             }
 
             PlayerHealthController.OnPlayerHealed?.Invoke(networkEvent.Amount);

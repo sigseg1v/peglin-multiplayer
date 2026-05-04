@@ -60,17 +60,18 @@ public class ClientBallRenderer : MonoBehaviour
 
     private readonly Dictionary<string, FlightVisual> _flightBalls = new Dictionary<string, FlightVisual>();
 
-    // Render the client visual this many seconds behind real time. With the
-    // host snapshotting at ~10 Hz (100 ms), 200 ms gives a 2-entry buffer so
-    // we can always interpolate between two known host states. Larger values
-    // smooth more but feel more sluggish; 200 ms is the sweet spot for a peg
-    // game where shot pacing is human-driven, not twitch-reactive.
-    private const float RenderDelay = 0.2f;
-
-    // Trim history older than (RenderDelay + this) seconds. Keeps memory
-    // bounded while leaving a small grace buffer for slightly out-of-order
-    // arrivals or render-time underruns.
-    private const float HistoryRetention = 0.5f;
+    // Render the client visual this many seconds behind real time, scaled by
+    // observed RTT. With host snapshots at 20 Hz (50 ms cadence):
+    //   RTT ≤ 100 ms  → 200 ms (2-entry buffer, smooth on a clean LAN)
+    //   100 < RTT ≤ 200 → 500 ms (10-entry buffer, absorbs jitter)
+    //   RTT > 200 ms  → 1000 ms (20-entry buffer, survives stalls)
+    // The buffer always covers RenderDelay + a small grace window so we can
+    // always lerp between two known host states even when packets bunch.
+    private float _currentRenderDelay = 0.2f;
+    private float _currentHistoryRetention = 0.5f;
+    private const float HistoryGrace = 0.3f;
+    private float _nextRttPollAt;
+    private const float RttPollInterval = 1.0f;
 
     private void Awake() { Instance = this; }
 
@@ -421,8 +422,10 @@ public class ClientBallRenderer : MonoBehaviour
             return;
         }
 
-        var renderTime = Time.time - RenderDelay;
-        var prunedBefore = renderTime - HistoryRetention;
+        UpdateRenderDelayFromRtt();
+
+        var renderTime = Time.time - _currentRenderDelay;
+        var prunedBefore = renderTime - _currentHistoryRetention;
         List<string> toDestroy = null;
 
         foreach (var kvp in _flightBalls)
@@ -516,6 +519,65 @@ public class ClientBallRenderer : MonoBehaviour
                 _flightBalls.Remove(guid);
             }
         }
+    }
+
+    // =========================================================================
+    // ADAPTIVE RENDER DELAY
+    // =========================================================================
+
+    /// <summary>
+    /// Tier the render delay against the LiteNetLib peer RTT. We poll once per
+    /// second — RTT changes slowly relative to per-frame Update() and reading
+    /// the DI container every frame would be wasteful. Steam transport doesn't
+    /// expose RTT today, so we get the LiteNet path's number; a Steam-only
+    /// session keeps the default 200 ms (still fine for typical Steam P2P).
+    /// </summary>
+    private void UpdateRenderDelayFromRtt()
+    {
+        var now = Time.time;
+        if (now < _nextRttPollAt)
+        {
+            return;
+        }
+
+        _nextRttPollAt = now + RttPollInterval;
+
+        var services = MultiplayerPlugin.Services;
+        if (services == null
+            || !services.TryResolve<Network.IRttProvider>(out var rtt))
+        {
+            return;
+        }
+
+        var rttMs = rtt.CurrentRttMs;
+        if (rttMs <= 0)
+        {
+            return; // no measurement yet — keep current delay
+        }
+
+        float delay;
+        if (rttMs <= 100)
+        {
+            delay = 0.2f;
+        }
+        else if (rttMs <= 200)
+        {
+            delay = 0.5f;
+        }
+        else
+        {
+            delay = 1.0f;
+        }
+
+        if (Mathf.Abs(delay - _currentRenderDelay) < 0.001f)
+        {
+            return;
+        }
+
+        _currentRenderDelay = delay;
+        _currentHistoryRetention = delay + HistoryGrace;
+        MultiplayerPlugin.Logger?.LogInfo(
+            $"[ClientBallRenderer] RTT={rttMs}ms → renderDelay={delay:F2}s, retention={_currentHistoryRetention:F2}s");
     }
 
     // =========================================================================

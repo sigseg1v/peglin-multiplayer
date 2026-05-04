@@ -301,6 +301,15 @@ public static class MultiplayerClientPatches
     // The client-created ball GO for the orb visual at spawn point
     internal static UnityEngine.GameObject _clientBallGO;
 
+    // Name of the orb prefab the current _clientBallGO was instantiated from.
+    // Compared against the host's authoritative active-orb name so we rebuild
+    // when the active orb changes mid-turn (e.g. discard → next orb pop).
+    internal static string _clientBallOrbName;
+
+    // Set by OrbDiscardedClientHandler with the name of the new active orb so
+    // HandleClientAiming can pick it up before the next heartbeat lands.
+    internal static string _clientPendingOrbName;
+
     // Our own trajectory LineRenderer (separate from the ball's TrajectorySimulation)
     internal static UnityEngine.GameObject _clientTrajectoryGO;
     internal static UnityEngine.LineRenderer _clientTrajectoryLR;
@@ -315,6 +324,46 @@ public static class MultiplayerClientPatches
     /// Called when the host confirms an orb discard — the new orb is in the
     /// shuffled deck and HandleClientAiming will pick it up.
     /// </summary>
+    /// <summary>
+    /// Resolve an orb prefab by name from the locally loaded deck. Searches
+    /// battleDeck and completeDeck (matched on the cleaned prefab name) and
+    /// falls back to AssetLoading's prefab cache. Returns null if no match.
+    /// Used by HandleClientAiming so we instantiate the same orb the host has
+    /// active, even when the local shuffledDeck disagrees (e.g. post-discard
+    /// before the next heartbeat).
+    /// </summary>
+    private static UnityEngine.GameObject FindOrbPrefabByName(DeckManager dm, string cleanName)
+    {
+        if (string.IsNullOrEmpty(cleanName))
+        {
+            return null;
+        }
+
+        if (dm?.battleDeck != null)
+        {
+            foreach (var orb in dm.battleDeck)
+            {
+                if (orb != null && orb.name.Replace("(Clone)", string.Empty).Trim() == cleanName)
+                {
+                    return orb;
+                }
+            }
+        }
+
+        if (DeckManager.completeDeck != null)
+        {
+            foreach (var orb in DeckManager.completeDeck)
+            {
+                if (orb != null && orb.name.Replace("(Clone)", string.Empty).Trim() == cleanName)
+                {
+                    return orb;
+                }
+            }
+        }
+
+        return Loading.AssetLoading.Instance?.GetOrbPrefab(cleanName);
+    }
+
     internal static void ResetClientAimingBall()
     {
         _clientDiscardSentThisTurn = false;
@@ -375,6 +424,7 @@ public static class MultiplayerClientPatches
         _clientBallInitialized = false;
         _clientBallRetryCount = 0;
         _clientDiscardSentThisTurn = false;
+        _clientBallOrbName = null;
     }
 
     /// <summary>
@@ -389,6 +439,29 @@ public static class MultiplayerClientPatches
 
     internal static void HandleClientAiming(BattleController bc)
     {
+        // Detect mid-turn orb-identity change (discard, host swap-in, etc.).
+        // The host pushes the new active-orb name via OrbDiscardedClientHandler
+        // (immediate) and the deck heartbeat (eventual). When either signals an
+        // orb name that doesn't match what we instantiated, force a rebuild so
+        // SummoningCircle, custom orbs, etc. all get their correct prefab and
+        // satellite-spawn init runs again.
+        if (_clientBallInitialized)
+        {
+            var expectedOrb = _clientPendingOrbName;
+            if (string.IsNullOrEmpty(expectedOrb))
+            {
+                expectedOrb = GameState.ClientBallRenderer.Instance?.CurrentOrbName;
+            }
+
+            var clean = expectedOrb?.Replace("(Clone)", string.Empty).Trim();
+            if (!string.IsNullOrEmpty(clean) && clean != _clientBallOrbName)
+            {
+                MultiplayerPlugin.Logger?.LogInfo(
+                    $"[ClientAim] Orb identity changed: was '{_clientBallOrbName}' now '{clean}' — rebuilding aimer");
+                CleanupClientAiming();
+            }
+        }
+
         if (!_clientBallInitialized)
         {
             // Rate-limit retries to avoid log spam
@@ -429,7 +502,24 @@ public static class MultiplayerClientPatches
                 var shuffledField = HarmonyLib.AccessTools.Field(typeof(DeckManager), "shuffledDeck");
                 var shuffled = shuffledField?.GetValue(dm) as System.Collections.Generic.Stack<UnityEngine.GameObject>;
                 UnityEngine.GameObject prefab = null;
-                if (shuffled != null && shuffled.Count > 0)
+
+                // Prefer looking up by the host's authoritative active-orb name.
+                // The local shuffledDeck.Peek() can disagree with the host after
+                // a discard (we pop the new active orb in OrbDiscardedClientHandler,
+                // leaving Peek pointing at the orb AFTER the new active one).
+                var hostOrbHint = _clientPendingOrbName;
+                if (string.IsNullOrEmpty(hostOrbHint))
+                {
+                    hostOrbHint = GameState.ClientBallRenderer.Instance?.CurrentOrbName;
+                }
+
+                var hostOrbClean = hostOrbHint?.Replace("(Clone)", string.Empty).Trim();
+                if (!string.IsNullOrEmpty(hostOrbClean))
+                {
+                    prefab = FindOrbPrefabByName(dm, hostOrbClean);
+                }
+
+                if (prefab == null && shuffled != null && shuffled.Count > 0)
                 {
                     prefab = shuffled.Peek();
                 }
@@ -483,6 +573,25 @@ public static class MultiplayerClientPatches
                     var pm = bc.PredictionManager;
                     var psec = UnityEngine.Object.FindObjectOfType<Battle.StatusEffects.PlayerStatusEffectController>();
                     ball.Init(rm, dm, UnityEngine.Vector2.right, pm, psec);
+
+                    // SummoningCircle: prediction reads _orbToSummon (the satellite orb) for
+                    // trajectory params. Without InitSummoningCircle, hasBeenInitialized stays
+                    // false → InitializeMembers leaves the SC parent's default fireForce, and
+                    // SetTrajectorySimulationRadius NREs on _orbToSummon.localScale — killing
+                    // the dotted aimer and leaving the post-fire ball with no aim vector.
+                    if (ball is SummoningCirclePachinkoBall sc)
+                    {
+                        try
+                        {
+                            sc.InitSummoningCircle(dm, spawnPos);
+                        }
+                        catch (System.Exception scEx)
+                        {
+                            MultiplayerPlugin.Logger?.LogWarning(
+                                $"[ClientAim] InitSummoningCircle failed: {scEx.GetType().Name}: {scEx.Message}");
+                        }
+                    }
+
                     ball.InitializeMembers();
 
                     // Arm the ball — this enables TrajectorySimulation and prediction line
@@ -498,6 +607,27 @@ public static class MultiplayerClientPatches
                             $"trajSim={(ball.GetComponent<TrajectorySimulation>() == null ? "null" : "ok")}\n{armEx.StackTrace}");
                     }
 
+                    // Mirror BattleController.ArmBallForShot's final two steps so the
+                    // dotted aim line actually renders. SetTrajectorySimulationRadius is
+                    // the SC-critical bit: SC's override reads _orbToSummon.localScale and
+                    // its collider radius — without this the simulation has radius=0 and
+                    // the prediction line draws as a single point (or not at all).
+                    try
+                    {
+                        ball.SetTrajectorySimulationRadius();
+                    }
+                    catch (System.Exception trEx)
+                    {
+                        MultiplayerPlugin.Logger?.LogWarning(
+                            $"[ClientAim] SetTrajectorySimulationRadius failed: {trEx.GetType().Name}: {trEx.Message}");
+                    }
+
+                    var trajSim = ball.GetComponent<TrajectorySimulation>();
+                    if (trajSim != null)
+                    {
+                        trajSim.enabled = true;
+                    }
+
                     // Set AIMING state for proper mouse input handling in PachinkoBall.Update
                     var stateProp = HarmonyLib.AccessTools.Property(typeof(PachinkoBall), "CurrentState");
                     stateProp?.GetSetMethod(true)?.Invoke(ball, new object[] { PachinkoBall.FireballState.AIMING });
@@ -506,9 +636,11 @@ public static class MultiplayerClientPatches
                 // SUCCESS — mark initialized so we don't retry
                 _clientBallInitialized = true;
                 _clientBallRetryCount = 0;
+                _clientBallOrbName = prefab.name?.Replace("(Clone)", string.Empty).Trim();
+                _clientPendingOrbName = null;
 
                 MultiplayerPlugin.Logger?.LogInfo(
-                    $"[ClientAim] Created ball at ({spawnPos.x:F1},{spawnPos.y:F1}), " +
+                    $"[ClientAim] Created ball '{_clientBallOrbName}' at ({spawnPos.x:F1},{spawnPos.y:F1}), " +
                     $"fireForce={_clientFireForce}, mass={_clientBallMass}, gravity={_clientGravityScale}, " +
                     $"state={ball?.CurrentState}, active={_clientBallGO.activeInHierarchy}");
             }
@@ -941,7 +1073,14 @@ public static class MultiplayerClientPatches
 
         foreach (var shot in shots)
         {
-            if (shot.IsHeal || shot.Damage <= 0)
+            if (shot.IsHeal && shot.Damage > 0)
+            {
+                ApplyCoopHeal(shot, em, enemyId, reg);
+                yield return new UnityEngine.WaitForSeconds(0.3f);
+                continue;
+            }
+
+            if (shot.Damage <= 0)
             {
                 continue;
             }
@@ -1015,6 +1154,8 @@ public static class MultiplayerClientPatches
                     MultiplayerPlugin.Logger?.LogWarning(
                         $"[CoopAttack] Raycast redirect failed for {shot.OrbPrefabName}: {rex.Message}");
                 }
+
+                ExtendTargetsForTranspherency(em, targets);
 
                 ExpandTargetsForShooterRelics(em, shot, primaryTarget, targets);
             }
@@ -1225,6 +1366,175 @@ public static class MultiplayerClientPatches
     }
 
     /// <summary>
+    /// Apply a Doctorb-style heal during coop playback. The native HealAction.Fire
+    /// path is suppressed (DoAttack prefix skips the native pipeline in coop), so
+    /// the heal must be applied manually here against the shooter's CoopPlayerState
+    /// — not the active singleton, which has already rotated to the next round's
+    /// lead by the time PlayCoopAttackSequence runs. Mirrors HealAction.DoHealAction:
+    /// applies the heal, then optionally damages the targeted enemy or all enemies
+    /// based on the orb's damage*Multiplier fields.
+    /// </summary>
+    internal static void ApplyCoopHeal(
+        Events.Subscriptions.Coop.PlayerAttackData shot,
+        EnemyManager em,
+        Utility.EnemyIdentifier enemyId,
+        IGameEventRegistry reg)
+    {
+        var services = MultiplayerPlugin.Services;
+        if (services == null
+            || !services.TryResolve<Multipeglin.GameState.CoopStateManager>(out var coopMgr))
+        {
+            return;
+        }
+
+        var state = coopMgr.GetPlayerState(shot.SlotIndex);
+        if (state == null)
+        {
+            return;
+        }
+
+        var before = state.CurrentHealth;
+        var newHealth = UnityEngine.Mathf.Min(state.MaxHealth, before + shot.Damage);
+        var actualHeal = newHealth - before;
+        if (actualHeal <= 0f)
+        {
+            // Already at max — no heal applied, skip secondary damage too (matches
+            // HealAction.DoHealAction which gates secondary damage on `num > 0f`).
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[CoopAttack] Heal slot {shot.SlotIndex} ({shot.PlayerName}): " +
+                $"already at full hp ({before}/{state.MaxHealth}), no heal applied");
+            return;
+        }
+
+        state.CurrentHealth = newHealth;
+
+        // If this slot is currently active (its singletons are loaded), also push
+        // the heal into the live PlayerHealthController so the host's HUD updates.
+        // The active player at this point is already the next round's lead (state
+        // saved/loaded happens between rounds), so this is usually a no-op for the
+        // shooter — but if attribution somehow lined up, write through.
+        if (coopMgr.ActivePlayerSlot == shot.SlotIndex)
+        {
+            try
+            {
+                var phc = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
+                if (phc != null)
+                {
+                    var healthField = AccessTools.Field(typeof(PlayerHealthController), "_playerHealth");
+                    var healthVar = healthField?.GetValue(phc) as FloatVariable;
+                    healthVar?.Set(newHealth);
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        try
+        {
+            reg?.Dispatch(new Events.Network.Health.PlayerHealedEvent
+            {
+                Amount = actualHeal,
+                RemainingHealth = newHealth,
+                TargetSlotIndex = shot.SlotIndex,
+            });
+        }
+        catch
+        {
+        }
+
+        // Apply secondary damage from HealAction.damageTargetedEnemyMultiplier /
+        // damageAllEnemiesMultiplier. Read off the orb prefab.
+        var targetedMult = 0f;
+        var allMult = 0f;
+        try
+        {
+            var orbPrefab = Loading.AssetLoading.Instance?.GetOrbPrefab(shot.OrbPrefabName);
+            var heal = orbPrefab?.GetComponent<HealAction>();
+            if (heal != null)
+            {
+                targetedMult = heal.damageTargetedEnemyMultiplier;
+                allMult = heal.damageAllEnemiesMultiplier;
+            }
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning(
+                $"[CoopAttack] Failed to read HealAction multipliers for {shot.OrbPrefabName}: {ex.Message}");
+        }
+
+        if (targetedMult > 0f && em != null)
+        {
+            var dmg = UnityEngine.Mathf.RoundToInt(actualHeal * targetedMult);
+            if (dmg > 0)
+            {
+                Battle.Enemies.Enemy primary = null;
+                if (!string.IsNullOrEmpty(shot.TargetEnemyGuid))
+                {
+                    primary = enemyId?.Find(shot.TargetEnemyGuid);
+                }
+
+                if (primary == null || primary.CurrentHealth <= 0f)
+                {
+                    primary = em.GetFarthestEnemyFromPlayer();
+                }
+
+                if (primary != null && primary.CurrentHealth > 0f)
+                {
+                    Events.Subscriptions.EnemySubscriptions.DamageAttributionSlotOverride = shot.SlotIndex;
+                    try
+                    {
+                        primary.Damage(
+                            dmg,
+                            screenshake: false,
+                            0.25f,
+                            1f,
+                            unblockable: false,
+                            Battle.Enemies.Enemy.EnemyDamageSource.TargetedAttack);
+                    }
+                    finally
+                    {
+                        Events.Subscriptions.EnemySubscriptions.DamageAttributionSlotOverride = -1;
+                    }
+                }
+            }
+        }
+        else if (allMult > 0f && em != null)
+        {
+            var dmg = UnityEngine.Mathf.RoundToInt(actualHeal * allMult);
+            if (dmg > 0)
+            {
+                Events.Subscriptions.EnemySubscriptions.DamageAttributionSlotOverride = shot.SlotIndex;
+                try
+                {
+                    foreach (var e in em.Enemies)
+                    {
+                        if (e != null && e.CurrentHealth > 0f)
+                        {
+                            e.Damage(
+                                dmg,
+                                screenshake: false,
+                                0.25f,
+                                1f,
+                                unblockable: false,
+                                Battle.Enemies.Enemy.EnemyDamageSource.AOE);
+                        }
+                    }
+                }
+                finally
+                {
+                    Events.Subscriptions.EnemySubscriptions.DamageAttributionSlotOverride = -1;
+                }
+            }
+        }
+
+        MultiplayerPlugin.Logger?.LogInfo(
+            $"[CoopAttack] Heal slot {shot.SlotIndex} ({shot.PlayerName}): " +
+            $"orb={shot.OrbPrefabName} healed={actualHeal} ({before}→{newHealth}/{state.MaxHealth}) " +
+            $"targetedMult={targetedMult} allMult={allMult}");
+    }
+
+    /// <summary>
     /// Apply captured status effects from a non-host player's orb to a target enemy.
     /// This replicates the status effect application that the normal attack pipeline
     /// does via IAffectEnemyOnHit components and Attack.GetStatusEffects().
@@ -1339,6 +1649,93 @@ public static class MultiplayerClientPatches
         catch (System.Exception ex)
         {
             MultiplayerPlugin.Logger?.LogWarning($"[CoopAttack] ExpandTargetsForShooterRelics failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Walks the line of enemies behind the most-recently-added target and adds
+    /// each one as long as the prior link has the Transpherency status effect.
+    /// Mirrors ShotBehavior NORMAL-shot behavior: any Transpherency stack on
+    /// the hit enemy lets the shot continue through with full damage to the
+    /// enemy behind, stopping at the first enemy without Transpherency.
+    ///
+    /// PlayCoopAttackSequence's GetOrbPierceCount only handles inherent-pierce
+    /// orbs (Sphear); without this helper, NORMAL orbs replayed via the coop
+    /// pipeline never carry damage past the front enemy even when Transpherency
+    /// is active, so the relic does nothing in coop.
+    /// </summary>
+    internal static void ExtendTargetsForTranspherency(
+        EnemyManager em,
+        System.Collections.Generic.List<Battle.Enemies.Enemy> targets)
+    {
+        if (em == null || targets == null || targets.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            // Defensive cap: max chain length = total living enemies, never infinite.
+            for (var hops = 0; hops < 16; hops++)
+            {
+                var last = targets[targets.Count - 1];
+                if (last == null || last.CurrentHealth <= 0f)
+                {
+                    return;
+                }
+
+                if (last.GetEffect(Battle.StatusEffects.StatusEffectType.Transpherency) == null)
+                {
+                    return;
+                }
+
+                Battle.Enemies.Enemy behind = null;
+                var behindSlot = float.PositiveInfinity;
+                float lastSlot;
+                try
+                {
+                    lastSlot = em.GetSlotIndexForEnemy(last, out _);
+                }
+                catch
+                {
+                    return;
+                }
+
+                foreach (var e in em.Enemies)
+                {
+                    if (e == null || e.CurrentHealth <= 0f || targets.Contains(e))
+                    {
+                        continue;
+                    }
+
+                    float slot;
+                    try
+                    {
+                        slot = em.GetSlotIndexForEnemy(e, out _);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    if (slot > lastSlot && slot < behindSlot)
+                    {
+                        behind = e;
+                        behindSlot = slot;
+                    }
+                }
+
+                if (behind == null)
+                {
+                    return;
+                }
+
+                targets.Add(behind);
+            }
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[CoopAttack] ExtendTargetsForTranspherency failed: {ex.Message}");
         }
     }
 

@@ -142,6 +142,13 @@ public static class ServiceRegistration
         versionChecker.Check();
         container.RegisterSingleton(versionChecker);
 
+        var rttProvider = new AppLevelRttProvider(container.Resolve<IMultiplayerMode>(), log);
+        container.RegisterSingleton(rttProvider);
+        container.RegisterSingleton<IRttProvider>(rttProvider);
+
+        var hostRttTracker = new HostRttTracker(container.Resolve<IMultiplayerMode>(), log);
+        container.RegisterSingleton(hostRttTracker);
+
         var eventDiscovery = new EventDiscovery(log);
         eventDiscovery.ScanGameDelegates();
         container.RegisterSingleton(eventDiscovery);
@@ -267,6 +274,14 @@ public static class ServiceRegistration
         registry.Register(new HandshakeServerHandler(), new HandshakeClientHandler());
         registry.Register(new DisconnectServerHandler(), new DisconnectClientHandler());
 
+        // RTT probe (client → host → client) — drives adaptive interpolation
+        registry.Register(new PingServerHandler(), new PingClientHandler());
+        registry.Register(new PongServerHandler(), new PongClientHandler());
+
+        // Host-side RTT probe (host → client → host) — per-peer logging
+        registry.Register(new HostPingNoopServerHandler(), new HostPingClientHandler());
+        registry.Register(new HostPongServerHandler(), new HostPongClientHandler());
+
         // Battle events
         registry.Register(new BattleStartedServerHandler(), new BattleStartedClientHandler());
         registry.Register(new BattleEndedServerHandler(), new BattleEndedClientHandler());
@@ -374,6 +389,7 @@ public static class ServiceRegistration
         registry.Register(new CoopHandlers.NavigateVoteUpdateServerHandler(), new CoopHandlers.NavigateVoteUpdateClientHandler());
         registry.Register(new CoopHandlers.NavigateResolvedServerHandler(), new CoopHandlers.NavigateResolvedClientHandler());
         registry.Register(new CoopHandlers.NavBallShotServerHandler(), new CoopHandlers.NavBallShotClientHandler());
+        registry.Register(new CoopHandlers.SlotConfigServerHandler(), new CoopHandlers.SlotConfigClientHandler());
 
         // Scenario events (TextScenario / Mirror / Shop / Treasure)
         registry.Register(new ScenarioHandlers.MirrorEventStartServerHandler(), new ScenarioHandlers.MirrorEventStartClientHandler());

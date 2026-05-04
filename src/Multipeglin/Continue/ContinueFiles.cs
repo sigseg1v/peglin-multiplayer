@@ -204,7 +204,7 @@ public static class ContinueFiles
                 continue;
             }
 
-            if (!string.Equals(data.ModVersion, requiredModVersion, StringComparison.Ordinal))
+            if (!ContinueCompatibility.IsCompatible(requiredModVersion, data.ModVersion))
             {
                 continue;
             }

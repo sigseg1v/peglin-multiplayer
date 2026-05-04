@@ -139,6 +139,14 @@ public class CoopStateManager
 
         ActivePlayerSlot = slotIndex;
 
+        // SLOT_PORTAL (Pumpkin Pi) belongs to the swapped-in player's relic set.
+        // Reconfigure SpecialSlotController's slot triggers so the portal flag
+        // matches whoever is now aiming. SpecialSlotController.TurnComplete only
+        // runs once per round (via BattleController.OnTurnComplete), with whichever
+        // relics happened to be loaded then — leaving slot 1's Pumpkin Pi inert
+        // when slot 0 was the round-end active player.
+        Patches.SpecialSlotControllerPatches.ReconfigurePortalsForActiveRelics(_log);
+
         _log.LogInfo($"[CoopState] Loaded slot {slotIndex}: " +
             $"hp={state.CurrentHealth}/{state.MaxHealth}, deck={state.CompleteDeck.Count}, " +
             $"relics={state.OwnedRelics.Count}, statusEffects={state.StatusEffects.Count}");

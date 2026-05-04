@@ -58,6 +58,10 @@ public sealed class TurnChangeClientHandler : IClientHandler<TurnChangeEvent>
         // again when their next turn comes around.
         Patches.MultiplayerClientPatches.ClientShotSentThisTurn = false;
 
+        // Drop any stale pending-orb hint from the prior turn — the next active
+        // orb on this turn will be discovered fresh via heartbeat.
+        Patches.MultiplayerClientPatches._clientPendingOrbName = null;
+
         // Hide the host aim line on turn change — the host only sends aim updates
         // during its own turn, so clear any stale line from the previous turn.
         GameState.ClientAimRenderer.Instance?.HideAim();
