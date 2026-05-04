@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Battle;
 using Battle.PegBehaviour;
 using HarmonyLib;
+using Multipeglin.GameState;
 using static Multipeglin.Patches.MultiplayerClientPatches;
 
 namespace Multipeglin.Patches;
@@ -128,7 +129,7 @@ internal static class PredictionManagerPatches
             return true;
         }
 
-        if (Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn)
+        if (IsHostsTurn())
         {
             return true;
         }
@@ -165,7 +166,7 @@ internal static class PredictionManagerPatches
             return true;
         }
 
-        if (Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn)
+        if (IsHostsTurn())
         {
             return true;
         }
@@ -179,5 +180,33 @@ internal static class PredictionManagerPatches
         }
 
         return false; // Not host's turn — don't re-enable prediction line
+    }
+
+    /// <summary>
+    /// True when slot 0 (host) is the active aiming player.
+    /// Trusts the local TurnManager over TurnChangeClientHandler.IsMyTurn —
+    /// IsMyTurn flips only when a TurnChangeEvent echoes back through Dispatch.
+    /// After a post-attack swap to slot 0 the next aiming-phase event isn't
+    /// always broadcast immediately, leaving IsMyTurn=false for the whole
+    /// host aim window and suppressing the trajectory.
+    /// Why: log multipeglin_log_vm_may3.log shows ~18s of host aim with no
+    /// PLAYER_AIMING TurnChange dispatched and no aimer visible.
+    /// </summary>
+    private static bool IsHostsTurn()
+    {
+        if (Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn)
+        {
+            return true;
+        }
+
+        var services = MultiplayerPlugin.Services;
+        if (services?.TryResolve<TurnManager>(out var tm) == true
+            && tm.CurrentPlayerSlot == 0
+            && tm.Phase == TurnPhase.PLAYER_AIMING)
+        {
+            return true;
+        }
+
+        return false;
     }
 }
