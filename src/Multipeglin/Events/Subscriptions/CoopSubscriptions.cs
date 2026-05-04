@@ -50,6 +50,19 @@ public sealed class CoopSubscriptions
     internal static string LastPendingShotTargetGuid { get; set; }
 
     /// <summary>
+    /// The slot that fired the currently-in-flight shot. Set in
+    /// BattleController_ShotFired_Postfix to the shooter's slot, held until the
+    /// next ShotFired overwrites it. Used by HandleImmediateHeal and
+    /// HealthSubscriptions.OnPlayerHealed to credit per-peg heals (Doctorb,
+    /// lifesteal, etc.) to the shooter — the WaitAndDoubleBuffs end-of-frame
+    /// coroutine fires phc.Heal() AFTER OnShotComplete has swapped
+    /// ActivePlayerSlot back to slot 0, so reading the live slot would mirror
+    /// every client's heal into the host's CoopPlayerState. -1 means "use
+    /// _coopStateManager.ActivePlayerSlot" (e.g. before any shot has fired).
+    /// </summary>
+    internal static int CurrentShotOwnerSlot { get; set; } = -1;
+
+    /// <summary>
     /// High-water mark for the running pegTally observed during the current shot.
     /// Updated from BattleControllerPatches.HandlePegActivated_Postfix on every
     /// peg hit, then read in OnShotComplete and used as a defensive fallback if
@@ -309,22 +322,39 @@ public sealed class CoopSubscriptions
             return;
         }
 
-        var activeSlot = _coopStateManager.ActivePlayerSlot;
-        if (activeSlot < 0)
+        // Prefer the shot owner over the live ActivePlayerSlot — Doctorb's
+        // WaitAndDoubleBuffs runs at end-of-frame, often after OnShotComplete
+        // has swapped slots back to host=0. Without the override, every client's
+        // Doctorb heal would silently mirror into the host's stored health.
+        var attributionSlot = CurrentShotOwnerSlot >= 0
+            ? CurrentShotOwnerSlot
+            : _coopStateManager.ActivePlayerSlot;
+        if (attributionSlot < 0)
         {
             return;
         }
 
-        var activeState = _coopStateManager.GetPlayerState(activeSlot);
+        var activeState = _coopStateManager.GetPlayerState(attributionSlot);
         if (activeState == null)
         {
             return;
         }
 
-        var phc = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
-        if (phc != null)
+        // The ACTIVE PHC (singletons) holds the heal for whatever slot is
+        // currently loaded — once we've swapped back to host=0, that PHC is
+        // host's, not the shooter's. Apply the heal amount directly to the
+        // shooter's stored CoopPlayerState instead of mirroring from PHC.
+        if (attributionSlot == _coopStateManager.ActivePlayerSlot)
         {
-            activeState.CurrentHealth = Mathf.Min(activeState.MaxHealth, phc.CurrentHealth);
+            var phc = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
+            if (phc != null)
+            {
+                activeState.CurrentHealth = Mathf.Min(activeState.MaxHealth, phc.CurrentHealth);
+            }
+        }
+        else
+        {
+            activeState.CurrentHealth = Mathf.Min(activeState.MaxHealth, activeState.CurrentHealth + amount);
         }
     }
 
@@ -462,6 +492,7 @@ public sealed class CoopSubscriptions
         _accumulatedShotData.Clear();
         Multipeglin.UI.PendingDamageOverlay.ClearAll();
         _victoryHandledThisBattle = false;
+        CurrentShotOwnerSlot = -1;
         _turnManager.BuildTurnOrder();
         _turnManager.StartNewRound();
         BroadcastTurnChange();

@@ -32,6 +32,11 @@ public sealed class OrbDiscardedClientHandler : IClientHandler<OrbDiscardedEvent
                     }
 
                     MultiplayerPlugin.Logger?.LogInfo("[OrbDiscarded] Client's discard processed — resetting aiming ball");
+                    // Hand the new active-orb name to HandleClientAiming so it
+                    // can resolve the correct prefab on the next frame instead
+                    // of falling back to shuffledDeck.Peek() (which now points
+                    // at the orb AFTER the new active one).
+                    Multipeglin.Patches.MultiplayerClientPatches._clientPendingOrbName = newActiveOrbName;
                     Multipeglin.Patches.MultiplayerClientPatches.ResetClientAimingBall();
 
                     // Drive the active-orb preview slot immediately so the player sees the

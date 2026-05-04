@@ -301,6 +301,15 @@ public static class MultiplayerClientPatches
     // The client-created ball GO for the orb visual at spawn point
     internal static UnityEngine.GameObject _clientBallGO;
 
+    // Name of the orb prefab the current _clientBallGO was instantiated from.
+    // Compared against the host's authoritative active-orb name so we rebuild
+    // when the active orb changes mid-turn (e.g. discard → next orb pop).
+    internal static string _clientBallOrbName;
+
+    // Set by OrbDiscardedClientHandler with the name of the new active orb so
+    // HandleClientAiming can pick it up before the next heartbeat lands.
+    internal static string _clientPendingOrbName;
+
     // Our own trajectory LineRenderer (separate from the ball's TrajectorySimulation)
     internal static UnityEngine.GameObject _clientTrajectoryGO;
     internal static UnityEngine.LineRenderer _clientTrajectoryLR;
@@ -315,6 +324,46 @@ public static class MultiplayerClientPatches
     /// Called when the host confirms an orb discard — the new orb is in the
     /// shuffled deck and HandleClientAiming will pick it up.
     /// </summary>
+    /// <summary>
+    /// Resolve an orb prefab by name from the locally loaded deck. Searches
+    /// battleDeck and completeDeck (matched on the cleaned prefab name) and
+    /// falls back to AssetLoading's prefab cache. Returns null if no match.
+    /// Used by HandleClientAiming so we instantiate the same orb the host has
+    /// active, even when the local shuffledDeck disagrees (e.g. post-discard
+    /// before the next heartbeat).
+    /// </summary>
+    private static UnityEngine.GameObject FindOrbPrefabByName(DeckManager dm, string cleanName)
+    {
+        if (string.IsNullOrEmpty(cleanName))
+        {
+            return null;
+        }
+
+        if (dm?.battleDeck != null)
+        {
+            foreach (var orb in dm.battleDeck)
+            {
+                if (orb != null && orb.name.Replace("(Clone)", string.Empty).Trim() == cleanName)
+                {
+                    return orb;
+                }
+            }
+        }
+
+        if (DeckManager.completeDeck != null)
+        {
+            foreach (var orb in DeckManager.completeDeck)
+            {
+                if (orb != null && orb.name.Replace("(Clone)", string.Empty).Trim() == cleanName)
+                {
+                    return orb;
+                }
+            }
+        }
+
+        return Loading.AssetLoading.Instance?.GetOrbPrefab(cleanName);
+    }
+
     internal static void ResetClientAimingBall()
     {
         _clientDiscardSentThisTurn = false;
@@ -375,6 +424,7 @@ public static class MultiplayerClientPatches
         _clientBallInitialized = false;
         _clientBallRetryCount = 0;
         _clientDiscardSentThisTurn = false;
+        _clientBallOrbName = null;
     }
 
     /// <summary>
@@ -389,6 +439,29 @@ public static class MultiplayerClientPatches
 
     internal static void HandleClientAiming(BattleController bc)
     {
+        // Detect mid-turn orb-identity change (discard, host swap-in, etc.).
+        // The host pushes the new active-orb name via OrbDiscardedClientHandler
+        // (immediate) and the deck heartbeat (eventual). When either signals an
+        // orb name that doesn't match what we instantiated, force a rebuild so
+        // SummoningCircle, custom orbs, etc. all get their correct prefab and
+        // satellite-spawn init runs again.
+        if (_clientBallInitialized)
+        {
+            var expectedOrb = _clientPendingOrbName;
+            if (string.IsNullOrEmpty(expectedOrb))
+            {
+                expectedOrb = GameState.ClientBallRenderer.Instance?.CurrentOrbName;
+            }
+
+            var clean = expectedOrb?.Replace("(Clone)", string.Empty).Trim();
+            if (!string.IsNullOrEmpty(clean) && clean != _clientBallOrbName)
+            {
+                MultiplayerPlugin.Logger?.LogInfo(
+                    $"[ClientAim] Orb identity changed: was '{_clientBallOrbName}' now '{clean}' — rebuilding aimer");
+                CleanupClientAiming();
+            }
+        }
+
         if (!_clientBallInitialized)
         {
             // Rate-limit retries to avoid log spam
@@ -429,7 +502,24 @@ public static class MultiplayerClientPatches
                 var shuffledField = HarmonyLib.AccessTools.Field(typeof(DeckManager), "shuffledDeck");
                 var shuffled = shuffledField?.GetValue(dm) as System.Collections.Generic.Stack<UnityEngine.GameObject>;
                 UnityEngine.GameObject prefab = null;
-                if (shuffled != null && shuffled.Count > 0)
+
+                // Prefer looking up by the host's authoritative active-orb name.
+                // The local shuffledDeck.Peek() can disagree with the host after
+                // a discard (we pop the new active orb in OrbDiscardedClientHandler,
+                // leaving Peek pointing at the orb AFTER the new active one).
+                var hostOrbHint = _clientPendingOrbName;
+                if (string.IsNullOrEmpty(hostOrbHint))
+                {
+                    hostOrbHint = GameState.ClientBallRenderer.Instance?.CurrentOrbName;
+                }
+
+                var hostOrbClean = hostOrbHint?.Replace("(Clone)", string.Empty).Trim();
+                if (!string.IsNullOrEmpty(hostOrbClean))
+                {
+                    prefab = FindOrbPrefabByName(dm, hostOrbClean);
+                }
+
+                if (prefab == null && shuffled != null && shuffled.Count > 0)
                 {
                     prefab = shuffled.Peek();
                 }
@@ -525,9 +615,11 @@ public static class MultiplayerClientPatches
                 // SUCCESS — mark initialized so we don't retry
                 _clientBallInitialized = true;
                 _clientBallRetryCount = 0;
+                _clientBallOrbName = prefab.name?.Replace("(Clone)", string.Empty).Trim();
+                _clientPendingOrbName = null;
 
                 MultiplayerPlugin.Logger?.LogInfo(
-                    $"[ClientAim] Created ball at ({spawnPos.x:F1},{spawnPos.y:F1}), " +
+                    $"[ClientAim] Created ball '{_clientBallOrbName}' at ({spawnPos.x:F1},{spawnPos.y:F1}), " +
                     $"fireForce={_clientFireForce}, mass={_clientBallMass}, gravity={_clientGravityScale}, " +
                     $"state={ball?.CurrentState}, active={_clientBallGO.activeInHierarchy}");
             }
