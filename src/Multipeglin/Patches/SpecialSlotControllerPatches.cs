@@ -152,7 +152,41 @@ internal static class SpecialSlotControllerPatches
                 return;
             }
 
+            // Pumpkin Pi (SLOT_PORTAL) is shared across the coop run — if any player
+            // owns it, the portal is active on every player's turn. The live
+            // RelicManager only reflects the currently swapped-in player's relics, so
+            // check every CoopPlayerState's stored relics for the effect.
             var portalActive = relicMgr.RelicEffectActive(RelicEffect.SLOT_PORTAL);
+            if (!portalActive)
+            {
+                var services2 = MultiplayerPlugin.Services;
+                if (services2?.TryResolve<GameState.CoopStateManager>(out var coopMgr) == true)
+                {
+                    foreach (var kvp in coopMgr.PlayerStates)
+                    {
+                        var owned = kvp.Value?.OwnedRelics;
+                        if (owned == null)
+                        {
+                            continue;
+                        }
+
+                        foreach (var sr in owned)
+                        {
+                            if (sr != null && sr.Effect == (int)RelicEffect.SLOT_PORTAL)
+                            {
+                                portalActive = true;
+                                break;
+                            }
+                        }
+
+                        if (portalActive)
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+
             var amountsField = AccessTools.Field(typeof(SpecialSlotController), "_slotMultipliersRelicAmounts");
             var amounts = amountsField?.GetValue(ssc) as int[];
             var bottomColorField = AccessTools.Field(typeof(SpecialSlotController), "bottomPortalColor");
