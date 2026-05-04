@@ -204,4 +204,50 @@ internal static class SpecialSlotControllerPatches
             MultiplayerPlugin.Logger?.LogWarning($"[SlotConfig] reconfigure failed: {ex.Message}");
         }
     }
+
+    // =========================================================================
+    // DIAGNOSTIC: LOG SLOT TRIGGER ENTRIES (host-side)
+    // =========================================================================
+
+    /// <summary>
+    /// Logs every ball entry into a SlotTrigger so we can diagnose Pumpkin Pi
+    /// portal teleports during coop client turns. Captures the slot index, the
+    /// trigger's portal/flame/multiplier state, BattleController.AwaitingShotCompletion
+    /// (the gate the original method uses), and whether a teleport will fire.
+    /// </summary>
+    [HarmonyPatch(typeof(SlotTrigger), "OnTriggerEnter2D")]
+    [HarmonyPrefix]
+    public static void SlotTrigger_OnTriggerEnter2D_Prefix(SlotTrigger __instance, Collider2D collision)
+    {
+        try
+        {
+            if (!IsHosting || !UI.LobbyUI.GameStartReceived)
+            {
+                return;
+            }
+
+            var ball = collision?.GetComponent<PachinkoBall>();
+            if (ball == null)
+            {
+                return;
+            }
+
+            var portalField = AccessTools.Field(typeof(SlotTrigger), "_isPortal");
+            var usageField = AccessTools.Field(typeof(SlotTrigger), "_portalUsageCount");
+            var isPortal = portalField != null && (bool)(portalField.GetValue(__instance) ?? false);
+            var usage = usageField != null ? (int)(usageField.GetValue(__instance) ?? 0) : -1;
+            var awaiting = BattleController.AwaitingShotCompletion();
+            var willTeleport = awaiting && isPortal && usage < 3;
+
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[PortalDiag] slot={__instance.index} isPortal={isPortal} " +
+                $"usage={usage} awaiting={awaiting} mult={__instance.multiplier} " +
+                $"flame={__instance.damageOnEnter} ballPos={ball.transform.position} " +
+                $"willTeleport={willTeleport} myTurn={Events.Handlers.Coop.TurnChangeClientHandler.IsMyTurn}");
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[PortalDiag] log failed: {ex.Message}");
+        }
+    }
 }
