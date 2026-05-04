@@ -146,6 +146,9 @@ public static class ServiceRegistration
         container.RegisterSingleton(rttProvider);
         container.RegisterSingleton<IRttProvider>(rttProvider);
 
+        var hostRttTracker = new HostRttTracker(container.Resolve<IMultiplayerMode>(), log);
+        container.RegisterSingleton(hostRttTracker);
+
         var eventDiscovery = new EventDiscovery(log);
         eventDiscovery.ScanGameDelegates();
         container.RegisterSingleton(eventDiscovery);
@@ -274,6 +277,10 @@ public static class ServiceRegistration
         // RTT probe (client → host → client) — drives adaptive interpolation
         registry.Register(new PingServerHandler(), new PingNoopClientHandler());
         registry.Register(new PongServerHandler(), new PongClientHandler());
+
+        // Host-side RTT probe (host → client → host) — per-peer logging
+        registry.Register(new HostPingNoopServerHandler(), new HostPingClientHandler());
+        registry.Register(new HostPongServerHandler(), new HostPongNoopClientHandler());
 
         // Battle events
         registry.Register(new BattleStartedServerHandler(), new BattleStartedClientHandler());

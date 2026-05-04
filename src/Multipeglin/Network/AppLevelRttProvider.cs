@@ -19,7 +19,11 @@ namespace Multipeglin.Network;
 /// </summary>
 public sealed class AppLevelRttProvider : IRttProvider
 {
-    private const double PingIntervalSeconds = 1.0;
+    // 5 s ping cadence balances bandwidth (≈24 B/s overhead per client after
+    // deflate framing) against the renderer's adaptive-delay reaction time —
+    // the median-of-5 smoothing means a real RTT spike still lands in the
+    // tier within ~25 s, which is fine for ball-flight buffering.
+    private const double PingIntervalSeconds = 5.0;
     private const int MaxRttSamples = 5;
 
     private readonly IMultiplayerMode _mode;

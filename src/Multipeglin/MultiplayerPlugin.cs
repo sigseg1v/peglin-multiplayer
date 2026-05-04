@@ -70,6 +70,7 @@ public class MultiplayerPlugin : BaseUnityPlugin
             _modObject.AddComponent<ClientBallRenderer>();
             _modObject.AddComponent<ClientAimRenderer>();
             _modObject.AddComponent<Network.RttPingTicker>();
+            _modObject.AddComponent<Network.HostRttTickerBehaviour>();
             _modObject.AddComponent<CursorSync>();
             _modObject.AddComponent<RemoteCursorRenderer>();
             _modObject.AddComponent<ClientAttackProjectile>();
