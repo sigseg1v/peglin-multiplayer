@@ -184,13 +184,14 @@ internal static class PredictionManagerPatches
 
     /// <summary>
     /// True when slot 0 (host) is the active aiming player.
-    /// Trusts the local TurnManager over TurnChangeClientHandler.IsMyTurn —
-    /// IsMyTurn flips only when a TurnChangeEvent echoes back through Dispatch.
-    /// After a post-attack swap to slot 0 the next aiming-phase event isn't
-    /// always broadcast immediately, leaving IsMyTurn=false for the whole
-    /// host aim window and suppressing the trajectory.
-    /// Why: log multipeglin_log_vm_may3.log shows ~18s of host aim with no
-    /// PLAYER_AIMING TurnChange dispatched and no aimer visible.
+    /// Trusts the local TurnManager over TurnChangeClientHandler.IsMyTurn.
+    /// Only checks CurrentPlayerSlot, NOT Phase — the post-attack→DrawBall→
+    /// StartNewRound sequence draws (and Arms) the host's next ball BEFORE
+    /// StartNewRound flips Phase from ALL_DONE to PLAYER_AIMING. PachinkoBall.
+    /// Arm() calls SetLineRendererStatus(true) exactly once at arm time, so
+    /// blocking it during that ALL_DONE window leaves the dotted aimer off
+    /// for the entire turn. CurrentPlayerSlot is &gt; 0 during client turns,
+    /// so dropping the Phase check still suppresses prediction for them.
     /// </summary>
     private static bool IsHostsTurn()
     {
@@ -201,8 +202,7 @@ internal static class PredictionManagerPatches
 
         var services = MultiplayerPlugin.Services;
         if (services?.TryResolve<TurnManager>(out var tm) == true
-            && tm.CurrentPlayerSlot == 0
-            && tm.Phase == TurnPhase.PLAYER_AIMING)
+            && tm.CurrentPlayerSlot == 0)
         {
             return true;
         }
