@@ -170,3 +170,25 @@ internal static class PachinkoBallPatches
         _navBallBroadcastThisPhase = false;
     }
 }
+
+/// <summary>
+/// SummoningCirclePachinkoBall overrides PachinkoBall.Fire(). HarmonyX patches the
+/// exact MethodInfo, so a [HarmonyPatch(typeof(PachinkoBall), "Fire")] does NOT
+/// detour the override — when SC.Fire() runs (host's own SC shot, or the client's
+/// local SC ball when they click), our shoot-request interception is bypassed and
+/// the host never receives a ShootRequest for the SC turn. Patch SC.Fire too and
+/// delegate to the same prefix/postfix handlers.
+/// </summary>
+[HarmonyPatch]
+internal static class SummoningCirclePachinkoBallFirePatches
+{
+    [HarmonyPatch(typeof(SummoningCirclePachinkoBall), "Fire")]
+    [HarmonyPrefix]
+    public static bool Prefix(PachinkoBall __instance)
+        => PachinkoBallPatches.PachinkoBall_Fire_Prefix(__instance);
+
+    [HarmonyPatch(typeof(SummoningCirclePachinkoBall), "Fire")]
+    [HarmonyPostfix]
+    public static void Postfix(PachinkoBall __instance)
+        => PachinkoBallPatches.PachinkoBall_Fire_Postfix(__instance);
+}
