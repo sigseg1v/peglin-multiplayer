@@ -115,4 +115,58 @@ internal static class SummoningCirclePatches
 
         return null;
     }
+
+    // PredictionManager.InitializePachinko clones `subject` to build the aim-line
+    // dummy. For SummoningCircle, `subject` is sc.orbToSummon — a prefab parented
+    // to battleDeckOrbContainerInstance, which is inactive on the client (and can
+    // be inactive on the host). Instantiate preserves activeSelf, so the dummy is
+    // inactive, its rigidbody never simulates, and the dotted aim line stays
+    // empty even though Arm() and SetTrajectorySimulationRadius ran cleanly.
+    //
+    // Mirror the SpawnMultiballFromLocation pattern: prefix temporarily activates
+    // the source so the cloned dummy ticks; postfix/finalizer restore.
+
+    [HarmonyPatch(typeof(PredictionManager), nameof(PredictionManager.InitializePachinko))]
+    [HarmonyPrefix]
+    public static void PredictionManager_InitializePachinko_Prefix(
+        UnityEngine.GameObject subject,
+        out bool __state)
+    {
+        __state = false;
+
+        if (subject == null || subject.activeSelf)
+        {
+            return;
+        }
+
+        subject.SetActive(true);
+        __state = true;
+    }
+
+    [HarmonyPatch(typeof(PredictionManager), nameof(PredictionManager.InitializePachinko))]
+    [HarmonyPostfix]
+    public static void PredictionManager_InitializePachinko_Postfix(
+        UnityEngine.GameObject subject,
+        bool __state)
+    {
+        if (__state && subject != null && subject.activeSelf)
+        {
+            subject.SetActive(false);
+        }
+    }
+
+    [HarmonyPatch(typeof(PredictionManager), nameof(PredictionManager.InitializePachinko))]
+    [HarmonyFinalizer]
+    public static System.Exception PredictionManager_InitializePachinko_Finalizer(
+        UnityEngine.GameObject subject,
+        System.Exception __exception,
+        bool __state)
+    {
+        if (__state && subject != null && subject.activeSelf)
+        {
+            subject.SetActive(false);
+        }
+
+        return __exception;
+    }
 }
