@@ -607,6 +607,27 @@ public static class MultiplayerClientPatches
                             $"trajSim={(ball.GetComponent<TrajectorySimulation>() == null ? "null" : "ok")}\n{armEx.StackTrace}");
                     }
 
+                    // Mirror BattleController.ArmBallForShot's final two steps so the
+                    // dotted aim line actually renders. SetTrajectorySimulationRadius is
+                    // the SC-critical bit: SC's override reads _orbToSummon.localScale and
+                    // its collider radius — without this the simulation has radius=0 and
+                    // the prediction line draws as a single point (or not at all).
+                    try
+                    {
+                        ball.SetTrajectorySimulationRadius();
+                    }
+                    catch (System.Exception trEx)
+                    {
+                        MultiplayerPlugin.Logger?.LogWarning(
+                            $"[ClientAim] SetTrajectorySimulationRadius failed: {trEx.GetType().Name}: {trEx.Message}");
+                    }
+
+                    var trajSim = ball.GetComponent<TrajectorySimulation>();
+                    if (trajSim != null)
+                    {
+                        trajSim.enabled = true;
+                    }
+
                     // Set AIMING state for proper mouse input handling in PachinkoBall.Update
                     var stateProp = HarmonyLib.AccessTools.Property(typeof(PachinkoBall), "CurrentState");
                     stateProp?.GetSetMethod(true)?.Invoke(ball, new object[] { PachinkoBall.FireballState.AIMING });
