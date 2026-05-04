@@ -359,6 +359,165 @@ public sealed class CoopSubscriptions
     }
 
     /// <summary>
+    /// Apply a HealAction (Doctorb-style) heal to the shooter at shot-complete
+    /// time. In coop, HealAction.Fire never runs because PlayCoopAttackSequence
+    /// replaces DoAttack — so the heal would otherwise be deferred to
+    /// end-of-round playback (or lost if the round never completes). This
+    /// updates both the live PlayerHealthController (for the active shooter)
+    /// and the per-slot CoopPlayerState, then dispatches PlayerHealedEvent so
+    /// the client visuals refresh on the next frame instead of after a heartbeat.
+    /// </summary>
+    private void ApplyImmediateHeal(int shooterSlot, long healAmount, string orbPrefabName, string targetGuid)
+    {
+        var state = _coopStateManager.GetPlayerState(shooterSlot);
+        if (state == null)
+        {
+            return;
+        }
+
+        var before = state.CurrentHealth;
+        var newHealth = Mathf.Min(state.MaxHealth, before + healAmount);
+        var actualHeal = newHealth - before;
+        if (actualHeal <= 0f)
+        {
+            _log.LogInfo($"[CoopSubs] Heal slot {shooterSlot}: already at full hp ({before}/{state.MaxHealth}), no heal applied");
+            return;
+        }
+
+        state.CurrentHealth = newHealth;
+
+        // Push into live PHC if the shooter is still the active slot — at
+        // shot-complete time it is, so SaveActivePlayerState (called right
+        // after OnShotComplete returns) reads the healed value.
+        if (_coopStateManager.ActivePlayerSlot == shooterSlot)
+        {
+            try
+            {
+                var phc = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
+                if (phc != null)
+                {
+                    var healthField = HarmonyLib.AccessTools.Field(typeof(PlayerHealthController), "_playerHealth");
+                    var healthVar = healthField?.GetValue(phc) as FloatVariable;
+                    healthVar?.Set(newHealth);
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning($"[CoopSubs] Heal: failed to push hp to PHC: {ex.Message}");
+            }
+        }
+
+        try
+        {
+            var registry = MultiplayerPlugin.Services?.TryResolve<IGameEventRegistry>(out var reg) == true ? reg : null;
+            registry?.Dispatch(new Events.Network.Health.PlayerHealedEvent
+            {
+                Amount = actualHeal,
+                RemainingHealth = newHealth,
+                TargetSlotIndex = shooterSlot,
+            });
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[CoopSubs] Heal dispatch failed: {ex.Message}");
+        }
+
+        // Apply HealAction's secondary damage (damageTargetedEnemyMultiplier /
+        // damageAllEnemiesMultiplier) directly so we don't need to defer to
+        // PlayCoopAttackSequence. Mirrors HealAction.DoHealAction.
+        try
+        {
+            var orbPrefab = Loading.AssetLoading.Instance?.GetOrbPrefab(orbPrefabName);
+            var heal = orbPrefab?.GetComponent<HealAction>();
+            if (heal == null)
+            {
+                _log.LogInfo($"[CoopSubs] Heal slot {shooterSlot}: +{actualHeal} hp -> {newHealth}/{state.MaxHealth}");
+                return;
+            }
+
+            var em = UnityEngine.Object.FindObjectOfType<EnemyManager>();
+            if (em == null)
+            {
+                return;
+            }
+
+            if (heal.damageTargetedEnemyMultiplier > 0f)
+            {
+                var dmg = Mathf.RoundToInt(actualHeal * heal.damageTargetedEnemyMultiplier);
+                if (dmg > 0)
+                {
+                    Battle.Enemies.Enemy primary = null;
+                    var services = MultiplayerPlugin.Services;
+                    if (!string.IsNullOrEmpty(targetGuid)
+                        && services?.TryResolve<Utility.EnemyIdentifier>(out var eid) == true)
+                    {
+                        primary = eid.Find(targetGuid);
+                    }
+
+                    if (primary == null || primary.CurrentHealth <= 0f)
+                    {
+                        primary = em.GetFarthestEnemyFromPlayer();
+                    }
+
+                    if (primary != null && primary.CurrentHealth > 0f)
+                    {
+                        EnemySubscriptions.DamageAttributionSlotOverride = shooterSlot;
+                        try
+                        {
+                            primary.Damage(
+                                dmg,
+                                screenshake: false,
+                                0.25f,
+                                1f,
+                                unblockable: false,
+                                Battle.Enemies.Enemy.EnemyDamageSource.TargetedAttack);
+                        }
+                        finally
+                        {
+                            EnemySubscriptions.DamageAttributionSlotOverride = -1;
+                        }
+                    }
+                }
+            }
+            else if (heal.damageAllEnemiesMultiplier > 0f)
+            {
+                var dmg = Mathf.RoundToInt(actualHeal * heal.damageAllEnemiesMultiplier);
+                if (dmg > 0)
+                {
+                    EnemySubscriptions.DamageAttributionSlotOverride = shooterSlot;
+                    try
+                    {
+                        foreach (var e in em.Enemies)
+                        {
+                            if (e != null && e.CurrentHealth > 0f)
+                            {
+                                e.Damage(
+                                    dmg,
+                                    screenshake: false,
+                                    0.25f,
+                                    1f,
+                                    unblockable: false,
+                                    Battle.Enemies.Enemy.EnemyDamageSource.AOE);
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        EnemySubscriptions.DamageAttributionSlotOverride = -1;
+                    }
+                }
+            }
+
+            _log.LogInfo($"[CoopSubs] Heal slot {shooterSlot}: +{actualHeal} hp -> {newHealth}/{state.MaxHealth} " +
+                $"(orb={orbPrefabName}, targetMult={heal.damageTargetedEnemyMultiplier}, allMult={heal.damageAllEnemiesMultiplier})");
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[CoopSubs] Heal secondary damage failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Called after the enemy attack phase completes. Compute the damage dealt
     /// to the active player and apply it to all other players' stored state.
     /// Then check if any player is dead.
@@ -1009,6 +1168,23 @@ public sealed class CoopSubscriptions
                 $"damage={precomputedDamage}, target={targetGuid ?? "auto"}, isAoE={isAoE}, " +
                 $"statusEffects={capturedEffects?.Count ?? 0}, orb={capturedOrbName ?? "NONE"}, " +
                 $"multiballSpawns={MultiballSpawnCount}, hwmTally={HighWaterPegTally}, hwmDmg={HighWaterDamage}");
+
+            // Doctorb-style heals (HealAction) never run their native Fire() in
+            // coop because DoAttack is replaced by PlayCoopAttackSequence. Apply
+            // the heal NOW so the shooter's hp updates this turn instead of
+            // being deferred to end-of-round playback. Clear IsHeal afterward so
+            // the replay path doesn't double-heal.
+            if (isHeal && precomputedDamage > 0)
+            {
+                ApplyImmediateHeal(activeSlot, precomputedDamage, capturedOrbName, targetGuid);
+                // Skip the replay path entirely — heal + secondary damage have
+                // already landed. Leaving IsHeal=true would re-enter ApplyCoopHeal
+                // (no-ops the heal, but could re-fire secondary damage); leaving
+                // PrecomputedDamage non-zero would treat the shot as a normal
+                // attack and damage an enemy for the heal amount.
+                _accumulatedShotData[activeSlot].IsHeal = false;
+                _accumulatedShotData[activeSlot].PrecomputedDamage = 0;
+            }
         }
 
         // Mark current player's shot as fired before advancing
