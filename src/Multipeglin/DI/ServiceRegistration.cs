@@ -374,6 +374,7 @@ public static class ServiceRegistration
         registry.Register(new CoopHandlers.NavigateVoteUpdateServerHandler(), new CoopHandlers.NavigateVoteUpdateClientHandler());
         registry.Register(new CoopHandlers.NavigateResolvedServerHandler(), new CoopHandlers.NavigateResolvedClientHandler());
         registry.Register(new CoopHandlers.NavBallShotServerHandler(), new CoopHandlers.NavBallShotClientHandler());
+        registry.Register(new CoopHandlers.SlotConfigServerHandler(), new CoopHandlers.SlotConfigClientHandler());
 
         // Scenario events (TextScenario / Mirror / Shop / Treasure)
         registry.Register(new ScenarioHandlers.MirrorEventStartServerHandler(), new ScenarioHandlers.MirrorEventStartClientHandler());
