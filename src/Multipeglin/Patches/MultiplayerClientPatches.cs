@@ -941,7 +941,14 @@ public static class MultiplayerClientPatches
 
         foreach (var shot in shots)
         {
-            if (shot.IsHeal || shot.Damage <= 0)
+            if (shot.IsHeal && shot.Damage > 0)
+            {
+                ApplyCoopHeal(shot, em, enemyId, reg);
+                yield return new UnityEngine.WaitForSeconds(0.3f);
+                continue;
+            }
+
+            if (shot.Damage <= 0)
             {
                 continue;
             }
@@ -1222,6 +1229,175 @@ public static class MultiplayerClientPatches
 
         // Re-enable the delegate-driven dispatch for any non-coop attacks.
         SuppressOnAttackStartedDispatch = false;
+    }
+
+    /// <summary>
+    /// Apply a Doctorb-style heal during coop playback. The native HealAction.Fire
+    /// path is suppressed (DoAttack prefix skips the native pipeline in coop), so
+    /// the heal must be applied manually here against the shooter's CoopPlayerState
+    /// — not the active singleton, which has already rotated to the next round's
+    /// lead by the time PlayCoopAttackSequence runs. Mirrors HealAction.DoHealAction:
+    /// applies the heal, then optionally damages the targeted enemy or all enemies
+    /// based on the orb's damage*Multiplier fields.
+    /// </summary>
+    internal static void ApplyCoopHeal(
+        Events.Subscriptions.Coop.PlayerAttackData shot,
+        EnemyManager em,
+        Utility.EnemyIdentifier enemyId,
+        IGameEventRegistry reg)
+    {
+        var services = MultiplayerPlugin.Services;
+        if (services == null
+            || !services.TryResolve<Multipeglin.GameState.CoopStateManager>(out var coopMgr))
+        {
+            return;
+        }
+
+        var state = coopMgr.GetPlayerState(shot.SlotIndex);
+        if (state == null)
+        {
+            return;
+        }
+
+        var before = state.CurrentHealth;
+        var newHealth = UnityEngine.Mathf.Min(state.MaxHealth, before + shot.Damage);
+        var actualHeal = newHealth - before;
+        if (actualHeal <= 0f)
+        {
+            // Already at max — no heal applied, skip secondary damage too (matches
+            // HealAction.DoHealAction which gates secondary damage on `num > 0f`).
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[CoopAttack] Heal slot {shot.SlotIndex} ({shot.PlayerName}): " +
+                $"already at full hp ({before}/{state.MaxHealth}), no heal applied");
+            return;
+        }
+
+        state.CurrentHealth = newHealth;
+
+        // If this slot is currently active (its singletons are loaded), also push
+        // the heal into the live PlayerHealthController so the host's HUD updates.
+        // The active player at this point is already the next round's lead (state
+        // saved/loaded happens between rounds), so this is usually a no-op for the
+        // shooter — but if attribution somehow lined up, write through.
+        if (coopMgr.ActivePlayerSlot == shot.SlotIndex)
+        {
+            try
+            {
+                var phc = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
+                if (phc != null)
+                {
+                    var healthField = AccessTools.Field(typeof(PlayerHealthController), "_playerHealth");
+                    var healthVar = healthField?.GetValue(phc) as FloatVariable;
+                    healthVar?.Set(newHealth);
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        try
+        {
+            reg?.Dispatch(new Events.Network.Health.PlayerHealedEvent
+            {
+                Amount = actualHeal,
+                RemainingHealth = newHealth,
+                TargetSlotIndex = shot.SlotIndex,
+            });
+        }
+        catch
+        {
+        }
+
+        // Apply secondary damage from HealAction.damageTargetedEnemyMultiplier /
+        // damageAllEnemiesMultiplier. Read off the orb prefab.
+        var targetedMult = 0f;
+        var allMult = 0f;
+        try
+        {
+            var orbPrefab = Loading.AssetLoading.Instance?.GetOrbPrefab(shot.OrbPrefabName);
+            var heal = orbPrefab?.GetComponent<HealAction>();
+            if (heal != null)
+            {
+                targetedMult = heal.damageTargetedEnemyMultiplier;
+                allMult = heal.damageAllEnemiesMultiplier;
+            }
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning(
+                $"[CoopAttack] Failed to read HealAction multipliers for {shot.OrbPrefabName}: {ex.Message}");
+        }
+
+        if (targetedMult > 0f && em != null)
+        {
+            var dmg = UnityEngine.Mathf.RoundToInt(actualHeal * targetedMult);
+            if (dmg > 0)
+            {
+                Battle.Enemies.Enemy primary = null;
+                if (!string.IsNullOrEmpty(shot.TargetEnemyGuid))
+                {
+                    primary = enemyId?.Find(shot.TargetEnemyGuid);
+                }
+
+                if (primary == null || primary.CurrentHealth <= 0f)
+                {
+                    primary = em.GetFarthestEnemyFromPlayer();
+                }
+
+                if (primary != null && primary.CurrentHealth > 0f)
+                {
+                    Events.Subscriptions.EnemySubscriptions.DamageAttributionSlotOverride = shot.SlotIndex;
+                    try
+                    {
+                        primary.Damage(
+                            dmg,
+                            screenshake: false,
+                            0.25f,
+                            1f,
+                            unblockable: false,
+                            Battle.Enemies.Enemy.EnemyDamageSource.TargetedAttack);
+                    }
+                    finally
+                    {
+                        Events.Subscriptions.EnemySubscriptions.DamageAttributionSlotOverride = -1;
+                    }
+                }
+            }
+        }
+        else if (allMult > 0f && em != null)
+        {
+            var dmg = UnityEngine.Mathf.RoundToInt(actualHeal * allMult);
+            if (dmg > 0)
+            {
+                Events.Subscriptions.EnemySubscriptions.DamageAttributionSlotOverride = shot.SlotIndex;
+                try
+                {
+                    foreach (var e in em.Enemies)
+                    {
+                        if (e != null && e.CurrentHealth > 0f)
+                        {
+                            e.Damage(
+                                dmg,
+                                screenshake: false,
+                                0.25f,
+                                1f,
+                                unblockable: false,
+                                Battle.Enemies.Enemy.EnemyDamageSource.AOE);
+                        }
+                    }
+                }
+                finally
+                {
+                    Events.Subscriptions.EnemySubscriptions.DamageAttributionSlotOverride = -1;
+                }
+            }
+        }
+
+        MultiplayerPlugin.Logger?.LogInfo(
+            $"[CoopAttack] Heal slot {shot.SlotIndex} ({shot.PlayerName}): " +
+            $"orb={shot.OrbPrefabName} healed={actualHeal} ({before}→{newHealth}/{state.MaxHealth}) " +
+            $"targetedMult={targetedMult} allMult={allMult}");
     }
 
     /// <summary>

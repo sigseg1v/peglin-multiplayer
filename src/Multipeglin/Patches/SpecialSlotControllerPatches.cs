@@ -1,8 +1,12 @@
 using System;
+using System.Linq;
 using Battle;
+using BepInEx.Logging;
 using HarmonyLib;
 using Multipeglin.Events;
 using Multipeglin.Events.Network.Coop;
+using Relics;
+using UnityEngine;
 using static Multipeglin.Patches.MultiplayerClientPatches;
 
 namespace Multipeglin.Patches;
@@ -122,6 +126,82 @@ internal static class SpecialSlotControllerPatches
         catch (Exception ex)
         {
             MultiplayerPlugin.Logger?.LogWarning($"[SlotConfig] capture failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Re-toggle SpecialSlotController slot triggers so SLOT_PORTAL (Pumpkin Pi)
+    /// reflects the currently loaded RelicManager. SpecialSlotController.TurnComplete
+    /// only runs once per round, so without this hook a portal placed by Player A's
+    /// Pumpkin Pi at end-of-round R would carry over to Player B's turn (or be
+    /// missing entirely from B's turn if A didn't have the relic).
+    /// </summary>
+    public static void ReconfigurePortalsForActiveRelics(ManualLogSource log = null)
+    {
+        try
+        {
+            var ssc = UnityEngine.Object.FindObjectOfType<SpecialSlotController>();
+            if (ssc == null || ssc.slotTriggers == null || ssc.slotTriggers.Length == 0)
+            {
+                return;
+            }
+
+            var relicMgr = Resources.FindObjectsOfTypeAll<RelicManager>()?.FirstOrDefault();
+            if (relicMgr == null)
+            {
+                return;
+            }
+
+            var portalActive = relicMgr.RelicEffectActive(RelicEffect.SLOT_PORTAL);
+            var amountsField = AccessTools.Field(typeof(SpecialSlotController), "_slotMultipliersRelicAmounts");
+            var amounts = amountsField?.GetValue(ssc) as int[];
+            var bottomColorField = AccessTools.Field(typeof(SpecialSlotController), "bottomPortalColor");
+            var bottomColor = (Color)(bottomColorField?.GetValue(ssc) ?? Color.magenta);
+
+            var triggers = ssc.slotTriggers;
+            var portalsOn = new bool[triggers.Length];
+            var mults = new float[triggers.Length];
+            var flames = new bool[triggers.Length];
+
+            for (var k = 0; k < triggers.Length; k++)
+            {
+                if (triggers[k] == null)
+                {
+                    mults[k] = 1f;
+                    continue;
+                }
+
+                var shouldBePortal = portalActive
+                    && amounts != null
+                    && k < amounts.Length
+                    && amounts[k] == -1;
+
+                triggers[k].TogglePortal(shouldBePortal, bottomColor);
+
+                portalsOn[k] = shouldBePortal;
+                mults[k] = triggers[k].multiplier;
+                flames[k] = triggers[k].damageOnEnter;
+            }
+
+            // Re-broadcast to clients so their visuals + AwaitingShotCompletion
+            // portal state stay in sync with the new active player's relics.
+            var services = MultiplayerPlugin.Services;
+            if (services?.TryResolve<IGameEventRegistry>(out var reg) == true)
+            {
+                reg.Dispatch(new SlotConfigEvent
+                {
+                    Multipliers = mults,
+                    PortalsOn = portalsOn,
+                    FlamesOn = flames,
+                });
+            }
+
+            log?.LogInfo($"[SlotConfig] Reconfigured portals for active relics: " +
+                $"SLOT_PORTAL={portalActive}, portalSlots=[{string.Join(",", portalsOn)}]");
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[SlotConfig] reconfigure failed: {ex.Message}");
         }
     }
 }
