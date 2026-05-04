@@ -292,6 +292,43 @@ public sealed class CoopSubscriptions
     }
 
     /// <summary>
+    /// Called from HealthSubscriptions.OnPlayerHealed on every phc.Heal() call.
+    /// Mirrors the heal into the active player's CoopPlayerState so heals
+    /// (e.g. Doctorb, lifesteal) that fire outside the SaveActivePlayerState
+    /// boundary are not lost when the next swap snapshots singletons.
+    /// </summary>
+    public void HandleImmediateHeal(float amount)
+    {
+        if (!_mode.IsHosting)
+        {
+            return;
+        }
+
+        if (amount <= 0f)
+        {
+            return;
+        }
+
+        var activeSlot = _coopStateManager.ActivePlayerSlot;
+        if (activeSlot < 0)
+        {
+            return;
+        }
+
+        var activeState = _coopStateManager.GetPlayerState(activeSlot);
+        if (activeState == null)
+        {
+            return;
+        }
+
+        var phc = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
+        if (phc != null)
+        {
+            activeState.CurrentHealth = Mathf.Min(activeState.MaxHealth, phc.CurrentHealth);
+        }
+    }
+
+    /// <summary>
     /// Called after the enemy attack phase completes. Compute the damage dealt
     /// to the active player and apply it to all other players' stored state.
     /// Then check if any player is dead.

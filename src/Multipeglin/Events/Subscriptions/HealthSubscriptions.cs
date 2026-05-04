@@ -74,6 +74,12 @@ public sealed class HealthSubscriptions
             return;
         }
 
+        // Mirror the heal into the active player's CoopPlayerState immediately.
+        // Heals from sources that fire outside SaveActivePlayerState boundaries
+        // (Doctorb proc, lifesteal effects) would otherwise be lost on the next
+        // turn swap when singletons get snapshotted into the per-slot state.
+        CoopSubscriptions.Instance?.HandleImmediateHeal(amount);
+
         _registry.Dispatch(new PlayerHealedEvent
         {
             Amount = amount,
