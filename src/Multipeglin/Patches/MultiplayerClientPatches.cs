@@ -1155,6 +1155,8 @@ public static class MultiplayerClientPatches
                         $"[CoopAttack] Raycast redirect failed for {shot.OrbPrefabName}: {rex.Message}");
                 }
 
+                ExtendTargetsForTranspherency(em, targets);
+
                 ExpandTargetsForShooterRelics(em, shot, primaryTarget, targets);
             }
 
@@ -1647,6 +1649,93 @@ public static class MultiplayerClientPatches
         catch (System.Exception ex)
         {
             MultiplayerPlugin.Logger?.LogWarning($"[CoopAttack] ExpandTargetsForShooterRelics failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Walks the line of enemies behind the most-recently-added target and adds
+    /// each one as long as the prior link has the Transpherency status effect.
+    /// Mirrors ShotBehavior NORMAL-shot behavior: any Transpherency stack on
+    /// the hit enemy lets the shot continue through with full damage to the
+    /// enemy behind, stopping at the first enemy without Transpherency.
+    ///
+    /// PlayCoopAttackSequence's GetOrbPierceCount only handles inherent-pierce
+    /// orbs (Sphear); without this helper, NORMAL orbs replayed via the coop
+    /// pipeline never carry damage past the front enemy even when Transpherency
+    /// is active, so the relic does nothing in coop.
+    /// </summary>
+    internal static void ExtendTargetsForTranspherency(
+        EnemyManager em,
+        System.Collections.Generic.List<Battle.Enemies.Enemy> targets)
+    {
+        if (em == null || targets == null || targets.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            // Defensive cap: max chain length = total living enemies, never infinite.
+            for (var hops = 0; hops < 16; hops++)
+            {
+                var last = targets[targets.Count - 1];
+                if (last == null || last.CurrentHealth <= 0f)
+                {
+                    return;
+                }
+
+                if (last.GetEffect(Battle.StatusEffects.StatusEffectType.Transpherency) == null)
+                {
+                    return;
+                }
+
+                Battle.Enemies.Enemy behind = null;
+                var behindSlot = float.PositiveInfinity;
+                float lastSlot;
+                try
+                {
+                    lastSlot = em.GetSlotIndexForEnemy(last, out _);
+                }
+                catch
+                {
+                    return;
+                }
+
+                foreach (var e in em.Enemies)
+                {
+                    if (e == null || e.CurrentHealth <= 0f || targets.Contains(e))
+                    {
+                        continue;
+                    }
+
+                    float slot;
+                    try
+                    {
+                        slot = em.GetSlotIndexForEnemy(e, out _);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    if (slot > lastSlot && slot < behindSlot)
+                    {
+                        behind = e;
+                        behindSlot = slot;
+                    }
+                }
+
+                if (behind == null)
+                {
+                    return;
+                }
+
+                targets.Add(behind);
+            }
+        }
+        catch (System.Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[CoopAttack] ExtendTargetsForTranspherency failed: {ex.Message}");
         }
     }
 
