@@ -184,14 +184,20 @@ internal static class PredictionManagerPatches
 
     /// <summary>
     /// True when slot 0 (host) is the active aiming player.
-    /// Trusts the local TurnManager over TurnChangeClientHandler.IsMyTurn.
-    /// Only checks CurrentPlayerSlot, NOT Phase — the post-attack→DrawBall→
-    /// StartNewRound sequence draws (and Arms) the host's next ball BEFORE
-    /// StartNewRound flips Phase from ALL_DONE to PLAYER_AIMING. PachinkoBall.
-    /// Arm() calls SetLineRendererStatus(true) exactly once at arm time, so
-    /// blocking it during that ALL_DONE window leaves the dotted aimer off
-    /// for the entire turn. CurrentPlayerSlot is &gt; 0 during client turns,
-    /// so dropping the Phase check still suppresses prediction for them.
+    ///
+    /// Three converging signals, any of which is sufficient:
+    /// 1. TurnChangeClientHandler.IsMyTurn — set by TurnChangeServerHandler when
+    ///    Phase==PLAYER_AIMING and the active slot is local.
+    /// 2. TurnManager.CurrentPlayerSlot==0 — set inside StartNewRound/AdvanceTurn.
+    /// 3. CoopStateManager.ActivePlayerSlot==0 — set by OnTurnComplete BEFORE
+    ///    DrawBall fires. This is the only signal that's true during the
+    ///    ALL_DONE→DrawBall→Arm()→StartNewRound window: at Arm() time, Phase
+    ///    is still ALL_DONE and CurrentTurnIndex has run past the end, so both
+    ///    (1) and (2) are false. Without this signal we block the one and only
+    ///    SetLineRendererStatus(true) call Arm() makes per turn, and the dotted
+    ///    aimer stays invisible for the rest of the host's turn. ActivePlayerSlot
+    ///    is the singleton-load target, so it cleanly matches "host's deck is
+    ///    currently in the live DeckManager and the host is the next shooter."
     /// </summary>
     private static bool IsHostsTurn()
     {
@@ -201,8 +207,17 @@ internal static class PredictionManagerPatches
         }
 
         var services = MultiplayerPlugin.Services;
-        if (services?.TryResolve<TurnManager>(out var tm) == true
-            && tm.CurrentPlayerSlot == 0)
+        if (services == null)
+        {
+            return false;
+        }
+
+        if (services.TryResolve<TurnManager>(out var tm) && tm.CurrentPlayerSlot == 0)
+        {
+            return true;
+        }
+
+        if (services.TryResolve<CoopStateManager>(out var coop) && coop.ActivePlayerSlot == 0)
         {
             return true;
         }
