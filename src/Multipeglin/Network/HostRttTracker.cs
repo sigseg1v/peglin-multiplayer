@@ -30,6 +30,9 @@ public sealed class HostRttTracker
     private long _nextToken = 1;
     private double _lastProbeAt = -ProbeIntervalSeconds;
     private double _lastLogAt;
+    private bool _loggedFirstTick;
+    private int _probeCount;
+    private int _pongCount;
 
     // peerId → (token, sentTicks). Only the most-recent outstanding probe per
     // peer counts; older tokens just expire silently when superseded.
@@ -60,6 +63,12 @@ public sealed class HostRttTracker
             return;
         }
 
+        if (!_loggedFirstTick)
+        {
+            _loggedFirstTick = true;
+            _log.LogInfo($"[HostRtt] tracker armed (probe={ProbeIntervalSeconds}s, log={LogIntervalSeconds}s)");
+        }
+
         var nowSec = _clock.Elapsed.TotalSeconds;
 
         if (nowSec - _lastProbeAt >= ProbeIntervalSeconds)
@@ -77,12 +86,21 @@ public sealed class HostRttTracker
 
     private void ProbeAllPeers(INetworkTransport transport, INetworkSerializer serializer)
     {
-        foreach (var peerId in transport.ConnectedPeerIds)
+        var peers = transport.ConnectedPeerIds;
+        var n = 0;
+        foreach (var peerId in peers)
         {
             var token = _nextToken++;
             _outstanding[peerId] = (token, _clock.ElapsedTicks);
             var bytes = serializer.Serialize(new HostPingEvent { Token = token });
             transport.SendTo(peerId, bytes);
+            n++;
+        }
+
+        _probeCount += n;
+        if (n == 0)
+        {
+            _log.LogWarning("[HostRtt] probe cycle: 0 connected peers");
         }
     }
 
@@ -90,7 +108,8 @@ public sealed class HostRttTracker
     {
         if (!_outstanding.TryGetValue(peerId, out var probe) || probe.Token != token)
         {
-            return; // stale or unsolicited
+            _log.LogWarning($"[HostRtt] stale pong: peer={peerId} token={token}");
+            return;
         }
 
         var elapsedTicks = _clock.ElapsedTicks - probe.SentTicks;
@@ -101,12 +120,14 @@ public sealed class HostRttTracker
         }
 
         _latestRttMs[peerId] = rttMs;
+        _pongCount++;
     }
 
     private void LogPerPeerRtt(IServiceContainer services)
     {
         if (_latestRttMs.Count == 0)
         {
+            _log.LogInfo($"[HostRtt] no pongs received yet (probesSent={_probeCount}, pongsRecv={_pongCount})");
             return;
         }
 
@@ -120,6 +141,7 @@ public sealed class HostRttTracker
             sb.Append($" peer={kv.Key}({name}):{kv.Value}ms");
         }
 
+        sb.Append($" (probesSent={_probeCount}, pongsRecv={_pongCount})");
         _log.LogInfo(sb.ToString());
     }
 }
