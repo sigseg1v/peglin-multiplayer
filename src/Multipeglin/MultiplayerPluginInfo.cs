@@ -4,7 +4,7 @@ public static class MultiplayerPluginInfo
 {
     public const string GUID = "com.multipeglin";
     public const string NAME = "Multipeglin";
-    public const string VERSION = "0.1.9";
+    public const string VERSION = "0.1.10";
 
     /// <summary>
     /// The Peglin game version this plugin was compiled against.

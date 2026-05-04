@@ -1,6 +1,6 @@
 {
     "name": "Multipeglin",
-    "version_number": "0.1.9",
+    "version_number": "0.1.10",
     "website_url": "https://github.com/sigseg1v/peglin-multiplayer",
     "description": "Cooperative multiplayer for Peglin. Play through runs together with friends!",
     "dependencies": [
