@@ -275,12 +275,12 @@ public static class ServiceRegistration
         registry.Register(new DisconnectServerHandler(), new DisconnectClientHandler());
 
         // RTT probe (client → host → client) — drives adaptive interpolation
-        registry.Register(new PingServerHandler(), new PingNoopClientHandler());
+        registry.Register(new PingServerHandler(), new PingClientHandler());
         registry.Register(new PongServerHandler(), new PongClientHandler());
 
         // Host-side RTT probe (host → client → host) — per-peer logging
         registry.Register(new HostPingNoopServerHandler(), new HostPingClientHandler());
-        registry.Register(new HostPongServerHandler(), new HostPongNoopClientHandler());
+        registry.Register(new HostPongServerHandler(), new HostPongClientHandler());
 
         // Battle events
         registry.Register(new BattleStartedServerHandler(), new BattleStartedClientHandler());
