@@ -192,6 +192,7 @@ package:
     Copy-Item '{{thunderstore}}/manifest.json' $staging/; \
     Copy-Item '{{thunderstore}}/icon.png' $staging/; \
     Copy-Item '{{thunderstore}}/README.md' $staging/; \
+    Copy-Item '{{thunderstore}}/CHANGELOG.md' $staging/; \
     Copy-Item '{{src}}/Multipeglin.Core/bin/Release/netstandard2.1/Multipeglin.Core.dll' $staging/; \
     Copy-Item "$bin/Multipeglin.dll" $staging/; \
     Copy-Item "$bin/LiteNetLib.dll" $staging/; \
