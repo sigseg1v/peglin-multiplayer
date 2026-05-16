@@ -12,6 +12,21 @@ public class RelicStateProvider : IGameStateProvider<RelicStateSnapshot>
 {
     private readonly ManualLogSource _log;
 
+    private static readonly System.Reflection.FieldInfo _ownedField
+        = AccessTools.Field(typeof(RelicManager), "_ownedRelics");
+
+    private static readonly System.Reflection.FieldInfo _countdownField
+        = AccessTools.Field(typeof(RelicManager), "_relicRemainingCountdowns");
+
+    private static readonly System.Reflection.FieldInfo _perShotField
+        = AccessTools.Field(typeof(RelicManager), "_relicRemainingUsesPerShot");
+
+    private static readonly System.Reflection.FieldInfo _perBattleField
+        = AccessTools.Field(typeof(RelicManager), "_relicRemainingUsesPerBattle");
+
+    private static readonly System.Reflection.FieldInfo _perRunField
+        = AccessTools.Field(typeof(RelicManager), "_relicRemainingUsesPerRun");
+
     public RelicStateProvider(ManualLogSource log) => _log = log;
 
     public RelicStateSnapshot Capture()
@@ -29,8 +44,7 @@ public class RelicStateProvider : IGameStateProvider<RelicStateSnapshot>
             }
 
             // _ownedRelics is a Dictionary<RelicEffect, Relic>
-            var ownedField = AccessTools.Field(typeof(RelicManager), "_ownedRelics");
-            var owned = ownedField?.GetValue(rm) as IDictionary<RelicEffect, Relic>;
+            var owned = _ownedField?.GetValue(rm) as IDictionary<RelicEffect, Relic>;
             if (owned == null)
             {
                 return snapshot;
@@ -39,14 +53,10 @@ public class RelicStateProvider : IGameStateProvider<RelicStateSnapshot>
             // Countdown / per-shot / per-battle / per-run counters. RelicManager
             // tracks each in its own dict; we capture all four so the client can
             // mirror "X / Y" displays (Slimy Salve, Tipped Pegs, Dive Reload, etc.).
-            var countdownField = AccessTools.Field(typeof(RelicManager), "_relicRemainingCountdowns");
-            var perShotField = AccessTools.Field(typeof(RelicManager), "_relicRemainingUsesPerShot");
-            var perBattleField = AccessTools.Field(typeof(RelicManager), "_relicRemainingUsesPerBattle");
-            var perRunField = AccessTools.Field(typeof(RelicManager), "_relicRemainingUsesPerRun");
-            var countdowns = countdownField?.GetValue(rm) as IDictionary<RelicEffect, int>;
-            var perShot = perShotField?.GetValue(rm) as IDictionary<RelicEffect, int>;
-            var perBattle = perBattleField?.GetValue(rm) as IDictionary<RelicEffect, int>;
-            var perRun = perRunField?.GetValue(rm) as IDictionary<RelicEffect, int>;
+            var countdowns = _countdownField?.GetValue(rm) as IDictionary<RelicEffect, int>;
+            var perShot = _perShotField?.GetValue(rm) as IDictionary<RelicEffect, int>;
+            var perBattle = _perBattleField?.GetValue(rm) as IDictionary<RelicEffect, int>;
+            var perRun = _perRunField?.GetValue(rm) as IDictionary<RelicEffect, int>;
 
             foreach (var kvp in owned)
             {

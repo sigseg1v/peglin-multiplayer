@@ -3,6 +3,7 @@ using Multipeglin.Events;
 using Multipeglin.Events.Network.Ball;
 using Multipeglin.Multiplayer;
 using Multipeglin.Network;
+using Multipeglin.Utility;
 using UnityEngine;
 
 namespace Multipeglin.GameState;
@@ -95,16 +96,5 @@ public class BallPositionSync : MonoBehaviour
         });
     }
 
-    private static PachinkoBall FindActiveBall()
-    {
-        foreach (var ball in FindObjectsOfType<PachinkoBall>())
-        {
-            if (!ball.IsDummy)
-            {
-                return ball;
-            }
-        }
-
-        return null;
-    }
+    private static PachinkoBall FindActiveBall() => PachinkoBallRegistry.FindAnyNonDummy();
 }
