@@ -1524,6 +1524,11 @@ public class MultiplayerUI : MonoBehaviour
     {
         try
         {
+            // Hosting a NEW run — clear any leaked Continue session from a prior
+            // selection so the lobby doesn't show "Continue Run" and reuse stale
+            // GameRunSaveBase64 bytes. The Continue panel re-arms this on click.
+            Continue.ContinueSession.Clear();
+
             _router?.UseLite();
             _multiplayerMode.EnableHosting();
             _transport.StartHost(NetworkConfig.DefaultPort);
@@ -1557,6 +1562,9 @@ public class MultiplayerUI : MonoBehaviour
 
         try
         {
+            // Hosting a NEW run — clear any leaked Continue session (see OnHostClicked).
+            Continue.ContinueSession.Clear();
+
             _router.UseSteam();
             _multiplayerMode.EnableHosting();
             _steamTransport.StartHost(0);

@@ -172,6 +172,17 @@ public static class MultiplayerSession
 
     private static void ResetStaticState(IServiceContainer services)
     {
+        // Continue session — stale ActiveSave from a previous run would otherwise
+        // make the next "Host" click reuse the leaked save data (lobby shows
+        // "Continue Run", launches with stale GameRunSaveBase64 bytes).
+        Continue.ContinueSession.Clear();
+
+        // Pachinko ball registry — Unity's OnDestroy callbacks normally drain this
+        // when the battle scene unloads, but explicit clearing on disconnect
+        // closes the gap if a disconnect races a scene unload or the next host
+        // session re-uses references before OnDestroy fires.
+        PachinkoBallRegistry.Clear();
+
         // MultiplayerClientPatches static fields
         MultiplayerClientPatches.CapturedPreMapGenRngState = null;
         MultiplayerClientPatches.PendingRngStateToRestore = null;
