@@ -78,19 +78,21 @@ public sealed class StateSyncSubscriptions
             _sync.SyncDeck();
         });
 
-        // commented out for performance: a 678-peg shot was firing ~90 full
-        // SyncPegboard snapshots in 10 seconds (one per destroyed peg / bomb /
-        // crit toggle). Each capture iterates 220 pegs with reflection, runs
-        // Resources.FindObjectsOfTypeAll<PegboardBlackHole>() (walks every
-        // Unity object in memory), JSON-serializes ~50KB and broadcasts over
-        // UDP — synchronous on the Unity main thread. Per-peg
-        // PegHitEvent/PegDestroyedEvent already give real-time client visuals,
-        // and the 2s heartbeat handles convergence, so these are dead weight.
-        // Peg.OnPegDestroyed += (_, _) => SafeSync("PegDestroyed", () => _sync.SyncPegboard());
-        // BattleController.OnBombDetonated += () => SafeSync("BombDetonated", () => _sync.SyncPegboard());
-        // BattleController.OnBombThrown += () => SafeSync("BombThrown", () => _sync.SyncPegboard());
-        // BattleController.onCriticalHitActivated += () => SafeSync("CritActivated", () => _sync.SyncPegboard());
-        // BattleController.onCriticalHitDeactivated += () => SafeSync("CritDeactivated", () => _sync.SyncPegboard());
+        // peg destruction + bomb hooks for pegboard convergence at the
+        // destruction boundary. these previously caused ~90 SyncPegboard
+        // captures per big shot, but GameStateSyncService now rate-limits
+        // every Sync* method to 150ms per channel (and SyncAll bumps every
+        // channel timestamp), so these can fire at most ~6/sec total —
+        // defense-in-depth for non-direct-hit destructions (bomb chains,
+        // crit cascades) where PegHitEvent may not fully convey the result.
+        Peg.OnPegDestroyed += (_, _) => SafeSync("PegDestroyed", () => _sync.SyncPegboard());
+        BattleController.OnBombDetonated += () => SafeSync("BombDetonated", () => _sync.SyncPegboard());
+        BattleController.OnBombThrown += () => SafeSync("BombThrown", () => _sync.SyncPegboard());
+
+        // intentionally NOT re-enabling onCriticalHitActivated/Deactivated →
+        // SyncPegboard: crit toggles are damage-state changes, not peg-position
+        // changes. The crit peg rotation is already captured by OnShotComplete
+        // SyncPegboard and the periodic heartbeat. Pure overhead.
 
         // Sync pegboard when refresh potion activates (refreshes cleared pegs)
         BattleController.onRefreshPotionActivated += () => SafeSync("RefreshPotion", () => _sync.SyncPegboard());
