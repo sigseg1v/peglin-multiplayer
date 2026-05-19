@@ -1,5 +1,11 @@
 # Changelog
 
+## Multipeglin v0.1.11
+
+- improved: performance of host when there are lots of orbs/pegs on the board greatly improved by a caching and optimization pass (reported by: Marikovka)
+- fixed: clients couldn't discard after the host had already used their discard that turn
+- fixed: continue/load session was being cleared at the wrong time on host start and disconnect; fixed so that clicking New Game clears cached state (reported by: Marikovka)
+
 ## Multipeglin v0.1.10
 
 - general: Peglin game version updated to match 2.0.12
