@@ -131,14 +131,14 @@ internal static class BattleControllerPatches
                 var ball = _firedBallGO.GetComponent<PachinkoBall>();
                 if (rb != null)
                 {
-                    MultiplayerPlugin.Logger?.LogInfo(
+                    MultiplayerPlugin.Logger?.LogDebug(
                         $"[BallTrack] t={_firedBallTimer:F1}s pos=({_firedBallGO.transform.position.x:F1},{_firedBallGO.transform.position.y:F1}), " +
                         $"vel=({rb.velocity.x:F1},{rb.velocity.y:F1}), sim={rb.simulated}, bodyType={rb.bodyType}, " +
                         $"state={ball?.CurrentState}, active={_firedBallGO.activeInHierarchy}");
                 }
                 else
                 {
-                    MultiplayerPlugin.Logger?.LogInfo($"[BallTrack] t={_firedBallTimer:F1}s ball destroyed or rb null");
+                    MultiplayerPlugin.Logger?.LogDebug($"[BallTrack] t={_firedBallTimer:F1}s ball destroyed or rb null");
                     _firedBallGO = null;
                 }
             }
@@ -875,6 +875,37 @@ internal static class BattleControllerPatches
         return false;
     }
 
+    // Cached reflection handles — AccessTools.Field is uncached and HandlePegActivated
+    // fires per peg activation. With multiball + ~220 pegs this previously did
+    // 6× uncached MetadataToken lookups per hit.
+    private static readonly System.Reflection.FieldInfo _bcPegTallyField
+        = AccessTools.Field(typeof(BattleController), "_pegMultiplierDamageTally");
+
+    private static readonly System.Reflection.FieldInfo _bcCritField
+        = AccessTools.Field(typeof(BattleController), "_criticalHitCount");
+
+    private static readonly System.Reflection.FieldInfo _bcDmgMultField
+        = AccessTools.Field(typeof(BattleController), "_damageMultiplier");
+
+    private static readonly System.Reflection.FieldInfo _bcDmgBonusField
+        = AccessTools.Field(typeof(BattleController), "_damageBonus");
+
+    private static readonly System.Reflection.FieldInfo _bcAttackManagerField
+        = AccessTools.Field(typeof(BattleController), "_attackManager");
+
+    private static readonly System.Reflection.FieldInfo _amAttackField
+        = AccessTools.Field(typeof(Battle.Attacks.AttackManager), "_attack");
+
+    // Cached scene singletons. TargetingManager was a per-peg FindObjectOfType
+    // scene scan; cache and re-resolve only when null. Cleared on scene change
+    // via BattleController.Awake postfix (see _ClearPerPegCaches below).
+    private static Battle.TargetingManager _cachedTargetingMgr;
+
+    // Cached service handles — resolved once on first use, stable for plugin lifetime.
+    private static GameState.CoopStateManager _cachedCoopState;
+    private static IGameEventRegistry _cachedRegistry;
+    private static Utility.EnemyIdentifier _cachedEnemyId;
+
     /// <summary>
     /// After each peg activation, compute the running damage total for the
     /// current player and dispatch a PendingDamagePreviewEvent so both host
@@ -896,43 +927,51 @@ internal static class BattleControllerPatches
 
         try
         {
-            var services = MultiplayerPlugin.Services;
-            if (services == null)
+            // Hoisted service resolves — these are stable for the plugin's lifetime
+            // once set up. The previous code did 3× TryResolve dictionary lookups
+            // per peg hit; cache once and reuse.
+            if (_cachedCoopState == null || _cachedRegistry == null)
             {
-                return;
+                var services = MultiplayerPlugin.Services;
+                if (services == null)
+                {
+                    return;
+                }
+
+                if (_cachedCoopState == null && !services.TryResolve<GameState.CoopStateManager>(out _cachedCoopState))
+                {
+                    return;
+                }
+
+                if (_cachedRegistry == null && !services.TryResolve<IGameEventRegistry>(out _cachedRegistry))
+                {
+                    return;
+                }
+
+                if (_cachedEnemyId == null)
+                {
+                    services.TryResolve<Utility.EnemyIdentifier>(out _cachedEnemyId);
+                }
             }
 
-            if (!services.TryResolve<GameState.CoopStateManager>(out var coopState))
-            {
-                return;
-            }
+            var coopState = _cachedCoopState;
+            var registry = _cachedRegistry;
 
             if (coopState.TotalPlayerCount < 2)
             {
                 return;
             }
 
-            if (!services.TryResolve<IGameEventRegistry>(out var registry))
-            {
-                return;
-            }
-
             var activeSlot = coopState.ActivePlayerSlot;
 
-            // Read BattleController's running tallies
-            var pegTallyField = AccessTools.Field(typeof(BattleController), "_pegMultiplierDamageTally");
-            var critField = AccessTools.Field(typeof(BattleController), "_criticalHitCount");
-            var dmgMultField = AccessTools.Field(typeof(BattleController), "_damageMultiplier");
-            var dmgBonusField = AccessTools.Field(typeof(BattleController), "_damageBonus");
-
-            var pegTally = pegTallyField != null ? (int)pegTallyField.GetValue(__instance) : 0;
-            var critCount = critField != null ? (int)critField.GetValue(null) : 0; // static
-            var dmgMult = dmgMultField != null ? (float)dmgMultField.GetValue(__instance) : 1f;
-            long dmgBonus = dmgBonusField != null ? (int)dmgBonusField.GetValue(__instance) : 0;
+            // Read BattleController's running tallies via cached FieldInfo
+            var pegTally = _bcPegTallyField != null ? (int)_bcPegTallyField.GetValue(__instance) : 0;
+            var critCount = _bcCritField != null ? (int)_bcCritField.GetValue(null) : 0; // static
+            var dmgMult = _bcDmgMultField != null ? (float)_bcDmgMultField.GetValue(__instance) : 1f;
+            long dmgBonus = _bcDmgBonusField != null ? (int)_bcDmgBonusField.GetValue(__instance) : 0;
 
             // Compute running damage via AttackManager
-            var amField = AccessTools.Field(typeof(BattleController), "_attackManager");
-            var am = amField?.GetValue(__instance) as Battle.Attacks.AttackManager;
+            var am = _bcAttackManagerField?.GetValue(__instance) as Battle.Attacks.AttackManager;
             if (am == null)
             {
                 return;
@@ -961,18 +1000,23 @@ internal static class BattleControllerPatches
 
             // Get target and AoE status
             var isAoE = false;
-            var attackField = AccessTools.Field(typeof(Battle.Attacks.AttackManager), "_attack");
-            var attack = attackField?.GetValue(am) as Battle.Attacks.Attack;
+            var attack = _amAttackField?.GetValue(am) as Battle.Attacks.Attack;
             if (attack is Battle.Attacks.SimpleAttack)
             {
                 isAoE = true;
             }
 
+            // Cache TargetingManager — re-resolve only on null. The previous code
+            // FindObjectOfType<TargetingManager>() per peg hit walked the scene.
             string targetGuid = null;
-            var tmgr = UnityEngine.Object.FindObjectOfType<Battle.TargetingManager>();
-            if (tmgr?.currentTarget != null && services.TryResolve<Utility.EnemyIdentifier>(out var eid))
+            if (_cachedTargetingMgr == null)
             {
-                targetGuid = eid.GetGuid(tmgr.currentTarget);
+                _cachedTargetingMgr = UnityEngine.Object.FindObjectOfType<Battle.TargetingManager>();
+            }
+
+            if (_cachedTargetingMgr?.currentTarget != null && _cachedEnemyId != null)
+            {
+                targetGuid = _cachedEnemyId.GetGuid(_cachedTargetingMgr.currentTarget);
             }
 
             // Player name
@@ -1205,6 +1249,11 @@ internal static class BattleControllerPatches
 
         coopSubs.Subscribe();
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] BattleController.Awake: re-subscribed CoopSubscriptions");
+
+        // Invalidate per-battle scene-object caches used by HandlePegActivated_Postfix.
+        // TargetingManager is a scene MonoBehaviour and may be a different instance
+        // after a scene transition; force re-resolve on next peg activation.
+        _cachedTargetingMgr = null;
 
         // Merge all players' board-affecting relics into _ownedRelics BEFORE
         // BattleController.Start() runs. Start() checks relics for bombs, coins,

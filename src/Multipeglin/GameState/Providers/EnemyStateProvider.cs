@@ -239,11 +239,11 @@ public class EnemyStateProvider : IGameStateProvider<EnemyStateSnapshot>
                     var shieldStr = entry.HasShield
                         ? $" shield={entry.ShieldCurrentHealth:F0}/{entry.ShieldMaxHealth:F0}{(entry.ShieldActive ? string.Empty : " (dead)")}"
                         : string.Empty;
-                    _log.LogInfo($"[EnemyProvider] Captured enemy: guid={entry.Id} loc={entry.LocKey} name={entry.EnemyName} " +
+                    _log.LogDebug($"[EnemyProvider] Captured enemy: guid={entry.Id} loc={entry.LocKey} name={entry.EnemyName} " +
                         $"hp={entry.CurrentHealth}/{entry.MaxHealth} pos=({entry.PosX:F1},{entry.PosY:F1}) slot={entry.SlotIndex} effects=[{effectStr}]{shieldStr}");
                 }
 
-                _log.LogInfo($"[EnemyProvider] Upcoming enemies: {snapshot.UpcomingEnemyNames.Count}");
+                _log.LogDebug($"[EnemyProvider] Upcoming enemies: {snapshot.UpcomingEnemyNames.Count}");
             }
 
             return snapshot;

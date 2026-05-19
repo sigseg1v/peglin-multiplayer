@@ -292,7 +292,7 @@ public class CoopStateManager
             kvp.Value.Gold += amount;
         }
 
-        _log.LogInfo($"[CoopState] Distributed +{amount} gold to {PlayerStates.Count - 1} inactive player(s)");
+        _log.LogDebug($"[CoopState] Distributed +{amount} gold to {PlayerStates.Count - 1} inactive player(s)");
     }
 
     /// <summary>Apply damage to all players (enemy attacks).</summary>

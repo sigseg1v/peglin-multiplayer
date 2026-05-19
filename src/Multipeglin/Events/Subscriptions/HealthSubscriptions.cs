@@ -53,6 +53,14 @@ public sealed class HealthSubscriptions
             return;
         }
 
+        // PlayerHealthController.Damage fires OnPlayerDamaged?.Invoke before its
+        // early-return guards, so zero-amount damage triggers reach us. Skip
+        // those to avoid pointless JSON-serialize+broadcast on every no-op.
+        if (amount <= 0f)
+        {
+            return;
+        }
+
         // In coop, distribute this damage to every non-active player immediately.
         // Some damage sources (red bomb detonations, delayed effects) fire outside
         // the OnAttackStarted/OnTurnComplete delta window, so the reactive hook is
@@ -70,6 +78,14 @@ public sealed class HealthSubscriptions
     private void OnPlayerHealed(float amount)
     {
         if (!IsHosting)
+        {
+            return;
+        }
+
+        // PlayerHealthController.Heal fires OnPlayerHealed?.Invoke before its
+        // early-return guards (VampireOrb calls Heal per peg hit even when the
+        // computed amount is zero). Skip those before any further work.
+        if (amount <= 0f)
         {
             return;
         }
@@ -128,15 +144,33 @@ public sealed class HealthSubscriptions
         _registry.Dispatch(new MaxHealthChangedEvent { NewMaxHealth = newMax });
     }
 
+    // cached once per battle: FindObjectOfType is a scene-wide scan, and
+    // GetCurrentHealth/GetMaxHealth fire on every player damage/heal — with
+    // per-peg heal effects this hit thousands of scene scans per shot.
+    // Unity's overloaded == handles destroyed-object detection so we refetch
+    // automatically across scene transitions.
+    private static PlayerHealthController _cachedController;
+
+    private static PlayerHealthController GetController()
+    {
+        if (_cachedController != null)
+        {
+            return _cachedController;
+        }
+
+        _cachedController = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
+        return _cachedController;
+    }
+
     private static float GetCurrentHealth()
     {
-        var controller = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
+        var controller = GetController();
         return controller != null ? controller.CurrentHealth : 0f;
     }
 
     private static float GetMaxHealth()
     {
-        var controller = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
+        var controller = GetController();
         return controller != null ? controller.MaxHealth : 0f;
     }
 }

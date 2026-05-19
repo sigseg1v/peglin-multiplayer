@@ -243,11 +243,19 @@ internal static class SpecialSlotControllerPatches
     // DIAGNOSTIC: LOG SLOT TRIGGER ENTRIES (host-side)
     // =========================================================================
 
+    // cached: AccessTools.Field is uncached. OnTriggerEnter2D fires for every
+    // peg-and-slot collision the ball makes during a shot — multiple times per
+    // shot per slot. Burning 2 reflection lookups + 2 reflective .GetValue
+    // calls per collision purely for a debug log is wasteful.
+    private static readonly System.Reflection.FieldInfo _slotPortalField
+        = AccessTools.Field(typeof(SlotTrigger), "_isPortal");
+
+    private static readonly System.Reflection.FieldInfo _slotUsageField
+        = AccessTools.Field(typeof(SlotTrigger), "_portalUsageCount");
+
     /// <summary>
     /// Logs every ball entry into a SlotTrigger so we can diagnose Pumpkin Pi
-    /// portal teleports during coop client turns. Captures the slot index, the
-    /// trigger's portal/flame/multiplier state, BattleController.AwaitingShotCompletion
-    /// (the gate the original method uses), and whether a teleport will fire.
+    /// portal teleports during coop client turns.
     /// </summary>
     [HarmonyPatch(typeof(SlotTrigger), "OnTriggerEnter2D")]
     [HarmonyPrefix]
@@ -266,14 +274,12 @@ internal static class SpecialSlotControllerPatches
                 return;
             }
 
-            var portalField = AccessTools.Field(typeof(SlotTrigger), "_isPortal");
-            var usageField = AccessTools.Field(typeof(SlotTrigger), "_portalUsageCount");
-            var isPortal = portalField != null && (bool)(portalField.GetValue(__instance) ?? false);
-            var usage = usageField != null ? (int)(usageField.GetValue(__instance) ?? 0) : -1;
+            var isPortal = _slotPortalField != null && (bool)(_slotPortalField.GetValue(__instance) ?? false);
+            var usage = _slotUsageField != null ? (int)(_slotUsageField.GetValue(__instance) ?? 0) : -1;
             var awaiting = BattleController.AwaitingShotCompletion();
             var willTeleport = awaiting && isPortal && usage < 3;
 
-            MultiplayerPlugin.Logger?.LogInfo(
+            MultiplayerPlugin.Logger?.LogDebug(
                 $"[PortalDiag] slot={__instance.index} isPortal={isPortal} " +
                 $"usage={usage} awaiting={awaiting} mult={__instance.multiplier} " +
                 $"flame={__instance.damageOnEnter} ballPos={ball.transform.position} " +

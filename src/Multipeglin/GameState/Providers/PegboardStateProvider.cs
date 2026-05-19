@@ -377,7 +377,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
             if (!sig.Equals(_lastCaptureSig))
             {
                 _lastCaptureSig = sig;
-                _log.LogInfo($"[PegProvider] Captured {snapshot.TotalPegCount} pegs from PegManager " +
+                _log.LogDebug($"[PegProvider] Captured {snapshot.TotalPegCount} pegs from PegManager " +
                     $"(crit={snapshot.CritPegCount}, bomb={snapshot.BombPegCount}, reset={snapshot.ResetPegCount}, " +
                     $"bouncer={snapshot.BouncerPegCount}, registry={_pegId.Count}, " +
                     $"_bombs={bombsListCount}, allPegsBombs={allPegsBombCount}, " +

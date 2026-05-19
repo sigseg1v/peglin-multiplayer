@@ -7,6 +7,20 @@ namespace Multipeglin.Events.Subscriptions;
 
 public sealed class PegSubscriptions
 {
+    // cached once: AccessTools.Field is an uncached MetadataToken lookup, and
+    // OnPegHit fires per peg hit (hundreds per shot). Resolving these on every
+    // call burned ~2000 reflection lookups per shot.
+    private static readonly System.Reflection.FieldInfo CoinOverlayField
+        = HarmonyLib.AccessTools.Field(typeof(Peg), "PegCoinOverlayInstance");
+
+    private static readonly System.Reflection.FieldInfo ShieldOverlayField
+        = HarmonyLib.AccessTools.Field(typeof(Peg), "PegShieldOverlayInstance");
+
+    // Cached service handles — set-once for plugin lifetime. The previous code
+    // resolved IMultiplayerMode + PegIdentifier per peg hit (× 3 handlers).
+    private static IMultiplayerMode _cachedMode;
+    private static PegIdentifier _cachedPegId;
+
     private readonly IGameEventRegistry _registry;
     private readonly ManualLogSource _log;
 
@@ -16,8 +30,32 @@ public sealed class PegSubscriptions
         _log = log;
     }
 
-    private static bool IsHosting =>
-        MultiplayerPlugin.Services?.TryResolve<IMultiplayerMode>(out var mode) == true && mode.IsHosting;
+    private static bool IsHosting
+    {
+        get
+        {
+            if (_cachedMode == null)
+            {
+                var services = MultiplayerPlugin.Services;
+                if (services == null || !services.TryResolve(out _cachedMode))
+                {
+                    return false;
+                }
+            }
+
+            return _cachedMode.IsHosting;
+        }
+    }
+
+    private static PegIdentifier GetPegId()
+    {
+        if (_cachedPegId == null)
+        {
+            MultiplayerPlugin.Services?.TryResolve(out _cachedPegId);
+        }
+
+        return _cachedPegId;
+    }
 
     public void Subscribe()
     {
@@ -42,7 +80,7 @@ public sealed class PegSubscriptions
         }
 
         var pos = peg != null ? peg.transform.position : UnityEngine.Vector3.zero;
-        var pegId = MultiplayerPlugin.Services?.TryResolve<PegIdentifier>(out var p) == true ? p : null;
+        var pegId = GetPegId();
 
         int hitCount = -1, coinCount = -1, shieldHits = -1, shieldLimit = -1;
         if (peg != null)
@@ -60,8 +98,7 @@ public sealed class PegSubscriptions
 
             try
             {
-                var overlayField = HarmonyLib.AccessTools.Field(typeof(Peg), "PegCoinOverlayInstance");
-                var overlay = overlayField?.GetValue(peg) as Battle.PegBehaviour.PegCoinOverlay;
+                var overlay = CoinOverlayField?.GetValue(peg) as Battle.PegBehaviour.PegCoinOverlay;
                 if (overlay != null)
                 {
                     coinCount = overlay.NumCoins;
@@ -73,8 +110,7 @@ public sealed class PegSubscriptions
 
             try
             {
-                var overlayField = HarmonyLib.AccessTools.Field(typeof(Peg), "PegShieldOverlayInstance");
-                var shield = overlayField?.GetValue(peg) as Battle.PegBehaviour.PegShieldOverlay;
+                var shield = ShieldOverlayField?.GetValue(peg) as Battle.PegBehaviour.PegShieldOverlay;
                 if (shield != null)
                 {
                     shieldHits = shield.hitCount;
@@ -107,7 +143,7 @@ public sealed class PegSubscriptions
         }
 
         var pos = peg != null ? peg.transform.position : UnityEngine.Vector3.zero;
-        var pegId = MultiplayerPlugin.Services?.TryResolve<PegIdentifier>(out var p) == true ? p : null;
+        var pegId = GetPegId();
         _registry.Dispatch(new PegActivatedEvent
         {
             PegType = (int)pegType,
@@ -125,7 +161,7 @@ public sealed class PegSubscriptions
         }
 
         var pos = peg != null ? peg.transform.position : UnityEngine.Vector3.zero;
-        var pegId = MultiplayerPlugin.Services?.TryResolve<PegIdentifier>(out var p) == true ? p : null;
+        var pegId = GetPegId();
         _registry.Dispatch(new PegDestroyedEvent
         {
             PegType = (int)pegType,
