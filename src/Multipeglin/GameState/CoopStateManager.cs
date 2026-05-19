@@ -137,6 +137,24 @@ public class CoopStateManager
         LoadGoldState(state);
         LoadStatusEffects(state);
 
+        // BattleController.NumShotsDiscarded is per-shot in vanilla (reset by
+        // DrawBall / new-battle / refresh paths). In coop the singleton is
+        // shared across players, so a previous shooter's discard count carries
+        // over and AttemptOrbDiscard's `NumShotsDiscarded >= MaxDiscardedShots`
+        // gate blocks the next player. Reset on every swap-in.
+        try
+        {
+            var bc = UnityEngine.Object.FindObjectOfType<global::Battle.BattleController>();
+            if (bc != null)
+            {
+                bc.NumShotsDiscarded = 0;
+            }
+        }
+        catch (System.Exception ex)
+        {
+            _log.LogWarning($"[CoopState] Failed to reset NumShotsDiscarded: {ex.Message}");
+        }
+
         ActivePlayerSlot = slotIndex;
 
         // SLOT_PORTAL (Pumpkin Pi) belongs to the swapped-in player's relic set.
