@@ -105,9 +105,9 @@ internal static class PachinkoBallRegistryPatches
         PachinkoBallRegistry.Add(__instance);
     }
 
-    [HarmonyPatch(typeof(PachinkoBall), "OnDestroy")]
+    [HarmonyPatch(typeof(PachinkoBall), "OnDisable")]
     [HarmonyPostfix]
-    public static void OnDestroy_Postfix(PachinkoBall __instance)
+    public static void OnDisable_Postfix(PachinkoBall __instance)
     {
         PachinkoBallRegistry.Remove(__instance);
     }
