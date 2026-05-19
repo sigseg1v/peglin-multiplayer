@@ -1524,6 +1524,11 @@ public class MultiplayerUI : MonoBehaviour
     {
         try
         {
+            // NOTE: do not Clear() ContinueSession here. OnContinueSaveSelected
+            // calls Begin() and then routes through this method, so clearing
+            // would wipe the just-armed session. Leak prevention lives in
+            // ResetStaticState (fires on MainMenu return / disconnect) and
+            // OnContinueBackClicked (fires on back-out of the Continue panel).
             _router?.UseLite();
             _multiplayerMode.EnableHosting();
             _transport.StartHost(NetworkConfig.DefaultPort);
@@ -1557,6 +1562,7 @@ public class MultiplayerUI : MonoBehaviour
 
         try
         {
+            // NOTE: do not Clear() ContinueSession here (see OnHostClicked).
             _router.UseSteam();
             _multiplayerMode.EnableHosting();
             _steamTransport.StartHost(0);

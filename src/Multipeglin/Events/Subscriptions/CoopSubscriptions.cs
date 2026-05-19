@@ -106,6 +106,24 @@ public sealed class CoopSubscriptions
     /// </summary>
     internal static CoopSubscriptions Instance { get; private set; }
 
+    // cached PHC: HandleImmediateDamage / HandleImmediateHeal fire on every
+    // player damage / heal event — with per-peg heal orbs this was running
+    // hundreds of scene-wide FindObjectOfType scans per shot. Unity's overloaded
+    // `==` returns true for destroyed objects, so we transparently refetch
+    // across scene transitions.
+    private static PlayerHealthController _cachedPhc;
+
+    private static PlayerHealthController GetPhc()
+    {
+        if (_cachedPhc != null)
+        {
+            return _cachedPhc;
+        }
+
+        _cachedPhc = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
+        return _cachedPhc;
+    }
+
     public CoopSubscriptions(
         IMultiplayerMode mode,
         CoopStateManager coopStateManager,
@@ -175,7 +193,7 @@ public sealed class CoopSubscriptions
 
         try
         {
-            var phc = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
+            var phc = GetPhc();
             if (phc == null)
             {
                 _healthBeforeAttack = 0f;
@@ -276,7 +294,7 @@ public sealed class CoopSubscriptions
             var activeState = _coopStateManager.GetPlayerState(activeSlot);
             if (activeState != null)
             {
-                var phc = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
+                var phc = GetPhc();
                 if (phc != null)
                 {
                     activeState.CurrentHealth = Mathf.Max(0f, phc.CurrentHealth);
@@ -321,7 +339,7 @@ public sealed class CoopSubscriptions
             return;
         }
 
-        var phc = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
+        var phc = GetPhc();
         if (phc != null)
         {
             activeState.CurrentHealth = Mathf.Min(activeState.MaxHealth, phc.CurrentHealth);
@@ -363,7 +381,7 @@ public sealed class CoopSubscriptions
         {
             try
             {
-                var phc = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
+                var phc = GetPhc();
                 if (phc != null)
                 {
                     var healthField = HarmonyLib.AccessTools.Field(typeof(PlayerHealthController), "_playerHealth");
@@ -511,7 +529,7 @@ public sealed class CoopSubscriptions
             // But some damage sources (e.g. red bomb detonation mid-turn, delayed explosions)
             // can bypass the OnPlayerDamaged dispatch window. The _healthBeforeAttack delta
             // catches any leftover damage and distributes it the same way.
-            var phc = UnityEngine.Object.FindObjectOfType<PlayerHealthController>();
+            var phc = GetPhc();
             if (phc != null)
             {
                 var currentHealth = phc.CurrentHealth;

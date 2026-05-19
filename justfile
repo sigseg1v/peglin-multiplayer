@@ -14,6 +14,10 @@ bepinex_zip := "BepInEx_win_x64_" + bepinex_version + ".zip"
 bepinex_url := "https://github.com/BepInEx/BepInEx/releases/download/v" + bepinex_version + "/" + bepinex_zip
 bepinex_cache := root / "vendor" / bepinex_zip
 
+# r2modman profile to source Thunderstore mods from (Linux flatpak default).
+# Override with $env:R2MODMAN_PROFILE = '/some/path' before invoking sync.
+r2modman_profile_default := ".var/app/com.github.ebkr.r2modman/config/r2modmanPlus-local/Peglin/profiles/Default"
+
 # Build debug
 build:
     dotnet build '{{src}}/Multipeglin.sln' -c Debug --nologo
@@ -168,6 +172,50 @@ dev-network-player: setup _restore-appid
         } \
     }
 
+# Copy Thunderstore mods (TestingFloor, PeglinCore, MMHOOK, AutoHookGenPatcher,
+# DetourContext_Dispose_Fix, HideManager, ...) from a r2modman profile into
+# release/BepInEx so they load alongside Multipeglin. Records what was copied
+# to release/BepInEx/.synced-thunderstore-mods so `unsync-thunderstore-mods`
+# can reverse it. Override the source with $env:R2MODMAN_PROFILE.
+sync-thunderstore-mods: setup
+    $src = if ($env:R2MODMAN_PROFILE) { $env:R2MODMAN_PROFILE } else { Join-Path $HOME '{{r2modman_profile_default}}' }; \
+    $srcBep = Join-Path $src 'BepInEx'; \
+    if (-not (Test-Path $srcBep)) { Write-Error "Source profile not found: $srcBep"; exit 1 } \
+    $dstBep = Join-Path '{{game}}' 'BepInEx'; \
+    $tracker = Join-Path $dstBep '.synced-thunderstore-mods'; \
+    $synced = New-Object System.Collections.Generic.List[string]; \
+    foreach ($d in @('plugins','patchers')) { \
+        $sd = Join-Path $srcBep $d; \
+        if (-not (Test-Path $sd)) { continue } \
+        $dd = Join-Path $dstBep $d; \
+        New-Item -ItemType Directory -Path $dd -Force | Out-Null; \
+        Get-ChildItem $sd -Directory | Where-Object { $_.Name -ne 'Multipeglin' } | ForEach-Object { \
+            $target = Join-Path $dd $_.Name; \
+            if (Test-Path $target) { Remove-Item $target -Recurse -Force } \
+            Copy-Item -Recurse $_.FullName $dd; \
+            $synced.Add("$d/$($_.Name)"); \
+            Write-Host "  + $d/$($_.Name)"; \
+        } \
+    } \
+    Set-Content -Path $tracker -Value $synced; \
+    Write-Host "Thunderstore mods synced from $src"
+
+# Reverse `sync-thunderstore-mods`. Reads the tracker file and removes only
+# what was copied; leaves Multipeglin and core BepInEx files alone.
+unsync-thunderstore-mods:
+    $dstBep = Join-Path '{{game}}' 'BepInEx'; \
+    $tracker = Join-Path $dstBep '.synced-thunderstore-mods'; \
+    if (-not (Test-Path $tracker)) { Write-Host 'No tracked Thunderstore mods to remove'; exit 0 } \
+    Get-Content $tracker | Where-Object { $_ } | ForEach-Object { \
+        $target = Join-Path $dstBep $_; \
+        if (Test-Path $target) { \
+            Remove-Item $target -Recurse -Force; \
+            Write-Host "  - $_"; \
+        } \
+    }; \
+    Remove-Item $tracker -Force -ErrorAction SilentlyContinue; \
+    Write-Host 'Thunderstore mods removed'
+
 # Deploy plugin to game dir without launching
 deploy: setup _restore-appid
     dotnet build '{{src}}/Multipeglin.sln' -c Debug --nologo -v quiet; \
@@ -192,6 +240,7 @@ package:
     Copy-Item '{{thunderstore}}/manifest.json' $staging/; \
     Copy-Item '{{thunderstore}}/icon.png' $staging/; \
     Copy-Item '{{thunderstore}}/README.md' $staging/; \
+    Copy-Item '{{thunderstore}}/CHANGELOG.md' $staging/; \
     Copy-Item '{{src}}/Multipeglin.Core/bin/Release/netstandard2.1/Multipeglin.Core.dll' $staging/; \
     Copy-Item "$bin/Multipeglin.dll" $staging/; \
     Copy-Item "$bin/LiteNetLib.dll" $staging/; \
@@ -213,8 +262,10 @@ clean:
     Remove-Item '{{src}}/Multipeglin/bin','{{src}}/Multipeglin/obj' -Recurse -Force -ErrorAction SilentlyContinue; \
     Write-Host 'Cleaned'
 
-# Remove BepInEx from release/ and reset Proton prefixes (restore to vanilla)
-uninstall:
+# Remove BepInEx from release/ and reset Proton prefixes (restore to vanilla).
+# Also runs unsync-thunderstore-mods first so any synced Thunderstore mods
+# (TestingFloor etc.) are reported and removed by name before BepInEx is nuked.
+uninstall: unsync-thunderstore-mods
     foreach ($f in @('winhttp.dll','doorstop_config.ini','.doorstop_version')) { \
         $p = Join-Path '{{game}}' $f; \
         if (Test-Path $p) { Remove-Item $p -Force } \

@@ -12,10 +12,39 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
     private readonly ManualLogSource _log;
     private readonly PegIdentifier _pegId;
 
+    // Cached reflection handles. AccessTools.Field is an uncached MetadataToken
+    // lookup; resolving these every peg every snapshot was a meaningful share of
+    // capture cost when the board is large.
+    private static readonly System.Reflection.FieldInfo _pegClearedField
+        = HarmonyLib.AccessTools.Field(typeof(Peg), "_cleared");
+
+    private static readonly System.Reflection.FieldInfo _longPegHitField
+        = HarmonyLib.AccessTools.Field(typeof(LongPeg), "_hit");
+
+    private static readonly System.Reflection.FieldInfo _pegShieldOverlayField
+        = HarmonyLib.AccessTools.Field(typeof(Peg), "PegShieldOverlayInstance");
+
+    private static readonly System.Reflection.FieldInfo _bombsField
+        = HarmonyLib.AccessTools.Field(typeof(Battle.PegManager), "_bombs");
+
+    private static readonly System.Reflection.FieldInfo _vinesField
+        = HarmonyLib.AccessTools.Field(typeof(Battle.PegManager), "_vines");
+
+    private static readonly System.Reflection.FieldInfo _vinePeg1Field
+        = HarmonyLib.AccessTools.Field(typeof(Battle.Pachinko.Obstacles.PegBoardBramballVine), "_peg1");
+
+    private static readonly System.Reflection.FieldInfo _vinePeg2Field
+        = HarmonyLib.AccessTools.Field(typeof(Battle.Pachinko.Obstacles.PegBoardBramballVine), "_peg2");
+
+    private static readonly System.Reflection.FieldInfo _splineDistancesField
+        = HarmonyLib.AccessTools.Field(typeof(PegSplineFollow), "_pegSplineDistances");
+
     // Last per-heartbeat composition signature — used to suppress identical
     // capture-summary log lines.
     private (int total, int crit, int bomb, int reset, int bouncer, int registry,
         int bombsListCount, int allPegsBombCount, int blackHoles, int splineGens) _lastCaptureSig;
+
+    private (int snapshotVines, int rawVines) _lastVinesLogSig;
 
     public PegboardStateProvider(ManualLogSource log, PegIdentifier pegId)
     {
@@ -93,8 +122,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     {
                         try
                         {
-                            var hitField = HarmonyLib.AccessTools.Field(typeof(LongPeg), "_hit");
-                            isLongPegHit = (bool)(hitField?.GetValue(peg) ?? false);
+                            isLongPegHit = (bool)(_longPegHitField?.GetValue(peg) ?? false);
                         }
                         catch
                         {
@@ -104,8 +132,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     // the previously-cleared background visual (dot/different color after refresh).
                     try
                     {
-                        var clearedField = HarmonyLib.AccessTools.Field(typeof(Peg), "_cleared");
-                        wasPreviouslyCleared = (bool)(clearedField?.GetValue(peg) ?? false);
+                        wasPreviouslyCleared = (bool)(_pegClearedField?.GetValue(peg) ?? false);
                     }
                     catch
                     {
@@ -155,8 +182,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
             }
 
             // Capture bombs from _bombs list (bombs are NOT in allPegs — they're separate)
-            var bombsField = HarmonyLib.AccessTools.Field(typeof(Battle.PegManager), "_bombs");
-            var bombs = bombsField?.GetValue(pm) as System.Collections.Generic.List<Bomb>;
+            var bombs = _bombsField?.GetValue(pm) as System.Collections.Generic.List<Bomb>;
             if (bombs != null)
             {
                 for (var i = 0; i < bombs.Count; i++)
@@ -185,8 +211,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
 
                         try
                         {
-                            var clearedField = HarmonyLib.AccessTools.Field(typeof(Peg), "_cleared");
-                            wasPreviouslyCleared = (bool)(clearedField?.GetValue(bomb) ?? false);
+                            wasPreviouslyCleared = (bool)(_pegClearedField?.GetValue(bomb) ?? false);
                         }
                         catch
                         {
@@ -254,8 +279,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
 
                         try
                         {
-                            var clearedField = HarmonyLib.AccessTools.Field(typeof(Peg), "_cleared");
-                            wasPreviouslyCleared = (bool)(clearedField?.GetValue(bouncer) ?? false);
+                            wasPreviouslyCleared = (bool)(_pegClearedField?.GetValue(bouncer) ?? false);
                         }
                         catch
                         {
@@ -297,13 +321,9 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
             // Capture bramball vines (pairs of peg GUIDs)
             try
             {
-                var vinesField = HarmonyLib.AccessTools.Field(typeof(Battle.PegManager), "_vines");
-                var vines = vinesField?.GetValue(pm) as System.Collections.Generic.List<Battle.Pachinko.Obstacles.PegBoardBramballVine>;
+                var vines = _vinesField?.GetValue(pm) as System.Collections.Generic.List<Battle.Pachinko.Obstacles.PegBoardBramballVine>;
                 if (vines != null && vines.Count > 0)
                 {
-                    var peg1Field = HarmonyLib.AccessTools.Field(typeof(Battle.Pachinko.Obstacles.PegBoardBramballVine), "_peg1");
-                    var peg2Field = HarmonyLib.AccessTools.Field(typeof(Battle.Pachinko.Obstacles.PegBoardBramballVine), "_peg2");
-
                     foreach (var vine in vines)
                     {
                         if (vine == null)
@@ -311,8 +331,8 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                             continue;
                         }
 
-                        var peg1 = peg1Field?.GetValue(vine) as Peg;
-                        var peg2 = peg2Field?.GetValue(vine) as Peg;
+                        var peg1 = _vinePeg1Field?.GetValue(vine) as Peg;
+                        var peg2 = _vinePeg2Field?.GetValue(vine) as Peg;
                         if (peg1 == null || peg2 == null)
                         {
                             continue;
@@ -330,7 +350,12 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                         }
                     }
 
-                    _log.LogInfo($"[PegProvider] Captured {snapshot.Vines.Count} bramball vines from {vines.Count} in _vines list");
+                    var vinesSig = (snapshot.Vines.Count, vines.Count);
+                    if (!vinesSig.Equals(_lastVinesLogSig))
+                    {
+                        _lastVinesLogSig = vinesSig;
+                        _log.LogInfo($"[PegProvider] Captured {snapshot.Vines.Count} bramball vines from {vines.Count} in _vines list");
+                    }
                 }
             }
             catch (Exception ex)
@@ -352,7 +377,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
             if (!sig.Equals(_lastCaptureSig))
             {
                 _lastCaptureSig = sig;
-                _log.LogInfo($"[PegProvider] Captured {snapshot.TotalPegCount} pegs from PegManager " +
+                _log.LogDebug($"[PegProvider] Captured {snapshot.TotalPegCount} pegs from PegManager " +
                     $"(crit={snapshot.CritPegCount}, bomb={snapshot.BombPegCount}, reset={snapshot.ResetPegCount}, " +
                     $"bouncer={snapshot.BouncerPegCount}, registry={_pegId.Count}, " +
                     $"_bombs={bombsListCount}, allPegsBombs={allPegsBombCount}, " +
@@ -378,8 +403,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
             }
 
             entry.IsShielded = true;
-            var overlayField = HarmonyLib.AccessTools.Field(typeof(Peg), "PegShieldOverlayInstance");
-            var overlay = overlayField?.GetValue(peg) as Battle.PegBehaviour.PegShieldOverlay;
+            var overlay = _pegShieldOverlayField?.GetValue(peg) as Battle.PegBehaviour.PegShieldOverlay;
             if (overlay != null)
             {
                 entry.ShieldHitCount = overlay.hitCount;
@@ -523,8 +547,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
     {
         try
         {
-            var distancesField = HarmonyLib.AccessTools.Field(typeof(PegSplineFollow), "_pegSplineDistances");
-            if (distancesField == null)
+            if (_splineDistancesField == null)
             {
                 return;
             }
@@ -538,7 +561,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     continue;
                 }
 
-                var distances = distancesField.GetValue(g) as System.Collections.Generic.List<float>;
+                var distances = _splineDistancesField.GetValue(g) as System.Collections.Generic.List<float>;
                 if (distances == null || distances.Count == 0)
                 {
                     continue;

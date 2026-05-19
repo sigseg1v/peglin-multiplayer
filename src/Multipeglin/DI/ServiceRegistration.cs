@@ -328,7 +328,9 @@ public static class ServiceRegistration
         // Relic events
         registry.Register(new RelicAddedServerHandler(), new RelicAddedClientHandler());
         registry.Register(new RelicRemovedServerHandler(), new RelicRemovedClientHandler());
-        registry.Register(new RelicUsedServerHandler(), new RelicUsedClientHandler());
+        // commented out for performance: RelicUsedEvent pipeline was a no-op
+        // logger that fired per-peg-hit (~5000 events per big shot).
+        // registry.Register(new RelicUsedServerHandler(), new RelicUsedClientHandler());
 
         // Currency events
         registry.Register(new GoldChangedServerHandler(), new GoldChangedClientHandler());

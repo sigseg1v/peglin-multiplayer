@@ -29,6 +29,12 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
     private static List<int> _cachedShopRelicEffects;
     private static bool _inShopScenario;
 
+    // Cheap rolling hash over (RoomType, RoomState) per node — gates the map
+    // nodes log so the per-type/per-state rollup (two Dictionary allocs + two
+    // string.Join chains + ~30 enum.ToString calls) only runs when the actual
+    // node composition changes.
+    private long _lastMapNodesLogSig;
+
     public MapStateSnapshot Capture()
     {
         try
@@ -355,24 +361,40 @@ public class MapStateProvider : IGameStateProvider<MapStateSnapshot>
                 });
             }
 
-            // Per-type rollup so we can spot "host has 27 nodes but most are NONE / UPCOMING"
-            // regressions in continue loads at a glance.
-            var typeCounts = new Dictionary<int, int>();
-            var stateCounts = new Dictionary<int, int>();
-            var noneOrHidden = 0;
+            // Gate the per-type/per-state rollup log on a cheap rolling hash so
+            // the dict allocs + string.Joins + enum.ToString chain only fire when
+            // node composition actually changes. Previously this ran on every map
+            // snapshot capture (~5 Hz on map scenes).
+            long sig = nodes.Count;
             foreach (var entry in nodes)
             {
-                typeCounts[entry.RoomType] = typeCounts.TryGetValue(entry.RoomType, out var tc) ? tc + 1 : 1;
-                stateCounts[entry.RoomState] = stateCounts.TryGetValue(entry.RoomState, out var sc) ? sc + 1 : 1;
-                if (entry.RoomType == 0 || entry.RoomState == 0)
-                {
-                    noneOrHidden++;
-                }
+                sig = (sig * 131) + entry.RoomType;
+                sig = (sig * 131) + entry.RoomState;
             }
 
-            var typeSummary = string.Join(", ", typeCounts.Select(kv => $"{(RoomType)kv.Key}={kv.Value}"));
-            var stateSummary = string.Join(", ", stateCounts.Select(kv => $"{(kv.Key >= 0 ? ((RoomState)kv.Key).ToString() : "?")}={kv.Value}"));
-            _log.LogInfo($"[MapProvider] Captured {nodes.Count} map nodes — types[{typeSummary}] states[{stateSummary}] noneOrHidden={noneOrHidden}");
+            if (sig != _lastMapNodesLogSig)
+            {
+                _lastMapNodesLogSig = sig;
+
+                // Per-type rollup so we can spot "host has 27 nodes but most are NONE / UPCOMING"
+                // regressions in continue loads at a glance.
+                var typeCounts = new Dictionary<int, int>();
+                var stateCounts = new Dictionary<int, int>();
+                var noneOrHidden = 0;
+                foreach (var entry in nodes)
+                {
+                    typeCounts[entry.RoomType] = typeCounts.TryGetValue(entry.RoomType, out var tc) ? tc + 1 : 1;
+                    stateCounts[entry.RoomState] = stateCounts.TryGetValue(entry.RoomState, out var sc) ? sc + 1 : 1;
+                    if (entry.RoomType == 0 || entry.RoomState == 0)
+                    {
+                        noneOrHidden++;
+                    }
+                }
+
+                var typeSummary = string.Join(", ", typeCounts.Select(kv => $"{(RoomType)kv.Key}={kv.Value}"));
+                var stateSummary = string.Join(", ", stateCounts.Select(kv => $"{(kv.Key >= 0 ? ((RoomState)kv.Key).ToString() : "?")}={kv.Value}"));
+                _log.LogInfo($"[MapProvider] Captured {nodes.Count} map nodes — types[{typeSummary}] states[{stateSummary}] noneOrHidden={noneOrHidden}");
+            }
         }
         catch (Exception ex)
         {

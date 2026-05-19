@@ -23,7 +23,10 @@ public sealed class RelicSubscriptions
     {
         RelicManager.OnRelicAdded += OnRelicAdded;
         RelicManager.OnRelicRemoved += OnRelicRemoved;
-        RelicManager.OnRelicUsed += OnRelicUsed;
+        // commented out for performance: per-peg-hit relics drove this handler
+        // thousands of times per shot, dispatching/serializing/sending events
+        // whose only consumer was a client log line.
+        // RelicManager.OnRelicUsed += OnRelicUsed;
         _log.LogInfo("RelicSubscriptions registered");
     }
 
@@ -31,7 +34,8 @@ public sealed class RelicSubscriptions
     {
         RelicManager.OnRelicAdded -= OnRelicAdded;
         RelicManager.OnRelicRemoved -= OnRelicRemoved;
-        RelicManager.OnRelicUsed -= OnRelicUsed;
+        // commented out for performance: matches the disabled Subscribe hookup above.
+        // RelicManager.OnRelicUsed -= OnRelicUsed;
     }
 
     private void OnRelicAdded(Relic relic)
@@ -58,6 +62,10 @@ public sealed class RelicSubscriptions
         _registry.Dispatch(new RelicRemovedEvent { RelicEffect = (int)relic.effect });
     }
 
+    // commented out for performance: per-peg-hit relics drove this through
+    // Dispatch -> serialize -> network send thousands of times per shot, with
+    // no consumer beyond a client log line.
+    /*
     private void OnRelicUsed(Relic relic)
     {
         if (!IsHosting)
@@ -67,4 +75,5 @@ public sealed class RelicSubscriptions
 
         _registry.Dispatch(new RelicUsedEvent { RelicEffect = (int)relic.effect });
     }
+    */
 }

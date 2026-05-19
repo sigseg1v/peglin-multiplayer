@@ -25,6 +25,40 @@ public class GameStateSyncService : IGameStateSyncService
     private readonly TextScenarioStateProvider _textScenarioProvider;
     private bool _mirrorEventDispatched;
 
+    // Last-logged coop composition signature. We only log per-slot player /
+    // deck lines when something actually changes — at 1-2s heartbeat cadence
+    // with 4 players this was producing ~9 LogInfo calls every tick plus a
+    // string.Join over the entire complete deck per slot per tick.
+    private string _lastCoopLogSig;
+
+    // Per-method rate-limit timestamps (in seconds since startup) to coalesce
+    // event-burst-driven Sync* calls. Multiball + refresh-pegs triggers
+    // OnReloadStarted / OnPreRefreshActivated / OnShotComplete in rapid bursts
+    // (12 SyncPegboard dispatches in one shot observed). Each Sync* call is
+    // expensive — 220-peg walk + scene scans + JSON serialize + UDP broadcast
+    // — and the periodic heartbeat (1s during shot, 2s otherwise) already
+    // ensures convergence on the client. Rate-limit to at most one per
+    // ~150ms per Sync* method.
+    private float _lastSyncPegboardTime;
+    private float _lastSyncEnemiesTime;
+    private float _lastSyncDeckTime;
+    private float _lastSyncPlayerTime;
+    private float _lastSyncRelicsTime;
+    private float _lastSyncMapTime;
+    private const float SyncMinIntervalSec = 0.150f;
+
+    private static bool ShouldThrottle(ref float lastTime, float minInterval)
+    {
+        var now = UnityEngine.Time.realtimeSinceStartup;
+        if (now - lastTime < minInterval)
+        {
+            return true;
+        }
+
+        lastTime = now;
+        return false;
+    }
+
     public GameStateSyncService(
         ManualLogSource log,
         IGameEventRegistry registry,
@@ -200,22 +234,30 @@ public class GameStateSyncService : IGameStateSyncService
                 }
             }
 
-            // Log per-slot player info and deck contents for debugging coop sync
-            if (snapshot.PlayerSummaries != null)
+            // Per-slot diagnostics. At 1-2s heartbeat cadence with 4 players the
+            // old version emitted ~9 LogInfo calls every tick (and a string.Join
+            // over each player's full complete-deck). Gate on a content signature
+            // so we only log when something actually changes.
+            if (snapshot.PlayerSummaries != null && snapshot.PlayerSummaries.Count > 0)
             {
-                foreach (var s in snapshot.PlayerSummaries)
+                var sig = BuildCoopLogSignature(snapshot);
+                if (sig != _lastCoopLogSig)
                 {
-                    _log.LogInfo($"{tag}Player slot={s.SlotIndex} name={s.PlayerName} class={s.ChosenClass} hp={s.CurrentHealth}/{s.MaxHealth} gold={s.Gold} isHost={s.SlotIndex == 0}");
-                }
-            }
+                    _lastCoopLogSig = sig;
+                    foreach (var s in snapshot.PlayerSummaries)
+                    {
+                        _log.LogInfo($"{tag}Player slot={s.SlotIndex} name={s.PlayerName} class={s.ChosenClass} hp={s.CurrentHealth}/{s.MaxHealth} gold={s.Gold} isHost={s.SlotIndex == 0}");
+                    }
 
-            if (snapshot.AllDecks != null)
-            {
-                foreach (var dk in snapshot.AllDecks)
-                {
-                    var orbs = dk.Value?.CompleteDeck;
-                    var names = orbs != null ? string.Join(", ", orbs.Select(o => o.Name)) : "NULL";
-                    _log.LogInfo($"{tag}AllDecks[{dk.Key}]: {orbs?.Count ?? 0} orbs [{names}] shuffled={dk.Value?.ShuffledOrder?.Count ?? 0} active={dk.Key == snapshot.ActivePlayerSlot}");
+                    if (snapshot.AllDecks != null)
+                    {
+                        foreach (var dk in snapshot.AllDecks)
+                        {
+                            var orbs = dk.Value?.CompleteDeck;
+                            var names = orbs != null ? string.Join(", ", orbs.Select(o => o.Name)) : "NULL";
+                            _log.LogInfo($"{tag}AllDecks[{dk.Key}]: {orbs?.Count ?? 0} orbs [{names}] shuffled={dk.Value?.ShuffledOrder?.Count ?? 0} active={dk.Key == snapshot.ActivePlayerSlot}");
+                        }
+                    }
                 }
             }
 
@@ -233,12 +275,32 @@ public class GameStateSyncService : IGameStateSyncService
             }
 
             _registry.Dispatch(snapshot);
-            _log.LogInfo($"{tag}SyncAll: sent full state (map={snapshot.Map?.ActiveScene}, enemies={snapshot.Enemies?.Enemies?.Count ?? 0}, pegs={snapshot.Pegboard?.TotalPegCount ?? 0}, players={snapshot.TotalPlayerCount})");
 
-            // Only dump verbose diagnostics for non-heartbeat syncs to reduce log noise
-            if (trigger == null || !trigger.StartsWith("HEARTBEAT"))
+            // SyncAll dispatches a FullGameStateSnapshot that carries every
+            // provider's state. Bump per-method timestamps so an event-driven
+            // SyncPegboard / SyncEnemies arriving within the throttle window
+            // is correctly suppressed — the client already has fresh data.
+            var nowSec = UnityEngine.Time.realtimeSinceStartup;
+            _lastSyncMapTime = nowSec;
+            _lastSyncPegboardTime = nowSec;
+            _lastSyncEnemiesTime = nowSec;
+            _lastSyncPlayerTime = nowSec;
+            _lastSyncDeckTime = nowSec;
+            _lastSyncRelicsTime = nowSec;
+
+            // Skip the per-tick summary line for heartbeat firings (one every 1-2s
+            // per player × N players adds up). Keep it for explicit triggers so
+            // we can still see scene loads / explicit sync events in the log.
+            // DiagnosticLogger.DumpBattleState was previously called here but does
+            // 5+ scene scans, uncached reflection, multi-pass LINQ over 220 pegs
+            // and ~26 LogInfo writes — fired on every non-heartbeat SyncAll
+            // (TurnSwap, RoundIncremented, scene load, victory). Strip from the
+            // hot path; if needed for debugging, call it explicitly from a
+            // one-shot hook instead.
+            var isHeartbeat = trigger != null && trigger.StartsWith("HEARTBEAT");
+            if (!isHeartbeat)
             {
-                DiagnosticLogger.DumpBattleState("HOST_SyncAll");
+                _log.LogDebug($"{tag}SyncAll: sent full state (map={snapshot.Map?.ActiveScene}, enemies={snapshot.Enemies?.Enemies?.Count ?? 0}, pegs={snapshot.Pegboard?.TotalPegCount ?? 0}, players={snapshot.TotalPlayerCount})");
             }
         }
         catch (Exception ex)
@@ -247,9 +309,44 @@ public class GameStateSyncService : IGameStateSyncService
         }
     }
 
+    private static string BuildCoopLogSignature(FullGameStateSnapshot snapshot)
+    {
+        // Cheap signature: slot|hp|gold for each player + decksize for each
+        // slot + active slot. Avoids the string.Join over orb names on every
+        // tick when nothing changed.
+        var sb = new System.Text.StringBuilder(64);
+        sb.Append(snapshot.ActivePlayerSlot);
+        if (snapshot.PlayerSummaries != null)
+        {
+            foreach (var s in snapshot.PlayerSummaries)
+            {
+                sb.Append('|').Append(s.SlotIndex).Append(':')
+                  .Append(s.CurrentHealth).Append('/').Append(s.MaxHealth)
+                  .Append(',').Append(s.Gold);
+            }
+        }
+
+        if (snapshot.AllDecks != null)
+        {
+            foreach (var dk in snapshot.AllDecks)
+            {
+                sb.Append('#').Append(dk.Key).Append(':')
+                  .Append(dk.Value?.CompleteDeck?.Count ?? 0).Append('/')
+                  .Append(dk.Value?.ShuffledOrder?.Count ?? 0);
+            }
+        }
+
+        return sb.ToString();
+    }
+
     public void SyncMap()
     {
         if (!_mode.IsHosting)
+        {
+            return;
+        }
+
+        if (ShouldThrottle(ref _lastSyncMapTime, SyncMinIntervalSec))
         {
             return;
         }
@@ -270,18 +367,31 @@ public class GameStateSyncService : IGameStateSyncService
             return;
         }
 
+        if (ShouldThrottle(ref _lastSyncPegboardTime, SyncMinIntervalSec))
+        {
+            return;
+        }
+
         var state = _pegboardProvider.Capture();
         if (state != null)
         {
             _registry.Dispatch(state);
         }
 
-        _log.LogInfo($"SyncPegboard: {state?.TotalPegCount} pegs ({state?.CritPegCount} crit, {state?.BombPegCount} bomb, {state?.ResetPegCount} reset)");
+        // demoted from LogInfo: each Sync* call wrote a synchronous file-logged
+        // line on the Unity main thread. With ~80 of these per shot during
+        // heavy peg activity that added up to noticeable stalls.
+        _log.LogDebug($"SyncPegboard: {state?.TotalPegCount} pegs ({state?.CritPegCount} crit, {state?.BombPegCount} bomb, {state?.ResetPegCount} reset)");
     }
 
     public void SyncEnemies()
     {
         if (!_mode.IsHosting)
+        {
+            return;
+        }
+
+        if (ShouldThrottle(ref _lastSyncEnemiesTime, SyncMinIntervalSec))
         {
             return;
         }
@@ -292,12 +402,17 @@ public class GameStateSyncService : IGameStateSyncService
             _registry.Dispatch(state);
         }
 
-        _log.LogInfo($"SyncEnemies: {state?.Enemies?.Count ?? 0} enemies, battleState={state?.BattleStateName}");
+        _log.LogDebug($"SyncEnemies: {state?.Enemies?.Count ?? 0} enemies, battleState={state?.BattleStateName}");
     }
 
     public void SyncPlayer()
     {
         if (!_mode.IsHosting)
+        {
+            return;
+        }
+
+        if (ShouldThrottle(ref _lastSyncPlayerTime, SyncMinIntervalSec))
         {
             return;
         }
@@ -308,12 +423,17 @@ public class GameStateSyncService : IGameStateSyncService
             _registry.Dispatch(state);
         }
 
-        _log.LogInfo($"SyncPlayer: hp={state?.CurrentHealth}/{state?.MaxHealth}, gold={state?.Gold}, effects={state?.StatusEffects?.Count ?? 0}");
+        _log.LogDebug($"SyncPlayer: hp={state?.CurrentHealth}/{state?.MaxHealth}, gold={state?.Gold}, effects={state?.StatusEffects?.Count ?? 0}");
     }
 
     public void SyncDeck()
     {
         if (!_mode.IsHosting)
+        {
+            return;
+        }
+
+        if (ShouldThrottle(ref _lastSyncDeckTime, SyncMinIntervalSec))
         {
             return;
         }
@@ -324,12 +444,17 @@ public class GameStateSyncService : IGameStateSyncService
             _registry.Dispatch(state);
         }
 
-        _log.LogInfo($"SyncDeck: {state?.DeckSize} orbs in complete deck, {state?.BattleDeck?.Count ?? 0} in battle deck");
+        _log.LogDebug($"SyncDeck: {state?.DeckSize} orbs in complete deck, {state?.BattleDeck?.Count ?? 0} in battle deck");
     }
 
     public void SyncRelics()
     {
         if (!_mode.IsHosting)
+        {
+            return;
+        }
+
+        if (ShouldThrottle(ref _lastSyncRelicsTime, SyncMinIntervalSec))
         {
             return;
         }
@@ -340,6 +465,6 @@ public class GameStateSyncService : IGameStateSyncService
             _registry.Dispatch(state);
         }
 
-        _log.LogInfo($"SyncRelics: {state?.TotalRelicCount} relics");
+        _log.LogDebug($"SyncRelics: {state?.TotalRelicCount} relics");
     }
 }

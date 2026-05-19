@@ -10,18 +10,16 @@ public sealed class EnemyMovedClientHandler : IClientHandler<EnemyMovedEvent>
     {
         try
         {
-            MultiplayerPlugin.Logger.LogInfo($"[EnemyMoved] guid={networkEvent.EnemyId} slot {networkEvent.FromSlot} → {networkEvent.ToSlot}");
-
             var enemyIdentifier = MultiplayerPlugin.Services.Resolve<EnemyIdentifier>();
             var enemy = enemyIdentifier.Find(networkEvent.EnemyId);
             if (enemy != null)
             {
-                MultiplayerPlugin.Logger.LogInfo($"[EnemyMoved] Found '{enemy.locKey}' by GUID");
+                MultiplayerPlugin.Logger.LogInfo($"[EnemyMoved] '{enemy.locKey}' (guid={networkEvent.EnemyId}) slot {networkEvent.FromSlot} → {networkEvent.ToSlot}");
                 // TODO: actually move the enemy to the new slot position
             }
             else
             {
-                MultiplayerPlugin.Logger.LogWarning($"[EnemyMoved] Could not find enemy guid={networkEvent.EnemyId}");
+                MultiplayerPlugin.Logger.LogWarning($"[EnemyMoved] Could not find enemy guid={networkEvent.EnemyId} (slot {networkEvent.FromSlot} → {networkEvent.ToSlot})");
             }
         }
         catch (Exception e)

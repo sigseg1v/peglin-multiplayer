@@ -116,7 +116,7 @@ public class DeckStateProvider : IGameStateProvider<DeckStateSnapshot>
             if (sig != _lastCaptureSig)
             {
                 _lastCaptureSig = sig;
-                _log.LogInfo($"[DeckProvider] Captured {snapshot.CompleteDeck.Count} complete, {snapshot.BattleDeck.Count} battle, {snapshot.ShuffledOrder?.Count ?? 0} shuffled orbs ({_orbId.Count} in registry) activeOrb={snapshot.CurrentOrb ?? "none"}");
+                _log.LogDebug($"[DeckProvider] Captured {snapshot.CompleteDeck.Count} complete, {snapshot.BattleDeck.Count} battle, {snapshot.ShuffledOrder?.Count ?? 0} shuffled orbs ({_orbId.Count} in registry) activeOrb={snapshot.CurrentOrb ?? "none"}");
             }
 
             return snapshot;
