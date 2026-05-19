@@ -44,6 +44,8 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
     private (int total, int crit, int bomb, int reset, int bouncer, int registry,
         int bombsListCount, int allPegsBombCount, int blackHoles, int splineGens) _lastCaptureSig;
 
+    private (int snapshotVines, int rawVines) _lastVinesLogSig;
+
     public PegboardStateProvider(ManualLogSource log, PegIdentifier pegId)
     {
         _log = log;
@@ -348,7 +350,12 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                         }
                     }
 
-                    _log.LogInfo($"[PegProvider] Captured {snapshot.Vines.Count} bramball vines from {vines.Count} in _vines list");
+                    var vinesSig = (snapshot.Vines.Count, vines.Count);
+                    if (!vinesSig.Equals(_lastVinesLogSig))
+                    {
+                        _lastVinesLogSig = vinesSig;
+                        _log.LogInfo($"[PegProvider] Captured {snapshot.Vines.Count} bramball vines from {vines.Count} in _vines list");
+                    }
                 }
             }
             catch (Exception ex)
