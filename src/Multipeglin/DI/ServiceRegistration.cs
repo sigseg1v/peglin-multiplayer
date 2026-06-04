@@ -400,6 +400,7 @@ public static class ServiceRegistration
         registry.Register(new ScenarioHandlers.ShopCompleteServerHandler(), new ScenarioHandlers.ShopCompleteClientHandler());
         registry.Register(new ScenarioHandlers.ShopPurchaseServerHandler(), new ScenarioHandlers.ShopPurchaseClientHandler());
         registry.Register(new ScenarioHandlers.TreasureCompleteServerHandler(), new ScenarioHandlers.TreasureCompleteClientHandler());
+        registry.Register(new ScenarioHandlers.BonusChestTriggeredServerHandler(), new ScenarioHandlers.BonusChestTriggeredClientHandler());
         registry.Register(new ScenarioHandlers.PegMinigameCompleteServerHandler(), new ScenarioHandlers.PegMinigameCompleteClientHandler());
 
         // State sync snapshots

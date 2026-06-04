@@ -7,15 +7,13 @@ namespace Multipeglin.Patches;
 internal static class ChestScenarioControllerPatches
 {
     /// <summary>
-    /// Suppress the treasure-room "hit all bombs to spawn a bonus chest" easter
-    /// egg in coop. The native flow reloads the Treasure scene only on whoever
-    /// detonated the last bomb (the host, since clients can't shoot here), and
-    /// the second chest reuses the treasure-phase reward gating that's already
-    /// been marked complete — so the host opens a second chest the client never
-    /// sees, both ends end up waiting on each other, and neither Force Skip nor
-    /// natural completion can recover. Until we wire a real second-pass through
-    /// CoopRewardState, just stop the bonus chest from triggering when a lobby
-    /// is active.
+    /// Coop-sync the treasure-room "hit all bombs to spawn a bonus chest" easter
+    /// egg. The native flow reloads the Treasure scene only on whoever detonated
+    /// the last bomb, bypassing the parallel-shoot navigate phase entirely —
+    /// everyone else stays desynced in the navigation screen (issue #3). Instead,
+    /// count detonations locally (real + ghost balls both pop pegs here) and when
+    /// the counter hits zero route the transition through BonusChestSync so the
+    /// host moves ALL players into the bonus chest room together.
     /// </summary>
     [HarmonyPatch(typeof(Scenarios.ChestScenarioController), "HandlePegDestruction")]
     [HarmonyPrefix]
@@ -40,10 +38,63 @@ internal static class ChestScenarioControllerPatches
             return true;
         }
 
-        var current = (int)bombsRemainingField.GetValue(__instance);
-        bombsRemainingField.SetValue(__instance, current - 1);
-        MultiplayerPlugin.Logger?.LogInfo(
-            $"[ClientPatch] Coop: bonus-chest bomb suppressed (remaining {current - 1})");
+        // Mirror the native decrement, but never let the native single-player
+        // transition run — BonusChestSync owns the coop transition.
+        var remaining = (int)bombsRemainingField.GetValue(__instance) - 1;
+        bombsRemainingField.SetValue(__instance, remaining);
+        MultiplayerPlugin.Logger?.LogInfo($"[BonusChest] Bomb detonated, {remaining} remaining");
+
+        var isBonusChestField = AccessTools.Field(
+            typeof(Scenarios.ChestScenarioController), "_isBonusChest");
+        var isBonusChest = (bool?)isBonusChestField?.GetValue(__instance) ?? false;
+
+        if (remaining == 0
+            && Scenarios.ChestScenarioController.bombChestsOpened < 1
+            && !isBonusChest)
+        {
+            Events.Handlers.Scenarios.BonusChestSync.LocalPlayerTriggered("chest");
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Same easter egg, scenario-pegboard variant (ScenarioNavigationBonusChest,
+    /// the "store robbed" bonus). Native immediately FadeAndLoads TREASURE on the
+    /// local detonator only — route through BonusChestSync instead.
+    /// </summary>
+    [HarmonyPatch(typeof(RNG.Scenarios.ScenarioNavigationBonusChest), "HandlePegDestruction")]
+    [HarmonyPrefix]
+    public static bool ScenarioNavigationBonusChest_HandlePegDestruction_Prefix(
+        RNG.Scenarios.ScenarioNavigationBonusChest __instance,
+        Peg.PegType type)
+    {
+        if (!UI.LobbyUI.GameStartReceived)
+        {
+            return true;
+        }
+
+        if (type != Peg.PegType.BOMB)
+        {
+            return true;
+        }
+
+        var bombsRemainingField = AccessTools.Field(
+            typeof(RNG.Scenarios.ScenarioNavigationBonusChest), "_bombsRemaining");
+        if (bombsRemainingField == null)
+        {
+            return true;
+        }
+
+        var remaining = (int)bombsRemainingField.GetValue(__instance) - 1;
+        bombsRemainingField.SetValue(__instance, remaining);
+        MultiplayerPlugin.Logger?.LogInfo($"[BonusChest] Scenario bomb detonated, {remaining} remaining");
+
+        if (remaining == 0)
+        {
+            Events.Handlers.Scenarios.BonusChestSync.LocalPlayerTriggered("store_robbed");
+        }
+
         return false;
     }
 
