@@ -188,6 +188,38 @@ public static class MultiplayerClientPatches
     }
 
     /// <summary>
+    /// Mirror the class choice into DeckManager's orb pools by calling
+    /// SetupClassOrbPools. The native class-select UI does this via
+    /// LoadoutManager.SetupLoadout (alongside PopulateRelicPools), but we skip
+    /// that flow in multiplayer. Without this, DeckManager.CommonOrbPool /
+    /// UncommonOrbPool / RareOrbPool stay empty on the client, so
+    /// GetRandomOrbPool() returns an empty list and the orb "?" PegMinigame's
+    /// MapDataPegMinigameOrbs.PopulateRewards throws (Random.Range over an empty
+    /// pool), aborting PegMinigameManager.Initialize before the ball is created —
+    /// the client can never throw and the run softlocks. The relic minigame is
+    /// unaffected because its pools come from SetRelicManagerClass.
+    /// </summary>
+    public static void SetDeckManagerClass(Peglin.ClassSystem.Class chosenClass)
+    {
+        try
+        {
+            var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
+            if (dms == null || dms.Length == 0)
+            {
+                MultiplayerPlugin.Logger?.LogWarning("[ClientPatches] DeckManager not found — orb pools not set up, orb minigame may softlock");
+                return;
+            }
+
+            dms[0].SetupClassOrbPools(chosenClass);
+            MultiplayerPlugin.Logger?.LogInfo($"[ClientPatches] Called DeckManager.SetupClassOrbPools({chosenClass})");
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] SetDeckManagerClass failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Mirror the class choice into CruciballManager.currentClass. The native
     /// class-select UI normally does this via SetRunCruciballLevelAndClass, but
     /// we skip that flow in multiplayer (lobby already picked the class). Without

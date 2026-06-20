@@ -73,6 +73,14 @@ public sealed class GameStartClientHandler : IClientHandler<GameStartEvent>
                     // the relic queue would otherwise stay on Peglin (the LoadoutManager.Awake
                     // default), which can leave the shop with zero relics for non-Peglin classes.
                     Patches.MultiplayerClientPatches.SetRelicManagerClass(chosenClass);
+
+                    // Populate DeckManager's orb pools for the chosen class. The same
+                    // LoadoutManager.SetupLoadout that fills the relic pools also calls
+                    // DeckManager.SetupClassOrbPools; skipping the class-select UI means
+                    // the orb pools stay empty on the client, which softlocks the orb
+                    // "?" PegMinigame (PopulateRewards throws over an empty pool before
+                    // the ball is created). See SetDeckManagerClass for details.
+                    Patches.MultiplayerClientPatches.SetDeckManagerClass(chosenClass);
                 }
 
                 // Set PlayerRegistry.LocalSlot so other handlers can identify this client's slot.
