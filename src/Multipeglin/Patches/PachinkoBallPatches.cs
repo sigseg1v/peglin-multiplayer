@@ -21,7 +21,13 @@ internal static class PachinkoBallPatches
     {
         // HOST-SIDE: block the host player from firing during a client's turn.
         // Only allow Fire() when ExecutingPendingShot is set (our postfix programmatic fire).
-        if (IsHosting && UI.LobbyUI.GameStartReceived && !ExecutingPendingShot)
+        // Exception: the navigation phase is a free-for-all vote, not a turn — every
+        // player fires their own nav ball. TurnManager still holds whichever slot took
+        // the last battle turn, so without this carve-out the host softlocks whenever
+        // a client shot last (host's nav ball stays AIMING forever, votes stall at 1/2).
+        if (IsHosting && UI.LobbyUI.GameStartReceived && !ExecutingPendingShot
+            && !(Events.Handlers.Coop.CoopNavigateState.PhaseActive
+                && !Events.Handlers.Coop.CoopNavigateState.Resolved))
         {
             var services = MultiplayerPlugin.Services;
             if (services?.TryResolve<GameState.TurnManager>(out var tm) == true
@@ -111,8 +117,17 @@ internal static class PachinkoBallPatches
     /// </summary>
     [HarmonyPatch(typeof(PachinkoBall), "Fire")]
     [HarmonyPostfix]
-    public static void PachinkoBall_Fire_Postfix(PachinkoBall __instance)
+    public static void PachinkoBall_Fire_Postfix(PachinkoBall __instance, bool __runOriginal)
     {
+        // Postfixes run even when a prefix skips the original. If Fire() was
+        // blocked, nothing launched — broadcasting a NavBallShotEvent here would
+        // show clients a ghost shot that never happened (and latch the one-per-phase
+        // flag, muting the host's real shot later).
+        if (!__runOriginal)
+        {
+            return;
+        }
+
         if (!IsHosting)
         {
             return;
@@ -189,6 +204,6 @@ internal static class SummoningCirclePachinkoBallFirePatches
 
     [HarmonyPatch(typeof(SummoningCirclePachinkoBall), "Fire")]
     [HarmonyPostfix]
-    public static void Postfix(PachinkoBall __instance)
-        => PachinkoBallPatches.PachinkoBall_Fire_Postfix(__instance);
+    public static void Postfix(PachinkoBall __instance, bool __runOriginal)
+        => PachinkoBallPatches.PachinkoBall_Fire_Postfix(__instance, __runOriginal);
 }

@@ -5,6 +5,9 @@
 - improved: performance of host when there are lots of orbs/pegs on the board greatly improved by a caching and optimization pass (reported by: Marikovka)
 - fixed: clients couldn't discard after the host had already used their discard that turn
 - fixed: continue/load session was being cleared at the wrong time on host start and disconnect; fixed so that clicking New Game clears cached state (reported by: Marikovka)
+- fixed: "Multiplayer desync + softlock when all bombs detonated in chest navigation" (thanks haencyl for reporting)
+- fixed: softlock when one player is unable to throw their ball in one of the "?" orb minigames (thanks CheeseThanos for reporting)
+- fixed: issue where when doing Continue on a multiplayer run without exiting the game, it was prompting players to select a new relic and leaving a dark overlay over the screen
 
 ## Multipeglin v0.1.10
 

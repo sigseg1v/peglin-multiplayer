@@ -38,7 +38,20 @@ internal static class MapDataPegMinigameOrbsPatches
             var pool = deckMgr.GetRandomOrbPool();
             if (pool == null || pool.Count == 0)
             {
-                return true;
+                // Orb pools weren't set up for this class (the native class-select
+                // UI is skipped in multiplayer). Falling through to native here
+                // would throw — Random.Range over an empty pool — and abort
+                // PegMinigameManager.Initialize before the ball is created,
+                // softlocking the run. Populate the pools now and retry rather
+                // than hand control back to the crashing native path.
+                deckMgr.SetupClassOrbPools(StaticGameData.chosenClass);
+                pool = deckMgr.GetRandomOrbPool();
+                MultiplayerPlugin.Logger?.LogWarning(
+                    $"[ClientPatch] PegMinigame orb pool was empty — ran SetupClassOrbPools({StaticGameData.chosenClass}), now {pool?.Count ?? 0} orbs");
+                if (pool == null || pool.Count == 0)
+                {
+                    return true;
+                }
             }
 
             // Stable order so the slot-keyed RNG produces consistent picks.
