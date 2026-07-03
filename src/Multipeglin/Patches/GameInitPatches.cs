@@ -325,6 +325,17 @@ internal static class GameInitPatches
             }
         }
 
+        // Continuing a saved run: the native continue path (LoadData.NewGame == false)
+        // already called LoadMapScene() inside Start(), and nobody gets a starting
+        // relic. Entering the relic-selection phase here would send bogus
+        // RelicChoicesEvents to clients (black overlay demanding a pick) and leave
+        // HostRelicSelectionActive stuck true, deadlocking later wait-for-all phases.
+        if (gameStartEvent?.IsContinue == true || Continue.ContinueSession.IsActive)
+        {
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Continue run — skipping starting relic selection phase");
+            return;
+        }
+
         // Coop relic selection: both host and clients choose a starting relic.
         // The host sees the game's native relic canvas; clients see CoopRewardUI.
         // LoadMapScene is blocked until all players have chosen.
