@@ -454,15 +454,20 @@ public static class CoopNavigateResolver
 
             // Treasure-scene bonus: if all chest bombs were detonated before the
             // navigate phase resolved, the native flow loads back into TREASURE
-            // and triggers DoBonusChestStuff. Replicate that here so the perk
-            // isn't lost just because we hijacked HandleSlotTriggerActivated.
-            if (target.isTreasureScene && AllTreasureBombsDetonated(target))
+            // and triggers DoBonusChestStuff. Route it through BonusChestSync so
+            // ALL players transition to the bonus chest room — not just the host.
+            // (Normally the bomb-counter prefix already fired this on the 5th
+            // detonation; this is a belt-and-braces fallback.)
+            if (target.isTreasureScene
+                && AllTreasureBombsDetonated(target)
+                && !Scenarios.BonusChestSync.TransitionStarted)
             {
-                var chest = UnityEngine.Object.FindObjectOfType<global::Scenarios.ChestScenarioController>();
-                chest?.DoBonusChestStuff();
-
-                target.FadeAndLoad(global::Loading.PeglinSceneLoader.Scene.TREASURE);
-                return;
+                var services2 = MultiplayerPlugin.Services;
+                if (services2?.TryResolve<IGameEventRegistry>(out var reg2) == true)
+                {
+                    reg2.Dispatch(new Network.Scenarios.BonusChestTriggeredEvent { Source = "chest" });
+                    return;
+                }
             }
 
             target.FadeAndLoad();

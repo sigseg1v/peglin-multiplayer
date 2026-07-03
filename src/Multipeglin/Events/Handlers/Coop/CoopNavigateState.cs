@@ -71,6 +71,7 @@ public static class CoopNavigateState
         PhaseStartedAt = now;
         ChildRoomTypes = childRoomTypes ?? System.Array.Empty<int>();
         Patches.PachinkoBallPatches.ResetNavBallBroadcastLatch();
+        Scenarios.BonusChestSync.Reset();
     }
 
     /// <summary>Records a vote, returns true if the vote was accepted (slot wasn't already voted).</summary>
