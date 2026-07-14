@@ -280,5 +280,7 @@ public static class CoopRewardState
         PendingDialogueSystemScenario = null;
         ClientTextScenarioChoiceSent = false;
         TextScenarioAwaitingHostNavigation = false;
+        Multipeglin.Patches.MultiplayerClientPatches.DisarmClientPegMinigameLoad();
+        Multipeglin.Patches.MultiplayerClientPatches.AllowPegMinigameLogic = false;
     }
 }

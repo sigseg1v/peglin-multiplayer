@@ -1,5 +1,7 @@
 using System;
 using HarmonyLib;
+using Map;
+using UnityEngine;
 using static Multipeglin.Patches.MultiplayerClientPatches;
 
 namespace Multipeglin.Patches;
@@ -20,13 +22,97 @@ internal static class PegMinigameManagerPatches
             return true;
         }
 
-        if (AllowPegMinigameLogic)
+        if (AllowPegMinigameLogic || PendingClientPegMinigameLoad)
         {
             return true;
         }
 
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Blocked PegMinigameManager.CreateOrb (spectating)");
         return false;
+    }
+
+    [HarmonyPatch(typeof(Peglin.PegMinigame.PegMinigameManager), "Initialize")]
+    [HarmonyPostfix]
+    public static void PegMinigameManager_Initialize_Postfix(Peglin.PegMinigame.PegMinigameManager __instance)
+    {
+        if (!ShouldSuppressClientLogic || !AllowPegMinigameLogic)
+        {
+            return;
+        }
+
+        StopLeakedMapCoroutines();
+        SnapClientPegMinigameCamera(__instance);
+
+        var ballField = AccessTools.Field(typeof(Peglin.PegMinigame.PegMinigameManager), "_ball");
+        if (ballField?.GetValue(__instance) != null)
+        {
+            return;
+        }
+
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] PegMinigame Initialize: retrying CreateOrb after flag arm");
+        var createOrb = AccessTools.Method(typeof(Peglin.PegMinigame.PegMinigameManager), "CreateOrb");
+        createOrb?.Invoke(__instance, null);
+    }
+
+    /// <summary>
+    /// MapController.NodeSelected may already be running when PegMinigame loads.
+    /// Stop it so a map-floor camera tween cannot override the minigame framing.
+    /// </summary>
+    private static void StopLeakedMapCoroutines()
+    {
+        try
+        {
+            var mc = MapController.instance;
+            if (mc == null)
+            {
+                return;
+            }
+
+            mc.StopAllCoroutines();
+            MultiplayerPlugin.Logger?.LogInfo("[ClientPatch] Stopped MapController coroutines for PegMinigame");
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatch] StopLeakedMapCoroutines failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Snap Camera.main back to the minigame playfield after a map camera pan.
+    /// </summary>
+    private static void SnapClientPegMinigameCamera(Peglin.PegMinigame.PegMinigameManager mgr)
+    {
+        try
+        {
+            var mainCamField = AccessTools.Field(typeof(Peglin.PegMinigame.PegMinigameManager), "_mainCamera");
+            var pegMinigameCam = mainCamField?.GetValue(mgr) as Camera;
+            if (pegMinigameCam != null)
+            {
+                pegMinigameCam.enabled = true;
+                pegMinigameCam.gameObject.SetActive(true);
+            }
+
+            var aimField = AccessTools.Field(typeof(Peglin.PegMinigame.PegMinigameManager), "_aimingShotTransform");
+            var aim = aimField?.GetValue(mgr) as Transform;
+            var ballStartField = AccessTools.Field(typeof(Peglin.PegMinigame.PegMinigameManager), "_ballStartTransform");
+            var ballStart = ballStartField?.GetValue(mgr) as Transform;
+            var anchor = aim ?? ballStart;
+
+            var cam = pegMinigameCam != null ? pegMinigameCam : Camera.main;
+            if (cam == null || anchor == null)
+            {
+                return;
+            }
+
+            var pos = cam.transform.position;
+            cam.transform.position = new Vector3(anchor.position.x, anchor.position.y, pos.z);
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[ClientPatch] PegMinigame camera snapped to ({cam.transform.position.x:F1},{cam.transform.position.y:F1})");
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatch] SnapClientPegMinigameCamera failed: {ex.Message}");
+        }
     }
 
     [HarmonyPatch(typeof(Peglin.PegMinigame.PegMinigameManager), "PrepareNavigationOrbForFiring")]
@@ -38,7 +124,7 @@ internal static class PegMinigameManagerPatches
             return true;
         }
 
-        if (AllowPegMinigameLogic)
+        if (AllowPegMinigameLogic || PendingClientPegMinigameLoad)
         {
             return true;
         }
@@ -56,7 +142,7 @@ internal static class PegMinigameManagerPatches
             return true;
         }
 
-        if (AllowPegMinigameLogic)
+        if (AllowPegMinigameLogic || PendingClientPegMinigameLoad)
         {
             return true;
         }
@@ -202,6 +288,7 @@ internal static class PegMinigameManagerPatches
 
                 // Disable PegMinigame logic so subsequent CreateOrb/nav calls are blocked
                 AllowPegMinigameLogic = false;
+                DisarmClientPegMinigameLoad();
                 Events.Handlers.Coop.CoopRewardState.ClientPegMinigameChoiceSent = true;
                 Events.Handlers.Coop.CoopRewardState.WaitingForOtherPlayers = true;
                 // Flag phase so ShowWaiting() picks descriptive text; clear any stale

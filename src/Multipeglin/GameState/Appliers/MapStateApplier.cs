@@ -6,6 +6,7 @@ using Data;
 using HarmonyLib;
 using Loading;
 using Map;
+using Multipeglin.Events.Handlers.Map;
 using Multipeglin.GameState.Snapshots;
 using Multipeglin.Patches;
 using UnityEngine;
@@ -31,6 +32,9 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
     {
         "ForestMap", "CastleMap", "MinesMap", "CoreMap"
     };
+
+    public static bool IsMapScene(string scene) =>
+        !string.IsNullOrEmpty(scene) && MapScenes.Contains(scene);
 
     /// <summary>
     /// Cache of MapDataBattle assets keyed by name, populated from each MapController
@@ -277,7 +281,7 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             }
 
             _log.LogInfo($"[MapApplier] Scene change: '{currentScene}' -> '{targetScene}', loading...");
-            LoadTargetScene(targetScene);
+            LoadTargetScene(targetScene, snapshot);
         }
         catch (Exception ex)
         {
@@ -621,7 +625,7 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         return null;
     }
 
-    private void LoadTargetScene(string targetSceneName)
+    private void LoadTargetScene(string targetSceneName, MapStateSnapshot snapshot = null)
     {
         // Debounce: don't reload the same scene if we just requested it
         if (targetSceneName == _lastRequestedScene && Time.time - _lastRequestTime < 5f)
@@ -632,6 +636,23 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
 
         _lastRequestedScene = targetSceneName;
         _lastRequestTime = Time.time;
+
+        if (string.Equals(targetSceneName, "PegMinigame", StringComparison.OrdinalIgnoreCase)
+            && MultiplayerClientPatches.ShouldSuppressClientLogic)
+        {
+            var minigameData = StaticGameData.dataToLoad as MapDataPegMinigame;
+            if (minigameData == null && snapshot?.Nodes != null)
+            {
+                var mapDataName = ResolveActiveNodeMapDataName(snapshot);
+                if (!string.IsNullOrEmpty(mapDataName))
+                {
+                    minigameData = FindPegMinigameData(mapDataName);
+                }
+            }
+
+            PegMinigameClientLoadArmer.Arm(minigameData, _log, "MapApplier");
+            AwaitingHostSceneConfirmation = "PegMinigame";
+        }
 
         // Try to use PeglinSceneLoader.Instance for proper fade/loading screen
         var sceneLoader = PeglinSceneLoader.Instance;
@@ -1189,5 +1210,54 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         {
             _log.LogWarning($"[MapApplier] MovePlayerToCurrentNode failed: {ex.Message}");
         }
+    }
+
+    private static string ResolveActiveNodeMapDataName(MapStateSnapshot snapshot)
+    {
+        if (snapshot?.Nodes == null || snapshot.Nodes.Count == 0)
+        {
+            return null;
+        }
+
+        foreach (var node in snapshot.Nodes)
+        {
+            if (!string.IsNullOrEmpty(node.MapDataName)
+                && node.MapDataName.IndexOf("PegMinigame", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return node.MapDataName;
+            }
+        }
+
+        if (snapshot.ChosenNextNodeIndex >= 0 && snapshot.ChosenNextNodeIndex < snapshot.Nodes.Count)
+        {
+            return snapshot.Nodes[snapshot.ChosenNextNodeIndex].MapDataName;
+        }
+
+        return null;
+    }
+
+    private static MapDataPegMinigame FindPegMinigameData(string assetName)
+    {
+        if (string.IsNullOrEmpty(assetName))
+        {
+            return null;
+        }
+
+        try
+        {
+            var all = Resources.FindObjectsOfTypeAll<MapDataPegMinigame>();
+            foreach (var asset in all)
+            {
+                if (asset.name == assetName)
+                {
+                    return asset;
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        return null;
     }
 }

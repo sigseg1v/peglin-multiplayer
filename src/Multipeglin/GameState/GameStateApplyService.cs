@@ -100,6 +100,70 @@ public class GameStateApplyService
         _log.LogInfo("[ApplyService] State reset");
     }
 
+    /// <summary>
+    /// Drop a queued full snapshot for a map scene. Called when the client begins
+    /// loading an interactive scene (PegMinigame) from a map node so a pending
+    /// MinesMap apply cannot run mid-transition.
+    /// </summary>
+    public void DiscardPendingSnapshotForInteractiveLoad(string reason)
+    {
+        if (_pendingSnapshot == null)
+        {
+            return;
+        }
+
+        _log.LogInfo($"[ApplyService] Discarded pending snapshot for '{_pendingSnapshotScene}' ({reason})");
+        _pendingSnapshot = null;
+        _pendingSnapshotScene = string.Empty;
+    }
+
+    /// <summary>
+    /// While the client is still on a map scene and loading PegMinigame, host map
+    /// snapshots would move the player / rewrite floor depth before PegMinigame
+    /// finishes loading. Once the interactive scene has loaded, map sync must resume
+    /// so MapApplier can confirm the scene and clear AwaitingHostSceneConfirmation.
+    /// </summary>
+    private static bool ShouldSuppressClientMapApply()
+    {
+        if (!Patches.MultiplayerClientPatches.ShouldSuppressClientLogic)
+        {
+            return false;
+        }
+
+        var currentScene = SceneManager.GetActiveScene().name;
+        if (!MapStateApplier.IsMapScene(currentScene))
+        {
+            return false;
+        }
+
+        if (Patches.MultiplayerClientPatches.PendingClientPegMinigameLoad)
+        {
+            return true;
+        }
+
+        return string.Equals(
+            MapStateApplier.AwaitingHostSceneConfirmation,
+            "PegMinigame",
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void ApplyMapSnapshotIfAllowed(MapStateSnapshot map, string context)
+    {
+        if (map == null)
+        {
+            return;
+        }
+
+        _latestMap = map;
+        if (ShouldSuppressClientMapApply())
+        {
+            _log.LogInfo($"[ApplyService] Skipping map apply ({context}) — PegMinigame transition in progress");
+            return;
+        }
+
+        _mapApplier.Apply(map);
+    }
+
     // =========================================================================
     // SCENE LOADED — apply pending state, start post-load coroutine
     // =========================================================================
@@ -131,7 +195,15 @@ public class GameStateApplyService
         // Reset shop/treasure/minigame/textscenario bypass flags on any scene transition
         Patches.MultiplayerClientPatches.AllowShopLogic = false;
         Patches.MultiplayerClientPatches.AllowTreasureLogic = false;
-        Patches.MultiplayerClientPatches.AllowPegMinigameLogic = false;
+        if (scene.name == "PegMinigame")
+        {
+            Patches.MultiplayerClientPatches.DisarmClientPegMinigameLoad();
+        }
+        else if (!Patches.MultiplayerClientPatches.PendingClientPegMinigameLoad)
+        {
+            Patches.MultiplayerClientPatches.AllowPegMinigameLogic = false;
+        }
+
         Patches.MultiplayerClientPatches.AllowTextScenarioLogic = false;
         Patches.MultiplayerClientPatches.ClientShopPurchases.Clear();
         Events.Handlers.Coop.CoopRewardState.ClientTreasureChoiceSent = false;
@@ -215,6 +287,15 @@ public class GameStateApplyService
                 Events.Handlers.Coop.CoopRewardState.PegMinigamePhaseActive = true;
                 Patches.MultiplayerClientPatches.AllowPegMinigameLogic = true;
                 _log.LogInfo("[ApplyService] Client PegMinigame mode enabled — AllowPegMinigameLogic=true");
+
+                if (string.Equals(
+                    MapStateApplier.AwaitingHostSceneConfirmation,
+                    "PegMinigame",
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    MapStateApplier.AwaitingHostSceneConfirmation = null;
+                    _log.LogInfo("[ApplyService] Cleared AwaitingHostSceneConfirmation on PegMinigame load");
+                }
             }
         }
 
@@ -329,12 +410,7 @@ public class GameStateApplyService
             // CASE 1: Client is on the same scene as host — apply everything
             if (string.Equals(clientScene, hostScene, StringComparison.OrdinalIgnoreCase))
             {
-                // Apply map data (node types, static data) without scene transition
-                if (snapshot.Map != null)
-                {
-                    _latestMap = snapshot.Map;
-                    _mapApplier.Apply(snapshot.Map);
-                }
+                ApplyMapSnapshotIfAllowed(snapshot.Map, "ApplyAll same-scene");
 
                 ApplyNonMapState(snapshot);
                 return;
@@ -346,11 +422,7 @@ public class GameStateApplyService
             if (IsEventScene(hostScene))
             {
                 _log.LogInfo($"[ApplyService] Host on event scene '{hostScene}' — applying state without scene transition");
-                if (snapshot.Map != null)
-                {
-                    _latestMap = snapshot.Map;
-                    _mapApplier.Apply(snapshot.Map);
-                }
+                ApplyMapSnapshotIfAllowed(snapshot.Map, "ApplyAll event-scene");
 
                 ApplyNonMapState(snapshot);
                 return;
@@ -377,11 +449,7 @@ public class GameStateApplyService
             _log.LogInfo($"[ApplyService] Queued snapshot for '{hostScene}' (client on '{clientScene}')");
 
             // Let MapApplier trigger the scene transition (any direction is OK for FRESH data)
-            if (snapshot.Map != null)
-            {
-                _latestMap = snapshot.Map;
-                _mapApplier.Apply(snapshot.Map);
-            }
+            ApplyMapSnapshotIfAllowed(snapshot.Map, "ApplyAll scene-transition");
 
             // Apply player state (works on any scene) — use coop-aware path
             ApplyPlayerFromSnapshot(snapshot);
@@ -400,6 +468,12 @@ public class GameStateApplyService
     {
         if (_latestMap?.Nodes == null || _latestMap.Nodes.Count == 0)
         {
+            return;
+        }
+
+        if (ShouldSuppressClientMapApply())
+        {
+            _log.LogInfo("[ApplyService] Skipping map re-apply after MapController.Start — PegMinigame transition in progress");
             return;
         }
 
@@ -442,6 +516,12 @@ public class GameStateApplyService
         if (currentScene != sceneName)
         {
             _log.LogWarning($"[ApplyService] Scene changed during pending apply delay: {sceneName} → {currentScene}");
+            yield break;
+        }
+
+        if (ShouldSuppressClientMapApply())
+        {
+            _log.LogInfo($"[ApplyService] Skipping pending snapshot for '{sceneName}' — PegMinigame transition in progress");
             yield break;
         }
 
@@ -508,9 +588,15 @@ public class GameStateApplyService
             _pendingSnapshot = null;
             _pendingSnapshotScene = string.Empty;
 
-            if (pending.Map != null)
+            if (pending.Map != null && !ShouldSuppressClientMapApply())
             {
+                _latestMap = pending.Map;
                 SafeApply("Map(late-pending)", () => _mapApplier.Apply(pending.Map));
+            }
+            else if (pending.Map != null)
+            {
+                _latestMap = pending.Map;
+                _log.LogInfo("[ApplyService] Skipping late-pending map apply — PegMinigame transition in progress");
             }
 
             ApplyNonMapState(pending);
@@ -1074,14 +1160,24 @@ public class GameStateApplyService
 
     public void ApplyMapState(MapStateSnapshot snapshot)
     {
-        _latestMap = snapshot;
         // Update host scene tracking
         if (!string.IsNullOrEmpty(snapshot.ActiveScene))
         {
             _hostScene = snapshot.ActiveScene;
         }
 
-        SafeApply("Map", () => _mapApplier.Apply(snapshot));
+        if (ShouldSuppressClientMapApply())
+        {
+            _latestMap = snapshot;
+            _log.LogInfo("[ApplyService] Skipping map delta — PegMinigame transition in progress");
+            return;
+        }
+
+        SafeApply("Map", () =>
+        {
+            _latestMap = snapshot;
+            _mapApplier.Apply(snapshot);
+        });
     }
 
     public void ApplyPlayerState(PlayerStateSnapshot snapshot)

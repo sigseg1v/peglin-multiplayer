@@ -80,6 +80,7 @@ public sealed class AllChoicesCompleteClientHandler : IClientHandler<AllChoicesC
             CoopRewardState.PegMinigameAwaitingHostNavigation = true;
             CoopRewardState.WaitingForOtherPlayers = true;
             Patches.MultiplayerClientPatches.AllowPegMinigameLogic = false;
+            Patches.MultiplayerClientPatches.DisarmClientPegMinigameLoad();
             MultiplayerPlugin.Logger?.LogInfo("[CoopReward] PegMinigame phase ended — awaiting host navigation shot");
         }
     }

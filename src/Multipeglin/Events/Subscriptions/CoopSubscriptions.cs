@@ -591,6 +591,21 @@ public sealed class CoopSubscriptions
 
                 _coopStateManager.SwapToPlayer(nextSlot);
 
+                // Clear stale DeckInfoManager orb refs before native DrawBall.
+                // Mid-round swaps silence onPersistBallUsed for this crash; end-of-round
+                // native DrawBall does not — _nextOrb must be nulled here.
+                try
+                {
+                    if (MultiplayerPlugin.Services?.TryResolve<GameStateApplyService>(out var applySvc) == true)
+                    {
+                        applySvc.DeckApplier.ClearActiveOrbDisplay();
+                    }
+                }
+                catch (Exception clearEx)
+                {
+                    _log.LogWarning($"[CoopSubs] ClearActiveOrbDisplay before DrawBall failed: {clearEx.Message}");
+                }
+
                 // Do NOT call EnsureBattleDeckPopulated here. If the active
                 // shuffledDeck is empty (all orbs fired), the game's native
                 // ChooseShuffleOrDrawAtEndOfTurn → ShuffleBattleDeck →
@@ -1095,6 +1110,10 @@ public sealed class CoopSubscriptions
                     else
                     {
                         _log.LogWarning($"[CoopSubs] _activePachinkoBall was null at shot capture for slot {activeSlot}");
+                        if (attack != null)
+                        {
+                            capturedOrbName = attack.gameObject.name.Replace("(Clone)", string.Empty).Trim();
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -1426,12 +1445,29 @@ public sealed class CoopSubscriptions
 
         _log.LogInfo($"[CoopSubs] SkipCurrentTurn source={source}, slot={activeSlot}");
 
+        string preservedOrbName = null;
+
         // Zero out peg tallies so the accumulated shot records as zero damage.
         var bc = _bcUpdater.GetBattleController();
         if (bc != null)
         {
             try
             {
+                var ball = _bcUpdater.GetActivePachinkoBall(bc);
+                if (ball != null)
+                {
+                    preservedOrbName = ball.name.Replace("(Clone)", string.Empty).Trim();
+                }
+                else
+                {
+                    var am = _bcUpdater.GetAttackManager(bc);
+                    var attack = am != null ? _bcUpdater.GetCurrentAttack(am) : null;
+                    if (attack != null)
+                    {
+                        preservedOrbName = attack.gameObject.name.Replace("(Clone)", string.Empty).Trim();
+                    }
+                }
+
                 _bcUpdater.ResetShotTallies(bc);
             }
             catch (Exception ex) { _log.LogWarning($"[CoopSubs] Skip: tally reset failed: {ex.Message}"); }
@@ -1453,6 +1489,13 @@ public sealed class CoopSubscriptions
         // marks MarkShotFired, saves state, advances turn, and for PLAYER_AIMING
         // (more players left) swaps + DrawBalls the next player.
         OnShotComplete();
+
+        if (!string.IsNullOrEmpty(preservedOrbName)
+            && _accumulatedShotData.TryGetValue(activeSlot, out var skipData)
+            && string.IsNullOrEmpty(skipData.OrbPrefabName))
+        {
+            skipData.OrbPrefabName = preservedOrbName;
+        }
 
         // If no one else is left, push BattleController into the attack phase
         // since there's no natural AWAITING_SHOT_COMPLETION transition to ride on

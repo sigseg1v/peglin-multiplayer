@@ -42,23 +42,9 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
                 if (minigameData != null)
                 {
                     log?.LogInfo($"[NodeActivated] PegMinigame node — loading scene for spectating (asset={e.MapDataName})");
-                    // PegMinigameManager.Initialize instantiates _mapData.background and
-                    // _mapData.pegboardFrame. On the host those are populated by
-                    // MapController.LoadSceneFromMapData, which we skip on the client.
-                    // Without this assignment, Initialize NREs and the scene renders
-                    // blank to the player.
-                    PegMinigameVisualAssigner.Assign(minigameData, log, "NodeActivated");
-                    StaticGameData.dataToLoad = minigameData;
                     GameState.Appliers.MapStateApplier.AwaitingHostSceneConfirmation = "PegMinigame";
                     MultiplayerClientPatches.AllowNextSceneLoad = true;
-                    // Set BEFORE LoadScene: PegMinigameManager.OnEnable -> Initialize ->
-                    // CreateOrb runs synchronously when the scene activates, BEFORE
-                    // SceneManager.sceneLoaded fires. If we wait for OnSceneLoaded to
-                    // flip the flag, the client's navigation orb is never spawned.
-                    MultiplayerClientPatches.AllowPegMinigameLogic = true;
-                    Events.Handlers.Coop.CoopRewardState.PegMinigamePhaseActive = true;
-                    Events.Handlers.Coop.CoopRewardState.ClientPegMinigameChoiceSent = false;
-                    Events.Handlers.Coop.CoopRewardState.PegMinigameAwaitingHostNavigation = false;
+                    PegMinigameClientLoadArmer.Arm(minigameData, log, "NodeActivated");
                     PeglinSceneLoader.Instance?.LoadScene(PeglinSceneLoader.Scene.PEG_MINIGAME);
                     return;
                 }
@@ -334,6 +320,50 @@ internal static class PegMinigameVisualAssigner
         catch (Exception ex)
         {
             log?.LogWarning($"[{tag}] PegMinigameVisualAssigner.Assign failed: {ex.Message}");
+        }
+    }
+}
+
+/// <summary>
+/// Pre-arms client PegMinigame flags before LoadScene. CreateOrb runs synchronously
+/// on scene activation, before SceneManager.sceneLoaded can enable interactive mode.
+/// </summary>
+internal static class PegMinigameClientLoadArmer
+{
+    public static void Arm(MapDataPegMinigame data, BepInEx.Logging.ManualLogSource log, string tag)
+    {
+        if (data != null)
+        {
+            PegMinigameVisualAssigner.Assign(data, log, tag);
+            StaticGameData.dataToLoad = data;
+        }
+        else if (StaticGameData.dataToLoad is MapDataPegMinigame existing)
+        {
+            PegMinigameVisualAssigner.Assign(existing, log, tag);
+        }
+
+        MultiplayerClientPatches.PendingClientPegMinigameLoad = true;
+        MultiplayerClientPatches.AllowPegMinigameLogic = true;
+        Events.Handlers.Coop.CoopRewardState.PegMinigamePhaseActive = true;
+        Events.Handlers.Coop.CoopRewardState.ClientPegMinigameChoiceSent = false;
+        Events.Handlers.Coop.CoopRewardState.PegMinigameAwaitingHostNavigation = false;
+
+        try
+        {
+            var mc = MapController.instance;
+            if (mc != null)
+            {
+                mc.StopAllCoroutines();
+                log?.LogInfo($"[{tag}] Stopped MapController coroutines before PegMinigame load");
+            }
+        }
+        catch
+        {
+        }
+
+        if (MultiplayerPlugin.Services?.TryResolve<GameStateApplyService>(out var applySvc) == true)
+        {
+            applySvc.DiscardPendingSnapshotForInteractiveLoad("PegMinigame load armed");
         }
     }
 }
