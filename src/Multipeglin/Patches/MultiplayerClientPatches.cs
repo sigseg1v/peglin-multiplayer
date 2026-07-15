@@ -114,6 +114,17 @@ public static class MultiplayerClientPatches
     internal static bool AllowPegMinigameLogic;
 
     /// <summary>
+    /// Set before LoadScene(PegMinigame) so intermediate scene loads do not clear
+    /// <see cref="AllowPegMinigameLogic"/> before PegMinigameManager.Initialize → CreateOrb.
+    /// </summary>
+    internal static bool PendingClientPegMinigameLoad;
+
+    internal static void DisarmClientPegMinigameLoad()
+    {
+        PendingClientPegMinigameLoad = false;
+    }
+
+    /// <summary>
     /// Set to true while the client is in the TextScenario scene and allowed to
     /// interact with native dialogue (mirror, altar, etc.).
     /// </summary>

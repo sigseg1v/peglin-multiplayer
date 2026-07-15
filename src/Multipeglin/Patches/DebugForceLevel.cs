@@ -7,10 +7,15 @@ namespace Multipeglin.Patches;
 /// <summary>
 /// Debug environment variable overrides for testing:
 ///
-/// PEGLIN_MULTI_DEBUG_FORCE_LEVEL (e.g. "3" or "3-2")
+/// MULTIPEGLIN_FORCE_LEVEL (e.g. "3" or "3-2")
 ///   Overrides the starting map scene so the game jumps straight to that act.
 ///   1 = Forest, 2 = Castle, 3 = Mines, 4 = Core
 ///   The optional second number sets StaticGameData.totalFloorCount.
+///
+/// MULTIPEGLIN_FORCE_NODE (e.g. "Mines-10@FlickeringRelicMinigame")
+///   Host-only: after map generation, fast-forward to a stage label so the next
+///   node is ready to enter. See DebugForceNode.cs. When set without FORCE_LEVEL,
+///   the act prefix selects the map scene automatically.
 ///
 /// PEGLIN_SEED (e.g. "12345")
 ///   Forces a specific game seed for deterministic map/RNG generation.
@@ -33,7 +38,7 @@ public static class DebugForceLevel
 
         _parsed = true;
 
-        var val = Environment.GetEnvironmentVariable("PEGLIN_MULTI_DEBUG_FORCE_LEVEL");
+        var val = Environment.GetEnvironmentVariable("MULTIPEGLIN_FORCE_LEVEL");
         if (!string.IsNullOrEmpty(val))
         {
             var parts = val.Split('-');
@@ -58,6 +63,16 @@ public static class DebugForceLevel
                     MultiplayerPlugin.Logger?.LogInfo(
                         $"[DebugForceLevel] Forcing start scene to {_forcedScene} (floor={_forcedFloorCount?.ToString() ?? "default"})");
                 }
+            }
+        }
+        else
+        {
+            var nodeScene = Debug.DebugForceNode.GetForcedSceneIfNeeded();
+            if (nodeScene.HasValue)
+            {
+                _forcedScene = nodeScene.Value;
+                MultiplayerPlugin.Logger?.LogInfo(
+                    $"[DebugForceLevel] FORCE_NODE selected start scene {_forcedScene}");
             }
         }
 

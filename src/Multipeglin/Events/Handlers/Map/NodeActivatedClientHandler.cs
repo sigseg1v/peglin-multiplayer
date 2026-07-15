@@ -38,27 +38,32 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
             // PegMinigame node — load the scene so the client can play independently
             if (string.IsNullOrEmpty(e.BattleName) && !string.IsNullOrEmpty(e.MapDataName))
             {
+                // Stash the authoritative asset name. If the map is still generating, none of
+                // the Find* lookups below resolve (0 assets loaded), and we fall through to
+                // MapStateApplier, which reads this to load the correct scene data later.
+                GameState.Appliers.MapStateApplier.PendingScenarioMapDataName = e.MapDataName;
+
                 var minigameData = FindPegMinigameData(e.MapDataName, log);
                 if (minigameData != null)
                 {
+                    // Race guard: if the client is still mid-transition onto the map scene,
+                    // MapController.instance is null (so PegMinigame visuals can't be assigned)
+                    // AND PeglinSceneLoader is still loading, so LoadScene(queueScene:false) below
+                    // would be silently dropped while the arm flags stay set, leaving the client
+                    // stuck on "PegMinigame transition in progress" forever. Defer to MapStateApplier,
+                    // which loads PegMinigame from its periodic ApplyAll once the map has settled
+                    // (MapController valid, loader idle). This is the same path that works when
+                    // FindPegMinigameData happens to miss the asset at NodeActivated time.
+                    if (MapController.instance == null)
+                    {
+                        log?.LogInfo("[NodeActivated] PegMinigame node during map load, deferring to MapStateApplier");
+                        return;
+                    }
+
                     log?.LogInfo($"[NodeActivated] PegMinigame node — loading scene for spectating (asset={e.MapDataName})");
-                    // PegMinigameManager.Initialize instantiates _mapData.background and
-                    // _mapData.pegboardFrame. On the host those are populated by
-                    // MapController.LoadSceneFromMapData, which we skip on the client.
-                    // Without this assignment, Initialize NREs and the scene renders
-                    // blank to the player.
-                    PegMinigameVisualAssigner.Assign(minigameData, log, "NodeActivated");
-                    StaticGameData.dataToLoad = minigameData;
                     GameState.Appliers.MapStateApplier.AwaitingHostSceneConfirmation = "PegMinigame";
                     MultiplayerClientPatches.AllowNextSceneLoad = true;
-                    // Set BEFORE LoadScene: PegMinigameManager.OnEnable -> Initialize ->
-                    // CreateOrb runs synchronously when the scene activates, BEFORE
-                    // SceneManager.sceneLoaded fires. If we wait for OnSceneLoaded to
-                    // flip the flag, the client's navigation orb is never spawned.
-                    MultiplayerClientPatches.AllowPegMinigameLogic = true;
-                    Events.Handlers.Coop.CoopRewardState.PegMinigamePhaseActive = true;
-                    Events.Handlers.Coop.CoopRewardState.ClientPegMinigameChoiceSent = false;
-                    Events.Handlers.Coop.CoopRewardState.PegMinigameAwaitingHostNavigation = false;
+                    PegMinigameClientLoadArmer.Arm(minigameData, log, "NodeActivated");
                     PeglinSceneLoader.Instance?.LoadScene(PeglinSceneLoader.Scene.PEG_MINIGAME);
                     return;
                 }
@@ -334,6 +339,63 @@ internal static class PegMinigameVisualAssigner
         catch (Exception ex)
         {
             log?.LogWarning($"[{tag}] PegMinigameVisualAssigner.Assign failed: {ex.Message}");
+        }
+    }
+}
+
+/// <summary>
+/// Pre-arms client PegMinigame flags before LoadScene. CreateOrb runs synchronously
+/// on scene activation, before SceneManager.sceneLoaded can enable interactive mode.
+/// </summary>
+internal static class PegMinigameClientLoadArmer
+{
+    public static void Arm(MapDataPegMinigame data, BepInEx.Logging.ManualLogSource log, string tag)
+    {
+        if (data != null)
+        {
+            PegMinigameVisualAssigner.Assign(data, log, tag);
+            StaticGameData.dataToLoad = data;
+        }
+        else if (StaticGameData.dataToLoad is MapDataPegMinigame existing)
+        {
+            PegMinigameVisualAssigner.Assign(existing, log, tag);
+        }
+
+        MultiplayerClientPatches.PendingClientPegMinigameLoad = true;
+        MultiplayerClientPatches.AllowPegMinigameLogic = true;
+        Events.Handlers.Coop.CoopRewardState.PegMinigamePhaseActive = true;
+        Events.Handlers.Coop.CoopRewardState.ClientPegMinigameChoiceSent = false;
+        Events.Handlers.Coop.CoopRewardState.PegMinigameAwaitingHostNavigation = false;
+
+        try
+        {
+            var mc = MapController.instance;
+            if (mc != null)
+            {
+                mc.StopAllCoroutines();
+                log?.LogInfo($"[{tag}] Stopped MapController coroutines before PegMinigame load");
+
+                // MapController persists (DontDestroyOnLoad) and its CameraFollowPoint keeps
+                // dragging Camera.main onto the current map node every frame — including in the
+                // PegMinigame scene, where it pulls the camera off the playfield (black screen).
+                // The host disables this inside MapController.NodeSelected; the client never runs
+                // that path, so we disable it here, BEFORE the scene loads, so the new scene's
+                // camera keeps its authored (correct) position.
+                var follow = mc.GetComponent<CameraFollowPoint>();
+                if (follow != null && follow.enabled)
+                {
+                    follow.enabled = false;
+                    log?.LogInfo($"[{tag}] Disabled MapController CameraFollowPoint before PegMinigame load");
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        if (MultiplayerPlugin.Services?.TryResolve<GameStateApplyService>(out var applySvc) == true)
+        {
+            applySvc.DiscardPendingSnapshotForInteractiveLoad("PegMinigame load armed");
         }
     }
 }

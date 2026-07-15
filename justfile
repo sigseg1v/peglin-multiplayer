@@ -107,7 +107,7 @@ dev-multi level="" players="2": setup _restore-appid
     $playerCount = [int]'{{players}}'; \
     if ($playerCount -lt 1) { $playerCount = 1 } \
     if ('{{level}}' -ne '') { \
-        $env:PEGLIN_MULTI_DEBUG_FORCE_LEVEL = '{{level}}'; \
+        $env:MULTIPEGLIN_FORCE_LEVEL = '{{level}}'; \
         Write-Host "==> Force level: {{level}}"; \
     } \
     Write-Host "==> Launching $playerCount instance(s)"; \
@@ -127,7 +127,7 @@ dev-multi level="" players="2": setup _restore-appid
         if ($i -lt $playerCount) { Start-Sleep 5 } \
     } \
     if (Test-Path $steamAppIdBak) { Move-Item $steamAppIdBak $steamAppId -Force } \
-    Remove-Item Env:\MULTIPEGLIN_INSTANCE,Env:\MULTIPEGLIN_PLAYER_NAME,Env:\MULTIPEGLIN_LOGNAME,Env:\STEAM_COMPAT_DATA_PATH,Env:\PEGLIN_MULTI_DEBUG_FORCE_LEVEL,Env:\SKIP_STEAM_INIT -ErrorAction SilentlyContinue; \
+    Remove-Item Env:\MULTIPEGLIN_INSTANCE,Env:\MULTIPEGLIN_PLAYER_NAME,Env:\MULTIPEGLIN_LOGNAME,Env:\STEAM_COMPAT_DATA_PATH,Env:\MULTIPEGLIN_FORCE_LEVEL,Env:\SKIP_STEAM_INIT -ErrorAction SilentlyContinue; \
     Write-Host "==> Tailing host log (Ctrl+C to stop)"; \
     Write-Host "    Host: $hostLog"; \
     Write-Host "    Clients: $logsDir/multipeglin_PEGLIN<N>.log`n"; \

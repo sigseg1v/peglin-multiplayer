@@ -122,6 +122,26 @@ internal static class MapControllerPatches
     }
 
     /// <summary>
+    /// Block the NodeSelected camera-pan coroutine on the client. MapController is
+    /// DontDestroyOnLoad; NodeSelectedClientHandler (or a leaked walk chain) can start
+    /// this coroutine on MinesMap and it keeps tweening Camera.main after PegMinigame
+    /// / TextScenario / Shop loads — pegboard ends up off-screen. Player position is
+    /// synced via MapStateApplier instead.
+    /// </summary>
+    [HarmonyPatch(typeof(Map.MapController), "NodeSelected")]
+    [HarmonyPrefix]
+    public static bool MapController_NodeSelected_Prefix()
+    {
+        if (!ShouldSuppressClientLogic)
+        {
+            return true;
+        }
+
+        MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked MapController.NodeSelected coroutine (client — synced via MapApplier)");
+        return false;
+    }
+
+    /// <summary>
     /// Diagnostic: log when ResolveNode fires on host. If we see a "Host activated node"
     /// without this log appearing, ActivateNode took the "Room Not Available" branch
     /// (i.e. _roomStatus != NEXT).
@@ -244,6 +264,14 @@ internal static class MapControllerPatches
             catch (Exception checkEx)
             {
                 MultiplayerPlugin.Logger?.LogWarning($"[ClientPatches] Continue-load NONE check failed: {checkEx.Message}");
+            }
+
+            try
+            {
+                Debug.DebugForceNode.TryApplyAfterMapGen(__instance);
+            }
+            catch
+            {
             }
 
             try
