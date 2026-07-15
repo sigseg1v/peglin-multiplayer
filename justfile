@@ -25,6 +25,7 @@ build:
 # Build release and copy to build/
 publish:
     dotnet build '{{src}}/Multipeglin.sln' -c Release --nologo; \
+    if ($LASTEXITCODE -ne 0) { Write-Host '==> Build failed. Aborting publish.' -ForegroundColor Red; exit 1 } \
     New-Item -ItemType Directory -Path '{{root}}/build' -Force | Out-Null; \
     Copy-Item '{{src}}/Multipeglin.Core/bin/Release/netstandard2.1/Multipeglin.Core.dll' '{{root}}/build/'; \
     Copy-Item '{{src}}/Multipeglin/bin/Release/netstandard2.1/Multipeglin.dll' '{{root}}/build/'; \
@@ -66,6 +67,7 @@ _restore-appid:
 # Deploy plugin DLLs to game dir
 [private]
 copy-plugins config="Debug":
+    $ErrorActionPreference = 'Stop'; \
     New-Item -ItemType Directory -Path '{{plugins}}' -Force | Out-Null; \
     $bin = '{{src}}/Multipeglin/bin/{{config}}/netstandard2.1'; \
     Copy-Item '{{src}}/Multipeglin.Core/bin/{{config}}/netstandard2.1/Multipeglin.Core.dll' '{{plugins}}/'; \
@@ -74,10 +76,18 @@ copy-plugins config="Debug":
     Copy-Item "$bin/NLog.dll" '{{plugins}}/'; \
     Copy-Item '{{src}}/Multipeglin.CustomOrbs/bin/{{config}}/netstandard2.1/Multipeglin.CustomOrbs.dll' '{{plugins}}/'
 
+# Build debug and deploy plugins. Aborts on build failure so no recipe ever
+# launches, deploys, or packages a stale binary. dotnet's exit code is checked
+# explicitly because pwsh ';' does not stop on a failed native command, and the
+# failure would otherwise be masked by later commands in the same recipe.
+[private]
+build-deploy config="Debug":
+    dotnet build '{{src}}/Multipeglin.sln' -c {{config}} --nologo -v quiet; \
+    if ($LASTEXITCODE -ne 0) { Write-Host '==> Build failed. Aborting so no stale binary is launched.' -ForegroundColor Red; exit 1 } \
+    just copy-plugins {{config}}
+
 # Build debug, deploy to game dir, launch game, tail logs
-dev: setup _restore-appid
-    dotnet build '{{src}}/Multipeglin.sln' -c Debug --nologo -v quiet; \
-    just copy-plugins Debug; \
+dev: setup _restore-appid build-deploy
     New-Item -ItemType Directory -Path (Split-Path '{{logfile}}') -Force | Out-Null; \
     [IO.File]::Create('{{logfile}}').Close(); \
     Write-Host '==> Launching game...'; \
@@ -95,9 +105,7 @@ dev: setup _restore-appid
 # Optional: pass player count (default 2), e.g. just dev-multi 1 4 launches 4 instances on Forest
 # Optional: set PEGLIN_SEED env var for deterministic seeds, e.g.
 #   PEGLIN_SEED=12345 just dev-multi 2
-dev-multi level="" players="2": setup _restore-appid
-    dotnet build '{{src}}/Multipeglin.sln' -c Debug --nologo -v quiet; \
-    just copy-plugins Debug; \
+dev-multi level="" players="2": setup _restore-appid build-deploy
     $logsDir = Split-Path '{{logfile}}'; \
     New-Item -ItemType Directory -Path $logsDir -Force | Out-Null; \
     $hostLog = Join-Path $logsDir 'multipeglin_PEGLIN1.log'; \
@@ -139,9 +147,7 @@ dev-multi level="" players="2": setup _restore-appid
 # test Steam networking end-to-end without both owning Peglin. BOTH machines must
 # use this recipe — Steam lobbies/friends/P2P are scoped per-AppID, so a 1296610
 # instance and a 480 instance can't see each other.
-dev-network-player: setup _restore-appid
-    dotnet build '{{src}}/Multipeglin.sln' -c Debug --nologo -v quiet; \
-    just copy-plugins Debug; \
+dev-network-player: setup _restore-appid build-deploy
     New-Item -ItemType Directory -Path (Split-Path '{{logfile}}') -Force | Out-Null; \
     [IO.File]::Create('{{logfile}}').Close(); \
     $steamAppId = Join-Path '{{game}}' 'steam_appid.txt'; \
@@ -217,9 +223,7 @@ unsync-thunderstore-mods:
     Write-Host 'Thunderstore mods removed'
 
 # Deploy plugin to game dir without launching
-deploy: setup _restore-appid
-    dotnet build '{{src}}/Multipeglin.sln' -c Debug --nologo -v quiet; \
-    just copy-plugins Debug; \
+deploy: setup _restore-appid build-deploy
     Write-Host "Deployed to {{plugins}}"
 
 # Tail the dev log
@@ -231,6 +235,7 @@ thunderstore := root / "thunderstore"
 # Build Release, create Thunderstore package zip in dist/
 package:
     dotnet build '{{src}}/Multipeglin.sln' -c Release --nologo; \
+    if ($LASTEXITCODE -ne 0) { Write-Host '==> Build failed. Aborting package.' -ForegroundColor Red; exit 1 } \
     $version = (Get-Content '{{thunderstore}}/manifest.json' | ConvertFrom-Json).version_number; \
     $dist = '{{root}}/dist'; \
     $staging = Join-Path $dist 'staging'; \
