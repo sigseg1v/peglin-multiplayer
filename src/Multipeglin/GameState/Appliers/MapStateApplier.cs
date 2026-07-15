@@ -113,6 +113,16 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
     /// </summary>
     public static string AwaitingHostSceneConfirmation { get; set; }
 
+    /// <summary>
+    /// The MapData asset name from the host's most recent non-battle NodeActivated event.
+    /// NodeActivated often fires before the client's map has finished generating, so the
+    /// asset isn't in memory yet and the type can't be determined. Path B (LoadTargetScene)
+    /// consumes this authoritative name once the target scene is known, instead of guessing
+    /// the name from the snapshot node list (whose heuristic misses names like
+    /// "FlickeringRelicMinigame" that don't contain "PegMinigame").
+    /// </summary>
+    public static string PendingScenarioMapDataName { get; set; }
+
     public MapStateApplier(ManualLogSource log) => _log = log;
 
     public void Apply(MapStateSnapshot snapshot)
@@ -641,12 +651,20 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
             && MultiplayerClientPatches.ShouldSuppressClientLogic)
         {
             var minigameData = StaticGameData.dataToLoad as MapDataPegMinigame;
-            if (minigameData == null && snapshot?.Nodes != null)
+            if (minigameData == null)
             {
-                var mapDataName = ResolveActiveNodeMapDataName(snapshot);
+                // Prefer the authoritative name the host sent via NodeActivated; fall back to
+                // the snapshot node list only if that stash is empty.
+                var mapDataName = PendingScenarioMapDataName;
+                if (string.IsNullOrEmpty(mapDataName) && snapshot?.Nodes != null)
+                {
+                    mapDataName = ResolveActiveNodeMapDataName(snapshot);
+                }
+
                 if (!string.IsNullOrEmpty(mapDataName))
                 {
                     minigameData = FindPegMinigameData(mapDataName);
+                    _log.LogInfo($"[MapApplier] Resolved PegMinigame data '{mapDataName}' -> {(minigameData != null ? minigameData.name : "NULL")}");
                 }
             }
 
@@ -660,7 +678,12 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         {
             _log.LogInfo($"[MapApplier] Using PeglinSceneLoader.LoadScene({sceneEnum})");
             MultiplayerClientPatches.AllowNextSceneLoad = true;
-            sceneLoader.LoadScene(sceneEnum);
+            // queueScene: true so that if a scene load is already in flight, this load is
+            // queued (fired by PeglinSceneLoader.Update once idle) instead of being silently
+            // dropped by LoadScene's `if (isLoading) return;`. A dropped load here would leave
+            // the arm flags set and stick the client mid-transition. Queue beats drop for a
+            // client whose whole job is to converge onto the host's scene.
+            sceneLoader.LoadScene(sceneEnum, queueScene: true);
             return;
         }
 
@@ -1251,6 +1274,33 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 if (asset.name == assetName)
                 {
                     return asset;
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        // Fallback: MapController serializes its full peg-minigame pool in the private
+        // _potentialPegMinigameScenarios list. It's populated whenever MapController exists,
+        // even when Resources hasn't surfaced the asset yet.
+        try
+        {
+            var mc = MapController.instance;
+            if (mc != null)
+            {
+                var field = typeof(MapController).GetField(
+                    "_potentialPegMinigameScenarios",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (field?.GetValue(mc) is System.Collections.Generic.List<MapDataPegMinigame> pool)
+                {
+                    foreach (var asset in pool)
+                    {
+                        if (asset != null && asset.name == assetName)
+                        {
+                            return asset;
+                        }
+                    }
                 }
             }
         }

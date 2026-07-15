@@ -15,7 +15,7 @@ namespace Multipeglin.Debug;
 /// <summary>
 /// Debug environment variable for skipping to a specific map stage without a continue save.
 ///
-/// PEGLIN_MULTI_DEBUG_FORCE_NODE (e.g. "Mines-10" or "Mines-10@FlickeringRelicMinigame")
+/// MULTIPEGLIN_FORCE_NODE (e.g. "Mines-10" or "Mines-10@FlickeringRelicMinigame")
 ///   After the host generates the act map, fast-forwards node traversal so the run is
 ///   positioned on the map ready to enter the requested floor — e.g. Mines-10 leaves
 ///   floorCount=9 with the Mines-10 node(s) in NEXT state.
@@ -27,7 +27,7 @@ namespace Multipeglin.Debug;
 ///     - Comma-separated names: exact branch path root → target (MapData substring match
 ///       per hop), e.g. Mines-10@MinesMushroomSlimeEncounterEASY,...,FlickeringRelicMinigame
 ///
-///   When set without PEGLIN_MULTI_DEBUG_FORCE_LEVEL, the act prefix selects the map
+///   When set without MULTIPEGLIN_FORCE_LEVEL, the act prefix selects the map
 ///   scene automatically (Forest/Castle/Mines/Core).
 ///
 ///   Skipped when Continue mode is active. Host-only. Applied once per session on
@@ -35,7 +35,7 @@ namespace Multipeglin.Debug;
 /// </summary>
 public static class DebugForceNode
 {
-    private const string EnvVar = "PEGLIN_MULTI_DEBUG_FORCE_NODE";
+    private const string EnvVar = "MULTIPEGLIN_FORCE_NODE";
 
     private static readonly Regex LabelPattern = new Regex(
         @"^(?<act>[A-Za-z]+|\d+)\-(?<floor>\d+)(?:@(?<hint>.+))?$",
@@ -631,7 +631,7 @@ public static class DebugForceNode
 
         try
         {
-            AccessTools.Method(typeof(MapNode), "GenerateRandomMapData")?.Invoke(node, new object[] { node });
+            mc?.GenerateRandomMapData(node);
         }
         catch
         {

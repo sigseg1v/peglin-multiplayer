@@ -78,6 +78,25 @@ Run it on **both** machines. It swaps `release/steam_appid.txt` to Valve's free 
 
 Both machines must run `dev-network-player` — the friend-list filter only matches players whose current AppID equals the local process's AppID, so a Spacewar host is invisible to a vanilla-Peglin joiner and vice versa.
 
+## Debug environment variables
+
+Playtest/testing knobs read at launch. Set them in the shell before `just dev` / `just dev-multi`. None ship in release builds' behaviour unless the variable is present.
+
+| Variable | Example | Effect |
+|----------|---------|--------|
+| `MULTIPEGLIN_DEBUG` | `1` | Enables playtest hotkeys and grants the host a debug starting deck. Gate for hotkey/deck helpers only — does **not** gate the `PEGLIN_*` overrides below. |
+| `PEGLIN_SEED` | `4228140002` | Forces a specific game seed for deterministic map/RNG generation (set before `GameInit.Start` picks a random one). |
+| `MULTIPEGLIN_FORCE_LEVEL` | `3` or `3-2` | Jumps straight to an act: `1`=Forest, `2`=Castle, `3`=Mines, `4`=Core. Optional second number sets `StaticGameData.totalFloorCount`. |
+| `MULTIPEGLIN_FORCE_NODE` | `Mines-10@FlickeringRelicMinigame` | **Host-only.** After the act map generates, fast-forwards node traversal so the run is parked on the map ready to enter the requested `Act-Floor`. The optional `@hint` matches a node's MapData name (or a comma-separated branch path for forked maps). When set without `FORCE_LEVEL`, the act prefix selects the map scene automatically. Skipped in Continue mode. |
+
+Example — deterministic two-player launch parked in front of a Mines act-10 peg-minigame node:
+
+```bash
+MULTIPEGLIN_DEBUG=1 PEGLIN_SEED=4228140002 MULTIPEGLIN_FORCE_NODE=Mines-10@FlickeringRelicMinigame just dev-multi
+```
+
+`MULTIPEGLIN_INSTANCE`, `MULTIPEGLIN_LOGNAME`, `MULTIPEGLIN_PLAYER_NAME`, and `SKIP_STEAM_INIT` are set automatically by the `just` recipes to distinguish the host/client instances — you don't normally set these by hand.
+
 ## Multiplayer
 
 Cooperative multiplayer with per-player classes, decks, relics, and turn-based battles.

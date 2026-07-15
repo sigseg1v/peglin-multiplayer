@@ -38,9 +38,28 @@ public sealed class NodeActivatedClientHandler : IClientHandler<NodeActivatedEve
             // PegMinigame node — load the scene so the client can play independently
             if (string.IsNullOrEmpty(e.BattleName) && !string.IsNullOrEmpty(e.MapDataName))
             {
+                // Stash the authoritative asset name. If the map is still generating, none of
+                // the Find* lookups below resolve (0 assets loaded), and we fall through to
+                // MapStateApplier, which reads this to load the correct scene data later.
+                GameState.Appliers.MapStateApplier.PendingScenarioMapDataName = e.MapDataName;
+
                 var minigameData = FindPegMinigameData(e.MapDataName, log);
                 if (minigameData != null)
                 {
+                    // Race guard: if the client is still mid-transition onto the map scene,
+                    // MapController.instance is null (so PegMinigame visuals can't be assigned)
+                    // AND PeglinSceneLoader is still loading, so LoadScene(queueScene:false) below
+                    // would be silently dropped while the arm flags stay set, leaving the client
+                    // stuck on "PegMinigame transition in progress" forever. Defer to MapStateApplier,
+                    // which loads PegMinigame from its periodic ApplyAll once the map has settled
+                    // (MapController valid, loader idle). This is the same path that works when
+                    // FindPegMinigameData happens to miss the asset at NodeActivated time.
+                    if (MapController.instance == null)
+                    {
+                        log?.LogInfo("[NodeActivated] PegMinigame node during map load, deferring to MapStateApplier");
+                        return;
+                    }
+
                     log?.LogInfo($"[NodeActivated] PegMinigame node — loading scene for spectating (asset={e.MapDataName})");
                     GameState.Appliers.MapStateApplier.AwaitingHostSceneConfirmation = "PegMinigame";
                     MultiplayerClientPatches.AllowNextSceneLoad = true;
@@ -355,6 +374,19 @@ internal static class PegMinigameClientLoadArmer
             {
                 mc.StopAllCoroutines();
                 log?.LogInfo($"[{tag}] Stopped MapController coroutines before PegMinigame load");
+
+                // MapController persists (DontDestroyOnLoad) and its CameraFollowPoint keeps
+                // dragging Camera.main onto the current map node every frame — including in the
+                // PegMinigame scene, where it pulls the camera off the playfield (black screen).
+                // The host disables this inside MapController.NodeSelected; the client never runs
+                // that path, so we disable it here, BEFORE the scene loads, so the new scene's
+                // camera keeps its authored (correct) position.
+                var follow = mc.GetComponent<CameraFollowPoint>();
+                if (follow != null && follow.enabled)
+                {
+                    follow.enabled = false;
+                    log?.LogInfo($"[{tag}] Disabled MapController CameraFollowPoint before PegMinigame load");
+                }
             }
         }
         catch

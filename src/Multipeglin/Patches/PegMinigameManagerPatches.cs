@@ -41,7 +41,7 @@ internal static class PegMinigameManagerPatches
         }
 
         StopLeakedMapCoroutines();
-        SnapClientPegMinigameCamera(__instance);
+        RestoreClientPegMinigameCamera();
 
         var ballField = AccessTools.Field(typeof(Peglin.PegMinigame.PegMinigameManager), "_ball");
         if (ballField?.GetValue(__instance) != null)
@@ -78,40 +78,32 @@ internal static class PegMinigameManagerPatches
     }
 
     /// <summary>
-    /// Snap Camera.main back to the minigame playfield after a map camera pan.
+    /// The PegMinigame scene's Main Camera is authored at the world origin (0, 0, -10) with a
+    /// fixed orthographic size. The board is built bottom-heavy (top ≈ +4, bottom ≈ -8) so the
+    /// origin framing leaves ceiling headroom above and the bouncers at the bottom edge. On the
+    /// client, a leaked map camera pan can drift Camera.main off that origin (→ black screen), so
+    /// we snap X/Y back to the origin the host uses. Verified against the host: both sides log
+    /// Camera.main at exactly (0, 0, -10). We touch only X/Y (never Z or orthographic size), so
+    /// framing stays identical across acts and screen resolutions.
     /// </summary>
-    private static void SnapClientPegMinigameCamera(Peglin.PegMinigame.PegMinigameManager mgr)
+    private static void RestoreClientPegMinigameCamera()
     {
         try
         {
-            var mainCamField = AccessTools.Field(typeof(Peglin.PegMinigame.PegMinigameManager), "_mainCamera");
-            var pegMinigameCam = mainCamField?.GetValue(mgr) as Camera;
-            if (pegMinigameCam != null)
-            {
-                pegMinigameCam.enabled = true;
-                pegMinigameCam.gameObject.SetActive(true);
-            }
-
-            var aimField = AccessTools.Field(typeof(Peglin.PegMinigame.PegMinigameManager), "_aimingShotTransform");
-            var aim = aimField?.GetValue(mgr) as Transform;
-            var ballStartField = AccessTools.Field(typeof(Peglin.PegMinigame.PegMinigameManager), "_ballStartTransform");
-            var ballStart = ballStartField?.GetValue(mgr) as Transform;
-            var anchor = aim ?? ballStart;
-
-            var cam = pegMinigameCam != null ? pegMinigameCam : Camera.main;
-            if (cam == null || anchor == null)
+            var cam = Camera.main;
+            if (cam == null)
             {
                 return;
             }
 
             var pos = cam.transform.position;
-            cam.transform.position = new Vector3(anchor.position.x, anchor.position.y, pos.z);
+            cam.transform.position = new Vector3(0f, 0f, pos.z);
             MultiplayerPlugin.Logger?.LogInfo(
-                $"[ClientPatch] PegMinigame camera snapped to ({cam.transform.position.x:F1},{cam.transform.position.y:F1})");
+                $"[ClientPatch] Restored PegMinigame camera to origin (was {pos.x:F2}, {pos.y:F2})");
         }
         catch (Exception ex)
         {
-            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatch] SnapClientPegMinigameCamera failed: {ex.Message}");
+            MultiplayerPlugin.Logger?.LogWarning($"[ClientPatch] RestoreClientPegMinigameCamera failed: {ex.Message}");
         }
     }
 

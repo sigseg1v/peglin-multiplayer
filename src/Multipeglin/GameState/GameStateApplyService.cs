@@ -296,6 +296,8 @@ public class GameStateApplyService
                     MapStateApplier.AwaitingHostSceneConfirmation = null;
                     _log.LogInfo("[ApplyService] Cleared AwaitingHostSceneConfirmation on PegMinigame load");
                 }
+
+                MapStateApplier.PendingScenarioMapDataName = null;
             }
         }
 
