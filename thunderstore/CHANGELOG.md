@@ -1,5 +1,9 @@
 # Changelog
 
+## Multipeglin v0.1.13
+
+- fixed: softlock in the "choose between 3 things" question mark event (thanks to Garrett-Webb for reporting and for a fix PR)
+
 ## Multipeglin v0.1.12
 
 - fixed: "Multiplayer desync + softlock when all bombs detonated in chest navigation" (thanks haencyl for reporting)
