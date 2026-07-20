@@ -32,6 +32,49 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     /// <summary>Tracks black-hole visuals the client has spawned, keyed by host snapshot index.</summary>
     private readonly Dictionary<int, GameObject> _clientBlackHoles = new Dictionary<int, GameObject>();
 
+    /// <summary>
+    /// [PegDiff] / [LongPegHeal] instrumentation: consecutive-heartbeat streak
+    /// per anomaly key ("S:guid" stale, "M:guid" missing, "E:instanceId" extra).
+    /// Post-apply anomalies should be rare — the apply pass just reconciled
+    /// everything it could — so anything that appears here (and especially
+    /// anything that persists) is a mis-bind or a broken heal path.
+    /// Gated by MULTIPEGLIN_DEBUG — the heal/purge/bind-refusal logic still runs.
+    /// </summary>
+    private readonly Dictionary<string, int> _anomalyStreaks = new Dictionary<string, int>();
+    private float _nextDiffDetailAt;
+
+    private static bool? _pegDiffEnabled;
+
+    /// <summary>
+    /// Full PredictionManager.CopyAllPegs rebuilds the sim peg map (expensive).
+    /// Throttle so busy heartbeats during a shot do not hitch every apply.
+    /// </summary>
+    private const float CopyAllPegsMinIntervalSeconds = 0.35f;
+
+    private static float _lastCopyAllPegsRealtime = float.NegativeInfinity;
+
+    /// <summary>
+    /// True when MULTIPEGLIN_DEBUG is "1" or "true". Cached for the process
+    /// lifetime — env vars are set before launch and never change mid-run.
+    /// Gates [PegDiff] board scans and [LongPegHeal] Step-0 diagnostics; does
+    /// not gate the actual heal/purge/bind-refusal logic.
+    /// </summary>
+    private static bool PegDiffEnabled
+    {
+        get
+        {
+            if (_pegDiffEnabled.HasValue)
+            {
+                return _pegDiffEnabled.Value;
+            }
+
+            var v = Environment.GetEnvironmentVariable("MULTIPEGLIN_DEBUG");
+            _pegDiffEnabled = v == "1"
+                || string.Equals(v, "true", StringComparison.OrdinalIgnoreCase);
+            return _pegDiffEnabled.Value;
+        }
+    }
+
     public PegboardStateApplier(ManualLogSource log, PegIdentifier pegId)
     {
         _log = log;
@@ -42,6 +85,62 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     {
         return string.Compare(guid1, guid2, System.StringComparison.Ordinal) < 0
             ? $"{guid1}|{guid2}" : $"{guid2}|{guid1}";
+    }
+
+    /// <summary>
+    /// Refresh PredictionManager after pegboard mutations so battle aim raycasts
+    /// see current colliders. Full CopyAllPegs when structure changed; otherwise
+    /// UpdateAllPegsStatus. CopyAllPegs is throttled; when throttled we still
+    /// UpdateAllPegsStatus so clears/fuse stay closer.
+    /// </summary>
+    private void RefreshPredictionSimMap(BattleController bc, bool needsFullCopy)
+    {
+        if (!Patches.MultiplayerClientPatches.ShouldSuppressClientLogic)
+        {
+            return;
+        }
+
+        PredictionManager prediction = null;
+        try
+        {
+            prediction = bc != null ? bc.PredictionManager : null;
+            if (prediction == null)
+            {
+                prediction = UnityEngine.Object.FindObjectOfType<PredictionManager>();
+            }
+        }
+        catch
+        {
+            return;
+        }
+
+        if (prediction == null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (needsFullCopy)
+            {
+                var now = Time.realtimeSinceStartup;
+                if (now - _lastCopyAllPegsRealtime >= CopyAllPegsMinIntervalSeconds)
+                {
+                    prediction.CopyAllPegs();
+                    _lastCopyAllPegsRealtime = now;
+                    _log.LogInfo("[PegboardApplier] PredictionManager.CopyAllPegs after board change");
+                    return;
+                }
+
+                // Throttled — fall through to status-only update.
+            }
+
+            prediction.UpdateAllPegsStatus();
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[PegboardApplier] Prediction refresh failed: {ex.Message}");
+        }
     }
 
     public void Apply(PegboardStateSnapshot snapshot)
@@ -72,7 +171,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
             int idxMatched = 0, guidMatched = 0, posMatched = 0, repositioned = 0, typeChanged = 0,
                 destroyed = 0, reactivated = 0, cleared = 0, missed = 0, guidTypeInvalid = 0,
-                structMatched = 0;
+                structMatched = 0, extrasRemoved = 0;
             var matchedPegs = new HashSet<Peg>();
 
             var unmatchedEntries = new List<PegEntry>();
@@ -302,62 +401,59 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         : entry.IsBouncer ? availableBouncers
                         : availableRegulars;
 
-                    if (pool.Count > 0)
+                    // Phase 3 used to take pool[^1] regardless of position. In the
+                    // captured repro that permanently bound host pegs to client pegs
+                    // 12-13 world units away, then teleported those client pegs out of
+                    // the middle of the board. Only reuse a same-type peg when it is
+                    // plausibly the same physical peg; otherwise synthesize below.
+                    const float maxPhase3BindDistance = 1.5f;
+                    var closestPoolIdx = -1;
+                    var closestPoolDistSq = float.MaxValue;
+                    for (var i = 0; i < pool.Count; i++)
                     {
-                        peg = pool[pool.Count - 1];
-                        pool.RemoveAt(pool.Count - 1);
+                        var candidate = pool[i];
+                        if (candidate == null)
+                        {
+                            continue;
+                        }
+
+                        var dx = candidate.transform.position.x - entry.PosX;
+                        var dy = candidate.transform.position.y - entry.PosY;
+                        var distSq = dx * dx + dy * dy;
+                        if (distSq < closestPoolDistSq)
+                        {
+                            closestPoolDistSq = distSq;
+                            closestPoolIdx = i;
+                        }
+                    }
+
+                    if (closestPoolIdx >= 0
+                        && closestPoolDistSq <= maxPhase3BindDistance * maxPhase3BindDistance)
+                    {
+                        peg = pool[closestPoolIdx];
+                        pool.RemoveAt(closestPoolIdx);
                         repositioned++;
-                    }
-                    else if (entry.IsBomb && availableRegulars.Count > 0)
-                    {
-                        var closestIdx = -1;
-                        var closestDist = float.MaxValue;
-                        for (var i = 0; i < availableRegulars.Count; i++)
+                        if (PegDiffEnabled)
                         {
-                            var r = availableRegulars[i];
-                            if (r == null)
-                            {
-                                continue;
-                            }
-
-                            var dx = r.transform.position.x - entry.PosX;
-                            var dy = r.transform.position.y - entry.PosY;
-                            var d = dx * dx + dy * dy;
-                            if (d < closestDist)
-                            {
-                                closestDist = d;
-                                closestIdx = i;
-                            }
-                        }
-
-                        if (closestIdx >= 0)
-                        {
-                            peg = availableRegulars[closestIdx];
-                            availableRegulars.RemoveAt(closestIdx);
-                            repositioned++;
-                            _log.LogInfo($"[PegboardApplier] BOMB FROM REGULAR: guid={entry.Guid} " +
-                                $"hostPos=({entry.PosX:F1},{entry.PosY:F1}) " +
-                                $"converting regular peg at ({peg.transform.position.x:F1},{peg.transform.position.y:F1}) to bomb");
-                        }
-                        else
-                        {
-                            peg = SynthesizeBomb(entry, clientPegs, clientBombs);
-                            if (peg == null)
-                            {
-                                missed++;
-                                _log.LogWarning($"[PegboardApplier] MISSED unmatched entry guid={entry.Guid} " +
-                                    $"hostPos=({entry.PosX:F1},{entry.PosY:F1}) bomb={entry.IsBomb} bouncer={entry.IsBouncer} " +
-                                    $"— bomb synthesis failed");
-                                continue;
-                            }
-
-                            repositioned++;
+                            _log.LogInfo($"[PegDiff] PROXIMITY BIND (phase 3): guid={entry.Guid} type={entry.PegTypeName} " +
+                                $"hostPos=({entry.PosX:F2},{entry.PosY:F2}) clientPos=({peg.transform.position.x:F2},{peg.transform.position.y:F2}) " +
+                                $"dist={Mathf.Sqrt(closestPoolDistSq):F2}");
                         }
                     }
-                    else if (entry.IsBomb)
+                    else if (closestPoolIdx >= 0)
                     {
-                        // Host spawned a bomb (e.g. bob-orb) but every client regular
-                        // peg is already GUID-matched — instantiate _bombPrefab directly.
+                        if (PegDiffEnabled)
+                        {
+                            _log.LogWarning($"[PegDiff] REFUSED DISTANT BIND (phase 3): guid={entry.Guid} type={entry.PegTypeName} " +
+                                $"hostPos=({entry.PosX:F2},{entry.PosY:F2}) nearestDist={Mathf.Sqrt(closestPoolDistSq):F2} " +
+                                $"limit={maxPhase3BindDistance:F2}");
+                        }
+                    }
+
+                    if (peg == null && entry.IsBomb)
+                    {
+                        // Never steal a distant regular peg to stand in for a bomb.
+                        // Instantiate the authoritative bomb at the host position.
                         peg = SynthesizeBomb(entry, clientPegs, clientBombs);
                         if (peg == null)
                         {
@@ -370,10 +466,10 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
                         repositioned++;
                     }
-                    else if (!entry.IsBomb && !entry.IsBouncer && templatePeg != null)
+                    else if (peg == null && !entry.IsBouncer && templatePeg != null)
                     {
-                        // Only clone regular pegs — bomb/bouncer prefabs aren't
-                        // in clientPegs and shouldn't be fabricated from regulars.
+                        // No plausible same-type peg exists. Clone a regular at the
+                        // host position rather than relocating an unrelated peg.
                         var clone = UnityEngine.Object.Instantiate(templatePeg, templatePeg.transform.parent);
                         clone.gameObject.SetActive(true);
                         peg = clone;
@@ -388,7 +484,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
                         repositioned++;
                     }
-                    else
+                    else if (peg == null)
                     {
                         missed++;
                         _log.LogWarning($"[PegboardApplier] MISSED unmatched entry guid={entry.Guid} " +
@@ -419,6 +515,17 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 }
             }
 
+            // The client can retain a second, pre-instanced copy of the layout
+            // outside PegManager's lists. Those pegs never receive host GUIDs, so
+            // normal GUID reconciliation and manager-list cleanup cannot see them.
+            // Their colliders remain live after the authoritative twin pops,
+            // producing the player-visible "ghost peg blocks my shot" symptom.
+            extrasRemoved += PurgeUnmanagedScenePegs(
+                clientPegs,
+                clientBombs,
+                clientBouncers,
+                matchedPegs);
+
             // ===== CLEANUP: Deactivate extra client pegs not in host snapshot =====
             // Build set of transforms that are parents of matched pegs — don't deactivate these
             var matchedParents = new HashSet<Transform>();
@@ -435,7 +542,6 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 }
             }
 
-            var extrasRemoved = 0;
             foreach (var peg in clientPegs)
             {
                 if (peg != null && peg.gameObject.activeSelf && !matchedPegs.Contains(peg)
@@ -554,6 +660,17 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             // sit on top of the pegboard and never appear in pm.allPegs.
             SyncObscurerGrid(snapshot);
 
+            // Keep PredictionManager's sim peg map in sync with Multipeglin
+            // soft-hide / heal / type changes so the client aimer still bends
+            // after mid-turn board mutations. Client-only; host already owns
+            // its map from battle start.
+            if (changed > 0)
+            {
+                RefreshPredictionSimMap(
+                    bc,
+                    needsFullCopy: reactivated + destroyed + extrasRemoved + typeChanged > 0);
+            }
+
             // Per-bomb dump previously logged 6 lines per heartbeat. Gate on
             // the count of *active* client bombs vs host's reported count —
             // _bombs retains stale inactive entries (intentional, see cleanup
@@ -603,11 +720,453 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     }
                 }
             }
+
+            // [PegDiff] Post-apply anomaly scan. Runs after full reconciliation,
+            // so anything it finds is state the player actually experiences
+            // between heartbeats — ghost pegs, stale pops, missing pegs.
+            DumpBoardDiff(snapshot, "post-apply");
         }
         catch (Exception ex)
         {
             _log.LogError($"[PegboardApplier] Apply failed: {ex.Message}\n{ex.StackTrace}");
         }
+    }
+
+    /// <summary>
+    /// Remove active scene pegs which are not owned by any PegManager collection,
+    /// were not used by this snapshot apply, and have no host GUID. These are
+    /// orphaned pre-instanced layout copies. Deactivate immediately so their
+    /// colliders cannot affect the next client shot, then destroy end-of-frame.
+    /// </summary>
+    private int PurgeUnmanagedScenePegs(
+        List<Peg> clientPegs,
+        List<Bomb> clientBombs,
+        List<BouncerPeg> clientBouncers,
+        HashSet<Peg> matchedPegs)
+    {
+        var managed = new HashSet<Peg>(matchedPegs);
+        if (clientPegs != null)
+        {
+            foreach (var peg in clientPegs)
+            {
+                if (peg != null)
+                {
+                    managed.Add(peg);
+                }
+            }
+        }
+
+        if (clientBombs != null)
+        {
+            foreach (var bomb in clientBombs)
+            {
+                if (bomb != null)
+                {
+                    managed.Add(bomb);
+                }
+            }
+        }
+
+        if (clientBouncers != null)
+        {
+            foreach (var bouncer in clientBouncers)
+            {
+                if (bouncer != null)
+                {
+                    managed.Add(bouncer);
+                }
+            }
+        }
+
+        var purged = 0;
+        var scenePegs = UnityEngine.Object.FindObjectsOfType<Peg>();
+        foreach (var peg in scenePegs)
+        {
+            if (peg == null || managed.Contains(peg) || !peg.gameObject.activeInHierarchy)
+            {
+                continue;
+            }
+
+            // A child peg (notably a converted Bomb) can be owned by a managed
+            // parent even before all manager lists are updated. Preserve it.
+            var ownedByManagedAncestor = false;
+            var parent = peg.transform.parent;
+            while (parent != null)
+            {
+                var parentPeg = parent.GetComponent<Peg>();
+                if (parentPeg != null && managed.Contains(parentPeg))
+                {
+                    ownedByManagedAncestor = true;
+                    break;
+                }
+
+                parent = parent.parent;
+            }
+
+            if (ownedByManagedAncestor)
+            {
+                continue;
+            }
+
+            // A GUID means some authoritative snapshot owns this peg even if a
+            // manager list is temporarily stale; leave it to normal reconciliation.
+            if (!string.IsNullOrEmpty(_pegId.GetGuid(peg)))
+            {
+                continue;
+            }
+
+            if (PegDiffEnabled)
+            {
+                var pos = peg.transform.position;
+                _log.LogWarning($"[PegDiff] PURGED DUPLICATE: {peg.GetType().Name} type={peg.pegType} " +
+                    $"pos=({pos.x:F2},{pos.y:F2}) parent={peg.transform.parent?.name ?? "none"}");
+            }
+
+            peg.gameObject.SetActive(false);
+            UnityEngine.Object.Destroy(peg.gameObject);
+            purged++;
+        }
+
+        if (purged > 0 && PegDiffEnabled)
+        {
+            _log.LogWarning($"[PegDiff] Purged {purged} unmanaged duplicate scene pegs");
+        }
+
+        return purged;
+    }
+
+    /// <summary>
+    /// [PegDiff] instrumentation (see plans/dev-build-regressions.md Finding C).
+    /// No-ops unless MULTIPEGLIN_DEBUG=1 / true — skips the scene-wide scan too.
+    ///
+    /// Compares the host snapshot against the client's *scene-wide* peg state
+    /// (FindObjectsOfType, not just pm.allPegs — ghosts may live outside the
+    /// manager lists) and logs four anomaly classes:
+    ///
+    ///   STALE   — GUID bound; host says gone (cleared/destroyed/parentHidden)
+    ///             but the client peg is alive with an enabled collider. This is
+    ///             the "peg that should be gone is still there" / ghost-blocks-
+    ///             shot case. Post-apply this means the heal path failed.
+    ///   MISSING — GUID bound; host says alive but the client peg is popped/
+    ///             inactive. The "peg missing that actually is there" case.
+    ///   EXTRA   — active, collider-enabled client peg whose GUID is unbound or
+    ///             absent from the snapshot. Evidence of board-generation
+    ///             divergence (client generated pegs the host doesn't have).
+    ///   FAR     — GUID bound, both alive, world position >0.5 from host.
+    ///             SyncPegPosition should have snapped it; persistent FAR means
+    ///             a contested/wrong binding.
+    ///
+    /// A one-line summary logs whenever any anomaly exists; per-peg detail lines
+    /// (with per-anomaly consecutive-heartbeat streaks) are rate-limited to one
+    /// batch per 5 s and capped at 25 lines. Streaks distinguish in-flight
+    /// transients (streak=1, next heartbeat heals) from real desyncs (streak
+    /// climbing every ~2 s heartbeat).
+    /// </summary>
+    public void DumpBoardDiff(PegboardStateSnapshot snapshot, string reason)
+    {
+        if (!PegDiffEnabled)
+        {
+            return;
+        }
+
+        try
+        {
+            if (snapshot?.Pegs == null || snapshot.Pegs.Count == 0)
+            {
+                return;
+            }
+
+            var entriesByGuid = new Dictionary<string, PegEntry>(snapshot.Pegs.Count);
+            foreach (var e in snapshot.Pegs)
+            {
+                if (!string.IsNullOrEmpty(e.Guid))
+                {
+                    entriesByGuid[e.Guid] = e;
+                }
+            }
+
+            var scenePegs = UnityEngine.Object.FindObjectsOfType<Peg>();
+            var seenGuids = new HashSet<string>();
+            var anomalies = new List<(string key, string detail)>();
+            int stale = 0, missing = 0, extra = 0, far = 0;
+
+            foreach (var peg in scenePegs)
+            {
+                if (peg == null)
+                {
+                    continue;
+                }
+
+                var pegDisabled = false;
+                try
+                {
+                    pegDisabled = peg.IsDisabled();
+                }
+                catch
+                {
+                }
+
+                var clientAlive = peg.gameObject.activeInHierarchy
+                    && !pegDisabled
+                    && peg.pegType != Peg.PegType.DESTROYED;
+                var guid = _pegId.GetGuid(peg);
+                var pos = peg.transform.position;
+
+                if (string.IsNullOrEmpty(guid) || !entriesByGuid.TryGetValue(guid, out var entry))
+                {
+                    // Not accounted for by the host snapshot at all.
+                    if (clientAlive)
+                    {
+                        extra++;
+                        anomalies.Add(($"E:{peg.GetInstanceID()}",
+                            $"EXTRA {peg.GetType().Name} guid={guid ?? "none"} type={peg.pegType} " +
+                            $"pos=({pos.x:F2},{pos.y:F2}) parent={peg.transform.parent?.name ?? "none"}"));
+                    }
+
+                    continue;
+                }
+
+                seenGuids.Add(guid);
+                var hostGone = entry.IsCleared || entry.IsDestroyed || entry.IsParentHidden;
+
+                if (hostGone && clientAlive)
+                {
+                    stale++;
+                    anomalies.Add(($"S:{guid}",
+                        $"STALE guid={guid} host(cleared={entry.IsCleared} destroyed={entry.IsDestroyed} " +
+                        $"parentHidden={entry.IsParentHidden} pos=({entry.PosX:F2},{entry.PosY:F2})) " +
+                        $"client({peg.GetType().Name} type={peg.pegType} pos=({pos.x:F2},{pos.y:F2}) collider ON)"));
+                }
+                else if (!hostGone && !clientAlive)
+                {
+                    missing++;
+                    var clientHitsSuffix = peg is Bomb cb ? $" hits={cb.HitCount}" : string.Empty;
+                    anomalies.Add(($"M:{guid}",
+                        $"MISSING guid={guid} host(type={entry.PegTypeName} hits={entry.HitCount} " +
+                        $"bomb={entry.IsBomb} pos=({entry.PosX:F2},{entry.PosY:F2})) " +
+                        $"client({peg.GetType().Name} type={peg.pegType} activeSelf={peg.gameObject.activeSelf} " +
+                        $"activeInHierarchy={peg.gameObject.activeInHierarchy} disabled={pegDisabled}" +
+                        clientHitsSuffix +
+                        ")"));
+                }
+                else if (!hostGone)
+                {
+                    var dx = pos.x - entry.PosX;
+                    var dy = pos.y - entry.PosY;
+                    if (dx * dx + dy * dy > 0.25f)
+                    {
+                        far++;
+                        anomalies.Add(($"F:{guid}",
+                            $"FAR guid={guid} type={entry.PegTypeName} hostPos=({entry.PosX:F2},{entry.PosY:F2}) " +
+                            $"clientPos=({pos.x:F2},{pos.y:F2}) dist={Mathf.Sqrt(dx * dx + dy * dy):F2}"));
+                    }
+                }
+            }
+
+            // Host entries with no client peg found in the scene at all
+            // (bound peg destroyed, or never bound). Alive-on-host only.
+            var unboundHost = 0;
+            foreach (var kv in entriesByGuid)
+            {
+                var e = kv.Value;
+                if (!seenGuids.Contains(kv.Key) && !e.IsCleared && !e.IsDestroyed && !e.IsParentHidden
+                    && _pegId.Find(kv.Key) == null)
+                {
+                    unboundHost++;
+                    if (unboundHost <= 5)
+                    {
+                        anomalies.Add(($"U:{kv.Key}",
+                            $"UNBOUND_HOST guid={kv.Key} type={e.PegTypeName} bomb={e.IsBomb} hits={e.HitCount} " +
+                            $"pos=({e.PosX:F2},{e.PosY:F2}) — " +
+                            $"no client peg bound to this alive host peg"));
+                    }
+                }
+            }
+
+            // Update streaks: keep only anomalies present this pass.
+            var newStreaks = new Dictionary<string, int>(anomalies.Count);
+            foreach (var (key, _) in anomalies)
+            {
+                _anomalyStreaks.TryGetValue(key, out var s);
+                newStreaks[key] = s + 1;
+            }
+
+            _anomalyStreaks.Clear();
+            foreach (var kv in newStreaks)
+            {
+                _anomalyStreaks[kv.Key] = kv.Value;
+            }
+
+            if (anomalies.Count == 0)
+            {
+                return;
+            }
+
+            _log.LogWarning($"[PegDiff] {reason}: stale={stale} missing={missing} extra={extra} far={far} " +
+                $"unboundHost={unboundHost} (hostEntries={snapshot.Pegs.Count}, scenePegs={scenePegs.Length}, registry={_pegId.Count})");
+
+            if (Time.time < _nextDiffDetailAt)
+            {
+                return;
+            }
+
+            _nextDiffDetailAt = Time.time + 5f;
+            var logged = 0;
+            foreach (var (key, detail) in anomalies)
+            {
+                if (logged++ >= 25)
+                {
+                    _log.LogWarning($"[PegDiff]   ... {anomalies.Count - 25} more anomalies truncated");
+                    break;
+                }
+
+                _log.LogWarning($"[PegDiff]   streak={_anomalyStreaks[key]} {detail}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[PegDiff] DumpBoardDiff failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// [LongPegHeal] log when the client ForcePopped a LongPeg (no RemoveIfCleared).
+    /// MULTIPEGLIN_DEBUG only.
+    /// </summary>
+    private void LogLongPegHealFadeStart(string guid, LongPeg peg)
+    {
+        if (!PegDiffEnabled || peg == null)
+        {
+            return;
+        }
+
+        var pos = peg.transform.position;
+        _log.LogWarning(
+            $"[LongPegHeal] CLIENT_FORCE_POPPED guid={guid ?? "none"} " +
+            $"pos=({pos.x:F2},{pos.y:F2}) pegType={peg.pegType} " +
+            $"activeSelf={peg.gameObject.activeSelf}");
+    }
+
+    /// <summary>
+    /// [LongPegHeal] Step-0: post-condition after HardReset / SetActiveStatus(true).
+    /// Logs when IsDisabled() is still true so we can distinguish null collider,
+    /// stuck _beingHit, or HardReset no-op. MULTIPEGLIN_DEBUG only.
+    /// </summary>
+    private void LogLongPegHealStillDisabled(string guid, LongPeg peg, string after)
+    {
+        if (!PegDiffEnabled || peg == null)
+        {
+            return;
+        }
+
+        var stillDisabled = false;
+        try
+        {
+            stillDisabled = peg.IsDisabled();
+        }
+        catch
+        {
+            stillDisabled = true;
+        }
+
+        if (!stillDisabled)
+        {
+            return;
+        }
+
+        var hit = false;
+        var beingHit = false;
+        Collider2D col = null;
+        try
+        {
+            hit = (bool)(HarmonyLib.AccessTools.Field(typeof(LongPeg), "_hit")?.GetValue(peg) ?? false);
+            beingHit = (bool)(HarmonyLib.AccessTools.Field(typeof(LongPeg), "_beingHit")?.GetValue(peg) ?? false);
+            col = HarmonyLib.AccessTools.Field(typeof(Peg), "_collider")?.GetValue(peg) as Collider2D;
+        }
+        catch
+        {
+        }
+
+        var pos = peg.transform.position;
+        _log.LogWarning(
+            $"[LongPegHeal] STILL_DISABLED after={after} guid={guid ?? "none"} " +
+            $"hit={hit} beingHit={beingHit} colliderNull={col == null} " +
+            $"colliderEnabled={col != null && col.enabled} pegType={peg.pegType} " +
+            $"activeSelf={peg.gameObject.activeSelf} activeInHierarchy={peg.gameObject.activeInHierarchy} " +
+            $"pos=({pos.x:F2},{pos.y:F2})");
+    }
+
+    /// <summary>
+    /// [BombSync] Step-0: log when host/client bomb HitCount or detonation flags diverge.
+    /// MULTIPEGLIN_DEBUG only. Does not change behavior.
+    /// </summary>
+    private void LogBombSyncDrift(string guid, Bomb bomb, PegEntry entry, string after)
+    {
+        if (!PegDiffEnabled || bomb == null || entry == null)
+        {
+            return;
+        }
+
+        var detonated = false;
+        var colliderEnabled = false;
+        var materialKind = "unknown";
+        try
+        {
+            detonated = (bool)(HarmonyLib.AccessTools.Field(typeof(Bomb), "_detonated")?.GetValue(bomb) ?? false);
+            var col = HarmonyLib.AccessTools.Field(typeof(Peg), "_collider")?.GetValue(bomb) as Collider2D;
+            colliderEnabled = col != null && col.enabled;
+            var untouched = HarmonyLib.AccessTools.Field(typeof(Bomb), "_untouchedMaterial")?.GetValue(bomb) as PhysicsMaterial2D;
+            var explode = HarmonyLib.AccessTools.Field(typeof(Bomb), "_explodeMaterial")?.GetValue(bomb) as PhysicsMaterial2D;
+            var mat = col != null ? col.sharedMaterial : null;
+            if (mat != null && untouched != null && ReferenceEquals(mat, untouched))
+            {
+                materialKind = "untouched";
+            }
+            else if (mat != null && explode != null && ReferenceEquals(mat, explode))
+            {
+                materialKind = "explode";
+            }
+            else if (mat != null)
+            {
+                materialKind = mat.name;
+            }
+            else
+            {
+                materialKind = "null";
+            }
+        }
+        catch
+        {
+        }
+
+        var hostHits = entry.HitCount;
+        var clientHits = bomb.HitCount;
+        var hostExpectsDetonated = hostHits > 1 || entry.IsDestroyed;
+        var hostExpectsLitMaterial = hostHits == 1 && !entry.IsDestroyed;
+        var hostExpectsHidden = entry.IsDestroyed || hostHits > 1;
+
+        // Only log when something actually disagrees with the host snapshot.
+        var hitsMismatch = clientHits != hostHits;
+        var detonateMismatch = detonated != hostExpectsDetonated && !entry.IsDestroyed;
+        var materialMismatch = hostExpectsLitMaterial && materialKind == "untouched";
+        // Host destroyed or HitCount>1 ⇒ client should be inactive; else active.
+        var activeMismatch = hostExpectsHidden
+            ? bomb.gameObject.activeInHierarchy
+            : !bomb.gameObject.activeInHierarchy && !entry.IsParentHidden;
+
+        if (!hitsMismatch && !detonateMismatch && !materialMismatch && !activeMismatch)
+        {
+            return;
+        }
+
+        var pos = bomb.transform.position;
+        _log.LogWarning(
+            $"[BombSync] DRIFT after={after} guid={guid ?? "none"} " +
+            $"hostHits={hostHits} clientHits={clientHits} hostDestroyed={entry.IsDestroyed} " +
+            $"detonated={detonated} colliderEnabled={colliderEnabled} material={materialKind} " +
+            $"activeSelf={bomb.gameObject.activeSelf} activeInHierarchy={bomb.gameObject.activeInHierarchy} " +
+            $"pos=({pos.x:F2},{pos.y:F2}) " +
+            $"flags(hits={hitsMismatch},det={detonateMismatch},mat={materialMismatch},active={activeMismatch})");
     }
 
     /// <summary>
@@ -1392,48 +1951,20 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         // Handle cleared/popped pegs.
         // The host keeps popped pegs visible as the "destroyed dot" sprite until
         // BattleController.RemoveClearedPegs() runs at end of battle / nav failure.
-        // Previously we called RemoveIfCleared() here, which fades alpha→0 and
-        // Disables the GameObject — the client's pegs vanished after each shot
-        // while the host's stayed persistent, making the client unable to see
-        // the board for aiming. Match host behavior: pop the peg (collider off,
-        // scale tween → dot sprite) but do NOT fade it. End-of-battle fade
-        // arrives naturally when the host sets IsDestroyed=true in a later heartbeat.
+        // Do NOT call RemoveIfCleared() — its DOFade onComplete SetActive(false)
+        // made the host report IsDestroyed, then client DestroyPeg → HidePeg
+        // destroyed _collider permanently (longpeg-heal-failure.md RC6).
+        // LongPegs: ForcePopped (collider off + materials, GO stays active).
+        // RegularPegs: visual-only pop (dot stays). True hide arrives via
+        // IsDestroyed soft-hide without Destroy(_collider).
         if (entry.IsCleared && !clientPopped)
         {
             try
             {
                 if (peg is LongPeg longPegCleared)
                 {
-                    // Host has disabled this LongPeg's collider (SetActiveStatus(false)
-                    // ran). Mirror host visually: ensure gray hit state is applied
-                    // (in case we missed the PegActivatedEvent) and fade out via
-                    // RemoveIfCleared, which handles collider/trigger/poppedPegCollider
-                    // state and the alpha-fade tween. Calling PegActivated here would
-                    // run relic logic and could NRE on client where relicManager state
-                    // isn't authoritative.
-                    LongPegVisualHelper.ApplyHitVisual(longPegCleared);
-                    try
-                    {
-                        longPegCleared.RemoveIfCleared();
-                    }
-                    catch
-                    {
-                    }
-                    // RemoveIfCleared early-returns for VINE/SPINFECTION/MAX_HP peg
-                    // types (used by SpiritOfRadia boss), leaving the collider enabled.
-                    // Host disables it via LongPeg.Update after _beingHit time
-                    // accumulates from a real ball collision; client never simulates
-                    // that, so force the collider-off state directly to match host.
-                    try
-                    {
-                        if (!longPegCleared.IsDisabled())
-                        {
-                            longPegCleared.SetActiveStatus(active: false);
-                        }
-                    }
-                    catch
-                    {
-                    }
+                    LogLongPegHealFadeStart(entry.Guid, longPegCleared);
+                    LongPegVisualHelper.ForcePopped(longPegCleared);
                 }
                 else
                 {
@@ -1472,9 +2003,58 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             return;
         }
 
-        // Handle destroyed pegs
+        // Handle destroyed pegs. LongPeg / Bomb: soft-hide only — avoid DestroyPeg
+        // churn and (for LongPeg) permanent collider loss.
         if (entry.IsDestroyed)
         {
+            if (peg is LongPeg longPegDestroyed)
+            {
+                if (peg.gameObject.activeSelf || peg.gameObject.activeInHierarchy)
+                {
+                    try
+                    {
+                        LongPegVisualHelper.SoftHide(longPegDestroyed);
+                    }
+                    catch
+                    {
+                        peg.gameObject.SetActive(false);
+                    }
+
+                    destroyed++;
+                }
+
+                return;
+            }
+
+            if (peg is Bomb bombDestroyed)
+            {
+                // Only act/log on the active→inactive transition; host keeps
+                // IsDestroyed forever for spent bombs and used to spam DESTROY_PATH.
+                if (peg.gameObject.activeSelf || peg.gameObject.activeInHierarchy)
+                {
+                    if (PegDiffEnabled)
+                    {
+                        _log.LogWarning(
+                            $"[BombSync] DESTROY_PATH guid={entry.Guid ?? "none"} " +
+                            $"hostHits={entry.HitCount} clientHits={bombDestroyed.HitCount} " +
+                            $"activeSelf={peg.gameObject.activeSelf} pos=({entry.PosX:F1},{entry.PosY:F1})");
+                    }
+
+                    try
+                    {
+                        BombVisualHelper.SoftHide(bombDestroyed, _log);
+                    }
+                    catch
+                    {
+                        peg.gameObject.SetActive(false);
+                    }
+
+                    destroyed++;
+                }
+
+                return;
+            }
+
             if (peg.pegType != Peg.PegType.DESTROYED)
             {
                 if (peg.gameObject.activeSelf)
@@ -1506,10 +2086,16 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         {
             var clearedField = HarmonyLib.AccessTools.Field(typeof(Peg), "_cleared");
 
-            if (!peg.gameObject.activeSelf || peg.pegType == Peg.PegType.DESTROYED || clientPopped)
+            // Detonated bombs (HitCount>1) may still be "alive" on the host for a
+            // frame or two before IsDestroyed. ForceState already hid the client GO;
+            // do NOT revive them via the generic reactivate path.
+            var bombDetonated = entry.IsBomb && entry.HitCount > 1 && peg is Bomb;
+            if (bombDetonated)
             {
-                DG.Tweening.DOTween.Kill(peg.gameObject);
-
+                BombVisualHelper.ForceState((Bomb)peg, entry.HitCount, _log);
+            }
+            else if (!peg.gameObject.activeSelf || peg.pegType == Peg.PegType.DESTROYED || clientPopped)
+            {
                 // Activate all parents in the hierarchy first — bombs under
                 // inactive parent containers (RotatingPegCircle, pegboard sub-groups)
                 // will have activeSelf=true but activeInHierarchy=false.
@@ -1530,15 +2116,48 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     peg.pegType = Peg.PegType.REGULAR;
                 }
 
+                // Host PegManager.ResetPeg uses Reset(BattleController.criticalActive).
+                // When crit is on, that paints RegularPeg._bonusSprite / LongPeg Bonus
+                // color while pegType stays REGULAR — not PegType.CRIT. Reset(false)
+                // left refreshed pegs white/gray on the client.
+                var critActive = BattleController.criticalActive;
                 try
                 {
-                    peg.Reset(false);
+                    peg.Reset(critActive);
                 }
                 catch
                 {
                 }
 
+                // LongPeg heal: ForceAlive kills material DOFades, clears _beingHit,
+                // re-binds a Destroy()'d _collider if possible, then HardReset.
+                // Bare HardReset is a no-op when _collider is null (RC6).
+                // HardReset → ConvertPegToType(current) re-applies Bonus when
+                // criticalActive and type is REGULAR.
+                if (peg is LongPeg longPegToReactivate)
+                {
+                    LongPegVisualHelper.ForceAlive(longPegToReactivate, _log);
+                    LogLongPegHealStillDisabled(entry.Guid, longPegToReactivate, after: "HardReset");
+                }
+                else if (peg is Bomb bombToReactivate)
+                {
+                    // Bomb.Reset(bool) no-ops unless CanResetBomb(); ForceAlive
+                    // restores material/flags from host HitCount without that gate.
+                    BombVisualHelper.ForceAlive(bombToReactivate, entry.HitCount, _log);
+                }
+
                 ForceRendererVisible(peg);
+
+                // Dedicated CRIT/RESET pegs (not the board-wide bonus tint).
+                var hostType = (Peg.PegType)entry.PegType;
+                if (hostType == Peg.PegType.CRIT || hostType == Peg.PegType.RESET)
+                {
+                    ForceSpecialPegSpriteIfNeeded(peg, hostType);
+                }
+                else if (critActive && hostType == Peg.PegType.REGULAR)
+                {
+                    ForceBonusPegVisualIfNeeded(peg);
+                }
 
                 reactivated++;
             }
@@ -1550,7 +2169,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     clearedField?.SetValue(peg, entry.WasPreviouslyCleared);
                     try
                     {
-                        peg.Reset(false);
+                        peg.Reset(BattleController.criticalActive);
                     }
                     catch
                     {
@@ -1563,25 +2182,29 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         //   - entry.IsLongPegHit == true  → host says peg is in gray half-hit state
         //     (collider still enabled, _hit=true, _colors.Hit material). Ensure the
         //     client visual matches even if we missed PegActivatedEvent.
-        //   - entry.IsLongPegHit == false → host says peg is fresh (not hit). If the
-        //     client's peg has stale _hit/_beingHit (e.g. event was applied locally
-        //     but host has since cleared the state via Reset/HardReset on the peg
-        //     across turn boundaries), HardReset to normalize.
-        // HardReset() resets _hit/_beingHit/_numBounces/_timeHit, calls
-        // SetActiveStatus(true) (re-enables collider, restores active material), and
-        // re-runs ConvertPegToType(pegType) — so if we pre-set pegType to the target
-        // type, HardReset normalizes everything in one shot.
+        //   - entry.IsLongPegHit == false → host says peg is fresh. ForceAlive if
+        //     client still has stale _hit/_beingHit OR IsDisabled() (collider null
+        //     or off with clean flags — the PegDiff sticky case).
         if (peg is LongPeg longPeg && !entry.IsCleared && !entry.IsDestroyed)
         {
             var hitField = HarmonyLib.AccessTools.Field(typeof(LongPeg), "_hit");
             var beingHitField = HarmonyLib.AccessTools.Field(typeof(LongPeg), "_beingHit");
             var isHit = (bool)(hitField?.GetValue(peg) ?? false);
             var beingHit = (bool)(beingHitField?.GetValue(peg) ?? false);
+            var stillDisabled = false;
+            try
+            {
+                stillDisabled = longPeg.IsDisabled();
+            }
+            catch
+            {
+                stillDisabled = true;
+            }
 
             if (entry.IsLongPegHit)
             {
                 // Host says peg should look gray. Apply visual if client doesn't
-                // already have it. Don't HardReset — that would erase the gray state.
+                // already have it. Don't ForceAlive — that would erase the gray state.
                 if (!isHit)
                 {
                     LongPegVisualHelper.ApplyHitVisual(longPeg);
@@ -1589,7 +2212,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         $"guid={entry.Guid} at ({entry.PosX:F1},{entry.PosY:F1})");
                 }
             }
-            else if (isHit || beingHit)
+            else if (isHit || beingHit || stillDisabled)
             {
                 var targetType = (Peg.PegType)entry.PegType;
                 if (targetType != Peg.PegType.DESTROYED)
@@ -1597,17 +2220,12 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     peg.pegType = targetType;
                 }
 
-                try
-                {
-                    longPeg.HardReset();
-                }
-                catch
-                {
-                }
+                LongPegVisualHelper.ForceAlive(longPeg, _log);
 
                 _log.LogInfo($"[PegboardApplier] LongPeg hit-state normalized: guid={entry.Guid} " +
-                    $"wasHit={isHit} wasBeingHit={beingHit} → {targetType} at " +
+                    $"wasHit={isHit} wasBeingHit={beingHit} wasDisabled={stillDisabled} → {targetType} at " +
                     $"({entry.PosX:F1},{entry.PosY:F1})");
+                LogLongPegHealStillDisabled(entry.Guid, longPeg, after: "gray-normalize");
             }
         }
 
@@ -1673,8 +2291,12 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         // After type conversion, if the peg is in "previously cleared" state,
         // re-apply the dot sprite — BUT only for plain REGULAR pegs. Special
         // types (CRIT/RESET/VINE/SPINFECTION/etc.) keep their special sprite.
+        // Skip while crit is active: host Reset(true) prefers _bonusSprite over
+        // the previously-cleared dot, and overwriting here caused refreshed pegs
+        // to look white/gray on the client while the host stayed red.
         if (entry.WasPreviouslyCleared && !entry.IsCleared && !entry.IsDestroyed
-            && (Peg.PegType)entry.PegType == Peg.PegType.REGULAR)
+            && (Peg.PegType)entry.PegType == Peg.PegType.REGULAR
+            && !BattleController.criticalActive)
         {
             if (peg is RegularPeg)
             {
@@ -1687,6 +2309,14 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     renderer.sprite = sprite;
                 }
             }
+        }
+        else if (!entry.IsCleared && !entry.IsDestroyed
+            && (Peg.PegType)entry.PegType == Peg.PegType.REGULAR
+            && BattleController.criticalActive)
+        {
+            // Safety net for non-reactivate paths (gray-normalize HardReset, type
+            // block, etc.) that can leave REGULAR pegs without the bonus tint.
+            ForceBonusPegVisualIfNeeded(peg);
         }
 
         // Apply slime type
@@ -1760,21 +2390,27 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
         }
 
-        // Sync bomb hit count
+        // Sync bomb fuse / detonate state (material, _detonated, hide on hits>1).
         if (entry.IsBomb && peg is Bomb bomb)
         {
-            if (bomb.HitCount != entry.HitCount)
+            var before = bomb.HitCount;
+            var needForce = before != entry.HitCount
+                || (entry.HitCount > 1 && bomb.gameObject.activeSelf)
+                || (entry.HitCount == 1 && bomb.gameObject.activeInHierarchy);
+
+            if (needForce)
             {
-                bomb.HitCount = entry.HitCount;
-                try
+                if (PegDiffEnabled && before != entry.HitCount)
                 {
-                    var animator = bomb.GetComponent<Animator>();
-                    animator?.SetInteger("NumHits", entry.HitCount);
+                    _log.LogWarning(
+                        $"[BombSync] APPLY_HITS guid={entry.Guid ?? "none"} " +
+                        $"{before}→{entry.HitCount} pos=({entry.PosX:F1},{entry.PosY:F1})");
                 }
-                catch
-                {
-                }
+
+                BombVisualHelper.ForceState(bomb, entry.HitCount, _log);
             }
+
+            LogBombSyncDrift(entry.Guid, bomb, entry, after: "apply");
         }
 
         // Sync shield overlay
@@ -1957,11 +2593,14 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 var spriteFieldName = targetType == Peg.PegType.CRIT ? "_critSprite" : "_resetSprite";
                 var spriteField = HarmonyLib.AccessTools.Field(typeof(RegularPeg), spriteFieldName);
                 var sprite = spriteField?.GetValue(peg) as Sprite;
-                if (sprite == null || renderer.sprite == sprite)
+                if (sprite == null)
                 {
                     return;
                 }
 
+                // Always re-apply: after refresh/heal the pegType may already be CRIT
+                // while the renderer still shows the regular/previously-cleared sprite,
+                // or the sprite matches but the special collider was left disabled.
                 renderer.sprite = sprite;
 
                 var colliderField = HarmonyLib.AccessTools.Field(typeof(RegularPeg), "_specialPegCollider");
@@ -1983,11 +2622,15 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
                 var overlayField = HarmonyLib.AccessTools.Field(typeof(LongPeg), "_resetOrCritSprite");
                 var overlay = overlayField?.GetValue(peg) as SpriteRenderer;
-                if (overlay == null || overlay.sprite == sprite)
+                if (overlay == null)
                 {
                     return;
                 }
 
+                // Do NOT early-return when overlay.sprite already equals the crit/reset
+                // sprite: SetActiveStatus(false) / ForcePopped disables the overlay, and
+                // heal leaves pegType=CRIT with the sprite ref intact but overlay off.
+                // That produced "red only on pegs that weren't refreshed."
                 overlay.sprite = sprite;
                 overlay.enabled = true;
 
@@ -1995,6 +2638,39 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 var holder = holderField?.GetValue(peg) as GameObject;
                 holder?.SetActive(true);
             }
+        }
+        catch
+        {
+        }
+    }
+
+    /// <summary>
+    /// Board-wide crit mode tints REGULAR pegs red via _bonusSprite / Bonus color
+    /// without changing pegType. Invokes native ConvertToBonusPeg (RegularPeg public,
+    /// LongPeg private) after refresh heal when Reset(true) / HardReset missed it.
+    /// </summary>
+    private static void ForceBonusPegVisualIfNeeded(Peg peg)
+    {
+        if (peg == null || peg.pegType != Peg.PegType.REGULAR)
+        {
+            return;
+        }
+
+        try
+        {
+            if (peg.IsDisabled())
+            {
+                return;
+            }
+        }
+        catch
+        {
+            return;
+        }
+
+        try
+        {
+            HarmonyLib.AccessTools.Method(peg.GetType(), "ConvertToBonusPeg")?.Invoke(peg, null);
         }
         catch
         {

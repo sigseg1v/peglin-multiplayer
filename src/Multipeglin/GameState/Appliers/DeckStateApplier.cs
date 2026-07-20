@@ -518,27 +518,19 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                 return;
             }
 
-            // Check if already showing via the _isAiming or _isActive flags
-            var aimingField = AccessTools.Field(typeof(ClientBallRenderer), "_isAiming");
-            var activeField = AccessTools.Field(typeof(ClientBallRenderer), "_isActive");
-            var ballObjField = AccessTools.Field(typeof(ClientBallRenderer), "_ballObject");
-            var rendererField = AccessTools.Field(typeof(ClientBallRenderer), "_ballRenderer");
-            var renderCopiedField = AccessTools.Field(typeof(ClientBallRenderer), "_renderCopied");
-            var isAiming = (bool)(aimingField?.GetValue(cbr) ?? false);
-            var isActive = (bool)(activeField?.GetValue(cbr) ?? false);
-
-            var ballObj = ballObjField?.GetValue(cbr) as GameObject;
-            var sr = rendererField?.GetValue(cbr) as UnityEngine.SpriteRenderer;
-            var renderCopied = (bool)(renderCopiedField?.GetValue(cbr) ?? false);
+            // ClientBallRenderer owns this state; use its read-only public surface
+            // instead of reflecting obsolete pre-refactor field names.
+            var ballObj = cbr.AimingBall;
+            var sr = cbr.AimingRenderer;
+            var isShowing = cbr.IsAiming && ballObj != null && ballObj.activeSelf;
             var pos = ballObj?.transform.position ?? UnityEngine.Vector3.zero;
             var scale = ballObj?.transform.localScale ?? UnityEngine.Vector3.zero;
-            _log.LogInfo($"[DeckApplier] AimerOrb: aiming={isAiming} active={isActive} " +
+            _log.LogInfo($"[DeckApplier] AimerOrb: aiming={cbr.IsAiming} active={ballObj?.activeSelf ?? false} " +
                 $"pos=({pos.x:F1},{pos.y:F1},{pos.z:F1}) scale=({scale.x:F2},{scale.y:F2}) " +
                 $"sprite={sr?.sprite != null} enabled={sr?.enabled} color={sr?.color} " +
-                $"material={sr?.material?.name ?? "NULL"} layer={sr?.sortingLayerName} order={sr?.sortingOrder} " +
-                $"renderCopied={renderCopied}");
+                $"material={sr?.material?.name ?? "NULL"} layer={sr?.sortingLayerName} order={sr?.sortingOrder}");
 
-            if (isAiming || isActive)
+            if (isShowing)
             {
                 // Already showing, but check if the displayed orb is stale (wrong orb name).
                 // This happens when the host switches active orb between heartbeats (e.g. coop turn change).

@@ -20,6 +20,12 @@ public class ClientBallRenderer : MonoBehaviour
 
     public string CurrentOrbName => _currentOrbName;
 
+    public bool IsAiming => _isAiming;
+
+    public GameObject AimingBall => _aimingBall;
+
+    public SpriteRenderer AimingRenderer => _aimingRenderer;
+
     // --- Aiming visual ---
     private GameObject _aimingBall;
     private SpriteRenderer _aimingRenderer;
