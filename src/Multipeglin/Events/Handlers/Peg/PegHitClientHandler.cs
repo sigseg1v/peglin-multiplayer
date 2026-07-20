@@ -39,19 +39,23 @@ public sealed class PegHitClientHandler : IClientHandler<PegHitEvent>
                 return;
             }
 
-            // Bomb hit count → animator NumHits.
+            // Bomb fuse / detonate — full ForceState (material + _detonated + hide).
             if (e.HitCount >= 0 && peg is Bomb bomb)
             {
-                if (bomb.HitCount != e.HitCount)
+                var before = bomb.HitCount;
+                if (before != e.HitCount
+                    || (e.HitCount > 1 && bomb.gameObject.activeSelf)
+                    || (e.HitCount == 1 && bomb.gameObject.activeSelf))
                 {
-                    bomb.HitCount = e.HitCount;
-                    try
+                    var dbg = Environment.GetEnvironmentVariable("MULTIPEGLIN_DEBUG");
+                    if (dbg == "1" || string.Equals(dbg, "true", StringComparison.OrdinalIgnoreCase))
                     {
-                        bomb.GetComponent<Animator>()?.SetInteger("NumHits", e.HitCount);
+                        MultiplayerPlugin.Logger?.LogWarning(
+                            $"[BombSync] PEGHIT guid={e.PegGuid ?? "none"} " +
+                            $"{before}→{e.HitCount} pos=({e.PosX:F1},{e.PosY:F1})");
                     }
-                    catch
-                    {
-                    }
+
+                    BombVisualHelper.ForceState(bomb, e.HitCount, MultiplayerPlugin.Logger);
                 }
             }
 

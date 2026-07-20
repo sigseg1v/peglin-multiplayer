@@ -1,4 +1,5 @@
 using HarmonyLib;
+using Multipeglin.Utility;
 using static Multipeglin.Patches.MultiplayerClientPatches;
 
 namespace Multipeglin.Patches;
@@ -7,37 +8,39 @@ namespace Multipeglin.Patches;
 internal static class LongPegPatches
 {
     /// <summary>
-    /// HOST: when a LongPeg's delayed-death timer fires and the peg switches to
-    /// its cleared material, immediately fade it out like the client does. The
-    /// native game only fades LongPegs at end-of-battle via RemoveClearedPegs,
-    /// so without this hook the host sees popped rectangular pegs sit on the
-    /// board greyed-out while the client has already faded them to alpha=0.
+    /// CLIENT: native HidePeg Object.Destroy(_collider). Soft-hide instead so
+    /// heartbeat refresh can ForceAlive the same instance.
+    ///
+    /// Host mid-battle RemoveIfCleared (former SetActiveStatus postfix) was
+    /// removed: DOFade → SetActive(false) → provider IsDestroyed → client
+    /// DestroyPeg destroyed colliders permanently (longpeg-heal-failure.md RC6).
+    /// SetActiveStatus(false) already applies destroyed materials / collider off;
+    /// end-of-battle fade still happens via RemoveClearedPegs.
     /// </summary>
-    [HarmonyPatch(typeof(LongPeg), "SetActiveStatus")]
-    [HarmonyPostfix]
-    public static void LongPeg_SetActiveStatus_Postfix(LongPeg __instance, bool active)
+    [HarmonyPatch(typeof(LongPeg), "HidePeg")]
+    [HarmonyPrefix]
+    public static bool LongPeg_HidePeg_Prefix(LongPeg __instance)
     {
-        if (active)
+        if (!ShouldSuppressClientLogic)
         {
-            return;
-        }
-
-        if (!IsHosting)
-        {
-            return;
+            return true;
         }
 
         try
         {
-            var clearedField = HarmonyLib.AccessTools.Field(typeof(global::Peg), "_cleared");
-            var isCleared = (bool)(clearedField?.GetValue(__instance) ?? false);
-            if (isCleared)
-            {
-                __instance.RemoveIfCleared();
-            }
+            LongPegVisualHelper.SoftHide(__instance);
         }
         catch
         {
+            try
+            {
+                __instance.gameObject.SetActive(false);
+            }
+            catch
+            {
+            }
         }
+
+        return false;
     }
 }
