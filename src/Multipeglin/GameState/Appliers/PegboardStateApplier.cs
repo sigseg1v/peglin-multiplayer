@@ -46,6 +46,14 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     private static bool? _pegDiffEnabled;
 
     /// <summary>
+    /// Full PredictionManager.CopyAllPegs rebuilds the sim peg map (expensive).
+    /// Throttle so busy heartbeats during a shot do not hitch every apply.
+    /// </summary>
+    private const float CopyAllPegsMinIntervalSeconds = 0.35f;
+
+    private static float _lastCopyAllPegsRealtime = float.NegativeInfinity;
+
+    /// <summary>
     /// True when MULTIPEGLIN_DEBUG is "1" or "true". Cached for the process
     /// lifetime — env vars are set before launch and never change mid-run.
     /// Gates [PegDiff] board scans and [LongPegHeal] Step-0 diagnostics; does
@@ -77,6 +85,62 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     {
         return string.Compare(guid1, guid2, System.StringComparison.Ordinal) < 0
             ? $"{guid1}|{guid2}" : $"{guid2}|{guid1}";
+    }
+
+    /// <summary>
+    /// Refresh PredictionManager after pegboard mutations so battle aim raycasts
+    /// see current colliders. Full CopyAllPegs when structure changed; otherwise
+    /// UpdateAllPegsStatus. CopyAllPegs is throttled; when throttled we still
+    /// UpdateAllPegsStatus so clears/fuse stay closer.
+    /// </summary>
+    private void RefreshPredictionSimMap(BattleController bc, bool needsFullCopy)
+    {
+        if (!Patches.MultiplayerClientPatches.ShouldSuppressClientLogic)
+        {
+            return;
+        }
+
+        PredictionManager prediction = null;
+        try
+        {
+            prediction = bc != null ? bc.PredictionManager : null;
+            if (prediction == null)
+            {
+                prediction = UnityEngine.Object.FindObjectOfType<PredictionManager>();
+            }
+        }
+        catch
+        {
+            return;
+        }
+
+        if (prediction == null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (needsFullCopy)
+            {
+                var now = Time.realtimeSinceStartup;
+                if (now - _lastCopyAllPegsRealtime >= CopyAllPegsMinIntervalSeconds)
+                {
+                    prediction.CopyAllPegs();
+                    _lastCopyAllPegsRealtime = now;
+                    _log.LogInfo("[PegboardApplier] PredictionManager.CopyAllPegs after board change");
+                    return;
+                }
+
+                // Throttled — fall through to status-only update.
+            }
+
+            prediction.UpdateAllPegsStatus();
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[PegboardApplier] Prediction refresh failed: {ex.Message}");
+        }
     }
 
     public void Apply(PegboardStateSnapshot snapshot)
@@ -595,6 +659,17 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             // colours). Independent of normal peg sync — these obscurer cells
             // sit on top of the pegboard and never appear in pm.allPegs.
             SyncObscurerGrid(snapshot);
+
+            // Keep PredictionManager's sim peg map in sync with Multipeglin
+            // soft-hide / heal / type changes so the client aimer still bends
+            // after mid-turn board mutations. Client-only; host already owns
+            // its map from battle start.
+            if (changed > 0)
+            {
+                RefreshPredictionSimMap(
+                    bc,
+                    needsFullCopy: reactivated + destroyed + extrasRemoved + typeChanged > 0);
+            }
 
             // Per-bomb dump previously logged 6 lines per heartbeat. Gate on
             // the count of *active* client bombs vs host's reported count —

@@ -671,6 +671,21 @@ public static class MultiplayerClientPatches
                         trajSim.enabled = true;
                     }
 
+                    // Host CopyAllPegs at battle start; nav client does it after Arm.
+                    // Battle client never did — PredictionManager._allPegs stayed empty
+                    // so Predict raycasts missed pegs (straight gravity arc only).
+                    try
+                    {
+                        pm?.CopyAllPegs();
+                        MultiplayerPlugin.Logger?.LogInfo(
+                            $"[ClientAim] CopyAllPegs after Arm (pm={(pm != null ? "ok" : "null")})");
+                    }
+                    catch (System.Exception copyEx)
+                    {
+                        MultiplayerPlugin.Logger?.LogWarning(
+                            $"[ClientAim] CopyAllPegs failed: {copyEx.Message}");
+                    }
+
                     // Set AIMING state for proper mouse input handling in PachinkoBall.Update
                     var stateProp = HarmonyLib.AccessTools.Property(typeof(PachinkoBall), "CurrentState");
                     stateProp?.GetSetMethod(true)?.Invoke(ball, new object[] { PachinkoBall.FireballState.AIMING });
