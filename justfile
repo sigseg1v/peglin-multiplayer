@@ -3,6 +3,17 @@
 
 set shell := ["pwsh", "-NoProfile", "-Command"]
 
+# Prefer a user-local dotnet SDK install when present (official installer puts
+# it in ~/.dotnet). No-op when that directory is missing. Unix PATH only —
+# Windows installs usually already have dotnet on PATH.
+home_dir := env_var_or_default("HOME", "")
+dotnet_home := home_dir + "/.dotnet"
+export PATH := if path_exists(dotnet_home) == "true" {
+  dotnet_home + ":" + env_var_or_default("PATH", "")
+} else {
+  env_var_or_default("PATH", "")
+}
+
 root := justfile_directory()
 src := root / "src"
 game := root / "release"
@@ -86,18 +97,20 @@ build-deploy config="Debug":
     if ($LASTEXITCODE -ne 0) { Write-Host '==> Build failed. Aborting so no stale binary is launched.' -ForegroundColor Red; exit 1 } \
     just copy-plugins {{config}}
 
-# Build debug, deploy to game dir, launch game, tail logs
+# On aarch64 hosts with `muvm` installed (e.g. Asahi), launch is forwarded into
+# Steam's muvm automatically; elsewhere this is a plain launch.ps1 start.
+# Force host-side launch: MUVM_SKIP_WRAP=1 just dev
+# Build debug, deploy to game dir, launch game, tail logs.
 dev: setup _restore-appid build-deploy
     New-Item -ItemType Directory -Path (Split-Path '{{logfile}}') -Force | Out-Null; \
     [IO.File]::Create('{{logfile}}').Close(); \
     Write-Host '==> Launching game...'; \
-    $game = Start-Process pwsh -ArgumentList '-NoProfile','-File','{{root}}/launch.ps1' -PassThru; \
+    pwsh -NoProfile -File '{{root}}/scripts/muvm-wrap.ps1' -Root '{{root}}' -Command "pwsh -NoProfile -File '{{root}}/launch.ps1'"; \
     Write-Host "==> Tailing logs (Ctrl+C to stop)"; \
     Write-Host "    Log: {{logfile}}`n"; \
-    Start-Sleep 1; \
+    Start-Sleep 2; \
     Get-Content '{{logfile}}' -Wait
 
-# Build, deploy, launch N windowed instances for multiplayer testing.
 # Each instance writes to its own multipeglin_PEGLIN<N>.log with [HOST]/[CLIENT] tags.
 # Optional: pass level to force a starting act, e.g. just dev-multi 3 (Mines)
 #   Acts: 1=Forest, 2=Castle, 3=Mines, 4=Core
@@ -105,41 +118,20 @@ dev: setup _restore-appid build-deploy
 # Optional: pass player count (default 2), e.g. just dev-multi 1 4 launches 4 instances on Forest
 # Optional: set PEGLIN_SEED env var for deterministic seeds, e.g.
 #   PEGLIN_SEED=12345 just dev-multi 2
+# Optional: skip to a map stage without a continue save, e.g.
+#   PEGLIN_SEED=4228140002 MULTIPEGLIN_FORCE_NODE=Mines-10@FlickeringRelicMinigame just dev-multi
+# On aarch64+muvm hosts, instances launch inside Steam's muvm; logs still tail on the host.
+# Build, deploy, launch N windowed instances for multiplayer testing.
 dev-multi level="" players="2": setup _restore-appid build-deploy
     $logsDir = Split-Path '{{logfile}}'; \
     New-Item -ItemType Directory -Path $logsDir -Force | Out-Null; \
     $hostLog = Join-Path $logsDir 'multipeglin_PEGLIN1.log'; \
     [IO.File]::Create($hostLog).Close(); \
-    $windowArgs = @('-screen-fullscreen','0','-screen-width','1280','-screen-height','720'); \
-    $compatBase = "$HOME/.steam/steam/steamapps/compatdata"; \
-    $playerCount = [int]'{{players}}'; \
-    if ($playerCount -lt 1) { $playerCount = 1 } \
-    if ('{{level}}' -ne '') { \
-        $env:MULTIPEGLIN_FORCE_LEVEL = '{{level}}'; \
-        Write-Host "==> Force level: {{level}}"; \
-    } \
-    Write-Host "==> Launching $playerCount instance(s)"; \
-    $env:SKIP_STEAM_INIT = '1'; \
-    $steamAppId = Join-Path '{{game}}' 'steam_appid.txt'; \
-    $steamAppIdBak = "$steamAppId.devmulti"; \
-    if (Test-Path $steamAppId) { Move-Item $steamAppId $steamAppIdBak -Force } \
-    for ($i = 1; $i -le $playerCount; $i++) { \
-        $name = "PEGLIN$i"; \
-        $compatId = 1296609 + $i; \
-        Write-Host "==> Launching $name (windowed, compatdata=$compatId)..."; \
-        $env:MULTIPEGLIN_INSTANCE = $name; \
-        $env:MULTIPEGLIN_PLAYER_NAME = $name; \
-        $env:MULTIPEGLIN_LOGNAME = "multipeglin_$name.log"; \
-        $env:STEAM_COMPAT_DATA_PATH = "$compatBase/$compatId"; \
-        Start-Process pwsh -ArgumentList (@('-NoProfile','-File','{{root}}/launch.ps1') + $windowArgs); \
-        if ($i -lt $playerCount) { Start-Sleep 5 } \
-    } \
-    if (Test-Path $steamAppIdBak) { Move-Item $steamAppIdBak $steamAppId -Force } \
-    Remove-Item Env:\MULTIPEGLIN_INSTANCE,Env:\MULTIPEGLIN_PLAYER_NAME,Env:\MULTIPEGLIN_LOGNAME,Env:\STEAM_COMPAT_DATA_PATH,Env:\MULTIPEGLIN_FORCE_LEVEL,Env:\SKIP_STEAM_INIT -ErrorAction SilentlyContinue; \
+    pwsh -NoProfile -File '{{root}}/scripts/dev-multi-launch.ps1' -Level '{{level}}' -Players {{players}} -Root '{{root}}' -Game '{{game}}'; \
     Write-Host "==> Tailing host log (Ctrl+C to stop)"; \
     Write-Host "    Host: $hostLog"; \
     Write-Host "    Clients: $logsDir/multipeglin_PEGLIN<N>.log`n"; \
-    Start-Sleep 1; \
+    Start-Sleep 2; \
     Get-Content $hostLog -Wait
 
 # Launch one game instance with Steam enabled against Spacewar AppID (480).

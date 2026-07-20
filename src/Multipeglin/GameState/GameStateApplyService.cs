@@ -1328,6 +1328,8 @@ public class GameStateApplyService
                 if (System.Math.Abs(clientPegs - hostActivePegs) > 5)
                 {
                     _log.LogWarning($"[Consistency] PEG COUNT MISMATCH: host_active={hostActivePegs}, client_active={clientPegs}");
+                    _pegboardApplier.DumpBoardDiff(snapshot.Pegboard,
+                        $"count-mismatch host_active={hostActivePegs} client_active={clientPegs}");
                 }
             }
         }

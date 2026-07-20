@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using Data;
 using HarmonyLib;
 using Map;
@@ -130,15 +131,42 @@ internal static class MapControllerPatches
     /// </summary>
     [HarmonyPatch(typeof(Map.MapController), "NodeSelected")]
     [HarmonyPrefix]
-    public static bool MapController_NodeSelected_Prefix()
+    public static bool MapController_NodeSelected_Prefix(ref IEnumerator __result)
     {
         if (!ShouldSuppressClientLogic)
         {
             return true;
         }
 
+        __result = EmptyCoroutine();
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked MapController.NodeSelected coroutine (client — synced via MapApplier)");
         return false;
+    }
+
+    /// <summary>
+    /// Block the client's native token-walk coroutine. NodeSelected is already
+    /// suppressed above, so StartGoblinWalk has no valid selected-node state and
+    /// throws from its MoveNext coroutine. MapStateApplier authoritatively moves
+    /// the client token to the host position, making the native walk redundant.
+    /// </summary>
+    [HarmonyPatch(typeof(Map.MapController), "StartGoblinWalk")]
+    [HarmonyPrefix]
+    public static bool MapController_StartGoblinWalk_Prefix(ref IEnumerator __result)
+    {
+        if (!ShouldSuppressClientLogic)
+        {
+            return true;
+        }
+
+        __result = EmptyCoroutine();
+        MultiplayerPlugin.Logger?.LogInfo(
+            "[ClientPatches] Blocked MapController.StartGoblinWalk (client — position synced via MapApplier)");
+        return false;
+    }
+
+    private static IEnumerator EmptyCoroutine()
+    {
+        yield break;
     }
 
     /// <summary>
