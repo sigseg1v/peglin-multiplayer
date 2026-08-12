@@ -14,8 +14,6 @@ namespace Multipeglin.Utility;
 ///   HitCount 0 → untouched material
 ///   HitCount 1 → explode material + NumHits animator
 ///   HitCount &gt; 1 → _detonated, collider off, then SetActive(false)
-///
-/// See wiki/plans/bomb-hit-state-sync.md.
 /// </summary>
 public static class BombVisualHelper
 {

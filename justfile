@@ -3,13 +3,17 @@
 
 set shell := ["pwsh", "-NoProfile", "-Command"]
 
-# Prefer a user-local dotnet SDK install when present (official installer puts
-# it in ~/.dotnet). No-op when that directory is missing. Unix PATH only —
-# Windows installs usually already have dotnet on PATH.
+# Fall back to a user-local dotnet SDK install when present (the official
+# installer puts it in ~/.dotnet). No-op when that directory is missing.
+#
+# APPENDED, not prepended: prepending shadows a system dotnet, and the two are
+# not interchangeable — on a machine with /usr/bin/dotnet 10.0.107 and
+# ~/.dotnet 10.0.101, prepending silently downgrades every `just` build to the
+# older SDK. Appending only helps machines where dotnet is otherwise unfindable.
 home_dir := env_var_or_default("HOME", "")
 dotnet_home := home_dir + "/.dotnet"
 export PATH := if path_exists(dotnet_home) == "true" {
-  dotnet_home + ":" + env_var_or_default("PATH", "")
+  env_var_or_default("PATH", "") + ":" + dotnet_home
 } else {
   env_var_or_default("PATH", "")
 }

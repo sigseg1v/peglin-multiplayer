@@ -1092,8 +1092,8 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     }
 
     /// <summary>
-    /// [PegDiff] instrumentation (see plans/dev-build-regressions.md Finding C).
-    /// No-ops unless MULTIPEGLIN_DEBUG=1 / true — skips the scene-wide scan too.
+    /// [PegDiff] instrumentation. No-ops unless MULTIPEGLIN_DEBUG=1 / true —
+    /// skips the scene-wide scan too.
     ///
     /// Compares the host snapshot against the client's *scene-wide* peg state
     /// (FindObjectsOfType, not just pm.allPegs — ghosts may live outside the

@@ -9,8 +9,8 @@ namespace Multipeglin.Utility;
 /// Helpers for replicating LongPeg's host-side hit visual on the client,
 /// plus refresh-safe pop/heal that never permanently Destroy()s the main collider.
 ///
-/// See wiki/plans/longpeg-heal-failure.md (RC6): native HidePeg destroys _collider,
-/// after which HardReset/SetActiveStatus cannot resurrect the peg.
+/// Native HidePeg does Object.Destroy(_collider), after which HardReset /
+/// SetActiveStatus cannot resurrect the peg — hence the soft-hide path here.
 /// </summary>
 public static class LongPegVisualHelper
 {

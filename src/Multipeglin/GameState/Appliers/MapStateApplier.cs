@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using BepInEx.Logging;
 using Data;
+using DG.Tweening;
 using HarmonyLib;
 using Loading;
 using Map;
@@ -1199,10 +1200,10 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
                 targetPos = targetNode.transform.position;
             }
 
-            if (Vector3.Distance(player.transform.position, targetPos) > 0.1f)
+            var moveDistance = Vector3.Distance(player.transform.position, targetPos);
+            if (moveDistance > PlayerMoveEpsilon)
             {
-                player.transform.position = targetPos;
-                _log.LogInfo($"[MapApplier] Moved player to ({targetPos.x:F1},{targetPos.y:F1})");
+                MovePlayerVisual(player, targetPos, moveDistance);
             }
 
             // Update _previousNode to the closest node so game logic references it
@@ -1232,6 +1233,136 @@ public class MapStateApplier : IGameStateApplier<MapStateSnapshot>
         catch (Exception ex)
         {
             _log.LogWarning($"[MapApplier] MovePlayerToCurrentNode failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>Below this the token already stands where the host says it does.</summary>
+    private const float PlayerMoveEpsilon = 0.1f;
+
+    /// <summary>
+    /// Past this, the move is not a node-to-node step — act transition, intro
+    /// placement, or a resync after a missed scene load. Sliding the token across
+    /// half the map reads worse than a cut, so those still snap.
+    /// </summary>
+    private const float PlayerSnapDistance = 8f;
+
+    /// <summary>World units per second the token slides at, before clamping.</summary>
+    private const float PlayerSlideSpeed = 9f;
+
+    private const float PlayerSlideMinSeconds = 0.15f;
+    private const float PlayerSlideMaxSeconds = 0.6f;
+
+    /// <summary>
+    /// Destination of the slide currently in flight, so repeated heartbeats
+    /// carrying the same host position do not restart it mid-travel.
+    /// </summary>
+    private static Transform _slidingPlayer;
+
+    private static Vector3 _slideTarget;
+
+    /// <summary>
+    /// Move the map token to the host's position.
+    ///
+    /// The client blocks MapController.StartGoblinWalk — without a valid
+    /// selected-node state it throws out of its own coroutine — so the token has
+    /// no native walk and used to cut straight to each new node. Slide it instead:
+    /// ease-out, quick off the mark and settling into the node, with the same two
+    /// cosmetic touches the native walk does (face the direction of travel, run
+    /// the "moving" animator state while in transit).
+    ///
+    /// Visual only. `_previousNode` and every other piece of state the caller
+    /// derives still uses the host's target immediately, so nothing downstream
+    /// waits on the tween.
+    /// </summary>
+    private void MovePlayerVisual(GameObject player, Vector3 targetPos, float distance)
+    {
+        var tf = player.transform;
+
+        if (distance > PlayerSnapDistance)
+        {
+            DOTween.Kill(tf);
+            tf.position = targetPos;
+            SetWalkAnimation(player, false);
+            _log.LogInfo(
+                $"[MapApplier] Snapped player to ({targetPos.x:F1},{targetPos.y:F1}) — " +
+                $"{distance:F1}u is not a node step");
+            return;
+        }
+
+        // Already sliding to this exact spot; let it finish.
+        if (_slidingPlayer == tf
+            && DOTween.IsTweening(tf)
+            && (_slideTarget - targetPos).sqrMagnitude <= PlayerMoveEpsilon * PlayerMoveEpsilon)
+        {
+            return;
+        }
+
+        // Kill first — the OnKill below clears "moving", so it has to run before we
+        // set the flag for the new leg.
+        DOTween.Kill(tf);
+
+        var renderer = player.GetComponent<SpriteRenderer>();
+        if (renderer != null)
+        {
+            renderer.flipX = targetPos.x < tf.position.x;
+        }
+
+        SetWalkAnimation(player, true);
+
+        _slidingPlayer = tf;
+        _slideTarget = targetPos;
+
+        var duration = Mathf.Clamp(
+            distance / PlayerSlideSpeed, PlayerSlideMinSeconds, PlayerSlideMaxSeconds);
+
+        tf.DOMove(targetPos, duration)
+            .SetEase(Ease.OutCubic)
+            .OnComplete(() => EndSlide(player, tf))
+            .OnKill(() => EndSlide(player, tf));
+
+        _log.LogInfo(
+            $"[MapApplier] Sliding player to ({targetPos.x:F1},{targetPos.y:F1}) " +
+            $"over {duration:F2}s ({distance:F1}u)");
+    }
+
+    /// <summary>
+    /// Runs on both completion and kill (DOTween fires OnKill after OnComplete for
+    /// an auto-kill tween, and again if we cancel a leg early), so it must be
+    /// idempotent and survive the token having been destroyed by a scene unload.
+    /// </summary>
+    private static void EndSlide(GameObject player, Transform tf)
+    {
+        SetWalkAnimation(player, false);
+        if (_slidingPlayer == tf)
+        {
+            _slidingPlayer = null;
+        }
+    }
+
+    /// <summary>
+    /// Native MapController drives this bool from StartGoblinWalk (true) and
+    /// NodeSelected (false). Both are blocked on the client, so we own it here —
+    /// and must clear it, or the token idles in its walk cycle standing still.
+    /// </summary>
+    private static void SetWalkAnimation(GameObject player, bool moving)
+    {
+        try
+        {
+            // UnityEngine.Object's implicit bool — fake-null aware, unlike `!= null`
+            // on a destroyed object reference captured in a tween callback.
+            if (!player)
+            {
+                return;
+            }
+
+            var animator = player.GetComponent<Animator>();
+            if (animator && animator.runtimeAnimatorController != null)
+            {
+                animator.SetBool("moving", moving);
+            }
+        }
+        catch
+        {
         }
     }
 
