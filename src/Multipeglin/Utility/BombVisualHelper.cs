@@ -43,8 +43,10 @@ public static class BombVisualHelper
         {
             bomb.HitCount = hitCount;
 
+            // `!animator` uses UnityEngine.Object's implicit bool (fake-null aware);
+            // `??=` would only test reference null and keep a destroyed Animator.
             var animator = bomb.GetComponent<Animator>();
-            if (animator == null)
+            if (!animator)
             {
                 animator = AccessTools.Field(typeof(Bomb), "_animator")?.GetValue(bomb) as Animator;
             }

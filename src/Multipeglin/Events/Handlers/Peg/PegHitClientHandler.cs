@@ -43,9 +43,9 @@ public sealed class PegHitClientHandler : IClientHandler<PegHitEvent>
             if (e.HitCount >= 0 && peg is Bomb bomb)
             {
                 var before = bomb.HitCount;
-                if (before != e.HitCount
-                    || (e.HitCount > 1 && bomb.gameObject.activeSelf)
-                    || (e.HitCount == 1 && bomb.gameObject.activeSelf))
+                // Re-force even when the count already matches: a still-active bomb
+                // at hits>=1 may be missing the fuse material / detonated flags.
+                if (before != e.HitCount || (e.HitCount >= 1 && bomb.gameObject.activeSelf))
                 {
                     var dbg = Environment.GetEnvironmentVariable("MULTIPEGLIN_DEBUG");
                     if (dbg == "1" || string.Equals(dbg, "true", StringComparison.OrdinalIgnoreCase))

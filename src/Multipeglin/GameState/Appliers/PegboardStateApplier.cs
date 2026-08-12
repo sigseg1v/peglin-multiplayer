@@ -43,6 +43,19 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     private readonly Dictionary<string, int> _anomalyStreaks = new Dictionary<string, int>();
     private float _nextDiffDetailAt;
 
+    /// <summary>
+    /// Consecutive applies in which a scene peg has been found sitting on top of a
+    /// managed peg, keyed by instance ID. See <see cref="PurgeUnmanagedScenePegs"/>.
+    /// </summary>
+    private readonly Dictionary<int, int> _duplicateStreaks = new Dictionary<int, int>();
+
+    /// <summary>
+    /// How many consecutive applies an overlap must survive before we treat it as a
+    /// real ghost. At the ~2 s heartbeat this is a few seconds of persistence, which
+    /// the board-load transient does not reach.
+    /// </summary>
+    private const int DuplicatePassesBeforePurge = 3;
+
     private static bool? _pegDiffEnabled;
 
     /// <summary>
@@ -103,7 +116,14 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         PredictionManager prediction = null;
         try
         {
-            prediction = bc != null ? bc.PredictionManager : null;
+            // Deliberately an if, not `bc?.PredictionManager` — `?.` bypasses
+            // UnityEngine.Object's overloaded == and would dereference a
+            // destroyed BattleController.
+            if (bc != null)
+            {
+                prediction = bc.PredictionManager;
+            }
+
             if (prediction == null)
             {
                 prediction = UnityEngine.Object.FindObjectOfType<PredictionManager>();
@@ -733,10 +753,25 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     }
 
     /// <summary>
-    /// Remove active scene pegs which are not owned by any PegManager collection,
-    /// were not used by this snapshot apply, and have no host GUID. These are
-    /// orphaned pre-instanced layout copies. Deactivate immediately so their
-    /// colliders cannot affect the next client shot, then destroy end-of-frame.
+    /// Remove orphaned pre-instanced layout copies — the duplicate pegs that leave
+    /// ghost colliders on top of the real board.
+    ///
+    /// "Not owned by a PegManager collection and has no host GUID" is NOT sufficient
+    /// to call a peg orphaned. PegManager tracks only the shootable board pegs
+    /// (88 in a Forest-1 battle) while the scene legitimately holds far more
+    /// (158 there) — pegs parented to obstacle groups ("Slimeblock (N)") and to
+    /// enemies ("Slime(Clone)") are real, exist identically on the host, and are
+    /// simply absent from the host snapshot because the host never captures them.
+    /// Purging on the manager-membership test alone deactivated 79 legitimate pegs
+    /// every heartbeat, i.e. it manufactured the desync it was meant to repair.
+    ///
+    /// So we additionally require the candidate to be a genuine *duplicate*: a
+    /// managed peg must already occupy the same spot. A stray layout copy overlaps
+    /// the real board peg-for-peg and still qualifies; an obstacle- or enemy-owned
+    /// peg sits at its own coordinates and is left alone.
+    ///
+    /// Deactivating is enough to silence colliders and Update()s; we deliberately do
+    /// NOT Destroy, because this remains a heuristic and Destroy is unrecoverable.
     /// </summary>
     private int PurgeUnmanagedScenePegs(
         List<Peg> clientPegs,
@@ -744,6 +779,13 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         List<BouncerPeg> clientBouncers,
         HashSet<Peg> matchedPegs)
     {
+        // Defense in depth: this method deactivates scene objects, so it must never
+        // run on a host. Apply() itself has no host guard today.
+        if (!Patches.MultiplayerClientPatches.ShouldSuppressClientLogic)
+        {
+            return 0;
+        }
+
         var managed = new HashSet<Peg>(matchedPegs);
         if (clientPegs != null)
         {
@@ -778,6 +820,22 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
         }
 
+        // Positions of everything we know is real, for the duplicate test below.
+        var managedPositions = new List<Vector2>(managed.Count);
+        foreach (var mp in managed)
+        {
+            if (mp != null)
+            {
+                managedPositions.Add(mp.transform.position);
+            }
+        }
+
+        // Half a peg radius: tight enough that neighbouring board pegs never pair
+        // up, loose enough to catch a layout copy that is a hair off.
+        const float duplicateRadius = 0.15f;
+        var duplicateRadiusSqr = duplicateRadius * duplicateRadius;
+
+        var stillDuplicated = new Dictionary<int, int>();
         var purged = 0;
         var scenePegs = UnityEngine.Object.FindObjectsOfType<Peg>();
         foreach (var peg in scenePegs)
@@ -815,21 +873,61 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 continue;
             }
 
+            // The decisive test: only a peg sitting on top of a known-real peg is a
+            // duplicate. Anything at its own coordinates is somebody's legitimate
+            // peg that the host merely doesn't sync.
+            var pegPos = (Vector2)peg.transform.position;
+            var overlapsManagedPeg = false;
+            foreach (var managedPos in managedPositions)
+            {
+                if ((managedPos - pegPos).sqrMagnitude <= duplicateRadiusSqr)
+                {
+                    overlapsManagedPeg = true;
+                    break;
+                }
+            }
+
+            if (!overlapsManagedPeg)
+            {
+                continue;
+            }
+
+            // A ghost persists; a load-time coincidence does not. While the board
+            // is still being laid out, obstacle- and enemy-owned pegs briefly share
+            // coordinates with managed pegs before everything settles, and purging
+            // on a single pass kills them. Require the overlap to survive
+            // consecutive applies before acting on it.
+            var pegKey = peg.GetInstanceID();
+            _duplicateStreaks.TryGetValue(pegKey, out var streak);
+            streak++;
+            stillDuplicated[pegKey] = streak;
+            if (streak < DuplicatePassesBeforePurge)
+            {
+                continue;
+            }
+
             if (PegDiffEnabled)
             {
-                var pos = peg.transform.position;
                 _log.LogWarning($"[PegDiff] PURGED DUPLICATE: {peg.GetType().Name} type={peg.pegType} " +
-                    $"pos=({pos.x:F2},{pos.y:F2}) parent={peg.transform.parent?.name ?? "none"}");
+                    $"pos=({pegPos.x:F2},{pegPos.y:F2}) parent={peg.transform.parent?.name ?? "none"}");
             }
 
             peg.gameObject.SetActive(false);
-            UnityEngine.Object.Destroy(peg.gameObject);
             purged++;
+        }
+
+        // Drop streaks for pegs that stopped qualifying — the count must be
+        // consecutive, otherwise a peg that overlaps once per battle eventually
+        // accumulates enough passes to be purged anyway.
+        _duplicateStreaks.Clear();
+        foreach (var kv in stillDuplicated)
+        {
+            _duplicateStreaks[kv.Key] = kv.Value;
         }
 
         if (purged > 0 && PegDiffEnabled)
         {
-            _log.LogWarning($"[PegDiff] Purged {purged} unmanaged duplicate scene pegs");
+            _log.LogWarning($"[PegDiff] Purged {purged} duplicate scene pegs");
         }
 
         return purged;
@@ -1117,7 +1215,13 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             colliderEnabled = col != null && col.enabled;
             var untouched = HarmonyLib.AccessTools.Field(typeof(Bomb), "_untouchedMaterial")?.GetValue(bomb) as PhysicsMaterial2D;
             var explode = HarmonyLib.AccessTools.Field(typeof(Bomb), "_explodeMaterial")?.GetValue(bomb) as PhysicsMaterial2D;
-            var mat = col != null ? col.sharedMaterial : null;
+            // Deliberately an if, not `col?.sharedMaterial` — see RefreshPredictionSimMap.
+            PhysicsMaterial2D mat = null;
+            if (col != null)
+            {
+                mat = col.sharedMaterial;
+            }
+
             if (mat != null && untouched != null && ReferenceEquals(mat, untouched))
             {
                 materialKind = "untouched";
