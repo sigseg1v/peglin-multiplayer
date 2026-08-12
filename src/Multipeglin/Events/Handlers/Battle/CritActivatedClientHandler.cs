@@ -19,6 +19,14 @@ public sealed class CritActivatedClientHandler : IClientHandler<CritActivatedEve
             // event. Without mirroring that, BattleController.criticalActive stays
             // false on the client — Reset(false) during refresh heal paints white
             // while the host used Reset(true) → _bonusSprite / Bonus color.
+            //
+            // This is a responsiveness optimization ONLY. The host clears
+            // _criticalHitCount in five places (OnDisable, DoEndOfTurnBattleCleanup,
+            // CheckForForcedCritical, EndBattle, ArmNavigationBall) and only one of
+            // them fires onCriticalHitDeactivated, so this counter would climb
+            // forever on events alone. PegboardStateApplier.ApplyCriticalHitCount overwrites it
+            // from PegboardStateSnapshot.CriticalHitCount every heartbeat — that is
+            // the authoritative path.
             if (CritCountField != null)
             {
                 var n = (int)(CritCountField.GetValue(null) ?? 0);

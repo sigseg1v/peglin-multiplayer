@@ -28,6 +28,18 @@ public class PegboardStateSnapshot
     public int ResetPegCount { get; set; }
 
     public int BouncerPegCount { get; set; }
+
+    /// <summary>
+    /// Host's BattleController._criticalHitCount at capture time.
+    /// BattleController.criticalActive is `_criticalHitCount > 0`, and the applier
+    /// feeds that into Peg.Reset(bool) / ConvertToBonusPeg to decide whether pegs
+    /// wear the red bonus tint. The host zeros this field in five places
+    /// (OnDisable, DoEndOfTurnBattleCleanup, CheckForForcedCritical, EndBattle,
+    /// ArmNavigationBall) but only ONE of them fires onCriticalHitDeactivated, so
+    /// the CritActivated/Deactivated delta events cannot keep the client in sync on
+    /// their own. Carrying the raw count here lets the heartbeat correct it.
+    /// </summary>
+    public int CriticalHitCount { get; set; }
 }
 
 public class PegEntry

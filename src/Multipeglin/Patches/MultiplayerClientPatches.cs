@@ -14,6 +14,31 @@ namespace Multipeglin.Patches;
 [HarmonyPatch]
 public static class MultiplayerClientPatches
 {
+    /// <summary>PredictionManager._allPegs — the dummy-peg sim map. Resolved once.</summary>
+    private static readonly System.Reflection.FieldInfo PredictionAllPegsField
+        = HarmonyLib.AccessTools.Field(typeof(PredictionManager), "_allPegs");
+
+    /// <summary>
+    /// True when PredictionManager has no dummy pegs, i.e. aim raycasts would see an
+    /// empty board and draw a bare gravity arc. Conservatively returns true if the
+    /// field cannot be read, so we fall back to the (correct, just costly) full copy.
+    /// </summary>
+    private static bool IsPredictionMapEmpty(PredictionManager pm)
+    {
+        try
+        {
+            if (PredictionAllPegsField?.GetValue(pm) is System.Collections.ICollection map)
+            {
+                return map.Count == 0;
+            }
+        }
+        catch
+        {
+        }
+
+        return true;
+    }
+
     /// <summary>
     /// UnityEngine.Random.State captured BEFORE MapController generates the map.
     /// MapStateProvider reads this to include in the snapshot sent to clients.
@@ -674,16 +699,32 @@ public static class MultiplayerClientPatches
                     // Host CopyAllPegs at battle start; nav client does it after Arm.
                     // Battle client never did — PredictionManager._allPegs stayed empty
                     // so Predict raycasts missed pegs (straight gravity arc only).
+                    //
+                    // CopyAllPegs is expensive: KillAllPegs() Destroys every dummy, then
+                    // CopyChildren() Instantiates the whole peg layout. Doing that on
+                    // every Arm is a per-shot hitch. It is only needed when the sim map
+                    // is actually empty — PegboardStateApplier already rebuilds it (also
+                    // throttled) whenever the board structure changes. Otherwise the
+                    // cheap UpdateAllPegsStatus() refreshes cleared/fuse state in place.
                     try
                     {
-                        pm?.CopyAllPegs();
-                        MultiplayerPlugin.Logger?.LogInfo(
-                            $"[ClientAim] CopyAllPegs after Arm (pm={(pm != null ? "ok" : "null")})");
+                        if (pm != null)
+                        {
+                            if (IsPredictionMapEmpty(pm))
+                            {
+                                pm.CopyAllPegs();
+                                MultiplayerPlugin.Logger?.LogInfo("[ClientAim] CopyAllPegs after Arm (sim map was empty)");
+                            }
+                            else
+                            {
+                                pm.UpdateAllPegsStatus();
+                            }
+                        }
                     }
                     catch (System.Exception copyEx)
                     {
                         MultiplayerPlugin.Logger?.LogWarning(
-                            $"[ClientAim] CopyAllPegs failed: {copyEx.Message}");
+                            $"[ClientAim] Prediction refresh failed: {copyEx.Message}");
                     }
 
                     // Set AIMING state for proper mouse input handling in PachinkoBall.Update

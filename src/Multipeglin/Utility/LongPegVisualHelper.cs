@@ -14,6 +14,65 @@ namespace Multipeglin.Utility;
 /// </summary>
 public static class LongPegVisualHelper
 {
+    // Resolved once. AccessTools.Field/Method are uncached — each call does a
+    // GetField/GetMethod walk up the type's base chain — and these run per peg
+    // per apply on a board of ~90 LongPegs.
+    private static readonly System.Reflection.FieldInfo HitField
+        = AccessTools.Field(typeof(LongPeg), "_hit");
+
+    private static readonly System.Reflection.FieldInfo ClearedField
+        = AccessTools.Field(typeof(global::Peg), "_cleared");
+
+    private static readonly System.Reflection.FieldInfo RendererField
+        = AccessTools.Field(typeof(LongPeg), "_renderer");
+
+    private static readonly System.Reflection.FieldInfo ColorsField
+        = AccessTools.Field(typeof(LongPeg), "_colors");
+
+    private static readonly System.Reflection.FieldInfo ActiveMatField
+        = AccessTools.Field(typeof(LongPeg), "_activeMaterial");
+
+    private static readonly System.Reflection.FieldInfo DestroyedMatField
+        = AccessTools.Field(typeof(LongPeg), "_destroyedMaterial");
+
+    private static readonly System.Reflection.FieldInfo PoppedTriggerField
+        = AccessTools.Field(typeof(global::Peg), "_poppedPegTrigger");
+
+    private static readonly System.Reflection.FieldInfo ResetOrCritSpriteField
+        = AccessTools.Field(typeof(LongPeg), "_resetOrCritSprite");
+
+    private static readonly System.Reflection.FieldInfo PegTextField
+        = AccessTools.Field(typeof(LongPeg), "_pegText");
+
+    private static readonly System.Reflection.FieldInfo BeingHitField
+        = AccessTools.Field(typeof(LongPeg), "_beingHit");
+
+    private static readonly System.Reflection.FieldInfo BeingHitByOrbField
+        = AccessTools.Field(typeof(LongPeg), "_beingHitByOrb");
+
+    private static readonly System.Reflection.FieldInfo TimeHitField
+        = AccessTools.Field(typeof(LongPeg), "_timeHit");
+
+    private static readonly System.Reflection.FieldInfo ColliderField
+        = AccessTools.Field(typeof(global::Peg), "_collider");
+
+    private static readonly System.Reflection.FieldInfo TriggerField
+        = AccessTools.Field(typeof(global::Peg), "_trigger");
+
+    private static readonly System.Reflection.FieldInfo PoppedColliderField
+        = AccessTools.Field(typeof(global::Peg), "_poppedPegCollider");
+
+    private static readonly System.Reflection.FieldInfo SpecialColliderField
+        = AccessTools.Field(typeof(global::Peg), "_specialPegCollider");
+
+    private static readonly System.Reflection.MethodBase InitializeComponentsMethod
+        = AccessTools.Method(typeof(LongPeg), "InitializeComponents");
+
+    /// <summary>Cached "Hit" field of the LongPegColors struct; resolved on first use.</summary>
+    private static System.Reflection.FieldInfo _hitColorField;
+
+    private static bool _hitColorFieldResolved;
+
     public static void ApplyHitVisual(LongPeg peg)
     {
         if (peg == null)
@@ -23,40 +82,37 @@ public static class LongPegVisualHelper
 
         try
         {
-            var hitField = AccessTools.Field(typeof(LongPeg), "_hit");
-            var clearedField = AccessTools.Field(typeof(global::Peg), "_cleared");
-            var rendererField = AccessTools.Field(typeof(LongPeg), "_renderer");
-            var colorsField = AccessTools.Field(typeof(LongPeg), "_colors");
-            var activeMatField = AccessTools.Field(typeof(LongPeg), "_activeMaterial");
-            var destroyedMatField = AccessTools.Field(typeof(LongPeg), "_destroyedMaterial");
-            var poppedTriggerField = AccessTools.Field(typeof(global::Peg), "_poppedPegTrigger");
+            HitField?.SetValue(peg, true);
+            ClearedField?.SetValue(peg, true);
 
-            hitField?.SetValue(peg, true);
-            clearedField?.SetValue(peg, true);
-
-            var renderer = rendererField?.GetValue(peg) as MeshRenderer;
+            var renderer = RendererField?.GetValue(peg) as MeshRenderer;
             if (renderer == null)
             {
                 return;
             }
 
-            var poppedTrigger = poppedTriggerField?.GetValue(peg) as Collider2D;
+            var poppedTrigger = PoppedTriggerField?.GetValue(peg) as Collider2D;
             var useDestroyed = poppedTrigger != null && poppedTrigger.enabled;
 
-            var matField = useDestroyed ? destroyedMatField : activeMatField;
+            var matField = useDestroyed ? DestroyedMatField : ActiveMatField;
             var mat = matField?.GetValue(peg) as Material;
             if (mat != null)
             {
                 renderer.material = mat;
             }
 
-            var colors = colorsField?.GetValue(peg);
+            var colors = ColorsField?.GetValue(peg);
             if (colors != null)
             {
-                var hitColorField = colors.GetType().GetField("Hit");
-                if (hitColorField != null && renderer.material != null)
+                if (!_hitColorFieldResolved)
                 {
-                    var hitColor = (Color)hitColorField.GetValue(colors);
+                    _hitColorField = colors.GetType().GetField("Hit");
+                    _hitColorFieldResolved = true;
+                }
+
+                if (_hitColorField != null && renderer.material != null)
+                {
+                    var hitColor = (Color)_hitColorField.GetValue(colors);
                     renderer.material.color = hitColor;
                 }
             }
@@ -184,13 +240,13 @@ public static class LongPegVisualHelper
                 }
             }
 
-            var overlay = AccessTools.Field(typeof(LongPeg), "_resetOrCritSprite")?.GetValue(peg) as SpriteRenderer;
+            var overlay = ResetOrCritSpriteField?.GetValue(peg) as SpriteRenderer;
             if (overlay != null)
             {
                 DG.Tweening.DOTween.Kill(overlay, complete: false);
             }
 
-            var pegText = AccessTools.Field(typeof(LongPeg), "_pegText")?.GetValue(peg);
+            var pegText = PegTextField?.GetValue(peg);
             if (pegText != null)
             {
                 DG.Tweening.DOTween.Kill(pegText, complete: false);
@@ -205,9 +261,9 @@ public static class LongPegVisualHelper
     {
         try
         {
-            AccessTools.Field(typeof(LongPeg), "_beingHit")?.SetValue(peg, false);
-            AccessTools.Field(typeof(LongPeg), "_beingHitByOrb")?.SetValue(peg, null);
-            AccessTools.Field(typeof(LongPeg), "_timeHit")?.SetValue(peg, 0f);
+            BeingHitField?.SetValue(peg, false);
+            BeingHitByOrbField?.SetValue(peg, null);
+            TimeHitField?.SetValue(peg, 0f);
         }
         catch
         {
@@ -216,7 +272,7 @@ public static class LongPegVisualHelper
 
     private static void EnsureColliderBound(LongPeg peg, ManualLogSource log)
     {
-        var field = AccessTools.Field(typeof(Peg), "_collider");
+        var field = ColliderField;
         if (field == null)
         {
             log?.LogWarning("[LongPegHeal] EnsureColliderBound: Peg._collider field missing");
@@ -238,22 +294,12 @@ public static class LongPegVisualHelper
             return;
         }
 
+        // LongPeg.InitializeComponents (private) does `_collider = GetComponent<Collider2D>()`.
+        // Peg itself declares no such method, so do not try a base-type variant —
+        // AccessTools would just return null and the call would silently no-op.
         try
         {
-            AccessTools.Method(typeof(LongPeg), "InitializeComponents")?.Invoke(peg, null);
-            col = field.GetValue(peg) as Collider2D;
-            if (col != null)
-            {
-                return;
-            }
-        }
-        catch
-        {
-        }
-
-        try
-        {
-            AccessTools.Method(typeof(Peg), "InitializeComponents")?.Invoke(peg, null);
+            InitializeComponentsMethod?.Invoke(peg, null);
             col = field.GetValue(peg) as Collider2D;
             if (col != null)
             {
@@ -291,11 +337,11 @@ public static class LongPegVisualHelper
 
     private static void ForceCollidersAlive(LongPeg peg)
     {
-        void SetEnabled(string fieldName, Type declaringType, bool enabled)
+        void SetEnabled(System.Reflection.FieldInfo colliderField, bool enabled)
         {
             try
             {
-                var c = AccessTools.Field(declaringType, fieldName)?.GetValue(peg) as Collider2D;
+                var c = colliderField?.GetValue(peg) as Collider2D;
                 if (c != null)
                 {
                     c.enabled = enabled;
@@ -306,11 +352,12 @@ public static class LongPegVisualHelper
             }
         }
 
-        // Mirror SetActiveStatus(true) collider matrix (Peg base fields).
-        SetEnabled("_collider", typeof(Peg), true);
-        SetEnabled("_trigger", typeof(Peg), true);
-        SetEnabled("_poppedPegTrigger", typeof(Peg), false);
-        SetEnabled("_poppedPegCollider", typeof(Peg), false);
-        SetEnabled("_specialPegCollider", typeof(Peg), false);
+        // Mirror SetActiveStatus(true) collider matrix. All five are declared on
+        // Peg itself (Peg.cs:152,155,158,161,164), not on the subclasses.
+        SetEnabled(ColliderField, true);
+        SetEnabled(TriggerField, true);
+        SetEnabled(PoppedTriggerField, false);
+        SetEnabled(PoppedColliderField, false);
+        SetEnabled(SpecialColliderField, false);
     }
 }

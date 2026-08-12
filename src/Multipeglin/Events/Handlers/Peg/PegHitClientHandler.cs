@@ -17,6 +17,24 @@ namespace Multipeglin.Events.Handlers.Peg;
 /// </summary>
 public sealed class PegHitClientHandler : IClientHandler<PegHitEvent>
 {
+    /// <summary>
+    /// MULTIPEGLIN_DEBUG, read once. PegHitEvent is the highest-frequency event in
+    /// the game (every peg collision of every shot); Environment.GetEnvironmentVariable
+    /// hits the process environment block on each call. Env vars are set before
+    /// launch and never change mid-run.
+    /// </summary>
+    private static readonly bool DebugEnabled = ReadDebugFlag();
+
+    /// <summary>Peg.PegCoinOverlayInstance; AccessTools.Field is uncached per call.</summary>
+    private static readonly System.Reflection.FieldInfo CoinOverlayField
+        = AccessTools.Field(typeof(global::Peg), "PegCoinOverlayInstance");
+
+    private static bool ReadDebugFlag()
+    {
+        var dbg = Environment.GetEnvironmentVariable("MULTIPEGLIN_DEBUG");
+        return dbg == "1" || string.Equals(dbg, "true", StringComparison.OrdinalIgnoreCase);
+    }
+
     public void Handle(PegHitEvent e)
     {
         try
@@ -43,20 +61,17 @@ public sealed class PegHitClientHandler : IClientHandler<PegHitEvent>
             if (e.HitCount >= 0 && peg is Bomb bomb)
             {
                 var before = bomb.HitCount;
-                // Re-force even when the count already matches: a still-active bomb
-                // at hits>=1 may be missing the fuse material / detonated flags.
-                if (before != e.HitCount || (e.HitCount >= 1 && bomb.gameObject.activeSelf))
+                if (DebugEnabled && !BombVisualHelper.MatchesState(bomb, e.HitCount))
                 {
-                    var dbg = Environment.GetEnvironmentVariable("MULTIPEGLIN_DEBUG");
-                    if (dbg == "1" || string.Equals(dbg, "true", StringComparison.OrdinalIgnoreCase))
-                    {
-                        MultiplayerPlugin.Logger?.LogWarning(
-                            $"[BombSync] PEGHIT guid={e.PegGuid ?? "none"} " +
-                            $"{before}→{e.HitCount} pos=({e.PosX:F1},{e.PosY:F1})");
-                    }
-
-                    BombVisualHelper.ForceState(bomb, e.HitCount, MultiplayerPlugin.Logger);
+                    MultiplayerPlugin.Logger?.LogWarning(
+                        $"[BombSync] PEGHIT guid={e.PegGuid ?? "none"} " +
+                        $"{before}→{e.HitCount} pos=({e.PosX:F1},{e.PosY:F1})");
                 }
+
+                // Always force. MatchesState cannot see the Animator's NumHits
+                // parameter, which is what actually draws the lit fuse, so using it
+                // as a skip condition strands bombs in a lit state the host never had.
+                BombVisualHelper.ForceState(bomb, e.HitCount, MultiplayerPlugin.Logger);
             }
 
             // Coin overlay: collect the diff so the visual matches the host.
@@ -64,8 +79,7 @@ public sealed class PegHitClientHandler : IClientHandler<PegHitEvent>
             {
                 try
                 {
-                    var overlayField = AccessTools.Field(typeof(global::Peg), "PegCoinOverlayInstance");
-                    var overlay = overlayField?.GetValue(peg) as global::Battle.PegBehaviour.PegCoinOverlay;
+                    var overlay = CoinOverlayField?.GetValue(peg) as global::Battle.PegBehaviour.PegCoinOverlay;
                     if (overlay != null && overlay.NumCoins > e.CoinCount)
                     {
                         overlay.CollectCoins(overlay.NumCoins - e.CoinCount);

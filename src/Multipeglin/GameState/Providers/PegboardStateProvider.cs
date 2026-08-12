@@ -318,6 +318,10 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
 
             snapshot.TotalPegCount = snapshot.Pegs.Count;
 
+            // Authoritative crit state. Public getter over BattleController's
+            // private static _criticalHitCount — no reflection needed here.
+            snapshot.CriticalHitCount = BattleController.criticalHitCount;
+
             // Capture bramball vines (pairs of peg GUIDs)
             try
             {

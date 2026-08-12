@@ -5,6 +5,7 @@ using BepInEx.Logging;
 using Multipeglin.GameState.Snapshots;
 using Multipeglin.Utility;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace Multipeglin.GameState.Appliers;
 
@@ -56,7 +57,32 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     /// </summary>
     private const int DuplicatePassesBeforePurge = 3;
 
+    /// <summary>
+    /// Minimum wall-clock gap between ghost-peg scene scans. See
+    /// <see cref="PurgeUnmanagedScenePegs"/>.
+    /// </summary>
+    private const float PurgeScanMinIntervalSeconds = 1.0f;
+
+    /// <summary>
+    /// Name of the scene PredictionManager creates for its aim simulation
+    /// (PredictionManager.Awake: SceneManager.CreateScene("Prediction", ...)).
+    /// </summary>
+    private const string PredictionSceneName = "Prediction";
+
+    /// <summary>Per-concrete-type cache of the private _isDummy field.</summary>
+    private static readonly Dictionary<Type, System.Reflection.FieldInfo> _isDummyFields
+        = new Dictionary<Type, System.Reflection.FieldInfo>();
+
+    private float _lastPurgeScanRealtime = float.NegativeInfinity;
+
     private static bool? _pegDiffEnabled;
+
+    /// <summary>
+    /// BattleController._criticalHitCount. Resolved once — AccessTools.Field is an
+    /// uncached GetField walk over the type and its base types on every call.
+    /// </summary>
+    private static readonly System.Reflection.FieldInfo _critHitCountField
+        = HarmonyLib.AccessTools.Field(typeof(BattleController), "_criticalHitCount");
 
     /// <summary>
     /// Full PredictionManager.CopyAllPegs rebuilds the sim peg map (expensive).
@@ -163,12 +189,72 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         }
     }
 
+    /// <summary>
+    /// Force the client's BattleController._criticalHitCount to the host's value.
+    ///
+    /// The CritActivated/CritDeactivated delta events alone cannot keep this in
+    /// sync: the host clears _criticalHitCount in five places
+    /// (BattleController.OnDisable, DoEndOfTurnBattleCleanup, EndBattle,
+    /// ArmNavigationBall, and CheckForForcedCritical's "drawn orb has no
+    /// GuaranteedCrit/ActivateCritOnDraw" branch) but only the last fires
+    /// onCriticalHitDeactivated. Mirroring increments off events alone made
+    /// the client's counter climb monotonically, leaving criticalActive stuck true
+    /// and the board painted red while the host's board was plain.
+    ///
+    /// Client-only: never write the host's own counter.
+    /// </summary>
+    private void ApplyCriticalHitCount(int hostCount)
+    {
+        if (!Patches.MultiplayerClientPatches.ShouldSuppressClientLogic)
+        {
+            return;
+        }
+
+        if (_critHitCountField == null)
+        {
+            return;
+        }
+
+        try
+        {
+            var current = (int)(_critHitCountField.GetValue(null) ?? 0);
+            if (current == hostCount)
+            {
+                return;
+            }
+
+            _critHitCountField.SetValue(null, hostCount);
+
+            // Deliberately do NOT fire onCriticalHitActivated/Deactivated here.
+            // Four of the host's five reset sites zero the counter WITHOUT firing
+            // the delegate, so firing it on correction would repaint the client's
+            // pegs at moments the host does not repaint its own. The delta handlers
+            // mirror the host's actual delegate invocations; this method mirrors
+            // only the field, which is what the per-peg pass below reads via
+            // BattleController.criticalActive.
+            if (PegDiffEnabled)
+            {
+                _log.LogInfo($"[CritSync] _criticalHitCount {current} -> {hostCount}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[CritSync] failed: {ex.Message}");
+        }
+    }
+
     public void Apply(PegboardStateSnapshot snapshot)
     {
         try
         {
             // Reset per-heartbeat tracking for movement parent sync
             _syncedMovementParents.Clear();
+
+            // Do this BEFORE touching any peg: the entry paths below branch on
+            // BattleController.criticalActive (Reset(bool), ConvertToBonusPeg,
+            // previously-cleared sprite), so the whole pass must see the host's
+            // value, not a stale delta-accumulated one.
+            ApplyCriticalHitCount(snapshot.CriticalHitCount);
 
             if (snapshot.Pegs == null || snapshot.Pegs.Count == 0)
             {
@@ -773,6 +859,54 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     /// Deactivating is enough to silence colliders and Update()s; we deliberately do
     /// NOT Destroy, because this remains a heuristic and Destroy is unrecoverable.
     /// </summary>
+    /// <summary>
+    /// True when this Peg belongs to PredictionManager's simulated pegboard
+    /// rather than the real board.
+    ///
+    /// PredictionManager.CopyChildren instantiates the entire pegboard layout
+    /// GameObject, calls SetDummyStatus(true) on every peg in the clone, and moves
+    /// the clone into the separate "Prediction" scene. The clones keep their
+    /// original child names, sit at exactly the same world coordinates as the real
+    /// pegs, and stay activeInHierarchy — only their renderers are disabled. So a
+    /// plain FindObjectsOfType&lt;Peg&gt; scan sees two pegs at every board
+    /// coordinate, and the duplicate purge below happily deactivates the whole
+    /// simulation board, which silently wrecks the client's aim line until the next
+    /// CopyAllPegs rebuilds it. Same reason DumpBoardDiff must not count them as
+    /// EXTRA.
+    ///
+    /// Scene identity is the primary test (cheap, works for every Peg subclass);
+    /// the _isDummy field is a fallback in case the scene is ever renamed.
+    /// </summary>
+    private static bool IsSimulationPeg(Peg peg, Scene predictionScene)
+    {
+        var scene = peg.gameObject.scene;
+        if (predictionScene.IsValid() && scene == predictionScene)
+        {
+            return true;
+        }
+
+        var type = peg.GetType();
+        if (!_isDummyFields.TryGetValue(type, out var field))
+        {
+            field = HarmonyLib.AccessTools.Field(type, "_isDummy");
+            _isDummyFields[type] = field;
+        }
+
+        if (field == null)
+        {
+            return false;
+        }
+
+        try
+        {
+            return (bool)(field.GetValue(peg) ?? false);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private int PurgeUnmanagedScenePegs(
         List<Peg> clientPegs,
         List<Bomb> clientBombs,
@@ -785,6 +919,22 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         {
             return 0;
         }
+
+        // FindObjectsOfType<Peg> below is a full scene scan. Apply() runs on the
+        // ~2 s heartbeat but also on every event-driven SyncPegboard (peg
+        // destroyed, bomb thrown/detonated, crit toggled), which the sync service
+        // rate-limits to 150 ms — i.e. up to ~6.7 scans/sec during a busy shot.
+        // A ghost layout copy is not a sub-second phenomenon, so scan at most once
+        // per second. Skipped passes leave _duplicateStreaks untouched, so the
+        // persistence requirement still means DuplicatePassesBeforePurge distinct
+        // observations spread over >= 2 s.
+        var nowRealtime = Time.realtimeSinceStartup;
+        if (nowRealtime - _lastPurgeScanRealtime < PurgeScanMinIntervalSeconds)
+        {
+            return 0;
+        }
+
+        _lastPurgeScanRealtime = nowRealtime;
 
         var managed = new HashSet<Peg>(matchedPegs);
         if (clientPegs != null)
@@ -837,10 +987,18 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
         var stillDuplicated = new Dictionary<int, int>();
         var purged = 0;
+        var predictionScene = SceneManager.GetSceneByName(PredictionSceneName);
         var scenePegs = UnityEngine.Object.FindObjectsOfType<Peg>();
         foreach (var peg in scenePegs)
         {
             if (peg == null || managed.Contains(peg) || !peg.gameObject.activeInHierarchy)
+            {
+                continue;
+            }
+
+            // Never touch the aim-prediction clones — they legitimately overlap
+            // every real peg on the board.
+            if (IsSimulationPeg(peg, predictionScene))
             {
                 continue;
             }
@@ -983,15 +1141,24 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 }
             }
 
+            var predictionScene = SceneManager.GetSceneByName(PredictionSceneName);
             var scenePegs = UnityEngine.Object.FindObjectsOfType<Peg>();
             var seenGuids = new HashSet<string>();
             var anomalies = new List<(string key, string detail)>();
-            int stale = 0, missing = 0, extra = 0, far = 0;
+            int stale = 0, missing = 0, extra = 0, far = 0, simulated = 0;
 
             foreach (var peg in scenePegs)
             {
                 if (peg == null)
                 {
+                    continue;
+                }
+
+                // Aim-simulation clones mirror the whole board; counting them as
+                // EXTRA buried the real anomalies under ~77 false positives.
+                if (IsSimulationPeg(peg, predictionScene))
+                {
+                    simulated++;
                     continue;
                 }
 
@@ -1101,7 +1268,8 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
 
             _log.LogWarning($"[PegDiff] {reason}: stale={stale} missing={missing} extra={extra} far={far} " +
-                $"unboundHost={unboundHost} (hostEntries={snapshot.Pegs.Count}, scenePegs={scenePegs.Length}, registry={_pegId.Count})");
+                $"unboundHost={unboundHost} (hostEntries={snapshot.Pegs.Count}, scenePegs={scenePegs.Length}, " +
+                $"simulated={simulated}, registry={_pegId.Count})");
 
             if (Time.time < _nextDiffDetailAt)
             {
@@ -2191,8 +2359,9 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             var clearedField = HarmonyLib.AccessTools.Field(typeof(Peg), "_cleared");
 
             // Detonated bombs (HitCount>1) may still be "alive" on the host for a
-            // frame or two before IsDestroyed. ForceState already hid the client GO;
-            // do NOT revive them via the generic reactivate path.
+            // frame or two before IsDestroyed. ForceState owns the hide (it lets the
+            // explosion clip play out first); do NOT revive them via the generic
+            // reactivate path.
             var bombDetonated = entry.IsBomb && entry.HitCount > 1 && peg is Bomb;
             if (bombDetonated)
             {
@@ -2498,21 +2667,21 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         if (entry.IsBomb && peg is Bomb bomb)
         {
             var before = bomb.HitCount;
-            var needForce = before != entry.HitCount
-                || (entry.HitCount > 1 && bomb.gameObject.activeSelf)
-                || (entry.HitCount == 1 && bomb.gameObject.activeInHierarchy);
 
-            if (needForce)
+            if (PegDiffEnabled && !BombVisualHelper.MatchesState(bomb, entry.HitCount))
             {
-                if (PegDiffEnabled && before != entry.HitCount)
-                {
-                    _log.LogWarning(
-                        $"[BombSync] APPLY_HITS guid={entry.Guid ?? "none"} " +
-                        $"{before}→{entry.HitCount} pos=({entry.PosX:F1},{entry.PosY:F1})");
-                }
-
-                BombVisualHelper.ForceState(bomb, entry.HitCount, _log);
+                _log.LogWarning(
+                    $"[BombSync] APPLY_HITS guid={entry.Guid ?? "none"} " +
+                    $"{before}→{entry.HitCount} pos=({entry.PosX:F1},{entry.PosY:F1})");
             }
+
+            // Unconditional: the heartbeat has to be able to correct ANY bomb
+            // visual, and the lit-fuse look is driven by the Animator's NumHits
+            // parameter, which no cheap equality test can see. Gating this on a
+            // HitCount/_detonated/material comparison left client bombs showing a
+            // lit fuse that the host did not have, with nothing able to clear it.
+            // ForceState is a handful of cached-FieldInfo writes on ~5 bombs.
+            BombVisualHelper.ForceState(bomb, entry.HitCount, _log);
 
             LogBombSyncDrift(entry.Guid, bomb, entry, after: "apply");
         }
