@@ -41,7 +41,10 @@ foreach ($name in @(
     )) {
     $val = [Environment]::GetEnvironmentVariable($name)
     if ($val) {
-        $escaped = $val -replace "'", "'\\''"
+        # POSIX single-quote escaping: close, emit an escaped quote, reopen.
+        # The replacement is a literal string ('\' is not an escape in a
+        # PowerShell double-quoted string, and .NET only treats '$' specially).
+        $escaped = $val -replace "'", "'\''"
         $exports += "export $name='$escaped'"
     }
 }

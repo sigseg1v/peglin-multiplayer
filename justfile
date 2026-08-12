@@ -105,7 +105,7 @@ dev: setup _restore-appid build-deploy
     New-Item -ItemType Directory -Path (Split-Path '{{logfile}}') -Force | Out-Null; \
     [IO.File]::Create('{{logfile}}').Close(); \
     Write-Host '==> Launching game...'; \
-    pwsh -NoProfile -File '{{root}}/scripts/muvm-wrap.ps1' -Root '{{root}}' -Command "pwsh -NoProfile -File '{{root}}/launch.ps1'"; \
+    Start-Process pwsh -ArgumentList '-NoProfile','-File','{{root}}/scripts/muvm-wrap.ps1','-Root','{{root}}','-Command',"pwsh -NoProfile -File '{{root}}/launch.ps1'" | Out-Null; \
     Write-Host "==> Tailing logs (Ctrl+C to stop)"; \
     Write-Host "    Log: {{logfile}}`n"; \
     Start-Sleep 2; \
