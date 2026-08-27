@@ -158,6 +158,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     BuffAmount = peg.buffAmount,
                     IsBomb = isBombInstance,
                     HitCount = isBombInstance ? ((Bomb)peg).HitCount : 0,
+                    IsRigged = isBombInstance && ((Bomb)peg).isRigged,
                 };
                 CaptureShieldState(peg, entry);
                 CaptureLpmParentPos(peg, entry);
@@ -236,6 +237,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                         CoinCount = bomb.NumCoins(),
                         HitCount = bomb.HitCount,
                         IsBomb = true,
+                        IsRigged = bomb.isRigged,
                         BuffAmount = bomb.buffAmount,
                     };
                     CaptureShieldState(bomb, bombEntry);

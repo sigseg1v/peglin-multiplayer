@@ -356,4 +356,54 @@ public static class BombVisualHelper
         // Re-apply after activate in case OnEnable raced.
         ForceState(bomb, hitCount, log, hideIfDetonated: false);
     }
+
+    /// <summary>
+    /// Pin a client bomb's rigged flag to the host's.
+    ///
+    /// Deliberately does NOT call Bomb.ConvertToRigged/ConvertFromRigged: both
+    /// dereference the private <c>_animator</c>, which is only assigned in
+    /// Bomb.OnEnable. The applier reaches bombs that are inactive (popped,
+    /// parent group toggled off, freshly cloned), so the native calls throw a
+    /// NullReferenceException on exactly the bombs that most need correcting.
+    /// Setting the public field plus the controller off a live GetComponent
+    /// works in every state, and matches what the native methods do.
+    /// </summary>
+    public static bool ForceRigged(Bomb bomb, bool rigged, ManualLogSource log = null)
+    {
+        if (bomb == null || bomb.isRigged == rigged)
+        {
+            return false;
+        }
+
+        bomb.isRigged = rigged;
+
+        try
+        {
+            var controller = rigged ? bomb.riggedAnim : bomb.regularAnim;
+            var animator = bomb.GetComponent<Animator>();
+            if (animator != null && controller != null)
+            {
+                animator.runtimeAnimatorController = controller;
+                animator.SetInteger(AnimHitsKey(bomb), bomb.HitCount);
+            }
+        }
+        catch (Exception ex)
+        {
+            log?.LogWarning($"[BombSync] ForceRigged({rigged}) threw: {ex.Message}");
+        }
+
+        return true;
+    }
+
+    private static string AnimHitsKey(Bomb bomb)
+    {
+        try
+        {
+            return AnimHitsKeyField?.GetValue(bomb) as string ?? "NumHits";
+        }
+        catch
+        {
+            return "NumHits";
+        }
+    }
 }

@@ -277,7 +277,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
             int idxMatched = 0, guidMatched = 0, posMatched = 0, repositioned = 0, typeChanged = 0,
                 destroyed = 0, reactivated = 0, cleared = 0, missed = 0, guidTypeInvalid = 0,
-                structMatched = 0, extrasRemoved = 0;
+                structMatched = 0, extrasRemoved = 0, riggedFixed = 0;
 
             // Long-peg entries the host shipped that nothing on the client could
             // be bound to. Gates the extras cleanup below: an unmatched client
@@ -442,23 +442,19 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         ApplyPegState(peg, entry, clientBombs, ref typeChanged, ref destroyed, ref reactivated, ref cleared);
                     }
 
-                    // Bomb matching details only logged when host/client state diverges
-                    // (was a per-heartbeat 6× spam for stable bomb fields).
-                    if (entry.IsBomb && peg is Bomb bombPeg)
+                    // Riggedness is host state, not something the client can derive:
+                    // layouts bake both MovingBombGroup and MovingBombGroupRigged,
+                    // relics flip live bombs, and pre-instancing leaves the two peers
+                    // with different parent chains so bombs bind by proximity. Without
+                    // this the two boards showed red and black bombs swapped.
+                    //
+                    // Drift in HitCount is deliberately left alone — ApplyPegState
+                    // already owns the fuse/detonation state, and logging every
+                    // drifted bomb per heartbeat floods the log.
+                    if (entry.IsBomb && peg is Bomb bombPeg
+                        && Utility.BombVisualHelper.ForceRigged(bombPeg, entry.IsRigged, _log))
                     {
-                        var pegDisabled = false;
-                        try
-                        {
-                            pegDisabled = peg.IsDisabled();
-                        }
-                        catch
-                        {
-                        }
-
-                        // Drift between host/client bomb state is informational only —
-                        // it doesn't drive any reconciliation action, and once a bomb is
-                        // dead on both sides the hit-count mismatch is harmless. Logging
-                        // every heartbeat for every drifted bomb floods the log.
+                        riggedFixed++;
                     }
 
                     SyncPegPosition(peg, entry);
@@ -715,6 +711,15 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         {
                             matchedPegs.Add(registeredBomb);
                         }
+
+                        // Same as the matched path: riggedness comes from the host.
+                        // A peg converted to BOMB here starts regular, and a clone
+                        // inherits whatever its source happened to be.
+                        if ((registeredBomb ?? peg) is Bomb newBomb
+                            && Utility.BombVisualHelper.ForceRigged(newBomb, entry.IsRigged, _log))
+                        {
+                            riggedFixed++;
+                        }
                     }
                 }
             }
@@ -855,13 +860,13 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             }
 
             var totalClient = clientPegs.Count + (clientBombs?.Count ?? 0) + (clientBouncers?.Count ?? 0);
-            var changed = repositioned + typeChanged + destroyed + reactivated + cleared + missed + guidTypeInvalid + extrasRemoved;
+            var changed = repositioned + typeChanged + destroyed + reactivated + cleared + missed + guidTypeInvalid + extrasRemoved + riggedFixed;
             if (changed > 0)
             {
                 _log.LogInfo($"[PegboardApplier] StructMatched={structMatched}, IdxMatched={idxMatched}, GUIDMatched={guidMatched}, PosMatched={posMatched}, " +
                     $"Repositioned={repositioned}, TypeChanged={typeChanged}, Destroyed={destroyed}, " +
                     $"Reactivated={reactivated}, Cleared={cleared}, Missed={missed}, GUIDTypeInvalid={guidTypeInvalid}, " +
-                    $"ExtrasRemoved={extrasRemoved} " +
+                    $"ExtrasRemoved={extrasRemoved}, RiggedFixed={riggedFixed} " +
                     $"(host={snapshot.TotalPegCount}, client={totalClient}, " +
                     $"crit={snapshot.CritPegCount}, bomb={snapshot.BombPegCount}, " +
                     $"reset={snapshot.ResetPegCount}, bouncer={snapshot.BouncerPegCount}, " +

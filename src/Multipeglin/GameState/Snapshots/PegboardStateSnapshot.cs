@@ -100,6 +100,24 @@ public class PegEntry
     /// <summary>True if this peg is a bouncer (from _bouncerPegs list, not _allPegs).</summary>
     public bool IsBouncer { get; set; }
 
+    /// <summary>
+    /// Bomb-only: host's <see cref="Bomb.isRigged"/>. Rigged bombs are a
+    /// distinct animator controller (the black bomb) and distinct gameplay —
+    /// PegManager.CountSpecialPegsOnBoard, RunStats.bombsCreatedRigged and the
+    /// rigged-damage modifiers all branch on it.
+    ///
+    /// It cannot be derived on the client. Layouts bake both MovingBombGroup and
+    /// MovingBombGroupRigged variants, relics flip live bombs via
+    /// PegManager.ConvertRegularBombsToRigged, and Bomb.Reset clears the flag
+    /// unless ALL_BOMBS_RIGGED is held — so which bombs are rigged depends on
+    /// host-side relic state and list ordering the client does not have. Worse,
+    /// pre-instancing gives the two peers different parent chains for the same
+    /// layout (see ParentName), so bombs bind by proximity and a rigged client
+    /// bomb routinely lands on a regular host bomb's slot. The visible symptom
+    /// was red and black bombs appearing swapped between the two boards.
+    /// </summary>
+    public bool IsRigged { get; set; }
+
     /// <summary>Damage buff/debuff value displayed on the peg (-999 to 999).</summary>
     public int BuffAmount { get; set; }
 
@@ -135,7 +153,24 @@ public class PegEntry
     /// <summary>Host-side Y velocity of the LinearPegMovement body driving this peg.</summary>
     public float? LpmVelY { get; set; }
 
-    /// <summary>Name of the transform.parent (stable across host/client because it comes from the prefab hierarchy).</summary>
+    /// <summary>
+    /// Full ancestor chain of the peg, root-first ("Layout/Row1/Group").
+    ///
+    /// NOT reliably identical on host and client. PegLayoutLoader dequeues
+    /// objects from a pre-instanced pool and only reparents them under the
+    /// layout root when <c>mustReparentChildren</c> is set
+    /// (PegLayoutLoader.LoadPegboardRecursive), so whether a peg keeps the
+    /// prefab's nesting or ends up flattened depends on pool state at load
+    /// time. Observed on every mixed layout: the host reports
+    /// "MinesMixedMovementPegLayout/MovingBombGroup" for the same peg the
+    /// client has under "MinesMixedMovementPegLayout/Row1/MovingBombGroup"
+    /// (likewise ForestLongPegSpiral vs .../Ring, Waves vs Waves/Triangle).
+    ///
+    /// It is therefore a match *hint*, not a key — a chain mismatch must never
+    /// reject an otherwise good bind, and anything that has to be right
+    /// (riggedness, velocity, type) is sent explicitly instead of inferred
+    /// from the peg's group.
+    /// </summary>
     public string ParentName { get; set; }
 
     /// <summary>Local position relative to transform.parent (stable across host/client — baked into prefab).</summary>
