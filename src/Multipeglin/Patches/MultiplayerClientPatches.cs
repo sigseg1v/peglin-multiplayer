@@ -712,7 +712,7 @@ public static class MultiplayerClientPatches
                         {
                             if (IsPredictionMapEmpty(pm))
                             {
-                                pm.CopyAllPegs();
+                                Utility.PredictionSimHelper.RebuildSimPegMap(pm, MultiplayerPlugin.Logger);
                                 MultiplayerPlugin.Logger?.LogInfo("[ClientAim] CopyAllPegs after Arm (sim map was empty)");
                             }
                             else

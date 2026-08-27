@@ -232,7 +232,7 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
         try
         {
             var pm = Object.FindObjectOfType<global::PredictionManager>();
-            pm?.CopyAllPegs();
+            Utility.PredictionSimHelper.RebuildSimPegMap(pm, log);
             log?.LogInfo($"[CoopNavigate] Client called PredictionManager.CopyAllPegs (pm={(pm != null ? "ok" : "null")})");
         }
         catch (System.Exception ex)
@@ -925,7 +925,7 @@ public sealed class NavigatePhaseStartClientHandler : IClientHandler<NavigatePha
             // the aimer is invisible.
             try
             {
-                bc.PredictionManager?.CopyAllPegs();
+                Utility.PredictionSimHelper.RebuildSimPegMap(bc.PredictionManager, log);
             }
             catch (System.Exception copyEx)
             {

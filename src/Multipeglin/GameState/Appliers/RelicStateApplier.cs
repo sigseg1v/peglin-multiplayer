@@ -3,11 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using Battle.Attacks;
 using BepInEx.Logging;
-using Cruciball;
 using HarmonyLib;
 using Multipeglin.GameState.Snapshots;
 using Relics;
-using UnityEngine;
 
 namespace Multipeglin.GameState.Appliers;
 
@@ -21,8 +19,7 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
     {
         try
         {
-            var rms = Resources.FindObjectsOfTypeAll<RelicManager>();
-            var rm = rms.Length > 0 ? rms[0] : null;
+            var rm = Utility.ScriptableSingletons.Relics;
             if (rm == null)
             {
                 _log.LogWarning("[RelicApplier] RelicManager not found");
@@ -44,8 +41,9 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
                 }
             }
 
-            // Find all available Relic ScriptableObjects
-            var allRelicAssets = Resources.FindObjectsOfTypeAll<Relic>();
+            // Find all available Relic ScriptableObjects (cached — the raw
+            // Resources.FindObjectsOfTypeAll walks every loaded asset).
+            var allRelicAssets = Utility.ScriptableSingletons.RelicAssets;
 
             int added = 0, alreadyOwned = 0;
             if (snapshot.OwnedRelics != null)
@@ -357,11 +355,8 @@ public class RelicStateApplier : IGameStateApplier<RelicStateSnapshot>
     {
         try
         {
-            var dm = Resources.FindObjectsOfTypeAll<DeckManager>();
-            var deckManager = dm.Length > 0 ? dm[0] : null;
-
-            var cms = Resources.FindObjectsOfTypeAll<CruciballManager>();
-            var cruciballManager = cms.Length > 0 ? cms[0] : null;
+            var deckManager = Utility.ScriptableSingletons.Deck;
+            var cruciballManager = Utility.ScriptableSingletons.Cruciball;
 
             // Re-init all Attack components in the scene (active orbs, UI displays)
             var attacks = UnityEngine.Object.FindObjectsOfType<Attack>(true);
