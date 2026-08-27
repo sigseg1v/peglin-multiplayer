@@ -120,12 +120,25 @@ public sealed class DebugHotkeys : MonoBehaviour
         }
 
         var detonated = 0;
+        var liveBombs = 0;
         foreach (var bomb in bombs)
         {
             if (bomb == null || bomb.detonated)
             {
                 continue;
             }
+
+            // PredictionManager clones the complete pegboard into its own
+            // local-physics scene. Those dummy Bomb components are active and
+            // therefore included by FindObjectsOfType, but they are not wired
+            // to the live battle delegates/relic state and PegActivated throws.
+            // Only drive bombs from the gameplay scene.
+            if (bomb.gameObject.scene.name == "Prediction")
+            {
+                continue;
+            }
+
+            liveBombs++;
 
             try
             {
@@ -146,6 +159,6 @@ public sealed class DebugHotkeys : MonoBehaviour
             }
         }
 
-        MultiplayerPlugin.Logger?.LogInfo($"[DebugHotkeys] F9 detonated {detonated}/{bombs.Length} bombs");
+        MultiplayerPlugin.Logger?.LogInfo($"[DebugHotkeys] F9 detonated {detonated}/{liveBombs} live bombs");
     }
 }

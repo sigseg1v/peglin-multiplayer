@@ -880,11 +880,17 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     private static bool IsSimulationPeg(Peg peg, Scene predictionScene)
     {
         var scene = peg.gameObject.scene;
-        if (predictionScene.IsValid() && scene == predictionScene)
+        if (predictionScene.IsValid())
         {
-            return true;
+            // Scene identity is authoritative while PredictionManager's scene
+            // exists. Do not probe _isDummy on every real peg: not every concrete
+            // peg type declares that optional fallback field (Bomb does not), and
+            // AccessTools.Field logs a misleading missing-field warning.
+            return scene == predictionScene;
         }
 
+        // Only use the field fallback when the prediction scene cannot be found
+        // (for example if a future game version renames it).
         var type = peg.GetType();
         if (!_isDummyFields.TryGetValue(type, out var field))
         {
