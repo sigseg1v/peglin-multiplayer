@@ -118,6 +118,23 @@ public class PegEntry
     /// <summary>World Y of the LinearPegMovement parent (null if peg is not under LPM).</summary>
     public float? LpmParentPosY { get; set; }
 
+    /// <summary>
+    /// Host-side X velocity of the LinearPegMovement body driving this peg (null
+    /// if the peg is not under LPM). LPM sets its rigidbody velocity once in
+    /// Start() from the layout's xMovement, so the client normally derives the
+    /// same direction on its own — but only for pegs that bound to the client
+    /// twin of the same layout row. Any peg the applier repurposes from a
+    /// neighbouring row (phase-3 proximity bind, template clone) keeps the
+    /// velocity of the row it came from, so it marches the wrong way between
+    /// heartbeats while its position still snaps to the host's each second.
+    /// Sending the velocity makes direction host-authoritative like every other
+    /// piece of peg state.
+    /// </summary>
+    public float? LpmVelX { get; set; }
+
+    /// <summary>Host-side Y velocity of the LinearPegMovement body driving this peg.</summary>
+    public float? LpmVelY { get; set; }
+
     /// <summary>Name of the transform.parent (stable across host/client because it comes from the prefab hierarchy).</summary>
     public string ParentName { get; set; }
 
@@ -141,6 +158,29 @@ public class PegEntry
     /// component. Signals the applier to prefer (ParentName, SiblingIndex) over
     /// (ParentName, LocalPos) when resolving the structural match.</summary>
     public bool HasLpm { get; set; }
+
+    /// <summary>
+    /// True when the host peg is a <see cref="LongPeg"/> — the flat/curved mesh
+    /// pegs. Their geometry lives in mesh vertices, so every LongPeg instance
+    /// keeps its transform at the layout's placeholder position (typically
+    /// (0,-1)) and shares localPosition (0,0) with every other LongPeg under
+    /// the same generator. Position-based matching therefore cannot tell two
+    /// LongPegs apart, and worse, it happily pairs a host LongPeg with a round
+    /// peg that happens to sit near the placeholder. The applier uses this flag
+    /// to (a) refuse cross-class binds and (b) switch to <see cref="CenterX"/>
+    /// for every distance test.
+    /// </summary>
+    public bool IsLongPeg { get; set; }
+
+    /// <summary>
+    /// World X of <c>Peg.GetCenterOfPeg()</c> — the collider/mesh bounds centre.
+    /// Only populated for <see cref="IsLongPeg"/> entries, where it is the only
+    /// value that actually identifies which long peg this is. Null otherwise.
+    /// </summary>
+    public float? CenterX { get; set; }
+
+    /// <summary>World Y of <c>Peg.GetCenterOfPeg()</c>. See <see cref="CenterX"/>.</summary>
+    public float? CenterY { get; set; }
 
     /// <summary>
     /// Local Z rotation in degrees. Captured per peg so the applier can align

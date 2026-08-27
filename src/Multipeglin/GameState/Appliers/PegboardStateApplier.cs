@@ -278,6 +278,13 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             int idxMatched = 0, guidMatched = 0, posMatched = 0, repositioned = 0, typeChanged = 0,
                 destroyed = 0, reactivated = 0, cleared = 0, missed = 0, guidTypeInvalid = 0,
                 structMatched = 0, extrasRemoved = 0;
+
+            // Long-peg entries the host shipped that nothing on the client could
+            // be bound to. Gates the extras cleanup below: an unmatched client
+            // LongPeg is only a genuine extra when long-peg matching *succeeded*
+            // wholesale. If it didn't, the unmatched client pegs are the real
+            // geometry and deactivating them wipes whole arcs off the board.
+            var longPegUnresolved = 0;
             var matchedPegs = new HashSet<Peg>();
 
             var unmatchedEntries = new List<PegEntry>();
@@ -402,9 +409,18 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     if (peg != null)
                     {
                         posMatched++;
-                        _log.LogWarning($"[PegboardApplier] POS BIND (idx fallback): idx={entry.Index} guid={entry.Guid} " +
-                            $"type={entry.PegTypeName} hostPos=({entry.PosX:F1},{entry.PosY:F1}) " +
-                            $"clientPos=({peg.transform.position.x:F1},{peg.transform.position.y:F1})");
+                        var clientParent = peg.transform.parent != null
+                            ? BuildHierarchyPath(peg.transform.parent)
+                            : "none";
+                        var clientLp = peg.transform.localPosition;
+                        _log.LogWarning($"[PegboardApplier] POS BIND (proximity fallback): idx={entry.Index} guid={entry.Guid} " +
+                            $"type={entry.PegTypeName} lpm={entry.HasLpm} longPeg={entry.IsLongPeg} " +
+                            $"hostParent={entry.ParentName} hostLp=({entry.LocalPosX:F3},{entry.LocalPosY:F3}) " +
+                            $"sibling#{entry.SiblingIndex} clientParent={clientParent} " +
+                            $"clientLp=({clientLp.x:F3},{clientLp.y:F3}) clientSibling#{peg.transform.GetSiblingIndex()} " +
+                            $"hostPos=({entry.PosX:F1},{entry.PosY:F1}) " +
+                            $"clientPos=({peg.transform.position.x:F1},{peg.transform.position.y:F1}) " +
+                            $"matchDist={Mathf.Sqrt(MatchDistSq(peg, entry)):F2}");
                     }
                 }
 
@@ -503,6 +519,19 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 foreach (var entry in unmatchedEntries)
                 {
                     Peg peg = null;
+
+                    // Moving pegs are the ones that hurt when phase 3 guesses: the
+                    // reused peg carries its old row's velocity. Name the row and
+                    // sibling that failed structural + GUID matching so the layout
+                    // that keeps missing (marching rows have consistently missed
+                    // their last sibling) can be tracked down.
+                    if (entry.HasLpm)
+                    {
+                        _log.LogWarning($"[PegboardApplier] LPM UNMATCHED (phase 3): guid={entry.Guid} " +
+                            $"parent={entry.ParentName} sibling#{entry.SiblingIndex} " +
+                            $"hostPos=({entry.PosX:F2},{entry.PosY:F2})");
+                    }
+
                     var pool = entry.IsBomb ? availableBombs
                         : entry.IsBouncer ? availableBouncers
                         : availableRegulars;
@@ -523,9 +552,19 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                             continue;
                         }
 
-                        var dx = candidate.transform.position.x - entry.PosX;
-                        var dy = candidate.transform.position.y - entry.PosY;
-                        var distSq = dx * dx + dy * dy;
+                        // A moving peg belongs to its layout row: the row owns the
+                        // LinearPegMovement direction and bounds. Marching rows sit
+                        // 1.0 apart, well inside maxPhase3BindDistance, so proximity
+                        // alone happily hands a left-marching row a peg out of the
+                        // right-marching row above it. That peg then drifts the wrong
+                        // way between heartbeats. Only reuse a peg from the same row.
+                        if (entry.HasLpm && !string.IsNullOrEmpty(entry.ParentName)
+                            && !SameParentChain(candidate, entry.ParentName))
+                        {
+                            continue;
+                        }
+
+                        var distSq = MatchDistSq(candidate, entry);
                         if (distSq < closestPoolDistSq)
                         {
                             closestPoolDistSq = distSq;
@@ -572,11 +611,70 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
                         repositioned++;
                     }
+                    else if (peg == null && entry.IsLongPeg)
+                    {
+                        // A LongPeg's identity IS its mesh — every one of them parks
+                        // its transform on the layout placeholder (0,-1). Cloning any
+                        // other long peg produces a peg with the wrong geometry at the
+                        // wrong place (a stray blob at the source peg's centre), and
+                        // the clone then occupies the entry's slot so the real peg is
+                        // deactivated as an "extra" below. Leave the board alone and
+                        // let the next heartbeat re-match instead.
+                        missed++;
+                        longPegUnresolved++;
+                        _log.LogWarning($"[PegboardApplier] MISSED long-peg entry guid={entry.Guid} " +
+                            $"hostCentre=({entry.CenterX:F2},{entry.CenterY:F2}) parent={entry.ParentName} " +
+                            $"sibling#{entry.SiblingIndex} — refusing to clone (mesh geometry is not transferable)");
+                        continue;
+                    }
                     else if (peg == null && !entry.IsBouncer && templatePeg != null)
                     {
                         // No plausible same-type peg exists. Clone a regular at the
                         // host position rather than relocating an unrelated peg.
-                        var clone = UnityEngine.Object.Instantiate(templatePeg, templatePeg.transform.parent);
+                        // For a moving peg, clone a peg out of the row the host named
+                        // so the clone inherits that row's LinearPegMovement settings
+                        // (direction, bounds) instead of whatever clientPegs[0] is.
+                        var source = templatePeg;
+                        if (entry.HasLpm && !string.IsNullOrEmpty(entry.ParentName))
+                        {
+                            foreach (var candidate in clientPegs)
+                            {
+                                if (candidate != null && SameParentChain(candidate, entry.ParentName))
+                                {
+                                    source = candidate;
+                                    break;
+                                }
+                            }
+                        }
+
+                        // A LongPeg's shape is baked into its mesh, so cloning a
+                        // round peg to stand in for one produces a peg with the
+                        // wrong geometry parked at the placeholder position —
+                        // visible as a missing long peg plus a stray dot. Clone a
+                        // long peg or nothing.
+                        if (!ClassMatches(source, entry))
+                        {
+                            source = null;
+                            foreach (var candidate in clientPegs)
+                            {
+                                if (candidate != null && ClassMatches(candidate, entry))
+                                {
+                                    source = candidate;
+                                    break;
+                                }
+                            }
+
+                            if (source == null)
+                            {
+                                missed++;
+                                _log.LogWarning($"[PegboardApplier] MISSED unmatched entry guid={entry.Guid} " +
+                                    $"longPeg={entry.IsLongPeg} parent={entry.ParentName} sibling#{entry.SiblingIndex} " +
+                                    $"— no same-class client peg to clone");
+                                continue;
+                            }
+                        }
+
+                        var clone = UnityEngine.Object.Instantiate(source, source.transform.parent);
                         clone.gameObject.SetActive(true);
                         peg = clone;
                         try
@@ -648,14 +746,33 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 }
             }
 
+            var longPegExtrasSpared = 0;
             foreach (var peg in clientPegs)
             {
                 if (peg != null && peg.gameObject.activeSelf && !matchedPegs.Contains(peg)
                     && !matchedParents.Contains(peg.transform))
                 {
+                    // See longPegUnresolved: when any long-peg entry failed to bind,
+                    // the leftover client LongPegs are almost certainly those same
+                    // pegs under a different identity, not extras. Hiding them is how
+                    // three whole arcs of ForestLongPegSpiral used to vanish on the
+                    // client every battle.
+                    if (peg is LongPeg && longPegUnresolved > 0)
+                    {
+                        longPegExtrasSpared++;
+                        continue;
+                    }
+
                     peg.gameObject.SetActive(false);
                     extrasRemoved++;
                 }
+            }
+
+            if (longPegExtrasSpared > 0)
+            {
+                _log.LogWarning($"[PegboardApplier] Long-peg matching incomplete " +
+                    $"({longPegUnresolved} host entries unbound) — spared {longPegExtrasSpared} " +
+                    $"unmatched client long pegs from extras cleanup");
             }
             // Aggressive cleanup of stale unmatched bombs: the client's own RNG
             // bomb placement (via ConvertPegsToBombs) left bombs in _bombs that
@@ -1222,14 +1339,17 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 }
                 else if (!hostGone)
                 {
-                    var dx = pos.x - entry.PosX;
-                    var dy = pos.y - entry.PosY;
-                    if (dx * dx + dy * dy > 0.25f)
+                    // Compare in the space that identifies the peg: long pegs all
+                    // share the placeholder transform, so a raw position diff can
+                    // never see a scrambled long-peg binding.
+                    var farDistSq = MatchDistSq(peg, entry);
+                    if (farDistSq > 0.25f)
                     {
                         far++;
                         anomalies.Add(($"F:{guid}",
-                            $"FAR guid={guid} type={entry.PegTypeName} hostPos=({entry.PosX:F2},{entry.PosY:F2}) " +
-                            $"clientPos=({pos.x:F2},{pos.y:F2}) dist={Mathf.Sqrt(dx * dx + dy * dy):F2}"));
+                            $"FAR guid={guid} type={entry.PegTypeName} longPeg={entry.IsLongPeg} " +
+                            $"hostPos=({entry.PosX:F2},{entry.PosY:F2}) " +
+                            $"clientPos=({pos.x:F2},{pos.y:F2}) dist={Mathf.Sqrt(farDistSq):F2}"));
                     }
                 }
             }
@@ -1456,6 +1576,58 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     /// </summary>
     private readonly HashSet<Transform> _syncedMovementParents = new HashSet<Transform>();
 
+    /// <summary>Velocity delta below which a client LPM body is left alone (units/sec).</summary>
+    private const float VelocityEpsilon = 0.05f;
+
+    /// <summary>
+    /// Pin a client LinearPegMovement body to the host's velocity.
+    ///
+    /// LPM seeds its velocity once in Start() from the layout's xMovement, so a
+    /// client peg only marches the right way while it is bound to the client twin
+    /// of the same layout row. When the applier repurposes a peg from a
+    /// neighbouring row (phase-3 proximity bind is allowed to reach 1.5 units, and
+    /// marching rows sit 1.0 apart) or clones the template peg, the peg keeps the
+    /// velocity of wherever it came from. Position still snaps to the host every
+    /// heartbeat, so the symptom is exactly one peg per row drifting the wrong way
+    /// between snapshots — "the peg position syncs but the direction is backwards".
+    ///
+    /// Also writes xMovement/yMovement so a later LPM Start() (peg reactivated,
+    /// board refreshed) re-seeds from the host's direction rather than the
+    /// layout's.
+    /// </summary>
+    private void SyncLpmVelocity(Battle.PegBehaviour.LinearPegMovement lpm, PegEntry entry)
+    {
+        if (lpm == null || !entry.LpmVelX.HasValue || !entry.LpmVelY.HasValue)
+        {
+            return;
+        }
+
+        var hostVel = new Vector2(entry.LpmVelX.Value, entry.LpmVelY.Value);
+        var rb = lpm.GetComponent<Rigidbody2D>();
+        var clientVel = rb != null ? rb.velocity : new Vector2(lpm.xMovement, lpm.yMovement);
+
+        if ((clientVel - hostVel).sqrMagnitude <= VelocityEpsilon * VelocityEpsilon)
+        {
+            return;
+        }
+
+        // Sign flip is the visible bug (wrong-way peg); magnitude-only drift is
+        // routine, so only the flip is worth a log line.
+        if (clientVel.x * hostVel.x < 0f || clientVel.y * hostVel.y < 0f)
+        {
+            _log.LogWarning($"[PegboardApplier] LPM DIRECTION FLIP: guid={entry.Guid} " +
+                $"parent={entry.ParentName} sibling#{entry.SiblingIndex} " +
+                $"hostVel=({hostVel.x:F2},{hostVel.y:F2}) clientVel=({clientVel.x:F2},{clientVel.y:F2})");
+        }
+
+        lpm.xMovement = hostVel.x;
+        lpm.yMovement = hostVel.y;
+        if (rb != null)
+        {
+            rb.velocity = hostVel;
+        }
+    }
+
     public void ResetMovementParentTracking() => _syncedMovementParents.Clear();
 
     private void SyncPegPosition(Peg originalPeg, PegEntry entry)
@@ -1549,6 +1721,8 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
             // ============================================================
             if (_syncedMovementParents.Add(parentT))
             {
+                SyncLpmVelocity(lpm, entry);
+
                 if (entry.LpmParentPosX.HasValue && entry.LpmParentPosY.HasValue)
                 {
                     // Use host's authoritative parent position directly
@@ -1992,6 +2166,11 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         if (list.Count == 1)
         {
             var only = list[0];
+            if (only == null || !ClassMatches(only, entry))
+            {
+                return null;
+            }
+
             list.RemoveAt(0);
             return only;
         }
@@ -2006,9 +2185,10 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                 continue;
             }
 
-            var dx = p.transform.position.x - entry.PosX;
-            var dy = p.transform.position.y - entry.PosY;
-            var d2 = dx * dx + dy * dy;
+            // MatchDistSq compares long pegs by mesh centre — their transforms
+            // are all parked on the same placeholder, so comparing positions
+            // here picked an arbitrary member of the bucket.
+            var d2 = MatchDistSq(p, entry);
             if (d2 < bestDistSq)
             {
                 bestDistSq = d2;
@@ -2052,9 +2232,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     /// </summary>
     private static bool IndexBindPositionSane(Peg indexCandidate, PegEntry entry)
     {
-        var dx = indexCandidate.transform.position.x - entry.PosX;
-        var dy = indexCandidate.transform.position.y - entry.PosY;
-        var distSq = dx * dx + dy * dy;
+        var distSq = MatchDistSq(indexCandidate, entry);
         if (distSq <= 1.5f * 1.5f)
         {
             return true;
@@ -2118,7 +2296,68 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
     {
         var pegIsBomb = peg is Bomb;
         var pegIsBouncer = peg is BouncerPeg;
-        return pegIsBomb == entry.IsBomb && pegIsBouncer == entry.IsBouncer;
+        return pegIsBomb == entry.IsBomb && pegIsBouncer == entry.IsBouncer
+            && ClassMatches(peg, entry);
+    }
+
+    /// <summary>
+    /// LongPegs and round pegs are never interchangeable. Every LongPeg parks
+    /// its transform on the layout placeholder (0,-1) — its geometry is in the
+    /// mesh — so a distance test between a host LongPeg entry and a round peg
+    /// that happens to sit near the placeholder scores ~0 and the two bind to
+    /// each other. Gate every match phase on the class first.
+    /// </summary>
+    private static bool ClassMatches(Peg peg, PegEntry entry)
+    {
+        return (peg is LongPeg) == entry.IsLongPeg;
+    }
+
+    /// <summary>
+    /// Squared distance between the host entry and a candidate client peg, in
+    /// whichever space actually identifies the peg: mesh-bounds centre for
+    /// LongPegs (transform.position is the same placeholder for all of them),
+    /// transform.position for everything else. Returns <see cref="float.MaxValue"/>
+    /// for a class mismatch so callers can use it as a single filter.
+    /// </summary>
+    private static float MatchDistSq(Peg candidate, PegEntry entry)
+    {
+        if (candidate == null || !ClassMatches(candidate, entry))
+        {
+            return float.MaxValue;
+        }
+
+        float hx, hy, cx, cy;
+        if (entry.IsLongPeg && entry.CenterX.HasValue && entry.CenterY.HasValue)
+        {
+            hx = entry.CenterX.Value;
+            hy = entry.CenterY.Value;
+            Vector3 c;
+            try
+            {
+                // NOT GetCenterOfPeg(): that returns a stale cached _position
+                // whenever the peg's colliders are disabled (battle start,
+                // popped/hidden pegs). See LongPegVisualHelper.WorldCenter.
+                c = Utility.LongPegVisualHelper.WorldCenter(candidate);
+            }
+            catch
+            {
+                return float.MaxValue;
+            }
+
+            cx = c.x;
+            cy = c.y;
+        }
+        else
+        {
+            hx = entry.PosX;
+            hy = entry.PosY;
+            cx = candidate.transform.position.x;
+            cy = candidate.transform.position.y;
+        }
+
+        var dx = cx - hx;
+        var dy = cy - hy;
+        return dx * dx + dy * dy;
     }
 
     /// <summary>
@@ -2145,9 +2384,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     continue;
                 }
 
-                var dx = p.transform.position.x - entry.PosX;
-                var dy = p.transform.position.y - entry.PosY;
-                var dist = dx * dx + dy * dy;
+                var dist = MatchDistSq(p, entry);
                 if (dist < closestDist)
                 {
                     closestDist = dist;
@@ -2165,9 +2402,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     continue;
                 }
 
-                var dx = b.transform.position.x - entry.PosX;
-                var dy = b.transform.position.y - entry.PosY;
-                var dist = dx * dx + dy * dy;
+                var dist = MatchDistSq(b, entry);
                 if (dist < closestDist)
                 {
                     closestDist = dist;
@@ -2185,9 +2420,7 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     continue;
                 }
 
-                var dx = bo.transform.position.x - entry.PosX;
-                var dy = bo.transform.position.y - entry.PosY;
-                var dist = dx * dx + dy * dy;
+                var dist = MatchDistSq(bo, entry);
                 if (dist < closestDist)
                 {
                     closestDist = dist;
@@ -3162,8 +3395,8 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                         var vineGo = bc.CreateBramballVine();
                         var lr = vineGo.GetComponent<LineRenderer>();
 
-                        var pos1 = peg1 is LongPeg ? peg1.GetCenterOfPeg() : peg1.transform.position;
-                        var pos2 = peg2 is LongPeg ? peg2.GetCenterOfPeg() : peg2.transform.position;
+                        var pos1 = peg1 is LongPeg ? Utility.LongPegVisualHelper.WorldCenter(peg1) : peg1.transform.position;
+                        var pos2 = peg2 is LongPeg ? Utility.LongPegVisualHelper.WorldCenter(peg2) : peg2.transform.position;
 
                         if (lr != null)
                         {
@@ -3517,6 +3750,23 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
 
     [ThreadStatic]
     private static List<string> _hierarchyPathBuf;
+
+    /// <summary>
+    /// True when the client peg hangs under the same prefab-hierarchy parent the
+    /// host reported for this entry. Uses the same slash-joined ancestry chain as
+    /// the structural index, so host and client keys are directly comparable.
+    /// </summary>
+    private static bool SameParentChain(Peg peg, string parentName)
+    {
+        if (peg == null)
+        {
+            return false;
+        }
+
+        var parent = peg.transform.parent;
+        var chain = parent != null ? BuildHierarchyPath(parent) : string.Empty;
+        return string.Equals(chain, parentName, System.StringComparison.Ordinal);
+    }
 
     private static string BuildHierarchyPath(Transform t)
     {

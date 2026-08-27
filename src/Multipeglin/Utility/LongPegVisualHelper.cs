@@ -360,4 +360,73 @@ public static class LongPegVisualHelper
         SetEnabled(PoppedColliderField, false);
         SetEnabled(SpecialColliderField, false);
     }
+
+    /// <summary>
+    /// World-space centre of a LongPeg's geometry, computed from the live
+    /// transform + mesh bounds.
+    ///
+    /// Why not just <c>Peg.GetCenterOfPeg()</c>: that method only recomputes
+    /// from collider bounds when a collider <c>isActiveAndEnabled</c>. At
+    /// battle start (and any time the peg is hidden/popped) every collider is
+    /// off, so it returns the stale cached <c>_position</c> instead. On the
+    /// host that cache is poisoned by the pre-instancing path — pegboards are
+    /// built at <c>PegLayoutLoader.PRE_INSTANCED_OFFSET</c> (+1000, 0, 0) and
+    /// <c>InitPegText()</c>/<c>InitCoinPrefab()</c> run *while the board is
+    /// still parked there*, so <c>_position</c> is cached +1000 in X and the
+    /// board is only moved back afterwards. Snapshots captured at battle start
+    /// then shipped long-peg centres 1000 units off, nothing matched, and the
+    /// applier cloned 39 pegs on top of each other while deactivating the real
+    /// ones.
+    ///
+    /// The mesh path is immune to both problems: <c>mesh.bounds</c> is local
+    /// space (the generator writes the quad's corners as local vertices in
+    /// <c>BezierMeshGenerator.GenerateMesh</c>) and <c>TransformPoint</c> reads
+    /// the transform as it is *right now*.
+    /// </summary>
+    public static Vector3 WorldCenter(global::Peg peg)
+    {
+        if (peg == null)
+        {
+            return Vector3.zero;
+        }
+
+        try
+        {
+            var filter = peg.GetComponent<MeshFilter>();
+            if (filter != null)
+            {
+                var mesh = filter.sharedMesh;
+                if (mesh != null && mesh.vertexCount > 0)
+                {
+                    return peg.transform.TransformPoint(mesh.bounds.center);
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            // Collider2D.bounds is already world space, but only meaningful
+            // while the collider is enabled — same limitation as GetCenterOfPeg.
+            var col = peg.GetComponent<Collider2D>();
+            if (col != null && col.isActiveAndEnabled)
+            {
+                return col.bounds.center;
+            }
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            return peg.GetCenterOfPeg();
+        }
+        catch
+        {
+            return peg.transform.position;
+        }
+    }
 }

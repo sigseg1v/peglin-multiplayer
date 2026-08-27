@@ -43,4 +43,26 @@ internal static class LongPegPatches
 
         return false;
     }
+
+    /// <summary>
+    /// PredictionManager.CopyAllPegs clones the whole pegboard into the
+    /// simulation holder and then DeactivateRenderers *destroys* every
+    /// MeshRenderer on the clones. LongPegSlimeBehaviour cached its renderer in
+    /// Awake, so on a slimed long peg the clone's ApplySlime dereferences a
+    /// destroyed renderer:
+    ///   Renderer.get_material → ApplySlime → LongPeg.SetActiveStatus
+    ///   → LongPeg.SetPegStatus → PredictionManager.UpdateAllPegsStatus
+    ///   → PachinkoBall.Arm
+    /// Arm() aborts before SetLineRendererStatus(true), so the dotted aimer
+    /// never appears for that turn (client symptom: "no aimer on some turns").
+    /// Colouring a destroyed renderer is a no-op anyway — skip the call.
+    /// </summary>
+    [HarmonyPatch(typeof(Battle.PegBehaviour.LongPegSlimeBehaviour), "ApplySlime")]
+    [HarmonyPrefix]
+    public static bool LongPegSlimeBehaviour_ApplySlime_Prefix(
+        UnityEngine.MeshRenderer ____meshRenderer)
+    {
+        // Unity's == overload reports destroyed objects as null.
+        return ____meshRenderer != null;
+    }
 }

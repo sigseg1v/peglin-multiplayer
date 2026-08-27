@@ -9,6 +9,8 @@ namespace Multipeglin.Debug;
 /// before launching the game). Currently:
 ///   F10 — host only: deal 99,999 damage to every active enemy.
 ///   F9  — host only: detonate every bomb on the board.
+///   F8  — either side: dump the pegboard hierarchy (parent chain histogram)
+///         so host and client structure can be diffed from the two logs.
 /// </summary>
 public sealed class DebugHotkeys : MonoBehaviour
 {
@@ -21,7 +23,7 @@ public sealed class DebugHotkeys : MonoBehaviour
         _enabled = v == "1" || string.Equals(v, "true", StringComparison.OrdinalIgnoreCase);
         if (_enabled)
         {
-            MultiplayerPlugin.Logger?.LogInfo($"[DebugHotkeys] enabled via {EnvVar}; F10 = nuke enemies, F9 = detonate bombs");
+            MultiplayerPlugin.Logger?.LogInfo($"[DebugHotkeys] enabled via {EnvVar}; F10 = nuke enemies, F9 = detonate bombs, F8 = dump pegboard");
         }
     }
 
@@ -29,6 +31,12 @@ public sealed class DebugHotkeys : MonoBehaviour
     {
         if (!_enabled)
         {
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.F8))
+        {
+            DumpPegboard();
             return;
         }
 
@@ -84,6 +92,97 @@ public sealed class DebugHotkeys : MonoBehaviour
         }
 
         MultiplayerPlugin.Logger?.LogInfo($"[DebugHotkeys] F10 nuked {killed} enemies");
+    }
+
+    /// <summary>
+    /// Log every peg in the gameplay scene grouped by ancestor chain. Long pegs
+    /// share a placeholder transform, so the collider centre is logged too —
+    /// that is the only value that identifies them.
+    /// </summary>
+    private void DumpPegboard()
+    {
+        var pegs = UnityEngine.Object.FindObjectsOfType<Peg>(includeInactive: true);
+        var byParent = new System.Collections.Generic.SortedDictionary<string, System.Collections.Generic.List<Peg>>(StringComparer.Ordinal);
+        var total = 0;
+        foreach (var peg in pegs)
+        {
+            if (peg == null || peg.gameObject.scene.name == "Prediction")
+            {
+                continue;
+            }
+
+            total++;
+            var chain = HierarchyPath(peg.transform.parent);
+            if (!byParent.TryGetValue(chain, out var list))
+            {
+                list = new System.Collections.Generic.List<Peg>();
+                byParent[chain] = list;
+            }
+
+            list.Add(peg);
+        }
+
+        MultiplayerPlugin.Logger?.LogInfo($"[PegDump] {total} scene pegs in {byParent.Count} parent groups");
+        foreach (var kv in byParent)
+        {
+            var longPegs = 0;
+            var inactive = 0;
+            foreach (var peg in kv.Value)
+            {
+                if (peg is LongPeg)
+                {
+                    longPegs++;
+                }
+
+                if (!peg.gameObject.activeInHierarchy)
+                {
+                    inactive++;
+                }
+            }
+
+            MultiplayerPlugin.Logger?.LogInfo(
+                $"[PegDump]   {kv.Key} → {kv.Value.Count} pegs (long={longPegs}, inactive={inactive})");
+
+            foreach (var peg in kv.Value)
+            {
+                if (!(peg is LongPeg))
+                {
+                    continue;
+                }
+
+                Vector3 centre;
+                try
+                {
+                    centre = Multipeglin.Utility.LongPegVisualHelper.WorldCenter(peg);
+                }
+                catch
+                {
+                    centre = Vector3.zero;
+                }
+
+                MultiplayerPlugin.Logger?.LogInfo(
+                    $"[PegDump]     long #{peg.transform.GetSiblingIndex()} {peg.gameObject.name} " +
+                    $"centre=({centre.x:F2},{centre.y:F2}) pos=({peg.transform.position.x:F2},{peg.transform.position.y:F2}) " +
+                    $"active={peg.gameObject.activeInHierarchy}");
+            }
+        }
+    }
+
+    private static string HierarchyPath(Transform t)
+    {
+        if (t == null)
+        {
+            return "<root>";
+        }
+
+        var parts = new System.Collections.Generic.List<string>(8);
+        for (var cur = t; cur != null; cur = cur.parent)
+        {
+            parts.Add(cur.name);
+        }
+
+        parts.Reverse();
+        return string.Join("/", parts.ToArray());
     }
 
     private static bool IsHost(string key)
