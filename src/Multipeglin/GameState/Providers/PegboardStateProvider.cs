@@ -158,10 +158,12 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     BuffAmount = peg.buffAmount,
                     IsBomb = isBombInstance,
                     HitCount = isBombInstance ? ((Bomb)peg).HitCount : 0,
+                    IsRigged = isBombInstance && ((Bomb)peg).isRigged,
                 };
                 CaptureShieldState(peg, entry);
                 CaptureLpmParentPos(peg, entry);
                 CaptureStructKey(peg, entry);
+                CaptureLongPegCenter(peg, entry);
                 snapshot.Pegs.Add(entry);
 
                 if (peg.gameObject.activeInHierarchy && !destroyed)
@@ -235,11 +237,13 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                         CoinCount = bomb.NumCoins(),
                         HitCount = bomb.HitCount,
                         IsBomb = true,
+                        IsRigged = bomb.isRigged,
                         BuffAmount = bomb.buffAmount,
                     };
                     CaptureShieldState(bomb, bombEntry);
                     CaptureLpmParentPos(bomb, bombEntry);
                     CaptureStructKey(bomb, bombEntry);
+                    CaptureLongPegCenter(bomb, bombEntry);
                     snapshot.Pegs.Add(bombEntry);
 
                     if (bomb.gameObject.activeInHierarchy && !destroyed)
@@ -307,6 +311,7 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
                     CaptureShieldState(bouncer, bouncerEntry);
                     CaptureLpmParentPos(bouncer, bouncerEntry);
                     CaptureStructKey(bouncer, bouncerEntry);
+                    CaptureLongPegCenter(bouncer, bouncerEntry);
                     snapshot.Pegs.Add(bouncerEntry);
 
                     if (bouncer.gameObject.activeInHierarchy && !destroyed)
@@ -317,6 +322,10 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
             }
 
             snapshot.TotalPegCount = snapshot.Pegs.Count;
+
+            // Authoritative crit state. Public getter over BattleController's
+            // private static _criticalHitCount — no reflection needed here.
+            snapshot.CriticalHitCount = BattleController.criticalHitCount;
 
             // Capture bramball vines (pairs of peg GUIDs)
             try
@@ -439,7 +448,63 @@ public class PegboardStateProvider : IGameStateProvider<PegboardStateSnapshot>
             {
                 entry.LpmParentPosX = lpm.transform.position.x;
                 entry.LpmParentPosY = lpm.transform.position.y;
+
+                // Direction is state, not something the client may re-derive:
+                // a client peg repurposed from another row carries that row's
+                // velocity and marches the wrong way between heartbeats.
+                // Prefer the live rigidbody velocity over the authored
+                // xMovement/yMovement so dynamically-sped pegs (skating) sync too.
+                var rb = lpm.GetComponent<UnityEngine.Rigidbody2D>();
+                if (rb != null)
+                {
+                    entry.LpmVelX = rb.velocity.x;
+                    entry.LpmVelY = rb.velocity.y;
+                }
+                else
+                {
+                    entry.LpmVelX = lpm.xMovement;
+                    entry.LpmVelY = lpm.yMovement;
+                }
             }
+        }
+        catch
+        {
+        }
+    }
+
+    /// <summary>
+    /// LongPegs (the flat/curved mesh pegs) all park their transform on the
+    /// layout's placeholder position — every one of them reports
+    /// transform.position (0,-1) and localPosition (0,0), because the actual
+    /// geometry lives in the mesh vertices. That makes both structural keys and
+    /// every position test degenerate: the applier cannot tell which long peg an
+    /// entry refers to, so its first-sync bind is effectively random and host
+    /// and client end up clearing different long pegs for the rest of the
+    /// battle. GetCenterOfPeg() returns the collider/mesh bounds centre, which
+    /// IS distinct per long peg and identical on both sides for the same peg —
+    /// ship it so the applier has something to match on.
+    /// </summary>
+    private static void CaptureLongPegCenter(Peg peg, PegEntry entry)
+    {
+        if (!(peg is LongPeg))
+        {
+            return;
+        }
+
+        entry.IsLongPeg = true;
+        try
+        {
+            // NOT GetCenterOfPeg(): it only recomputes from collider bounds
+            // while a collider isActiveAndEnabled, and at battle start none of
+            // them are — so it returns the cached _position, which on the host
+            // was cached while the pegboard was still parked at
+            // PegLayoutLoader.PRE_INSTANCED_OFFSET (+1000,0,0). That shipped
+            // every long-peg centre 1000 units off in X, nothing on the client
+            // matched, and the applier cloned pegs on top of each other while
+            // deactivating the real ones.
+            var c = Utility.LongPegVisualHelper.WorldCenter(peg);
+            entry.CenterX = c.x;
+            entry.CenterY = c.y;
         }
         catch
         {

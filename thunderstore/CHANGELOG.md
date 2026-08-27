@@ -1,5 +1,20 @@
 # Changelog
 
+## Multipeglin v0.1.14
+
+- improved: clients no longer lock up for several frames every 2-5 seconds during battle
+- improved: the map token on clients now walks between nodes instead of teleporting to them (thanks Garrett-Webb for reporting and helping)
+- fixed: red and black (rigged) bombs could be swapped between host and client on the mines levels; this also affected bomb-related relics and run stats, not just how they looked
+- fixed: long pegs could vanish on the client, leaving whole arcs of the spiral boards missing for the rest of the battle (thanks Garrett-Webb for reporting and fixing)
+- fixed: crit/bonus pegs stayed plain on the client through entire crit windows while the host showed them red
+- fixed: the next-node overlay could stop responding to clicks after the first navigation, softlocking the run
+- fixed: a lost vote during navigation could hang the run indefinitely; it now resolves on its own after 60 seconds
+- fixed: bombs on the client could show a lit fuse the host never lit, and could disappear instead of playing their explosion
+- fixed: the client could permanently destroy pegs that were never out of sync in the first place (slimes and obstacle pegs), causing the desync it was meant to prevent
+- fixed: the client aim line did not bend off pegs correctly after the board changed (thanks Garrett-Webb for reporting and fixing)
+- fixed: long peg healing and the crit tint were not restored after a board refresh
+- fixed: clients could crash while the map token was walking
+
 ## Multipeglin v0.1.13
 
 - fixed: softlock in the "choose between 3 things" question mark event (thanks to Garrett-Webb for reporting and for a fix PR)

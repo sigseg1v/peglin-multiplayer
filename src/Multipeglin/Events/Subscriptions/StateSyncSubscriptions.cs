@@ -89,10 +89,12 @@ public sealed class StateSyncSubscriptions
         BattleController.OnBombDetonated += () => SafeSync("BombDetonated", () => _sync.SyncPegboard());
         BattleController.OnBombThrown += () => SafeSync("BombThrown", () => _sync.SyncPegboard());
 
-        // intentionally NOT re-enabling onCriticalHitActivated/Deactivated →
-        // SyncPegboard: crit toggles are damage-state changes, not peg-position
-        // changes. The crit peg rotation is already captured by OnShotComplete
-        // SyncPegboard and the periodic heartbeat. Pure overhead.
+        // Crit toggles re-roll which pegs are CRIT mid-shot (including after a
+        // refresh). Client ShuffleCritPegs is blocked, so the snapshot must land
+        // promptly — heartbeat alone left refreshed pegs without red overlays.
+        // Rate-limited by GameStateSyncService like other SyncPegboard hooks.
+        BattleController.onCriticalHitActivated += () => SafeSync("CritActivated", () => _sync.SyncPegboard());
+        BattleController.onCriticalHitDeactivated += () => SafeSync("CritDeactivated", () => _sync.SyncPegboard());
 
         // Sync pegboard when refresh potion activates (refreshes cleared pegs)
         BattleController.onRefreshPotionActivated += () => SafeSync("RefreshPotion", () => _sync.SyncPegboard());

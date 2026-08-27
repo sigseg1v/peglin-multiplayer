@@ -294,6 +294,7 @@ public static class ServiceRegistration
         registry.Register(new ReloadStartedServerHandler(), new ReloadStartedClientHandler());
         registry.Register(new CritActivatedServerHandler(), new CritActivatedClientHandler());
         registry.Register(new CritDeactivatedServerHandler(), new CritDeactivatedClientHandler());
+        registry.Register(new CritCountServerHandler(), new CritCountClientHandler());
         registry.Register(new BombThrownServerHandler(), new BombThrownClientHandler());
         registry.Register(new BombDetonatedServerHandler(), new BombDetonatedClientHandler());
         registry.Register(new OrbDiscardedServerHandler(), new OrbDiscardedClientHandler());

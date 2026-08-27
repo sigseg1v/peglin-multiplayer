@@ -23,13 +23,52 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
         _orbId = orbId;
     }
 
+    // DeckInfoManager is a scene MonoBehaviour, so FindObjectOfType is a full
+    // scene scan — and this applier wanted it five times per heartbeat. Cache it
+    // and re-resolve only when the reference goes (Unity) null, which is exactly
+    // what a scene change does.
+    private static DeckInfoManager _deckInfo;
+
+    private static DeckInfoManager DeckInfo
+    {
+        get
+        {
+            if (_deckInfo == null)
+            {
+                _deckInfo = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
+            }
+
+            return _deckInfo;
+        }
+    }
+
+    private static readonly System.Reflection.FieldInfo DimDisplayOrbsField
+        = AccessTools.Field(typeof(DeckInfoManager), "_displayOrbs");
+
+    private static readonly System.Reflection.FieldInfo DimPlungerParentField
+        = AccessTools.Field(typeof(DeckInfoManager), "_plungerParent");
+
+    private static readonly System.Reflection.FieldInfo DimCurrentOrbField
+        = AccessTools.Field(typeof(DeckInfoManager), "_currentOrb");
+
+    private static readonly System.Reflection.FieldInfo DimNextOrbField
+        = AccessTools.Field(typeof(DeckInfoManager), "_nextOrb");
+
+    private static readonly System.Reflection.FieldInfo DimCurrentOrbDisplayPosField
+        = AccessTools.Field(typeof(DeckInfoManager), "_currentOrbDisplayPos");
+
+    private static readonly System.Reflection.FieldInfo DimLevelRingField
+        = AccessTools.Field(typeof(DeckInfoManager), "_currentOrbLevelRingRenderer");
+
+    private static readonly System.Reflection.FieldInfo DimLevelSpritesField
+        = AccessTools.Field(typeof(DeckInfoManager), "_orbLevelDisplaySprites");
+
     public void Apply(DeckStateSnapshot snapshot)
     {
         try
         {
             // Find DeckManager (ScriptableObject — not in scene hierarchy)
-            var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
-            var dm = dms.Length > 0 ? dms[0] : null;
+            var dm = Utility.ScriptableSingletons.Deck;
             if (dm == null)
             {
                 _log.LogWarning("[DeckApplier] DeckManager not found");
@@ -149,10 +188,10 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                         Stack<GameObject> displayOrbs = null;
                         try
                         {
-                            var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
+                            var dim = DeckInfo;
                             if (dim != null)
                             {
-                                var displayOrbsField = AccessTools.Field(typeof(DeckInfoManager), "_displayOrbs");
+                                var displayOrbsField = DimDisplayOrbsField;
                                 displayOrbs = displayOrbsField?.GetValue(dim) as Stack<GameObject>;
                             }
                         }
@@ -182,10 +221,10 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                             // destroyed display orbs. Each orb slot is ~0.875 units tall.
                             try
                             {
-                                var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
+                                var dim = DeckInfo;
                                 if (dim != null)
                                 {
-                                    var plungerField = AccessTools.Field(typeof(DeckInfoManager), "_plungerParent");
+                                    var plungerField = DimPlungerParentField;
                                     var plungerParent = plungerField?.GetValue(dim) as Transform;
                                     if (plungerParent != null)
                                     {
@@ -301,13 +340,13 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
     {
         try
         {
-            var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
+            var dim = DeckInfo;
             if (dim == null)
             {
                 return;
             }
 
-            var currentOrbField = AccessTools.Field(typeof(DeckInfoManager), "_currentOrb");
+            var currentOrbField = DimCurrentOrbField;
             var currentOrb = currentOrbField?.GetValue(dim) as GameObject;
             if (currentOrb != null)
             {
@@ -315,7 +354,7 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                 currentOrbField.SetValue(dim, null);
             }
 
-            var nextOrbField = AccessTools.Field(typeof(DeckInfoManager), "_nextOrb");
+            var nextOrbField = DimNextOrbField;
             nextOrbField?.SetValue(dim, null);
 
             DeckInfoManager.populatingDisplayOrb = false;
@@ -339,8 +378,7 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             return;
         }
 
-        var dms = Resources.FindObjectsOfTypeAll<DeckManager>();
-        var dm = dms.Length > 0 ? dms[0] : null;
+        var dm = Utility.ScriptableSingletons.Deck;
         if (dm == null)
         {
             return;
@@ -353,13 +391,13 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
     {
         try
         {
-            var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
+            var dim = DeckInfo;
             if (dim == null)
             {
                 return;
             }
 
-            var currentOrbField = AccessTools.Field(typeof(DeckInfoManager), "_currentOrb");
+            var currentOrbField = DimCurrentOrbField;
             var currentOrb = currentOrbField?.GetValue(dim) as GameObject;
 
             // Destroy the old _currentOrb so we can replace it
@@ -372,7 +410,7 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             // Force-complete shuffle animation if still running
             if (DeckInfoManager.animating)
             {
-                var plungerField = AccessTools.Field(typeof(DeckInfoManager), "_plungerParent");
+                var plungerField = DimPlungerParentField;
                 var plunger = plungerField?.GetValue(dim) as Transform;
                 if (plunger != null)
                 {
@@ -449,7 +487,7 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             previewGo.transform.SetParent(null);
 
             // Move to the active orb display position
-            var displayPosField = AccessTools.Field(typeof(DeckInfoManager), "_currentOrbDisplayPos");
+            var displayPosField = DimCurrentOrbDisplayPosField;
             var displayPos = displayPosField?.GetValue(dim) as Transform;
             if (displayPos != null)
             {
@@ -466,8 +504,8 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                 levelIdx = Mathf.Clamp(uod.attack.Level - 1, 0, 2);
             }
 
-            var levelRingField = AccessTools.Field(typeof(DeckInfoManager), "_currentOrbLevelRingRenderer");
-            var levelSpritesField = AccessTools.Field(typeof(DeckInfoManager), "_orbLevelDisplaySprites");
+            var levelRingField = DimLevelRingField;
+            var levelSpritesField = DimLevelSpritesField;
             var levelRing = levelRingField?.GetValue(dim) as SpriteRenderer;
             var levelSprites = levelSpritesField?.GetValue(dim) as Sprite[];
             if (levelRing != null && levelSprites != null && levelIdx < levelSprites.Length)
@@ -487,7 +525,7 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
             currentOrbField?.SetValue(dim, previewGo);
 
             // Clear stale _nextOrb
-            var nextOrbField = AccessTools.Field(typeof(DeckInfoManager), "_nextOrb");
+            var nextOrbField = DimNextOrbField;
             nextOrbField?.SetValue(dim, null);
 
             DeckInfoManager.onActiveOrbScaleStarted?.Invoke(previewGo);
@@ -518,27 +556,19 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
                 return;
             }
 
-            // Check if already showing via the _isAiming or _isActive flags
-            var aimingField = AccessTools.Field(typeof(ClientBallRenderer), "_isAiming");
-            var activeField = AccessTools.Field(typeof(ClientBallRenderer), "_isActive");
-            var ballObjField = AccessTools.Field(typeof(ClientBallRenderer), "_ballObject");
-            var rendererField = AccessTools.Field(typeof(ClientBallRenderer), "_ballRenderer");
-            var renderCopiedField = AccessTools.Field(typeof(ClientBallRenderer), "_renderCopied");
-            var isAiming = (bool)(aimingField?.GetValue(cbr) ?? false);
-            var isActive = (bool)(activeField?.GetValue(cbr) ?? false);
-
-            var ballObj = ballObjField?.GetValue(cbr) as GameObject;
-            var sr = rendererField?.GetValue(cbr) as UnityEngine.SpriteRenderer;
-            var renderCopied = (bool)(renderCopiedField?.GetValue(cbr) ?? false);
+            // ClientBallRenderer owns this state; use its read-only public surface
+            // instead of reflecting obsolete pre-refactor field names.
+            var ballObj = cbr.AimingBall;
+            var sr = cbr.AimingRenderer;
+            var isShowing = cbr.IsAiming && ballObj != null && ballObj.activeSelf;
             var pos = ballObj?.transform.position ?? UnityEngine.Vector3.zero;
             var scale = ballObj?.transform.localScale ?? UnityEngine.Vector3.zero;
-            _log.LogInfo($"[DeckApplier] AimerOrb: aiming={isAiming} active={isActive} " +
+            _log.LogInfo($"[DeckApplier] AimerOrb: aiming={cbr.IsAiming} active={ballObj?.activeSelf ?? false} " +
                 $"pos=({pos.x:F1},{pos.y:F1},{pos.z:F1}) scale=({scale.x:F2},{scale.y:F2}) " +
                 $"sprite={sr?.sprite != null} enabled={sr?.enabled} color={sr?.color} " +
-                $"material={sr?.material?.name ?? "NULL"} layer={sr?.sortingLayerName} order={sr?.sortingOrder} " +
-                $"renderCopied={renderCopied}");
+                $"material={sr?.material?.name ?? "NULL"} layer={sr?.sortingLayerName} order={sr?.sortingOrder}");
 
-            if (isAiming || isActive)
+            if (isShowing)
             {
                 // Already showing, but check if the displayed orb is stale (wrong orb name).
                 // This happens when the host switches active orb between heartbeats (e.g. coop turn change).
@@ -782,7 +812,7 @@ public class DeckStateApplier : IGameStateApplier<DeckStateSnapshot>
 
             try
             {
-                var dim = UnityEngine.Object.FindObjectOfType<DeckInfoManager>();
+                var dim = DeckInfo;
                 if (dim != null && dim.displayOrbs != null && actualShuffled > 0)
                 {
                     var actualDisplay = dim.displayOrbs.Count;

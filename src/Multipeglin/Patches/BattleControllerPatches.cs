@@ -120,6 +120,8 @@ internal static class BattleControllerPatches
             return;
         }
 
+        BroadcastCritCountIfChanged();
+
         // Track fired ball position to diagnose collision issues
         if (_firedBallGO != null && _firedBallLogCount < 5)
         {
@@ -686,6 +688,10 @@ internal static class BattleControllerPatches
     [HarmonyPrefix]
     public static void BattleController_Awake_Prefix()
     {
+        // Static counter survives scene loads; the new battle starts at 0 and the
+        // host must re-announce it rather than assume the client kept the old value.
+        _lastBroadcastCritCount = -1;
+
         if (!ShouldSuppressClientLogic)
         {
             return;
@@ -848,6 +854,128 @@ internal static class BattleControllerPatches
 
         MultiplayerPlugin.Logger?.LogInfo("[ClientPatches] Blocked AddInitialCoinsToBoard — host will send gold state");
         return false;
+    }
+
+    /// <summary>
+    /// Host-side: broadcast BattleController._criticalHitCount whenever it changes.
+    ///
+    /// The host clears the counter in five places but only CheckForForcedCritical
+    /// fires onCriticalHitDeactivated, so the delegate-driven CritActivatedEvent /
+    /// CritDeactivatedEvent pair cannot describe the host's crit state on its own.
+    /// PegboardStateSnapshot.CriticalHitCount already carries the truth, but only
+    /// every 2 s — long enough to see the client's board stay red (or stay grey)
+    /// for a visible beat. This is a one static-field read per frame on the host.
+    /// </summary>
+    private static int _lastBroadcastCritCount = -1;
+
+    private static void BroadcastCritCountIfChanged()
+    {
+        if (_bcCritField == null)
+        {
+            return;
+        }
+
+        try
+        {
+            var count = (int)(_bcCritField.GetValue(null) ?? 0);
+            if (count == _lastBroadcastCritCount)
+            {
+                return;
+            }
+
+            if (_cachedRegistry == null
+                && (MultiplayerPlugin.Services == null
+                    || !MultiplayerPlugin.Services.TryResolve<IGameEventRegistry>(out _cachedRegistry)))
+            {
+                return;
+            }
+
+            _lastBroadcastCritCount = count;
+            _cachedRegistry.Dispatch(new Events.Network.Battle.CritCountEvent { Count = count });
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[CritSync] host broadcast failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Client-side: keep the host's crit counter across DoEndOfTurnBattleCleanup.
+    ///
+    /// The native method opens with `_criticalHitCount = 0` and then fires
+    /// OnTurnComplete, which the client does need (peg SoftReset, orb bookkeeping).
+    /// The client reaches its own end-of-turn on its own timing, so letting the
+    /// zero stand painted the client's board plain while the host was still in crit
+    /// — the [CritSync] 0 -> 1 corrections in the client log. Restore the value the
+    /// host last told us about and repaint, since SoftReset ran with criticalActive
+    /// already false.
+    /// </summary>
+    [HarmonyPatch(typeof(BattleController), "DoEndOfTurnBattleCleanup")]
+    [HarmonyPrefix]
+    public static void BattleController_DoEndOfTurnBattleCleanup_Prefix(out int __state)
+    {
+        __state = 0;
+        if (!ShouldSuppressClientLogic || _bcCritField == null)
+        {
+            return;
+        }
+
+        try
+        {
+            __state = (int)(_bcCritField.GetValue(null) ?? 0);
+        }
+        catch
+        {
+            __state = 0;
+        }
+    }
+
+    [HarmonyPatch(typeof(BattleController), "DoEndOfTurnBattleCleanup")]
+    [HarmonyPostfix]
+    public static void BattleController_DoEndOfTurnBattleCleanup_Postfix(int __state)
+    {
+        if (!ShouldSuppressClientLogic || _bcCritField == null || __state <= 0)
+        {
+            return;
+        }
+
+        try
+        {
+            if ((int)(_bcCritField.GetValue(null) ?? 0) == __state)
+            {
+                return;
+            }
+
+            _bcCritField.SetValue(null, __state);
+            BattleController.onCriticalHitActivated?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            MultiplayerPlugin.Logger?.LogWarning($"[CritSync] client cleanup restore failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Block BattleController.CheckForForcedCritical on the client.
+    ///
+    /// The native method runs on every ball draw and, unless the drawn orb has a
+    /// GuaranteedCrit / ActivateCritOnDraw component, does
+    /// <c>_criticalHitCount = 0; onCriticalHitDeactivated();</c> — repainting every
+    /// REGULAR peg back to its plain sprite. The client draws its display ball on
+    /// its own timing (and from its own local orb instance), so it ran this while
+    /// the host still had crit active from ActivateCritOnPegHits: host board red,
+    /// client board grey until the next 2 s heartbeat corrected _criticalHitCount
+    /// ([CritSync] 0 -> 1 in the client log). The mirror case — client keeping crit
+    /// after the host dropped it — showed up as [CritSync] 1 -> 0.
+    ///
+    /// Crit state is host-authoritative: CritActivatedEvent / CritDeactivatedEvent
+    /// for responsiveness, PegboardStateSnapshot.CriticalHitCount as the truth.
+    /// </summary>
+    [HarmonyPatch(typeof(BattleController), "CheckForForcedCritical")]
+    [HarmonyPrefix]
+    public static bool BattleController_CheckForForcedCritical_Prefix()
+    {
+        return !ShouldSuppressClientLogic;
     }
 
     // =========================================================================

@@ -25,12 +25,20 @@ public sealed class PegDestroyedClientHandler : IClientHandler<PegDestroyedEvent
                 peg = pegId?.Find(networkEvent.PegGuid);
             }
 
-            // Destroy the peg visually
+            // Destroy the peg visually. LongPegs must soft-hide — DestroyPeg →
+            // HidePeg Object.Destroy(_collider) and refresh can never heal them.
             if (peg != null && peg.gameObject.activeSelf && peg.pegType != global::Peg.PegType.DESTROYED)
             {
                 try
                 {
-                    peg.DestroyPeg(peg.pegType);
+                    if (peg is LongPeg longPeg)
+                    {
+                        LongPegVisualHelper.SoftHide(longPeg);
+                    }
+                    else
+                    {
+                        peg.DestroyPeg(peg.pegType);
+                    }
                 }
                 catch
                 {

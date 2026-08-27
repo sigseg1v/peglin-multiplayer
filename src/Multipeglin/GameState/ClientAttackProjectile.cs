@@ -434,8 +434,7 @@ public class ClientAttackProjectile : MonoBehaviour
             return false;
         }
 
-        var field = AccessTools.Field(typeof(ClientBallRenderer), "_ballRenderer");
-        var ballSr = field?.GetValue(cbr) as SpriteRenderer;
+        var ballSr = cbr.AimingRenderer;
         if (ballSr?.sprite == null)
         {
             return false;

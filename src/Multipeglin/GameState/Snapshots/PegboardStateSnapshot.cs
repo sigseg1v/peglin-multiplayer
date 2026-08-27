@@ -28,6 +28,18 @@ public class PegboardStateSnapshot
     public int ResetPegCount { get; set; }
 
     public int BouncerPegCount { get; set; }
+
+    /// <summary>
+    /// Host's BattleController._criticalHitCount at capture time.
+    /// BattleController.criticalActive is `_criticalHitCount > 0`, and the applier
+    /// feeds that into Peg.Reset(bool) / ConvertToBonusPeg to decide whether pegs
+    /// wear the red bonus tint. The host zeros this field in five places
+    /// (OnDisable, DoEndOfTurnBattleCleanup, CheckForForcedCritical, EndBattle,
+    /// ArmNavigationBall) but only ONE of them fires onCriticalHitDeactivated, so
+    /// the CritActivated/Deactivated delta events cannot keep the client in sync on
+    /// their own. Carrying the raw count here lets the heartbeat correct it.
+    /// </summary>
+    public int CriticalHitCount { get; set; }
 }
 
 public class PegEntry
@@ -88,6 +100,24 @@ public class PegEntry
     /// <summary>True if this peg is a bouncer (from _bouncerPegs list, not _allPegs).</summary>
     public bool IsBouncer { get; set; }
 
+    /// <summary>
+    /// Bomb-only: host's <see cref="Bomb.isRigged"/>. Rigged bombs are a
+    /// distinct animator controller (the black bomb) and distinct gameplay —
+    /// PegManager.CountSpecialPegsOnBoard, RunStats.bombsCreatedRigged and the
+    /// rigged-damage modifiers all branch on it.
+    ///
+    /// It cannot be derived on the client. Layouts bake both MovingBombGroup and
+    /// MovingBombGroupRigged variants, relics flip live bombs via
+    /// PegManager.ConvertRegularBombsToRigged, and Bomb.Reset clears the flag
+    /// unless ALL_BOMBS_RIGGED is held — so which bombs are rigged depends on
+    /// host-side relic state and list ordering the client does not have. Worse,
+    /// pre-instancing gives the two peers different parent chains for the same
+    /// layout (see ParentName), so bombs bind by proximity and a rigged client
+    /// bomb routinely lands on a regular host bomb's slot. The visible symptom
+    /// was red and black bombs appearing swapped between the two boards.
+    /// </summary>
+    public bool IsRigged { get; set; }
+
     /// <summary>Damage buff/debuff value displayed on the peg (-999 to 999).</summary>
     public int BuffAmount { get; set; }
 
@@ -106,7 +136,41 @@ public class PegEntry
     /// <summary>World Y of the LinearPegMovement parent (null if peg is not under LPM).</summary>
     public float? LpmParentPosY { get; set; }
 
-    /// <summary>Name of the transform.parent (stable across host/client because it comes from the prefab hierarchy).</summary>
+    /// <summary>
+    /// Host-side X velocity of the LinearPegMovement body driving this peg (null
+    /// if the peg is not under LPM). LPM sets its rigidbody velocity once in
+    /// Start() from the layout's xMovement, so the client normally derives the
+    /// same direction on its own — but only for pegs that bound to the client
+    /// twin of the same layout row. Any peg the applier repurposes from a
+    /// neighbouring row (phase-3 proximity bind, template clone) keeps the
+    /// velocity of the row it came from, so it marches the wrong way between
+    /// heartbeats while its position still snaps to the host's each second.
+    /// Sending the velocity makes direction host-authoritative like every other
+    /// piece of peg state.
+    /// </summary>
+    public float? LpmVelX { get; set; }
+
+    /// <summary>Host-side Y velocity of the LinearPegMovement body driving this peg.</summary>
+    public float? LpmVelY { get; set; }
+
+    /// <summary>
+    /// Full ancestor chain of the peg, root-first ("Layout/Row1/Group").
+    ///
+    /// NOT reliably identical on host and client. PegLayoutLoader dequeues
+    /// objects from a pre-instanced pool and only reparents them under the
+    /// layout root when <c>mustReparentChildren</c> is set
+    /// (PegLayoutLoader.LoadPegboardRecursive), so whether a peg keeps the
+    /// prefab's nesting or ends up flattened depends on pool state at load
+    /// time. Observed on every mixed layout: the host reports
+    /// "MinesMixedMovementPegLayout/MovingBombGroup" for the same peg the
+    /// client has under "MinesMixedMovementPegLayout/Row1/MovingBombGroup"
+    /// (likewise ForestLongPegSpiral vs .../Ring, Waves vs Waves/Triangle).
+    ///
+    /// It is therefore a match *hint*, not a key — a chain mismatch must never
+    /// reject an otherwise good bind, and anything that has to be right
+    /// (riggedness, velocity, type) is sent explicitly instead of inferred
+    /// from the peg's group.
+    /// </summary>
     public string ParentName { get; set; }
 
     /// <summary>Local position relative to transform.parent (stable across host/client — baked into prefab).</summary>
@@ -129,6 +193,29 @@ public class PegEntry
     /// component. Signals the applier to prefer (ParentName, SiblingIndex) over
     /// (ParentName, LocalPos) when resolving the structural match.</summary>
     public bool HasLpm { get; set; }
+
+    /// <summary>
+    /// True when the host peg is a <see cref="LongPeg"/> — the flat/curved mesh
+    /// pegs. Their geometry lives in mesh vertices, so every LongPeg instance
+    /// keeps its transform at the layout's placeholder position (typically
+    /// (0,-1)) and shares localPosition (0,0) with every other LongPeg under
+    /// the same generator. Position-based matching therefore cannot tell two
+    /// LongPegs apart, and worse, it happily pairs a host LongPeg with a round
+    /// peg that happens to sit near the placeholder. The applier uses this flag
+    /// to (a) refuse cross-class binds and (b) switch to <see cref="CenterX"/>
+    /// for every distance test.
+    /// </summary>
+    public bool IsLongPeg { get; set; }
+
+    /// <summary>
+    /// World X of <c>Peg.GetCenterOfPeg()</c> — the collider/mesh bounds centre.
+    /// Only populated for <see cref="IsLongPeg"/> entries, where it is the only
+    /// value that actually identifies which long peg this is. Null otherwise.
+    /// </summary>
+    public float? CenterX { get; set; }
+
+    /// <summary>World Y of <c>Peg.GetCenterOfPeg()</c>. See <see cref="CenterX"/>.</summary>
+    public float? CenterY { get; set; }
 
     /// <summary>
     /// Local Z rotation in degrees. Captured per peg so the applier can align

@@ -50,6 +50,24 @@ public static class CoopNavigateState
     /// <summary>Time (Time.unscaledTime) when the phase started; for the FORCE_SKIP_SECONDS host force-skip.</summary>
     public static float PhaseStartedAt = -1f;
 
+    /// <summary>
+    /// Monotonically increasing id, bumped by every <see cref="StartPhase"/>.
+    ///
+    /// Per-phase latches used to be cleared by polling for <c>!PhaseActive</c>,
+    /// which only works if the observer's Update happens to run inside the gap
+    /// between Reset() and the next StartPhase(). It does not: Reset can come
+    /// from a scene-load callback or a network handler and StartPhase from the
+    /// network poll later in the same frame, and Unity gives no ordering
+    /// guarantee between components. When that gap was missed,
+    /// CoopNavigateClientInput kept a stale _shotFired from the previous phase
+    /// and silently swallowed every click for the rest of the run — the client
+    /// could never vote and the host waited forever on votes=1/2.
+    ///
+    /// Comparing this id is edge-free: a new phase is a new number no matter
+    /// when the observer looks.
+    /// </summary>
+    public static int PhaseId;
+
     public static bool AllVotesIn => TotalVotersExpected > 0 && VotedSlots.Count >= TotalVotersExpected;
 
     public static void StartPhase(string source, int childNodeCount, int totalVoters, float now, int[] childRoomTypes = null)
@@ -60,6 +78,7 @@ public static class CoopNavigateState
         NavigatePhaseStartClientHandler.DestroyActiveVerifier();
 
         PhaseActive = true;
+        PhaseId++;
         Source = source ?? "post_battle";
         ChildNodeCount = Math.Max(1, childNodeCount);
         TotalVotersExpected = Math.Max(1, totalVoters);

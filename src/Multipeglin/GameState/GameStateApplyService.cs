@@ -1328,6 +1328,8 @@ public class GameStateApplyService
                 if (System.Math.Abs(clientPegs - hostActivePegs) > 5)
                 {
                     _log.LogWarning($"[Consistency] PEG COUNT MISMATCH: host_active={hostActivePegs}, client_active={clientPegs}");
+                    _pegboardApplier.DumpBoardDiff(snapshot.Pegboard,
+                        $"count-mismatch host_active={hostActivePegs} client_active={clientPegs}");
                 }
             }
         }
@@ -1481,11 +1483,23 @@ public class GameStateApplyService
 
     private void SafeApply(string name, Action action)
     {
+        var t0 = Utility.PerfTimer.Now;
         try
         {
             action();
         }
         catch (Exception ex) { _log.LogError($"[ApplyService] {name} failed: {ex.Message}"); }
+
+        // Appliers run on the main thread inside one heartbeat tick, so a slow
+        // one is a visible freeze, not just a slow log line.
+        if (Utility.PerfTimer.Enabled)
+        {
+            var ms = Utility.PerfTimer.MsSince(t0);
+            if (ms >= Utility.PerfTimer.WarnMs)
+            {
+                _log.LogWarning($"[Perf] applier {name} {ms:F1}ms");
+            }
+        }
     }
 
     /// <summary>
