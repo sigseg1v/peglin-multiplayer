@@ -868,6 +868,8 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
                     $"registry={_pegId.Count})");
             }
 
+            LogCritVisualDrift(clientPegs);
+
             // Sync bramball vines
             SyncVines(snapshot, bc);
 
@@ -3153,6 +3155,76 @@ public class PegboardStateApplier : IGameStateApplier<PegboardStateSnapshot>
         }
         catch
         {
+        }
+    }
+
+    private static readonly System.Reflection.FieldInfo _regularBonusSpriteField
+        = HarmonyLib.AccessTools.Field(typeof(RegularPeg), "_bonusSprite");
+
+    private static readonly System.Reflection.FieldInfo _regularRendererField
+        = HarmonyLib.AccessTools.Field(typeof(RegularPeg), "_renderer");
+
+    /// <summary>
+    /// MULTIPEGLIN_DEBUG only. While the host says crit is active, report any
+    /// REGULAR peg that is not showing its bonus (red) sprite — the client used to
+    /// sit on a plain board through the whole crit window while the host was red,
+    /// and the counter alone does not prove the repaint actually landed
+    /// (ConvertToBonusPeg silently bails on IsDisabled()).
+    /// </summary>
+    private void LogCritVisualDrift(System.Collections.Generic.List<Peg> clientPegs)
+    {
+        if (!PegDiffEnabled || clientPegs == null || !BattleController.criticalActive)
+        {
+            return;
+        }
+
+        if (_regularBonusSpriteField == null || _regularRendererField == null)
+        {
+            return;
+        }
+
+        var bonus = 0;
+        var plain = 0;
+        var disabled = 0;
+        string sample = null;
+        foreach (var peg in clientPegs)
+        {
+            if (!(peg is RegularPeg regular) || regular.pegType != Peg.PegType.REGULAR)
+            {
+                continue;
+            }
+
+            if (regular.IsDisabled())
+            {
+                disabled++;
+                continue;
+            }
+
+            var renderer = _regularRendererField.GetValue(regular) as SpriteRenderer;
+            var bonusSprite = _regularBonusSpriteField.GetValue(regular) as Sprite;
+            if (renderer == null || bonusSprite == null)
+            {
+                continue;
+            }
+
+            if (ReferenceEquals(renderer.sprite, bonusSprite))
+            {
+                bonus++;
+            }
+            else
+            {
+                plain++;
+                if (sample == null)
+                {
+                    sample = $"{regular.name} sprite={renderer.sprite?.name ?? "null"}";
+                }
+            }
+        }
+
+        if (plain > 0)
+        {
+            _log.LogWarning($"[CritVisual] criticalActive but {plain}/{bonus + plain} live REGULAR pegs still plain " +
+                $"(disabled={disabled}, e.g. {sample})");
         }
     }
 
