@@ -100,7 +100,13 @@ public static class DebugForceBattle
                 continue;
             }
 
-            if (candidate.name.IndexOf(_hint, StringComparison.OrdinalIgnoreCase) >= 0)
+            // Match the battle asset name or its pegboard name — the interesting
+            // axis for sync testing is the peg layout (moving/sliding/long pegs),
+            // and layout names are what the addressables catalog lists.
+            var layoutName = candidate.pegLayout?.name;
+            if (candidate.name.IndexOf(_hint, StringComparison.OrdinalIgnoreCase) >= 0
+                || (!string.IsNullOrEmpty(layoutName)
+                    && layoutName.IndexOf(_hint, StringComparison.OrdinalIgnoreCase) >= 0))
             {
                 _resolved = candidate;
                 MultiplayerPlugin.Logger?.LogInfo(

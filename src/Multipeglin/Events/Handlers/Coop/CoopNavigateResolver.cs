@@ -159,10 +159,21 @@ public static class CoopNavigateResolver
     private static float _lastWatchdogLogAt;
 
     /// <summary>
+    /// Hard deadline (seconds since PhaseStartedAt) after which the watchdog
+    /// resolves the phase itself. Sits above CoopRewardUI.FORCE_SKIP_SECONDS so
+    /// the host always gets the manual Force Continue button first; this is only
+    /// the backstop for a host who is also AFK or a client that can no longer
+    /// vote at all.
+    /// </summary>
+    private const float AutoForceSeconds = 60f;
+
+    /// <summary>
     /// Host-only deadlock watchdog. Call from a periodic UI tick. Every 5s while
     /// the navigate phase is active but unresolved, logs the current tally,
     /// expected voter count, and which slot indices haven't voted yet — so a
     /// hung phase is visible in the host log instead of silently waiting forever.
+    /// Past <see cref="AutoForceSeconds"/> it stops logging and force-resolves,
+    /// so a lobby can never hard-lock on a vote that will never arrive.
     /// </summary>
     public static void TickWatchdog()
     {
@@ -209,6 +220,14 @@ public static class CoopNavigateResolver
             $"votes={CoopNavigateState.VotedSlots.Count}/{CoopNavigateState.TotalVotersExpected}, " +
             $"tally=[{string.Join(",", CoopNavigateState.VoteCounts)}], " +
             $"pendingSlots={pendingStr}");
+
+        if (elapsed >= AutoForceSeconds)
+        {
+            MultiplayerPlugin.Logger?.LogWarning(
+                $"[CoopNavigate/Watchdog] Auto force-resolving after {elapsed:F1}s (limit {AutoForceSeconds:F0}s) — " +
+                $"pendingSlots={pendingStr}");
+            ForceResolve();
+        }
     }
 
     /// <summary>

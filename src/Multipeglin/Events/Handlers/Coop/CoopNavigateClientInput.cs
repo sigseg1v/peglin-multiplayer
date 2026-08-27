@@ -27,20 +27,30 @@ public sealed class CoopNavigateClientInput : MonoBehaviour
     private int _pendingFallbackChildIndex = -1;
     private float _lastBallWorldX = float.NaN;
     private float _lastBallWorldY = float.NaN;
+    private int _seenPhaseId;
+    private bool _deadEndLogged;
 
     private void Update()
     {
         try
         {
-            // Reset entry-log + shot latch when a phase ends so each new phase gets one log/shot.
+            // Clear the per-phase latches on phase *identity* change, not on
+            // observing !PhaseActive. Reset() and the next StartPhase() can land
+            // in the same frame (scene-load callback / network handler vs.
+            // network poll) with no ordering guarantee against this Update, and
+            // when that happened _shotFired stayed latched from the previous
+            // phase: the _shotFired branch below then swallowed every click
+            // silently, the client could never vote, and the host sat on
+            // votes=1/2 forever. PhaseId makes the transition edge-free.
+            if (CoopNavigateState.PhaseId != _seenPhaseId)
+            {
+                _seenPhaseId = CoopNavigateState.PhaseId;
+                ResetPhaseLatches();
+            }
+
             if (!CoopNavigateState.PhaseActive)
             {
-                _phaseEntryLogged = false;
-                _shotFired = false;
-                _shotFiredAt = -1f;
-                _pendingFallbackChildIndex = -1;
-                _lastBallWorldX = float.NaN;
-                _lastBallWorldY = float.NaN;
+                ResetPhaseLatches();
                 return;
             }
 
@@ -82,7 +92,8 @@ public sealed class CoopNavigateClientInput : MonoBehaviour
                     MultiplayerPlugin.Logger?.LogInfo(
                         $"[CoopNavigate/ClientInput] Waiting for click: " +
                         $"phaseActive={CoopNavigateState.PhaseActive} resolved={CoopNavigateState.Resolved} " +
-                        $"voteCast={CoopNavigateState.LocalVoteCast}");
+                        $"voteCast={CoopNavigateState.LocalVoteCast} phaseId={CoopNavigateState.PhaseId} " +
+                        $"shotFired={_shotFired} pendingFallback={_pendingFallbackChildIndex}");
                 }
             }
 
@@ -119,6 +130,24 @@ public sealed class CoopNavigateClientInput : MonoBehaviour
                         CoopNavigateState.LocalVoteCast = true;
                         fallbackSender.Send(new NavigateVoteEvent { ChildIndex = fallbackChild });
                         _pendingFallbackChildIndex = -1;
+                    }
+                    else if (!_deadEndLogged)
+                    {
+                        // Neither the ball nor the slot geometry could be read
+                        // (ball despawned before we ever sampled it, or the
+                        // scene has no SlotManagers). Do NOT keep returning
+                        // here: that state is unrecoverable and used to eat
+                        // every subsequent click for the rest of the phase.
+                        // Re-open the click path so the player can just shoot
+                        // again — the host's watchdog force-resolve is the
+                        // backstop if they can't.
+                        _deadEndLogged = true;
+                        MultiplayerPlugin.Logger?.LogWarning(
+                            "[CoopNavigate/ClientInput] Shot produced no trackable ball and no slot geometry — " +
+                            "re-opening click input instead of waiting on a vote that can never be derived");
+                        _shotFired = false;
+                        _shotFiredAt = -1f;
+                        return;
                     }
                 }
 
@@ -168,6 +197,17 @@ public sealed class CoopNavigateClientInput : MonoBehaviour
             MultiplayerPlugin.Logger?.LogWarning(
                 $"[CoopNavigate/ClientInput] Update failed: {ex.Message}");
         }
+    }
+
+    private void ResetPhaseLatches()
+    {
+        _phaseEntryLogged = false;
+        _shotFired = false;
+        _shotFiredAt = -1f;
+        _pendingFallbackChildIndex = -1;
+        _lastBallWorldX = float.NaN;
+        _lastBallWorldY = float.NaN;
+        _deadEndLogged = false;
     }
 
     /// <summary>
